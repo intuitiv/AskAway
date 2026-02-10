@@ -22,7 +22,7 @@ export type RemoteMessage = {
 };
 
 /**
- * RemoteUiServer - Serves the TaskSync UI to browsers/mobile devices
+ * RemoteUiServer - Serves the AskAway UI to browsers/mobile devices
  * Provides identical functionality to the VS Code webview
  */
 export class RemoteUiServer implements vscode.Disposable {
@@ -205,7 +205,7 @@ export class RemoteUiServer implements vscode.Disposable {
         });
 
         this._io.on('connection', (socket: Socket) => {
-            console.log('[TaskSync Remote] Client connected:', socket.id);
+            console.log('[AskAway Remote] Client connected:', socket.id);
 
             // Handle authentication
             socket.on('authenticate', (data: { pin: string }) => {
@@ -238,7 +238,7 @@ export class RemoteUiServer implements vscode.Disposable {
             });
 
             socket.on('disconnect', () => {
-                console.log('[TaskSync Remote] Client disconnected:', socket.id);
+                console.log('[AskAway Remote] Client disconnected:', socket.id);
                 this._authenticatedSockets.delete(socket.id);
             });
         });
@@ -291,27 +291,27 @@ export class RemoteUiServer implements vscode.Disposable {
             pin: this._pin
         };
 
-        const sessions = this._context.globalState.get<SessionInfo[]>('tasksync.remoteSessions', []);
+        const sessions = this._context.globalState.get<SessionInfo[]>('askaway.remoteSessions', []);
         // Remove any stale sessions for this workspace/port
         const filtered = sessions.filter(s => s.port !== this._port);
         filtered.push(session);
-        this._context.globalState.update('tasksync.remoteSessions', filtered);
+        this._context.globalState.update('askaway.remoteSessions', filtered);
     }
 
     /**
      * Unregister this session from globalState
      */
     private _unregisterSession(): void {
-        const sessions = this._context.globalState.get<SessionInfo[]>('tasksync.remoteSessions', []);
+        const sessions = this._context.globalState.get<SessionInfo[]>('askaway.remoteSessions', []);
         const filtered = sessions.filter(s => s.id !== this._sessionId);
-        this._context.globalState.update('tasksync.remoteSessions', filtered);
+        this._context.globalState.update('askaway.remoteSessions', filtered);
     }
 
     /**
      * Get all registered sessions
      */
     private _getAllSessions(): SessionInfo[] {
-        return this._context.globalState.get<SessionInfo[]>('tasksync.remoteSessions', []);
+        return this._context.globalState.get<SessionInfo[]>('askaway.remoteSessions', []);
     }
 
     /**
@@ -336,21 +336,21 @@ export class RemoteUiServer implements vscode.Disposable {
      */
     private _getManifest(): object {
         return {
-            name: 'TaskSync Remote',
-            short_name: 'TaskSync',
-            description: 'Control your VS Code TaskSync from anywhere',
+            name: 'AskAway Remote',
+            short_name: 'AskAway',
+            description: 'Control your VS Code AskAway from anywhere',
             start_url: '/app',
             display: 'standalone',
             background_color: '#1e1e1e',
             theme_color: '#007acc',
             icons: [
                 {
-                    src: '/media/Tasksync-logo.png',
+                    src: '/media/askaway-logo.png',
                     sizes: '192x192',
                     type: 'image/png'
                 },
                 {
-                    src: '/media/Tasksync-logo.png',
+                    src: '/media/askaway-logo.png',
                     sizes: '512x512',
                     type: 'image/png'
                 }
@@ -363,7 +363,7 @@ export class RemoteUiServer implements vscode.Disposable {
      */
     private _getServiceWorker(): string {
         return `
-const CACHE_NAME = 'tasksync-remote-v1';
+const CACHE_NAME = 'askaway-remote-v1';
 const urlsToCache = [
     '/app',
     '/media/main.css',
@@ -405,7 +405,7 @@ self.addEventListener('fetch', (event) => {
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#1e1e1e">
     <link rel="manifest" href="/manifest.json">
-    <title>TaskSync Remote</title>
+    <title>AskAway Remote</title>
     <!-- Inter Font -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -615,8 +615,8 @@ self.addEventListener('fetch', (event) => {
 <body>
     <div class="container">
         <div class="logo">
-            <img src="/media/Tasksync-logo.png" alt="TaskSync">
-            <h1>TaskSync Remote</h1>
+            <img src="/media/askaway-logo.png" alt="AskAway">
+            <h1>AskAway Remote</h1>
             <p>Control VS Code from anywhere</p>
         </div>
         
@@ -659,7 +659,7 @@ self.addEventListener('fetch', (event) => {
         ` : ''}
         
         <p class="help-text">
-            Find the PIN in VS Code's Output panel → <code>TaskSync Remote</code>
+            Find the PIN in VS Code's Output panel → <code>AskAway Remote</code>
         </p>
     </div>
     
@@ -744,22 +744,32 @@ self.addEventListener('fetch', (event) => {
     }
 
     /**
+     * Cached file contents for webview assets (read once, serve from memory)
+     */
+    private _cachedWebviewJs: string | null = null;
+    private _cachedMainCss: string | null = null;
+
+    /**
      * Generate the main app HTML (identical to VS Code webview)
      */
     private _getAppHtml(): string {
-        // Read the webview.js content
+        // Read and cache the webview.js and main.css content
         const webviewJsPath = path.join(this._extensionUri.fsPath, 'media', 'webview.js');
         const mainCssPath = path.join(this._extensionUri.fsPath, 'media', 'main.css');
         
-        let webviewJs = '';
-        let mainCss = '';
-        
         try {
-            webviewJs = fs.readFileSync(webviewJsPath, 'utf8');
-            mainCss = fs.readFileSync(mainCssPath, 'utf8');
+            if (!this._cachedWebviewJs) {
+                this._cachedWebviewJs = fs.readFileSync(webviewJsPath, 'utf8');
+            }
+            if (!this._cachedMainCss) {
+                this._cachedMainCss = fs.readFileSync(mainCssPath, 'utf8');
+            }
         } catch (err) {
-            console.error('[TaskSync Remote] Failed to read media files:', err);
+            console.error('[AskAway Remote] Failed to read media files:', err);
         }
+
+        const webviewJs = this._cachedWebviewJs || '';
+        const mainCss = this._cachedMainCss || '';
 
         // CSS variable fallbacks for browser (VS Code provides these in webview)
         const cssVariableFallbacks = `
@@ -864,7 +874,7 @@ self.addEventListener('fetch', (event) => {
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#1e1e1e">
     <link rel="manifest" href="/manifest.json">
-    <title>TaskSync Remote</title>
+    <title>AskAway Remote</title>
     <!-- Inter Font -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1078,7 +1088,7 @@ self.addEventListener('fetch', (event) => {
     <!-- PWA Install Prompt -->
     <div class="install-prompt" id="install-prompt">
         <div class="install-prompt-text">
-            <div class="install-prompt-title">Install TaskSync</div>
+            <div class="install-prompt-title">Install AskAway</div>
             <div class="install-prompt-desc">Add to home screen for the best experience</div>
         </div>
         <button class="install-prompt-btn" id="install-btn">Install</button>
@@ -1088,7 +1098,7 @@ self.addEventListener('fetch', (event) => {
     <!-- Remote Header (like VS Code view title bar) -->
     <div class="remote-header">
         <div class="remote-header-left">
-            <span class="remote-header-title">TaskSync</span>
+            <span class="remote-header-title">AskAway</span>
         </div>
         <div class="remote-header-actions">
             <button class="remote-header-btn" id="remote-logout-btn" title="Logout">
@@ -1103,10 +1113,10 @@ self.addEventListener('fetch', (event) => {
             <!-- Welcome Section - Let's build -->
             <div class="welcome-section" id="welcome-section">
                 <div class="welcome-icon">
-                    <img src="/media/TS-logo.svg" alt="TaskSync Logo" width="48" height="48" class="welcome-logo">
+                    <img src="/media/askaway-icon.svg" alt="AskAway Logo" width="48" height="48" class="welcome-logo">
                 </div>
                 <h1 class="welcome-title">Let's build</h1>
-                <p class="welcome-subtitle">Sync your tasks, automate your workflow</p>
+                <p class="welcome-subtitle">Ask questions, get answers — from anywhere</p>
                 
                 <div class="welcome-cards">
                     <div class="welcome-card welcome-card-vibe" id="card-vibe">
@@ -1230,7 +1240,7 @@ self.addEventListener('fetch', (event) => {
         window.acquireVsCodeApi = function() {
             return {
                 postMessage: function(message) {
-                    console.log('[TaskSync Remote] postMessage:', message.type);
+                    console.log('[AskAway Remote] postMessage:', message.type);
                     if (isConnected && socket) {
                         socket.emit('message', message);
                     } else {
@@ -1243,7 +1253,7 @@ self.addEventListener('fetch', (event) => {
                 setState: function(state) {
                     vscodeState = state;
                     try {
-                        localStorage.setItem('tasksync_state', JSON.stringify(state));
+                        localStorage.setItem('askaway_state', JSON.stringify(state));
                     } catch (e) {}
                 }
             };
@@ -1251,7 +1261,7 @@ self.addEventListener('fetch', (event) => {
         
         // Restore state from localStorage
         try {
-            const saved = localStorage.getItem('tasksync_state');
+            const saved = localStorage.getItem('askaway_state');
             if (saved) vscodeState = JSON.parse(saved);
         } catch (e) {}
         
@@ -1277,7 +1287,7 @@ self.addEventListener('fetch', (event) => {
                 script.src = '/socket.io/socket.io.js';
                 script.onload = initSocket;
                 script.onerror = () => {
-                    console.error('[TaskSync] Failed to load socket.io');
+                    console.error('[AskAway] Failed to load socket.io');
                     updateConnectionStatus('disconnected', '<span class="codicon codicon-error"></span> Failed to load');
                 };
                 document.head.appendChild(script);
@@ -1295,7 +1305,7 @@ self.addEventListener('fetch', (event) => {
             });
             
             socket.on('connect', () => {
-                console.log('[TaskSync] Socket connected');
+                console.log('[AskAway] Socket connected');
                 updateConnectionStatus('connecting', '<span class="codicon codicon-key"></span> Authenticating...');
                 socket.emit('authenticate', { pin: PIN });
             });
@@ -1319,7 +1329,7 @@ self.addEventListener('fetch', (event) => {
             });
             
             socket.on('initialState', (state) => {
-                console.log('[TaskSync] Received initial state');
+                console.log('[AskAway] Received initial state');
                 
                 // Apply initial state to UI
                 if (window.dispatchVSCodeMessage) {
@@ -1348,7 +1358,7 @@ self.addEventListener('fetch', (event) => {
             });
             
             socket.on('message', (message) => {
-                console.log('[TaskSync] Received message:', message.type);
+                console.log('[AskAway] Received message:', message.type);
                 if (window.dispatchVSCodeMessage) {
                     window.dispatchVSCodeMessage(message);
                 }
@@ -1380,7 +1390,7 @@ self.addEventListener('fetch', (event) => {
             if (deferredPrompt) {
                 deferredPrompt.prompt();
                 const { outcome } = await deferredPrompt.userChoice;
-                console.log('[TaskSync] Install outcome:', outcome);
+                console.log('[AskAway] Install outcome:', outcome);
                 deferredPrompt = null;
                 document.getElementById('install-prompt').classList.remove('show');
             }
@@ -1400,7 +1410,7 @@ self.addEventListener('fetch', (event) => {
         // Register service worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').catch(err => {
-                console.log('[TaskSync] SW registration failed:', err);
+                console.log('[AskAway] SW registration failed:', err);
             });
         }
         

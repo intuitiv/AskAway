@@ -58,7 +58,7 @@ export class TerminalContextProvider implements vscode.Disposable {
             }
 
             for (const execution of staleEntries) {
-                console.warn('[TaskSync] Cleaning up stale terminal execution tracker');
+                console.warn('[AskAway] Cleaning up stale terminal execution tracker');
                 this._activeExecutions.delete(execution);
             }
         }, 30000);
@@ -158,7 +158,7 @@ export class TerminalContextProvider implements vscode.Disposable {
             }
         } catch (error) {
             // Stream may be closed early - not an error
-            console.error('[TaskSync] Error reading terminal output:', error);
+            console.error('[AskAway] Error reading terminal output:', error);
         }
     }
 

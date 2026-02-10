@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { TaskSyncWebviewProvider } from './webview/webviewProvider';
+import { AskAwayWebviewProvider } from './webview/webviewProvider';
 import { getImageMimeType } from './utils/imageUtils';
 
 export interface Input {
@@ -52,13 +52,20 @@ function createCancellationPromise(token: vscode.CancellationToken): {
  */
 export async function askUser(
     params: Input,
-    provider: TaskSyncWebviewProvider,
+    provider: AskAwayWebviewProvider,
     token: vscode.CancellationToken
 ): Promise<AskUserToolResult> {
     // Check if already cancelled before starting
     if (token.isCancellationRequested) {
+        // Signal messaging services that Copilot conversation is done
+        provider.getWebexService()?.notifyCopilotStopped();
+        provider.getTelegramService()?.notifyCopilotStopped();
         throw new vscode.CancellationError();
     }
+
+    // Notify messaging services that Copilot is still alive (resets idle timer)
+    provider.getWebexService()?.notifyCopilotActivity();
+    provider.getTelegramService()?.notifyCopilotActivity();
 
     // Create cancellation promise with cleanup capability
     const cancellation = createCancellationPromise(token);
@@ -111,12 +118,15 @@ export async function askUser(
     } catch (error) {
         // Re-throw cancellation errors without logging (they're expected)
         if (error instanceof vscode.CancellationError) {
+            // Signal messaging services that Copilot conversation ended
+            provider.getWebexService()?.notifyCopilotStopped();
+            provider.getTelegramService()?.notifyCopilotStopped();
             throw error;
         }
         // Log other errors
-        console.error('[TaskSync] askUser error:', error instanceof Error ? error.message : error);
+        console.error('[AskAway] askUser error:', error instanceof Error ? error.message : error);
         // Show error to user so they know something went wrong
-        vscode.window.showErrorMessage(`TaskSync: ${error instanceof Error ? error.message : 'Failed to show question'}`);
+        vscode.window.showErrorMessage(`AskAway: ${error instanceof Error ? error.message : 'Failed to show question'}`);
         return {
             response: '',
             attachments: []
@@ -127,10 +137,12 @@ export async function askUser(
     }
 }
 
-export function registerTools(context: vscode.ExtensionContext, provider: TaskSyncWebviewProvider) {
+export function registerTools(context: vscode.ExtensionContext, provider: AskAwayWebviewProvider) {
 
     // Register ask_user tool (VS Code native LM tool)
-    const askUserTool = vscode.lm.registerTool('ask_user', {
+    let askUserTool: vscode.Disposable | undefined;
+    try {
+        askUserTool = vscode.lm.registerTool('ask_user', {
         async invoke(options: vscode.LanguageModelToolInvocationOptions<Input>, token: vscode.CancellationToken) {
             const params = options.input;
 
@@ -155,7 +167,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: TaskSy
 
                             // Check if file exists
                             if (!fs.existsSync(filePath)) {
-                                console.error('[TaskSync] Attachment file does not exist:', filePath);
+                                console.error('[AskAway] Attachment file does not exist:', filePath);
                                 return null;
                             }
 
@@ -169,7 +181,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: TaskSy
                             }
                             return null;
                         } catch (error) {
-                            console.error('[TaskSync] Failed to read image attachment:', error);
+                            console.error('[AskAway] Failed to read image attachment:', error);
                             return null;
                         }
                     });
@@ -192,5 +204,11 @@ export function registerTools(context: vscode.ExtensionContext, provider: TaskSy
         }
     });
 
-    context.subscriptions.push(askUserTool);
+    } catch (regError) {
+        console.warn('[AskAway] ask_user tool already registered by another extension, skipping registration');
+    }
+
+    if (askUserTool) {
+        context.subscriptions.push(askUserTool);
+    }
 }

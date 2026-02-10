@@ -1,0 +1,1620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distributed TaskSync – Orchestrator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0a0a0f;
+            --bg-card: #12121a;
+            --bg-card-hover: #1a1a25;
+            --border: #2a2a3a;
+            --border-bright: #3a3a4a;
+            --text-primary: #ffffff;
+            --text-secondary: #8888aa;
+            --text-muted: #555566;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-red: #ef4444;
+            --accent-cyan: #06b6d4;
+            --glow-blue: rgba(59, 130, 246, 0.3);
+            --glow-purple: rgba(139, 92, 246, 0.3);
+            --glow-green: rgba(34, 197, 94, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(59, 130, 246, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(59, 130, 246, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Header */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: rgba(10, 10, 15, 0.9);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .header-stats {
+            display: flex;
+            gap: 32px;
+        }
+
+        .stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-bright);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border: none;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        /* Main Layout */
+        .main {
+            display: flex;
+            margin-top: 60px;
+            height: calc(100vh - 60px);
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Pipeline Canvas */
+        .canvas {
+            flex: 1;
+            padding: 24px;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .pipeline-header {
+            width: 100%;
+            max-width: 800px;
+            margin-bottom: 24px;
+        }
+
+        .pipeline-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .pipeline-meta {
+            display: flex;
+            gap: 24px;
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .pipeline-meta span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Progress Bar */
+        .progress-container {
+            width: 100%;
+            max-width: 800px;
+            margin-bottom: 32px;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-card);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple), var(--accent-cyan));
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            position: relative;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        /* Pipeline Nodes */
+        .pipeline {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .node {
+            width: 100%;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .node::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--border);
+            transition: all 0.3s;
+        }
+
+        .node:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-bright);
+            transform: translateY(-2px);
+        }
+
+        .node.completed::before {
+            background: var(--accent-green);
+        }
+
+        .node.active::before {
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            animation: pulse-border 2s infinite;
+        }
+
+        .node.active {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 30px var(--glow-blue);
+        }
+
+        .node.pending::before {
+            background: var(--border);
+        }
+
+        .node.pending {
+            opacity: 0.6;
+        }
+
+        @keyframes pulse-border {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .node-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .node-identity {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .node-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .node-icon.pm { background: linear-gradient(135deg, #f472b6, #db2777); }
+        .node-icon.arch { background: linear-gradient(135deg, #60a5fa, #3b82f6); }
+        .node-icon.eng { background: linear-gradient(135deg, #34d399, #10b981); }
+        .node-icon.qa { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+        .node-icon.docs { background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
+
+        .node-info h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .node-info p {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .node-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-dot.completed { background: var(--accent-green); }
+        .status-dot.active { background: var(--accent-blue); animation: pulse 1.5s infinite; }
+        .status-dot.pending { background: var(--text-muted); }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 0.5; }
+        }
+
+        .node-body {
+            display: flex;
+            gap: 16px;
+        }
+
+        .node-task {
+            flex: 1;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .node-task-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .node-task-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .node-artifacts {
+            width: 200px;
+        }
+
+        .artifact-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+
+        .artifact-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .artifact-icon {
+            font-size: 14px;
+        }
+
+        /* Connector */
+        .connector {
+            width: 2px;
+            height: 40px;
+            background: var(--border);
+            position: relative;
+        }
+
+        .connector.completed {
+            background: var(--accent-green);
+        }
+
+        .connector.active {
+            background: linear-gradient(180deg, var(--accent-green), var(--accent-blue));
+        }
+
+        .connector::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 8px solid var(--border);
+        }
+
+        .connector.completed::after {
+            border-top-color: var(--accent-green);
+        }
+
+        .connector.active::after {
+            border-top-color: var(--accent-blue);
+        }
+
+        /* Live Activity */
+        .live-activity {
+            position: fixed;
+            bottom: 24px;
+            left: 24px;
+            right: 360px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            z-index: 50;
+        }
+
+        .live-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-red);
+            border-radius: 50%;
+            animation: pulse 1s infinite;
+        }
+
+        .live-title {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .live-content {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+            background: rgba(0,0,0,0.3);
+            padding: 12px;
+            border-radius: 8px;
+            max-height: 80px;
+            overflow: hidden;
+        }
+
+        .typing-indicator {
+            display: inline-flex;
+            gap: 4px;
+            margin-left: 8px;
+        }
+
+        .typing-indicator span {
+            width: 6px;
+            height: 6px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-6px); }
+        }
+
+        /* Inspector Panel */
+        .inspector {
+            width: 360px;
+            background: var(--bg-card);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s;
+        }
+
+        .inspector.hidden {
+            transform: translateX(100%);
+        }
+
+        .inspector-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .inspector-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .inspector-title h2 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .inspector-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .inspector-close:hover {
+            background: var(--bg-card-hover);
+            color: var(--text-primary);
+        }
+
+        .inspector-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .inspector-tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .inspector-tab:hover {
+            color: var(--text-primary);
+            background: var(--bg-card-hover);
+        }
+
+        .inspector-tab.active {
+            color: var(--accent-blue);
+            border-bottom-color: var(--accent-blue);
+        }
+
+        .inspector-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        /* Conversation View */
+        .conversation {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .message.system {
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .message.user {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .message.assistant {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .message.tool-call {
+            background: rgba(234, 179, 8, 0.1);
+            border: 1px solid rgba(234, 179, 8, 0.3);
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .message.system .message-header { color: var(--accent-purple); }
+        .message.user .message-header { color: var(--accent-blue); }
+        .message.assistant .message-header { color: var(--accent-green); }
+        .message.tool-call .message-header { color: var(--accent-yellow); }
+
+        /* Intervention Panel */
+        .intervention {
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            width: 360px;
+            background: var(--bg-card);
+            border-top: 1px solid var(--border);
+            padding: 16px;
+            z-index: 60;
+        }
+
+        .intervention-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .intervention-badge {
+            background: var(--accent-yellow);
+            color: #000;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .intervention-question {
+            font-size: 14px;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: rgba(234, 179, 8, 0.1);
+            border-radius: 8px;
+            border-left: 3px solid var(--accent-yellow);
+        }
+
+        .intervention-input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: inherit;
+            resize: none;
+            margin-bottom: 12px;
+        }
+
+        .intervention-input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .intervention-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .intervention-actions .btn {
+            flex: 1;
+        }
+
+        /* Design Mode Indicator */
+        .design-mode-banner {
+            display: none;
+            position: fixed;
+            top: 60px;
+            left: 0;
+            right: 0;
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue));
+            color: white;
+            padding: 12px 24px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 99;
+        }
+
+        .design-mode-banner.visible {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.visible {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 80vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        /* Session Info */
+        .session-info {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .session-card {
+            flex: 1;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .session-card-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .session-card-value {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .session-card-value.remote {
+            color: var(--accent-cyan);
+        }
+
+        .session-card-value.local {
+            color: var(--accent-green);
+        }
+
+        /* Takeover Panel */
+        .takeover-banner {
+            display: none;
+            position: fixed;
+            top: 60px;
+            left: 0;
+            right: 0;
+            background: linear-gradient(90deg, var(--accent-red), #dc2626);
+            color: white;
+            padding: 16px 24px;
+            z-index: 99;
+        }
+
+        .takeover-banner.visible {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .takeover-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .takeover-icon {
+            font-size: 24px;
+        }
+
+        .takeover-text h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .takeover-text p {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 300;
+        }
+
+        .toast.visible {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .toast.success {
+            border-color: var(--accent-green);
+        }
+
+        .toast.success::before {
+            content: '✓';
+            color: var(--accent-green);
+            font-weight: bold;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .inspector {
+                position: fixed;
+                right: 0;
+                top: 60px;
+                bottom: 0;
+                z-index: 80;
+            }
+
+            .live-activity {
+                right: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">⚡</div>
+            <span>Distributed TaskSync</span>
+        </div>
+        
+        <div class="header-stats">
+            <div class="stat">
+                <div class="stat-value" id="totalNodes">5</div>
+                <div class="stat-label">Nodes</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="completedNodes">1</div>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="elapsedTime">00:03:42</div>
+                <div class="stat-label">Elapsed</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="tokenCount">12.4k</div>
+                <div class="stat-label">Tokens</div>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <button class="btn" id="btnDesignMode">
+                <span>✏️</span> Design Mode
+            </button>
+            <button class="btn" id="btnPause">
+                <span>⏸</span> Pause
+            </button>
+            <button class="btn btn-danger" id="btnReset">
+                <span>↺</span> Reset
+            </button>
+        </div>
+    </header>
+
+    <!-- Design Mode Banner -->
+    <div class="design-mode-banner" id="designBanner">
+        <span>🎨 DESIGN MODE — Pipeline execution paused. Edit nodes and connections.</span>
+        <button class="btn btn-primary" id="btnExitDesign">Exit Design Mode</button>
+    </div>
+
+    <!-- Takeover Banner -->
+    <div class="takeover-banner" id="takeoverBanner">
+        <div class="takeover-info">
+            <span class="takeover-icon">👤</span>
+            <div class="takeover-text">
+                <h3>TAKEOVER MODE ACTIVE</h3>
+                <p>You are controlling the Architect Agent. The pipeline is paused.</p>
+            </div>
+        </div>
+        <button class="btn" id="btnRelease">Release to Agent</button>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Pipeline Canvas -->
+        <div class="canvas">
+            <div class="pipeline-header">
+                <h1 class="pipeline-title">🚀 User Management API</h1>
+                <div class="pipeline-meta">
+                    <span>📁 Project: user-management-api</span>
+                    <span>🔄 Run #42</span>
+                    <span>🕐 Started: 10:38 AM</span>
+                </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="progress-container">
+                <div class="progress-header">
+                    <span>Overall Progress</span>
+                    <span id="progressPercent">35%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 35%"></div>
+                </div>
+            </div>
+
+            <!-- Pipeline Nodes -->
+            <div class="pipeline">
+                <!-- PM Agent -->
+                <div class="node completed" data-node="pm" onclick="openInspector('pm')">
+                    <div class="node-header">
+                        <div class="node-identity">
+                            <div class="node-icon pm">📋</div>
+                            <div class="node-info">
+                                <h3>Product Manager Agent</h3>
+                                <p>Persona: PM • Session: Local #1</p>
+                            </div>
+                        </div>
+                        <div class="node-status">
+                            <span class="status-dot completed"></span>
+                            <span style="color: var(--accent-green)">Completed</span>
+                            <span style="color: var(--text-muted); margin-left: 8px;">2m 14s</span>
+                        </div>
+                    </div>
+                    <div class="node-body">
+                        <div class="node-task">
+                            <div class="node-task-label">Task</div>
+                            <div class="node-task-text">Analyze user requirements and create detailed user stories with acceptance criteria for the user management system.</div>
+                        </div>
+                        <div class="node-artifacts">
+                            <div class="node-task-label">Artifacts</div>
+                            <div class="artifact-item">
+                                <span class="artifact-icon">📄</span>
+                                <span>requirements.md</span>
+                            </div>
+                            <div class="artifact-item">
+                                <span class="artifact-icon">📊</span>
+                                <span>user-stories.md</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="connector completed"></div>
+
+                <!-- Architect Agent -->
+                <div class="node active" data-node="arch" onclick="openInspector('arch')">
+                    <div class="node-header">
+                        <div class="node-identity">
+                            <div class="node-icon arch">🏗</div>
+                            <div class="node-info">
+                                <h3>Architect Agent</h3>
+                                <p>Persona: Senior Architect • Session: <span style="color: var(--accent-cyan)">Remote (192.168.1.42)</span></p>
+                            </div>
+                        </div>
+                        <div class="node-status">
+                            <span class="status-dot active"></span>
+                            <span style="color: var(--accent-blue)">In Progress</span>
+                            <span style="color: var(--text-muted); margin-left: 8px;">1m 28s</span>
+                        </div>
+                    </div>
+                    <div class="node-body">
+                        <div class="node-task">
+                            <div class="node-task-label">Current Task</div>
+                            <div class="node-task-text">Design the REST API architecture, define endpoints, data models, and create OpenAPI specification based on requirements.</div>
+                        </div>
+                        <div class="node-artifacts">
+                            <div class="node-task-label">Expected Artifacts</div>
+                            <div class="artifact-item" style="opacity: 0.5">
+                                <span class="artifact-icon">📄</span>
+                                <span>api-design.md</span>
+                            </div>
+                            <div class="artifact-item" style="opacity: 0.5">
+                                <span class="artifact-icon">📜</span>
+                                <span>openapi.yaml</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="connector active"></div>
+
+                <!-- Engineer Agent -->
+                <div class="node pending" data-node="eng" onclick="openInspector('eng')">
+                    <div class="node-header">
+                        <div class="node-identity">
+                            <div class="node-icon eng">👨‍💻</div>
+                            <div class="node-info">
+                                <h3>Engineer Agent</h3>
+                                <p>Persona: Full-Stack Dev • Session: Local #2</p>
+                            </div>
+                        </div>
+                        <div class="node-status">
+                            <span class="status-dot pending"></span>
+                            <span style="color: var(--text-muted)">Pending</span>
+                        </div>
+                    </div>
+                    <div class="node-body">
+                        <div class="node-task">
+                            <div class="node-task-label">Upcoming Task</div>
+                            <div class="node-task-text">Implement the API endpoints, database models, authentication middleware, and business logic based on the architecture design.</div>
+                        </div>
+                        <div class="node-artifacts">
+                            <div class="node-task-label">Expected Artifacts</div>
+                            <div class="artifact-item" style="opacity: 0.3">
+                                <span class="artifact-icon">📁</span>
+                                <span>src/routes/*</span>
+                            </div>
+                            <div class="artifact-item" style="opacity: 0.3">
+                                <span class="artifact-icon">📁</span>
+                                <span>src/models/*</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="connector"></div>
+
+                <!-- QA Agent -->
+                <div class="node pending" data-node="qa" onclick="openInspector('qa')">
+                    <div class="node-header">
+                        <div class="node-identity">
+                            <div class="node-icon qa">🧪</div>
+                            <div class="node-info">
+                                <h3>QA Agent</h3>
+                                <p>Persona: Test Engineer • Session: <span style="color: var(--accent-cyan)">Remote (cloud-worker-03)</span></p>
+                            </div>
+                        </div>
+                        <div class="node-status">
+                            <span class="status-dot pending"></span>
+                            <span style="color: var(--text-muted)">Pending</span>
+                        </div>
+                    </div>
+                    <div class="node-body">
+                        <div class="node-task">
+                            <div class="node-task-label">Upcoming Task</div>
+                            <div class="node-task-text">Write comprehensive unit tests, integration tests, and validate that the implementation meets all acceptance criteria.</div>
+                        </div>
+                        <div class="node-artifacts">
+                            <div class="node-task-label">Expected Artifacts</div>
+                            <div class="artifact-item" style="opacity: 0.3">
+                                <span class="artifact-icon">📁</span>
+                                <span>tests/*</span>
+                            </div>
+                            <div class="artifact-item" style="opacity: 0.3">
+                                <span class="artifact-icon">📊</span>
+                                <span>coverage-report.html</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="connector"></div>
+
+                <!-- Docs Agent -->
+                <div class="node pending" data-node="docs" onclick="openInspector('docs')">
+                    <div class="node-header">
+                        <div class="node-identity">
+                            <div class="node-icon docs">📝</div>
+                            <div class="node-info">
+                                <h3>Documentation Agent</h3>
+                                <p>Persona: Tech Writer • Session: Local #3</p>
+                            </div>
+                        </div>
+                        <div class="node-status">
+                            <span class="status-dot pending"></span>
+                            <span style="color: var(--text-muted)">Pending</span>
+                        </div>
+                    </div>
+                    <div class="node-body">
+                        <div class="node-task">
+                            <div class="node-task-label">Upcoming Task</div>
+                            <div class="node-task-text">Generate README, API documentation, setup guides, and inline code comments for the completed project.</div>
+                        </div>
+                        <div class="node-artifacts">
+                            <div class="node-task-label">Expected Artifacts</div>
+                            <div class="artifact-item" style="opacity: 0.3">
+                                <span class="artifact-icon">📄</span>
+                                <span>README.md</span>
+                            </div>
+                            <div class="artifact-item" style="opacity: 0.3">
+                                <span class="artifact-icon">📄</span>
+                                <span>API_DOCS.md</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inspector Panel -->
+        <aside class="inspector" id="inspector">
+            <div class="inspector-header">
+                <div class="inspector-title">
+                    <div class="node-icon arch" style="width: 32px; height: 32px; font-size: 16px;">🏗</div>
+                    <h2>Architect Agent</h2>
+                </div>
+                <button class="inspector-close" onclick="closeInspector()">✕</button>
+            </div>
+
+            <div class="inspector-tabs">
+                <div class="inspector-tab active" data-tab="conversation" onclick="switchTab('conversation')">Conversation</div>
+                <div class="inspector-tab" data-tab="artifacts" onclick="switchTab('artifacts')">Artifacts</div>
+                <div class="inspector-tab" data-tab="config" onclick="switchTab('config')">Config</div>
+            </div>
+
+            <div class="inspector-content" id="inspectorContent">
+                <!-- Session Info -->
+                <div class="session-info">
+                    <div class="session-card">
+                        <div class="session-card-label">Session Type</div>
+                        <div class="session-card-value remote">🌐 Remote</div>
+                    </div>
+                    <div class="session-card">
+                        <div class="session-card-label">Host</div>
+                        <div class="session-card-value">192.168.1.42:3000</div>
+                    </div>
+                </div>
+
+                <!-- Conversation -->
+                <div class="conversation" id="conversationView">
+                    <div class="message system">
+                        <div class="message-header">
+                            <span>⚙️ System Prompt</span>
+                        </div>
+                        <div class="message-body">
+                            You are a senior software architect. Your role is to design scalable, maintainable systems. Always consider security, performance, and developer experience. Produce: architecture.md, openapi.yaml
+                        </div>
+                    </div>
+
+                    <div class="message user">
+                        <div class="message-header">
+                            <span>📥 Input from Orchestrator</span>
+                        </div>
+                        <div class="message-body">
+                            Based on the requirements below, design the REST API architecture for the user management system.<br><br>
+                            <strong>Requirements:</strong><br>
+                            1. User registration with email verification<br>
+                            2. Login with JWT authentication<br>
+                            3. Password reset flow<br>
+                            4. User profile CRUD operations<br>
+                            5. Role-based access control (admin, user)
+                        </div>
+                    </div>
+
+                    <div class="message assistant">
+                        <div class="message-header">
+                            <span>🤖 Architect Agent</span>
+                        </div>
+                        <div class="message-body">
+                            I'll design a comprehensive REST API architecture for the user management system.<br><br>
+                            <strong>API Overview:</strong><br>
+                            The API will follow RESTful principles with JWT-based authentication. I'll organize endpoints into logical groups...<br><br>
+                            <strong>Endpoints:</strong><br>
+                            • POST /auth/register - User registration<br>
+                            • POST /auth/login - User login<br>
+                            • POST /auth/verify-email - Email verification<br>
+                            • POST /auth/forgot-password - Initiate password reset<br>
+                            • POST /auth/reset-password - Complete password reset<br>
+                            • GET /users/me - Get current user profile<br>
+                            • PATCH /users/me - Update current user profile...
+                        </div>
+                    </div>
+
+                    <div class="message tool-call">
+                        <div class="message-header">
+                            <span>🔧 Tool Call: ask_user</span>
+                            <span style="margin-left: auto; opacity: 0.7">⏳ Waiting</span>
+                        </div>
+                        <div class="message-body">
+                            <strong>Question:</strong> Should I include rate limiting configuration in the API design? If yes, what should be the default limits per endpoint category?
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Intervention Input -->
+            <div class="intervention" id="interventionPanel">
+                <div class="intervention-header">
+                    <span class="intervention-badge">Agent Question</span>
+                    <span style="font-size: 12px; color: var(--text-secondary);">The agent is waiting for your input</span>
+                </div>
+                <div class="intervention-question">
+                    Should I include rate limiting configuration in the API design? If yes, what should be the default limits per endpoint category?
+                </div>
+                <textarea class="intervention-input" id="interventionInput" rows="3" placeholder="Type your response...">Yes, include rate limiting. Use 100 requests/minute for general endpoints, 10/minute for auth endpoints, and 1000/minute for read-only endpoints.</textarea>
+                <div class="intervention-actions">
+                    <button class="btn" onclick="quickResponse('yes')">✓ Yes</button>
+                    <button class="btn" onclick="quickResponse('no')">✗ No</button>
+                    <button class="btn" onclick="quickResponse('decide')">🤖 Let Agent Decide</button>
+                    <button class="btn btn-primary" onclick="sendResponse()">Send</button>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Live Activity Bar -->
+    <div class="live-activity" id="liveActivity">
+        <div class="live-header">
+            <span class="live-dot"></span>
+            <span class="live-title">Live Activity — Architect Agent</span>
+        </div>
+        <div class="live-content">
+            <span id="liveText">Designing database schema for user authentication...</span>
+            <span class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </span>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Modal: Node Config -->
+    <div class="modal-overlay" id="configModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Configure Node: Architect Agent</h2>
+                <button class="inspector-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Display Name</label>
+                    <input type="text" value="Architect Agent" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-primary); font-size: 14px;">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Session Type</label>
+                    <select style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-primary); font-size: 14px;">
+                        <option>Local (Current Window)</option>
+                        <option>Workspace Remote</option>
+                        <option selected>Machine Remote</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Remote Host</label>
+                    <input type="text" value="192.168.1.42:3000" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-primary); font-size: 14px;">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Persona System Prompt</label>
+                    <textarea rows="5" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-primary); font-size: 13px; font-family: 'JetBrains Mono', monospace; resize: vertical;">You are a senior software architect. Your role is to design scalable, maintainable systems. Always consider security, performance, and developer experience.
+
+Expected outputs: architecture.md, openapi.yaml</textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveConfig()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let currentNode = 'arch';
+        let isDesignMode = false;
+        let isTakeoverMode = false;
+        let isPaused = false;
+        let elapsedSeconds = 222; // 3:42
+
+        // Live activity simulation
+        const liveActivities = [
+            "Designing database schema for user authentication...",
+            "Defining JWT token structure and expiration policies...",
+            "Creating OpenAPI specification for /auth endpoints...",
+            "Evaluating rate limiting strategies...",
+            "Documenting API response formats...",
+            "Considering edge cases for password reset flow...",
+            "Reviewing security best practices for user data...",
+        ];
+        let activityIndex = 0;
+
+        function updateLiveActivity() {
+            if (!isPaused && !isDesignMode && !isTakeoverMode) {
+                activityIndex = (activityIndex + 1) % liveActivities.length;
+                document.getElementById('liveText').textContent = liveActivities[activityIndex];
+            }
+        }
+        setInterval(updateLiveActivity, 4000);
+
+        // Timer
+        function updateTimer() {
+            if (!isPaused && !isDesignMode) {
+                elapsedSeconds++;
+                const mins = Math.floor(elapsedSeconds / 60).toString().padStart(2, '0');
+                const secs = (elapsedSeconds % 60).toString().padStart(2, '0');
+                document.getElementById('elapsedTime').textContent = `00:${mins}:${secs}`;
+            }
+        }
+        setInterval(updateTimer, 1000);
+
+        // Token counter simulation
+        let tokenCount = 12400;
+        function updateTokens() {
+            if (!isPaused && !isDesignMode && !isTakeoverMode) {
+                tokenCount += Math.floor(Math.random() * 50);
+                document.getElementById('tokenCount').textContent = (tokenCount / 1000).toFixed(1) + 'k';
+            }
+        }
+        setInterval(updateTokens, 2000);
+
+        // Open inspector
+        function openInspector(nodeId) {
+            currentNode = nodeId;
+            document.getElementById('inspector').classList.remove('hidden');
+            
+            // Update inspector content based on node
+            const nodeData = {
+                pm: { name: 'Product Manager Agent', icon: '📋', iconClass: 'pm', status: 'completed' },
+                arch: { name: 'Architect Agent', icon: '🏗', iconClass: 'arch', status: 'active' },
+                eng: { name: 'Engineer Agent', icon: '👨‍💻', iconClass: 'eng', status: 'pending' },
+                qa: { name: 'QA Agent', icon: '🧪', iconClass: 'qa', status: 'pending' },
+                docs: { name: 'Documentation Agent', icon: '📝', iconClass: 'docs', status: 'pending' }
+            };
+
+            const data = nodeData[nodeId];
+            document.querySelector('.inspector-title h2').textContent = data.name;
+            document.querySelector('.inspector-title .node-icon').className = `node-icon ${data.iconClass}`;
+            document.querySelector('.inspector-title .node-icon').textContent = data.icon;
+
+            // Show/hide intervention panel based on active node
+            document.getElementById('interventionPanel').style.display = nodeId === 'arch' ? 'block' : 'none';
+        }
+
+        function closeInspector() {
+            document.getElementById('inspector').classList.add('hidden');
+        }
+
+        // Tab switching
+        function switchTab(tabId) {
+            document.querySelectorAll('.inspector-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.tab === tabId);
+            });
+
+            if (tabId === 'config') {
+                document.getElementById('configModal').classList.add('visible');
+            }
+        }
+
+        // Modal
+        function closeModal() {
+            document.getElementById('configModal').classList.remove('visible');
+            // Reset to conversation tab
+            document.querySelectorAll('.inspector-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.tab === 'conversation');
+            });
+        }
+
+        function saveConfig() {
+            showToast('Configuration saved successfully', 'success');
+            closeModal();
+        }
+
+        // Toast
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} visible`;
+            setTimeout(() => {
+                toast.classList.remove('visible');
+            }, 3000);
+        }
+
+        // Quick responses
+        function quickResponse(type) {
+            const input = document.getElementById('interventionInput');
+            switch(type) {
+                case 'yes':
+                    input.value = 'Yes, proceed with that approach.';
+                    break;
+                case 'no':
+                    input.value = 'No, let\'s reconsider this.';
+                    break;
+                case 'decide':
+                    input.value = 'Use your best judgment on this.';
+                    break;
+            }
+        }
+
+        function sendResponse() {
+            const input = document.getElementById('interventionInput');
+            if (input.value.trim()) {
+                showToast('Response sent to agent', 'success');
+                
+                // Add response to conversation
+                const conv = document.getElementById('conversationView');
+                const newMsg = document.createElement('div');
+                newMsg.className = 'message user';
+                newMsg.innerHTML = `
+                    <div class="message-header">
+                        <span>👤 Human Response</span>
+                    </div>
+                    <div class="message-body">${input.value}</div>
+                `;
+                conv.appendChild(newMsg);
+
+                // Clear and update tool call status
+                document.querySelector('.message.tool-call .message-header span:last-child').textContent = '✓ Answered';
+                document.querySelector('.message.tool-call .message-header span:last-child').style.color = 'var(--accent-green)';
+                
+                input.value = '';
+
+                // Simulate agent continuing
+                setTimeout(() => {
+                    const agentMsg = document.createElement('div');
+                    agentMsg.className = 'message assistant';
+                    agentMsg.innerHTML = `
+                        <div class="message-header">
+                            <span>🤖 Architect Agent</span>
+                        </div>
+                        <div class="message-body">
+                            Perfect! I'll include rate limiting with the following configuration:<br><br>
+                            • General endpoints: 100 req/min<br>
+                            • Auth endpoints: 10 req/min<br>
+                            • Read-only endpoints: 1000 req/min<br><br>
+                            Now completing the OpenAPI specification with rate limit headers...
+                        </div>
+                    `;
+                    conv.appendChild(agentMsg);
+                    conv.scrollTop = conv.scrollHeight;
+
+                    document.getElementById('interventionPanel').style.display = 'none';
+                }, 1500);
+            }
+        }
+
+        // Design Mode
+        document.getElementById('btnDesignMode').addEventListener('click', () => {
+            isDesignMode = true;
+            isPaused = true;
+            document.getElementById('designBanner').classList.add('visible');
+            document.querySelector('.main').style.marginTop = '108px';
+            document.getElementById('liveActivity').style.display = 'none';
+            showToast('Entered Design Mode - Pipeline paused', 'success');
+        });
+
+        document.getElementById('btnExitDesign').addEventListener('click', () => {
+            isDesignMode = false;
+            isPaused = false;
+            document.getElementById('designBanner').classList.remove('visible');
+            document.querySelector('.main').style.marginTop = '60px';
+            document.getElementById('liveActivity').style.display = 'block';
+            showToast('Exited Design Mode - Pipeline resumed', 'success');
+        });
+
+        // Pause
+        document.getElementById('btnPause').addEventListener('click', function() {
+            isPaused = !isPaused;
+            this.innerHTML = isPaused ? '<span>▶</span> Resume' : '<span>⏸</span> Pause';
+            showToast(isPaused ? 'Pipeline paused' : 'Pipeline resumed', 'success');
+        });
+
+        // Reset
+        document.getElementById('btnReset').addEventListener('click', () => {
+            if (confirm('Are you sure you want to reset the pipeline? All progress will be lost.')) {
+                showToast('Pipeline reset to initial state', 'success');
+                // Would reset all nodes to pending state
+            }
+        });
+
+        // Takeover (double-click on active node)
+        document.querySelector('.node.active').addEventListener('dblclick', () => {
+            isTakeoverMode = true;
+            isPaused = true;
+            document.getElementById('takeoverBanner').classList.add('visible');
+            document.querySelector('.main').style.marginTop = '108px';
+            document.getElementById('liveActivity').style.display = 'none';
+            document.querySelector('.node.active').style.borderColor = 'var(--accent-red)';
+            document.querySelector('.node.active').style.boxShadow = '0 0 30px rgba(239, 68, 68, 0.3)';
+            showToast('You are now controlling the Architect Agent', 'success');
+        });
+
+        document.getElementById('btnRelease').addEventListener('click', () => {
+            isTakeoverMode = false;
+            isPaused = false;
+            document.getElementById('takeoverBanner').classList.remove('visible');
+            document.querySelector('.main').style.marginTop = '60px';
+            document.getElementById('liveActivity').style.display = 'block';
+            document.querySelector('.node.active').style.borderColor = 'var(--accent-blue)';
+            document.querySelector('.node.active').style.boxShadow = '0 0 30px var(--glow-blue)';
+            showToast('Released control back to agent', 'success');
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (document.getElementById('configModal').classList.contains('visible')) {
+                    closeModal();
+                } else {
+                    closeInspector();
+                }
+            }
+            if (e.key === 'Enter' && e.metaKey) {
+                sendResponse();
+            }
+        });
+
+        // Initialize
+        openInspector('arch');
+    </script>
+</body>
+</html>

@@ -2,14 +2,16 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { TaskSyncWebviewProvider } from './webview/webviewProvider';
+import { AskAwayWebviewProvider } from './webview/webviewProvider';
 import { registerTools } from './tools';
 import { McpServerManager } from './mcp/mcpServer';
 import { ContextManager } from './context';
 import { RemoteUiServer, RemoteMessage } from './server/remoteUiServer';
+import { WebexService } from './services/webexService';
+import { TelegramService } from './services/telegramService';
 
 let mcpServer: McpServerManager | undefined;
-let webviewProvider: TaskSyncWebviewProvider | undefined;
+let webviewProvider: AskAwayWebviewProvider | undefined;
 let contextManager: ContextManager | undefined;
 let remoteServer: RemoteUiServer | undefined;
 let remoteOutputChannel: vscode.OutputChannel | undefined;
@@ -39,8 +41,8 @@ async function hasExternalMcpClientsAsync(): Promise<boolean> {
         try {
             const content = await fs.promises.readFile(configPath, 'utf8');
             const config = JSON.parse(content);
-            // Check if tasksync-plus is registered
-            if (config.mcpServers?.['tasksync-plus']) {
+            // Check if askaway is registered
+            if (config.mcpServers?.['askaway']) {
                 _hasExternalMcpClientsResult = true;
                 return true;
             }
@@ -57,12 +59,62 @@ export function activate(context: vscode.ExtensionContext) {
     contextManager = new ContextManager();
     context.subscriptions.push({ dispose: () => contextManager?.dispose() });
 
-    const provider = new TaskSyncWebviewProvider(context.extensionUri, context, contextManager);
+    const provider = new AskAwayWebviewProvider(context.extensionUri, context, contextManager);
     webviewProvider = provider;
+
+    // Initialize Webex Service
+    const webexService = new WebexService();
+    provider.setWebexService(webexService);
+    webexService.start();
+    context.subscriptions.push({ dispose: () => webexService.dispose() });
+
+    // Watch for Webex configuration changes
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration('askaway.webex')) {
+            webexService.reloadConfig();
+            webexService.start(); // re-start if newly configured
+        }
+    }));
+
+    // Initialize Telegram Service
+    const telegramService = new TelegramService();
+    provider.setTelegramService(telegramService);
+    context.subscriptions.push({ dispose: () => telegramService.dispose() });
+
+    // Watch for Telegram configuration changes
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration('askaway.telegram')) {
+            telegramService.reloadConfig();
+        }
+    }));
+
+    // ── Copilot Progress: Track file changes for Webex/Telegram visibility ──
+    // When Copilot modifies files, we accumulate a list so it can be
+    // included in the message when ask_user is called.
+
+    const fileWatcher = vscode.workspace.onDidChangeTextDocument(e => {
+        // Only track workspace files (not output panels, settings, etc.)
+        if (e.document.uri.scheme !== 'file') { return; }
+
+        const relativePath = vscode.workspace.asRelativePath(e.document.uri);
+
+        // Track for Webex if active
+        if (webexService.getActiveTaskCount() > 0) {
+            webexService.trackFileChange(relativePath);
+            webexService.notifyCopilotActivity();
+        }
+
+        // Track for Telegram if active
+        if (telegramService.getActiveTaskCount() > 0) {
+            telegramService.trackFileChange(relativePath);
+            telegramService.notifyCopilotActivity();
+        }
+    });
+    context.subscriptions.push(fileWatcher);
 
     // Register the provider and add it to disposables for proper cleanup
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(TaskSyncWebviewProvider.viewType, provider),
+        vscode.window.registerWebviewViewProvider(AskAwayWebviewProvider.viewType, provider),
         provider // Provider implements Disposable for cleanup
     );
 
@@ -74,7 +126,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Check if MCP should auto-start based on settings and external client configs
     // Deferred to avoid blocking activation with file I/O
-    const config = vscode.workspace.getConfiguration('tasksync');
+    const config = vscode.workspace.getConfiguration('askaway');
     const mcpEnabled = config.get<boolean>('mcpEnabled', false);
     const autoStartIfClients = config.get<boolean>('mcpAutoStartIfClients', true);
 
@@ -92,29 +144,29 @@ export function activate(context: vscode.ExtensionContext) {
                 mcpServer.start();
             }
         }).catch(err => {
-            console.error('[TaskSync] Failed to check external MCP clients:', err);
+            console.error('[AskAway] Failed to check external MCP clients:', err);
         });
     }
 
     // Start MCP server command
-    const startMcpCmd = vscode.commands.registerCommand('tasksync.startMcp', async () => {
+    const startMcpCmd = vscode.commands.registerCommand('askaway.startMcp', async () => {
         if (mcpServer && !mcpServer.isRunning()) {
             await mcpServer.start();
-            vscode.window.showInformationMessage('TaskSync MCP Server started');
+            vscode.window.showInformationMessage('AskAway MCP Server started');
         } else if (mcpServer?.isRunning()) {
-            vscode.window.showInformationMessage('TaskSync MCP Server is already running');
+            vscode.window.showInformationMessage('AskAway MCP Server is already running');
         }
     });
 
     // Restart MCP server command
-    const restartMcpCmd = vscode.commands.registerCommand('tasksync.restartMcp', async () => {
+    const restartMcpCmd = vscode.commands.registerCommand('askaway.restartMcp', async () => {
         if (mcpServer) {
             await mcpServer.restart();
         }
     });
 
     // Show MCP configuration command
-    const showMcpConfigCmd = vscode.commands.registerCommand('tasksync.showMcpConfig', async () => {
+    const showMcpConfigCmd = vscode.commands.registerCommand('askaway.showMcpConfig', async () => {
         const config = (mcpServer as any).getMcpConfig?.();
         if (!config) {
             vscode.window.showErrorMessage('MCP server not running');
@@ -148,12 +200,12 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     // Open history modal command (triggered from view title bar)
-    const openHistoryCmd = vscode.commands.registerCommand('tasksync.openHistory', () => {
+    const openHistoryCmd = vscode.commands.registerCommand('askaway.openHistory', () => {
         provider.openHistoryModal();
     });
 
     // Clear current session command (triggered from view title bar)
-    const clearSessionCmd = vscode.commands.registerCommand('tasksync.clearCurrentSession', async () => {
+    const clearSessionCmd = vscode.commands.registerCommand('askaway.clearCurrentSession', async () => {
         const result = await vscode.window.showWarningMessage(
             'Clear all tool calls from current session?',
             { modal: true },
@@ -165,7 +217,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     // Open settings modal command (triggered from view title bar)
-    const openSettingsCmd = vscode.commands.registerCommand('tasksync.openSettings', () => {
+    const openSettingsCmd = vscode.commands.registerCommand('askaway.openSettings', () => {
         provider.openSettingsModal();
     });
 
@@ -178,7 +230,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(remoteServer);
     
     // Create output channel for remote server info
-    remoteOutputChannel = vscode.window.createOutputChannel('TaskSync Remote');
+    remoteOutputChannel = vscode.window.createOutputChannel('AskAway Remote');
     context.subscriptions.push(remoteOutputChannel);
 
     // Wire up remote server with webview provider
@@ -202,41 +254,41 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     // Initialize context for remote server state (icon toggle)
-    vscode.commands.executeCommand('setContext', 'tasksync.remoteServerRunning', false);
+    vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', false);
 
     // Start Remote Server command
-    const startRemoteCmd = vscode.commands.registerCommand('tasksync.startRemote', async () => {
+    const startRemoteCmd = vscode.commands.registerCommand('askaway.startRemote', async () => {
         await startRemoteServer(remotePort);
     });
 
     // Stop Remote Server command  
-    const stopRemoteCmd = vscode.commands.registerCommand('tasksync.stopRemote', () => {
+    const stopRemoteCmd = vscode.commands.registerCommand('askaway.stopRemote', () => {
         if (remoteServer) {
             remoteServer.stop();
-            vscode.commands.executeCommand('setContext', 'tasksync.remoteServerRunning', false);
-            vscode.window.showInformationMessage('TaskSync Remote Server stopped');
+            vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', false);
+            vscode.window.showInformationMessage('AskAway Remote Server stopped');
         }
     });
 
     // Show Remote URL command
-    const showRemoteUrlCmd = vscode.commands.registerCommand('tasksync.showRemoteUrl', () => {
+    const showRemoteUrlCmd = vscode.commands.registerCommand('askaway.showRemoteUrl', () => {
         if (remoteServer) {
             const info = remoteServer.getConnectionInfo();
             if (info.port > 0) {
                 showRemoteConnectionInfo(info);
             } else {
-                vscode.window.showWarningMessage('TaskSync Remote Server is not running. Run "TaskSync: Start Remote Server" first.');
+                vscode.window.showWarningMessage('AskAway Remote Server is not running. Run "AskAway: Start Remote Server" first.');
             }
         }
     });
 
     // Toggle Remote Server command (for the title bar button - START)
-    const toggleRemoteStartCmd = vscode.commands.registerCommand('tasksync.toggleRemoteStart', async () => {
+    const toggleRemoteStartCmd = vscode.commands.registerCommand('askaway.toggleRemoteStart', async () => {
         await startRemoteServer(remotePort);
     });
 
     // Toggle Remote Server command (for the title bar button - STOP/OPTIONS)
-    const toggleRemoteStopCmd = vscode.commands.registerCommand('tasksync.toggleRemoteStop', async () => {
+    const toggleRemoteStopCmd = vscode.commands.registerCommand('askaway.toggleRemoteStop', async () => {
         if (remoteServer) {
             const info = remoteServer.getConnectionInfo();
             if (info.port > 0) {
@@ -261,26 +313,141 @@ export function activate(context: vscode.ExtensionContext) {
                     showRemoteConnectionInfo(info);
                 } else if (action?.action === 'stop') {
                     remoteServer.stop();
-                    vscode.commands.executeCommand('setContext', 'tasksync.remoteServerRunning', false);
-                    vscode.window.showInformationMessage('TaskSync Remote Server stopped');
+                    vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', false);
+                    vscode.window.showInformationMessage('AskAway Remote Server stopped');
                 }
             }
         }
     });
 
     // Keep old toggle command for backward compatibility
-    const toggleRemoteCmd = vscode.commands.registerCommand('tasksync.toggleRemote', async () => {
+    const toggleRemoteCmd = vscode.commands.registerCommand('askaway.toggleRemote', async () => {
         if (remoteServer) {
             const info = remoteServer.getConnectionInfo();
             if (info.port > 0) {
-                await vscode.commands.executeCommand('tasksync.toggleRemoteStop');
+                await vscode.commands.executeCommand('askaway.toggleRemoteStop');
             } else {
-                await vscode.commands.executeCommand('tasksync.toggleRemoteStart');
+                await vscode.commands.executeCommand('askaway.toggleRemoteStart');
             }
         }
     });
 
     context.subscriptions.push(startRemoteCmd, stopRemoteCmd, showRemoteUrlCmd, toggleRemoteStartCmd, toggleRemoteStopCmd, toggleRemoteCmd);
+
+    // ── Webex OAuth Authorization Command ──
+    const authorizeWebexCmd = vscode.commands.registerCommand('askaway.authorizeWebex', async () => {
+        const config = vscode.workspace.getConfiguration('askaway');
+        const clientId = config.get<string>('webex.clientId', '');
+
+        if (!clientId) {
+            const action = await vscode.window.showWarningMessage(
+                'AskAway: Please set your Webex Client ID first in settings.',
+                'Open Settings'
+            );
+            if (action === 'Open Settings') {
+                vscode.commands.executeCommand('workbench.action.openSettings', 'askaway.webex.clientId');
+            }
+            return;
+        }
+
+        const clientSecret = config.get<string>('webex.clientSecret', '');
+        if (!clientSecret) {
+            const action = await vscode.window.showWarningMessage(
+                'AskAway: Please set your Webex Client Secret first in settings.',
+                'Open Settings'
+            );
+            if (action === 'Open Settings') {
+                vscode.commands.executeCommand('workbench.action.openSettings', 'askaway.webex.clientSecret');
+            }
+            return;
+        }
+
+        // Start a local HTTP server to receive the OAuth callback
+        const http = require('http');
+        const callbackPort = 54321;
+        const redirectUri = `http://localhost:${callbackPort}/callback`;
+
+        // Use spark:all scope (matches most Webex integrations)
+        const scopes = 'spark%3Aall';
+
+        const authUrl = `https://webexapis.com/v1/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}`;
+
+        // Create temporary callback server
+        const server = http.createServer(async (req: any, res: any) => {
+            const url = new URL(req.url, `http://localhost:${callbackPort}`);
+            if (url.pathname === '/callback') {
+                const code = url.searchParams.get('code');
+                if (code) {
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.end('<html><body><h2>✅ AskAway: Webex authorized successfully!</h2><p>You can close this tab.</p></body></html>');
+
+                    // Exchange code for tokens
+                    try {
+                        const tokenResp = await fetch('https://webexapis.com/v1/access_token', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: new URLSearchParams({
+                                grant_type: 'authorization_code',
+                                client_id: clientId,
+                                client_secret: clientSecret,
+                                code: code,
+                                redirect_uri: redirectUri
+                            }).toString()
+                        });
+
+                        if (tokenResp.ok) {
+                            const data = await tokenResp.json() as any;
+                            // Save tokens
+                            await config.update('webex.accessToken', data.access_token, vscode.ConfigurationTarget.Global);
+                            await config.update('webex.refreshToken', data.refresh_token, vscode.ConfigurationTarget.Global);
+
+                            vscode.window.showInformationMessage(
+                                `AskAway: Webex authorized! Token expires in ${Math.round(data.expires_in / 3600)}h (auto-refresh enabled).`
+                            );
+
+                            // Reload webex service config
+                            const webexSvc = webviewProvider?.getWebexService();
+                            if (webexSvc) { webexSvc.reloadConfig(); }
+                        } else {
+                            const err = await tokenResp.text();
+                            vscode.window.showErrorMessage(`AskAway: Token exchange failed: ${err}`);
+                        }
+                    } catch (e: any) {
+                        vscode.window.showErrorMessage(`AskAway: OAuth error: ${e.message}`);
+                    }
+                } else {
+                    const error = url.searchParams.get('error') || 'Unknown error';
+                    res.writeHead(400, { 'Content-Type': 'text/html' });
+                    res.end(`<html><body><h2>❌ Authorization failed: ${error}</h2></body></html>`);
+                }
+
+                // Close server after handling
+                setTimeout(() => server.close(), 1000);
+            }
+        });
+
+        server.listen(callbackPort, () => {
+            console.log(`AskAway: OAuth callback server listening on port ${callbackPort}`);
+            vscode.env.openExternal(vscode.Uri.parse(authUrl));
+            vscode.window.showInformationMessage('AskAway: Opening Webex authorization page in your browser...');
+        });
+
+        server.on('error', (err: any) => {
+            vscode.window.showErrorMessage(`AskAway: Could not start OAuth callback server: ${err.message}`);
+        });
+
+        // Auto-close after 2 minutes if no callback received
+        setTimeout(() => {
+            server.close();
+        }, 120000);
+    });
+
+    // Telegram "Get Chat ID" command
+    const getTelegramChatIdCmd = vscode.commands.registerCommand('askaway.getTelegramChatId', async () => {
+        await telegramService.getChatId();
+    });
+
+    context.subscriptions.push(authorizeWebexCmd, getTelegramChatIdCmd);
 }
 
 /**
@@ -294,12 +461,12 @@ async function startRemoteServer(preferredPort: number): Promise<void> {
         const info = remoteServer.getConnectionInfo();
         
         // Update context for icon toggle
-        vscode.commands.executeCommand('setContext', 'tasksync.remoteServerRunning', true);
+        vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', true);
         
         // Show in output channel
         remoteOutputChannel?.clear();
         remoteOutputChannel?.appendLine('='.repeat(50));
-        remoteOutputChannel?.appendLine('  TaskSync Remote Server Started');
+        remoteOutputChannel?.appendLine('  AskAway Remote Server Started');
         remoteOutputChannel?.appendLine('='.repeat(50));
         remoteOutputChannel?.appendLine('');
         remoteOutputChannel?.appendLine(`📱 Access from your phone or browser:`);
@@ -316,7 +483,7 @@ async function startRemoteServer(preferredPort: number): Promise<void> {
         
         // Show notification with quick action
         const action = await vscode.window.showInformationMessage(
-            `TaskSync Remote running on port ${port}. PIN: ${info.pin}`,
+            `AskAway Remote running on port ${port}. PIN: ${info.pin}`,
             'Copy URL',
             'Show Details'
         );
@@ -348,7 +515,7 @@ async function showRemoteConnectionInfo(info: { urls: string[]; pin: string; por
     ];
     
     const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'TaskSync Remote Connection Info'
+        placeHolder: 'AskAway Remote Connection Info'
     });
     
     if (selected) {

@@ -7,7 +7,7 @@ import * as crypto from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { TaskSyncWebviewProvider } from '../webview/webviewProvider';
+import { AskAwayWebviewProvider } from '../webview/webviewProvider';
 import { askUser } from '../tools';
 import { getImageMimeType } from '../utils/imageUtils';
 
@@ -29,7 +29,7 @@ async function tryReadImageAsMcpContent(uri: string): Promise<null | { type: 'im
         const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB
         const stat = await fs.promises.stat(filePath);
         if (stat.size > MAX_IMAGE_BYTES) {
-            console.warn(`[TaskSync MCP] Skipping image >4MB: ${filePath} (${stat.size} bytes)`);
+            console.warn(`[AskAway MCP] Skipping image >4MB: ${filePath} (${stat.size} bytes)`);
             return null;
         }
 
@@ -40,7 +40,7 @@ async function tryReadImageAsMcpContent(uri: string): Promise<null | { type: 'im
             mimeType,
         };
     } catch (error) {
-        console.error('[TaskSync MCP] Failed to read image attachment:', error);
+        console.error('[AskAway MCP] Failed to read image attachment:', error);
         return null;
     }
 }
@@ -53,7 +53,7 @@ export class McpServerManager {
     private _isRunning: boolean = false;
 
     constructor(
-        private provider: TaskSyncWebviewProvider
+        private provider: AskAwayWebviewProvider
     ) { }
 
     /**
@@ -67,7 +67,7 @@ export class McpServerManager {
         try {
             if (!reusePort || !this.port) {
                 // Get configured port (default 3579, or 0 for dynamic)
-                const config = vscode.workspace.getConfiguration('tasksync');
+                const config = vscode.workspace.getConfiguration('askaway');
                 const configuredPort = config.get<number>('mcpPort', 3579);
 
                 if (configuredPort > 0) {
@@ -80,7 +80,7 @@ export class McpServerManager {
             }
 
             this.mcpServer = new McpServer({
-                name: "TaskSync Sidebar Chat",
+                name: "AskAway Sidebar Chat",
                 version: "2.0.0"
             });
 
@@ -170,7 +170,7 @@ export class McpServerManager {
                     res.writeHead(404);
                     res.end();
                 } catch (error) {
-                    console.error('[TaskSync MCP] Error:', error);
+                    console.error('[AskAway MCP] Error:', error);
                     if (!res.headersSent) {
                         res.writeHead(500);
                         res.end('Internal Server Error');
@@ -185,14 +185,14 @@ export class McpServerManager {
             this._isRunning = true;
 
             // Auto-register with supported clients
-            const config = vscode.workspace.getConfiguration('tasksync');
+            const config = vscode.workspace.getConfiguration('askaway');
             if (config.get<boolean>('autoRegisterMcp', true)) {
                 await this.autoRegisterMcp();
             }
 
         } catch (error) {
-            console.error('[TaskSync MCP] Failed to start:', error);
-            vscode.window.showErrorMessage(`Failed to start TaskSync MCP server: ${error}`);
+            console.error('[AskAway MCP] Failed to start:', error);
+            vscode.window.showErrorMessage(`Failed to start AskAway MCP server: ${error}`);
         }
     }
 
@@ -221,14 +221,14 @@ export class McpServerManager {
         // Register with Kiro
         await this.registerWithClient(
             path.join(os.homedir(), '.kiro', 'settings', 'mcp.json'),
-            'tasksync-plus',
+            'askaway',
             { url: serverUrl }
         );
 
         // Register with Antigravity/Gemini CLI
         await this.registerWithClient(
             path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json'),
-            'tasksync-plus',
+            'askaway',
             { serverUrl: serverUrl }
         );
 
@@ -254,7 +254,7 @@ export class McpServerManager {
             } catch (e) {
                 // File doesn't exist or can't be parsed, start with empty config
                 if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-                    console.warn(`[TaskSync MCP] Failed to parse ${configPath}, starting fresh`);
+                    console.warn(`[AskAway MCP] Failed to parse ${configPath}, starting fresh`);
                 }
             }
 
@@ -265,7 +265,7 @@ export class McpServerManager {
             config.mcpServers[serverName] = serverConfig;
             await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2));
         } catch (error) {
-            console.error(`[TaskSync MCP] Failed to register with ${configPath}:`, error);
+            console.error(`[AskAway MCP] Failed to register with ${configPath}:`, error);
         }
     }
 
@@ -282,8 +282,8 @@ export class McpServerManager {
             try {
                 const content = await fs.promises.readFile(configPath, 'utf8');
                 const config = JSON.parse(content);
-                if (config.mcpServers?.['tasksync-plus']) {
-                    delete config.mcpServers['tasksync-plus'];
+                if (config.mcpServers?.['askaway']) {
+                    delete config.mcpServers['askaway'];
                     await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2));
                 }
             } catch {
@@ -299,12 +299,12 @@ export class McpServerManager {
                 new Promise(resolve => setTimeout(resolve, 2000))
             ]);
         } catch (e) {
-            console.error('[TaskSync MCP] Error during dispose:', e);
+            console.error('[AskAway MCP] Error during dispose:', e);
         }
 
         await new Promise(resolve => setTimeout(resolve, 1000));
         await this.start(true);
-        vscode.window.showInformationMessage('TaskSync MCP Server restarted.');
+        vscode.window.showInformationMessage('AskAway MCP Server restarted.');
     }
 
     async dispose() {
@@ -319,12 +319,12 @@ export class McpServerManager {
                 try {
                     await this.mcpServer.close();
                 } catch (e) {
-                    console.error('[TaskSync MCP] Error closing:', e);
+                    console.error('[AskAway MCP] Error closing:', e);
                 }
                 this.mcpServer = undefined;
             }
         } catch (e) {
-            console.error('[TaskSync MCP] Error during dispose:', e);
+            console.error('[AskAway MCP] Error during dispose:', e);
         } finally {
             await this.unregisterFromClients();
         }
@@ -358,7 +358,7 @@ export class McpServerManager {
                 path: path.join(os.homedir(), '.kiro', 'settings', 'mcp.json'),
                 config: {
                     mcpServers: {
-                        'tasksync-chat': {
+                        'askaway-chat': {
                             url: serverUrl
                         }
                     }
@@ -368,7 +368,7 @@ export class McpServerManager {
                 path: path.join(os.homedir(), '.cursor', 'mcp.json'),
                 config: {
                     mcpServers: {
-                        'tasksync-chat': {
+                        'askaway-chat': {
                             url: serverUrl
                         }
                     }
@@ -378,7 +378,7 @@ export class McpServerManager {
                 path: path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json'),
                 config: {
                     mcpServers: {
-                        'tasksync-chat': {
+                        'askaway-chat': {
                             serverUrl: serverUrl
                         }
                     }

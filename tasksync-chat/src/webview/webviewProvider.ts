@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { FILE_EXCLUSION_PATTERNS, FILE_SEARCH_EXCLUSION_PATTERNS, formatExcludePattern } from '../constants/fileExclusions';
 import { ContextManager, ContextReferenceType, ContextReference } from '../context';
+import { WebexService } from '../services/webexService';
+import { TelegramService } from '../services/telegramService';
 
 // Queued prompt interface
 export interface QueuedPrompt {
@@ -75,7 +77,7 @@ type ToWebviewMessage =
     | { type: 'updateAttachments'; attachments: AttachmentInfo[] }
     | { type: 'imageSaved'; attachment: AttachmentInfo }
     | { type: 'openSettingsModal' }
-    | { type: 'updateSettings'; soundEnabled: boolean; interactiveApprovalEnabled: boolean; reusablePrompts: ReusablePrompt[] }
+    | { type: 'updateSettings'; soundEnabled: boolean; interactiveApprovalEnabled: boolean; reusablePrompts: ReusablePrompt[]; webexEnabled: boolean; webexConfigured: boolean; webexTokenStatus?: { status: string; tokenSource: string; hasOAuth: boolean; hasToken: boolean; hasRoomId: boolean; isPolling: boolean; activeTasks: number; message: string; hint: string }; telegramEnabled?: boolean; telegramConfigured?: boolean; telegramStatus?: { status: string; hasToken: boolean; hasChatId: boolean; isPolling: boolean; activeTasks: number; message: string; hint: string } }
     | { type: 'slashCommandResults'; prompts: ReusablePrompt[] }
     | { type: 'playNotificationSound' }
     | { type: 'contextSearchResults'; suggestions: Array<{ type: string; label: string; description: string; detail: string }> }
@@ -110,10 +112,12 @@ type FromWebviewMessage =
     | { type: 'selectContextReference'; contextType: string; options?: Record<string, unknown> };
 
 
-export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
-    public static readonly viewType = 'taskSyncView';
+export class AskAwayWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
+    public static readonly viewType = 'askAwayView';
 
     private _view?: vscode.WebviewView;
+    private _webexService?: WebexService;
+    private _telegramService?: TelegramService;
     private _pendingRequests: Map<string, (result: UserResponseResult) => void> = new Map();
 
     // Prompt queue state
@@ -205,9 +209,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 if (this._isUpdatingConfig) {
                     return;
                 }
-                if (e.affectsConfiguration('tasksync.notificationSound') ||
-                    e.affectsConfiguration('tasksync.interactiveApproval') ||
-                    e.affectsConfiguration('tasksync.reusablePrompts')) {
+                if (e.affectsConfiguration('askaway.notificationSound') ||
+                    e.affectsConfiguration('askaway.interactiveApproval') ||
+                    e.affectsConfiguration('askaway.reusablePrompts') ||
+                    e.affectsConfiguration('askaway.webex') ||
+                    e.affectsConfiguration('askaway.telegram')) {
                     this._loadSettings();
                     this._updateSettingsUI();
                 }
@@ -349,6 +355,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      * Play notification sound (called when ask_user tool is triggered)
      * Works even when webview is not visible by using system sound
      */
+    /** Throttle sound playback to max once per 2 seconds */
+    private _lastSoundTime: number = 0;
+
     public playNotificationSound(): void {
         if (this._soundEnabled) {
             // Play system sound from extension host (works even when webview is hidden)
@@ -362,8 +371,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     /**
      * Play system sound using OS-native methods
      * Works even when webview is minimized or hidden
+     * Throttled to max once per 2 seconds
      */
     private _playSystemSound(): void {
+        const now = Date.now();
+        if (now - this._lastSoundTime < 2000) { return; }
+        this._lastSoundTime = now;
+
         const { exec } = require('child_process');
         const platform = process.platform;
 
@@ -387,7 +401,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      * Load settings from VS Code configuration
      */
     private _loadSettings(): void {
-        const config = vscode.workspace.getConfiguration('tasksync');
+        const config = vscode.workspace.getConfiguration('askaway');
         this._soundEnabled = config.get<boolean>('notificationSound', true);
         this._interactiveApprovalEnabled = config.get<boolean>('interactiveApproval', true);
 
@@ -406,7 +420,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private async _saveReusablePrompts(): Promise<void> {
         this._isUpdatingConfig = true;
         try {
-            const config = vscode.workspace.getConfiguration('tasksync');
+            const config = vscode.workspace.getConfiguration('askaway');
             const promptsToSave = this._reusablePrompts.map(p => ({
                 name: p.name,
                 prompt: p.prompt
@@ -425,7 +439,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             type: 'updateSettings',
             soundEnabled: this._soundEnabled,
             interactiveApprovalEnabled: this._interactiveApprovalEnabled,
-            reusablePrompts: this._reusablePrompts
+            reusablePrompts: this._reusablePrompts,
+            webexEnabled: this._webexService?.isEnabled() ?? false,
+            webexConfigured: this._webexService?.isConfigured() ?? false,
+            webexTokenStatus: this._webexService?.getTokenStatus(),
+            telegramEnabled: this._telegramService?.isEnabled() ?? false,
+            telegramConfigured: this._telegramService?.isConfigured() ?? false,
+            telegramStatus: this._telegramService?.getTokenStatus()
         });
     }
 
@@ -464,6 +484,50 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._disposables = [];
 
         this._view = undefined;
+    }
+
+    public setWebexService(service: WebexService) {
+        this._webexService = service;
+        this._webexService.setResponseCallback((taskId, response, user) => {
+            this.resolveExternalRequest(taskId, response, user);
+        });
+    }
+
+    /** Expose the Webex service for activity tracking */
+    public getWebexService(): WebexService | undefined {
+        return this._webexService;
+    }
+
+    public setTelegramService(service: TelegramService) {
+        this._telegramService = service;
+        this._telegramService.setResponseCallback((taskId, response, user) => {
+            this.resolveExternalRequest(taskId, response, user);
+        });
+    }
+
+    /** Expose the Telegram service for activity tracking */
+    public getTelegramService(): TelegramService | undefined {
+        return this._telegramService;
+    }
+
+    public resolveExternalRequest(taskId: string, response: string, user: string) {
+        if (this._currentToolCallId === taskId) {
+            this._handleSubmit(response, []);
+        } else if (this._pendingRequests.has(taskId)) {
+            // Resolve promise even if not active in UI
+            const resolve = this._pendingRequests.get(taskId);
+            if (resolve) {
+                resolve({ value: response, queue: this._queueEnabled, attachments: [] });
+                this._pendingRequests.delete(taskId);
+                
+                const pendingEntry = this._currentSessionCallsMap.get(taskId);
+                if (pendingEntry) {
+                    pendingEntry.status = 'completed';
+                    pendingEntry.response = response + ` (from ${user})`;
+                    this._updateCurrentSessionUI();
+                }
+            }
+        }
     }
 
     public resolveWebviewView(
@@ -516,8 +580,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     public async waitForUserResponse(question: string): Promise<UserResponseResult> {
         // If view is not available, open the sidebar first
         if (!this._view) {
-            // Open the TaskSync sidebar view
-            await vscode.commands.executeCommand('taskSyncView.focus');
+            // Open the AskAway sidebar view
+            await vscode.commands.executeCommand('askAwayView.focus');
 
             // Wait for view to be resolved (up to configured timeout)
             let waited = 0;
@@ -527,8 +591,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             }
 
             if (!this._view) {
-                console.error(`[TaskSync] Failed to open sidebar view after waiting ${this._VIEW_OPEN_TIMEOUT_MS}ms`);
-                throw new Error(`Failed to open TaskSync sidebar after ${this._VIEW_OPEN_TIMEOUT_MS}ms. The webview may not be properly initialized.`);
+                console.error(`[AskAway] Failed to open sidebar view after waiting ${this._VIEW_OPEN_TIMEOUT_MS}ms`);
+                throw new Error(`Failed to open AskAway sidebar after ${this._VIEW_OPEN_TIMEOUT_MS}ms. The webview may not be properly initialized.`);
             }
         }
 
@@ -554,7 +618,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     oldEntry.response = '[Superseded by new request]';
                     this._updateCurrentSessionUI();
                 }
-                console.warn(`[TaskSync] Previous request ${oldToolCallId} was superseded by new request`);
+                console.warn(`[AskAway] Previous request ${oldToolCallId} was superseded by new request`);
             }
         }
 
@@ -607,6 +671,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         // Parse choices from question and determine if it's an approval question
         const choices = this._parseChoices(question);
         const isApproval = choices.length === 0 && this._isApprovalQuestion(question);
+
+        if (this._webexService) {
+            this._webexService.postAdaptiveCard(toolCallId, question, choices.map(c => c.label));
+        }
+
+        if (this._telegramService) {
+            this._telegramService.postQuestion(toolCallId, question, choices.map(c => c.label));
+        }
 
         // Wait for webview to be ready (JS initialized) before sending message
         if (!this._webviewReady) {
@@ -842,6 +914,16 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 this._updateCurrentSessionUI();
                 resolve({ value, queue: this._queueEnabled, attachments });
                 this._pendingRequests.delete(this._currentToolCallId);
+
+                // Notify Webex that this task was answered locally
+                if (this._webexService) {
+                    this._webexService.onLocalResponse(
+                        completedEntry.id,
+                        value,
+                        'VS Code User'
+                    );
+                }
+
                 this._currentToolCallId = null;
             } else {
                 // No pending tool call - add message to queue for later use
@@ -880,7 +962,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     fs.unlinkSync(filePath);
                 }
             } catch (error) {
-                console.error('[TaskSync] Failed to cleanup temp image:', error);
+                console.error('[AskAway] Failed to cleanup temp image:', error);
             }
         }
     }
@@ -1405,7 +1487,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._soundEnabled = enabled;
         this._isUpdatingConfig = true;
         try {
-            const config = vscode.workspace.getConfiguration('tasksync');
+            const config = vscode.workspace.getConfiguration('askaway');
             await config.update('notificationSound', enabled, vscode.ConfigurationTarget.Global);
             // Reload settings after update to ensure consistency
             this._loadSettings();
@@ -1423,7 +1505,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._interactiveApprovalEnabled = enabled;
         this._isUpdatingConfig = true;
         try {
-            const config = vscode.workspace.getConfiguration('tasksync');
+            const config = vscode.workspace.getConfiguration('askaway');
             await config.update('interactiveApproval', enabled, vscode.ConfigurationTarget.Global);
             // Reload settings after update to ensure consistency
             this._loadSettings();
@@ -1526,7 +1608,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 }))
             } as ToWebviewMessage);
         } catch (error) {
-            console.error('[TaskSync] Error searching context:', error);
+            console.error('[AskAway] Error searching context:', error);
             this._view?.webview.postMessage({
                 type: 'contextSearchResults',
                 suggestions: []
@@ -1582,7 +1664,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 vscode.window.showInformationMessage(`No ${contextType} content available yet`);
             }
         } catch (error) {
-            console.error('[TaskSync] Error selecting context reference:', error);
+            console.error('[AskAway] Error selecting context reference:', error);
             vscode.window.showErrorMessage(`Failed to get ${contextType} content`);
         }
     }
@@ -1604,7 +1686,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             return contextRef?.content;
 
         } catch (error) {
-            console.error('[TaskSync] Error resolving context content:', error);
+            console.error('[AskAway] Error resolving context content:', error);
             return undefined;
         }
     }
@@ -1730,7 +1812,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     .slice(0, this._MAX_HISTORY_ENTRIES)
                 : [];
         } catch (error) {
-            console.error('[TaskSync] Failed to load persisted history:', error);
+            console.error('[AskAway] Failed to load persisted history:', error);
             this._persistedHistory = [];
         }
     }
@@ -1780,7 +1862,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             await fsPromises.writeFile(historyPath, data, 'utf8');
             this._historyDirty = false;
         } catch (error) {
-            console.error('[TaskSync] Failed to save persisted history (async):', error);
+            console.error('[AskAway] Failed to save persisted history (async):', error);
         }
     }
 
@@ -1810,7 +1892,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             fs.writeFileSync(historyPath, data, 'utf8');
             this._historyDirty = false;
         } catch (error) {
-            console.error('[TaskSync] Failed to save persisted history:', error);
+            console.error('[AskAway] Failed to save persisted history:', error);
         }
     }
 
@@ -1821,7 +1903,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'main.css'));
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'webview.js'));
         const codiconsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'));
-        const logoUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'TS-logo.svg'));
+        const logoUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'askaway-icon.svg'));
         const notificationSoundUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'notification.wav'));
         const nonce = this._getNonce();
 
@@ -1833,7 +1915,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource}; script-src 'nonce-${nonce}' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src ${webview.cspSource} data:;">
     <link href="${codiconsUri}" rel="stylesheet">
     <link href="${styleUri}" rel="stylesheet">
-    <title>TaskSync Chat</title>
+    <title>AskAway</title>
     <audio id="notification-sound" preload="auto" src="${notificationSoundUri}"></audio>
 </head>
 <body>
@@ -1843,7 +1925,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <!-- Welcome Section - Let's build -->
             <div class="welcome-section" id="welcome-section">
                 <div class="welcome-icon">
-                    <img src="${logoUri}" alt="TaskSync Logo" width="48" height="48" class="welcome-logo">
+                    <img src="${logoUri}" alt="AskAway Logo" width="48" height="48" class="welcome-logo">
                 </div>
                 <h1 class="welcome-title">Let's build</h1>
                 <p class="welcome-subtitle">Sync your tasks, automate your workflow</p>

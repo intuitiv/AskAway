@@ -6,7 +6,7 @@
 
 ## The Problem
 
-I've been using [TaskSync](https://github.com/user/tasksync-chat) for a while now — it's a VS Code extension that lets you manage AI tool calls with a queue system. You can batch your responses, approve requests, and generally stay in control of what your AI coding assistant is doing.
+I've been using [AskAway](https://github.com/user/askaway-chat) for a while now — it's a VS Code extension that lets you manage AI tool calls with a queue system. You can batch your responses, approve requests, and generally stay in control of what your AI coding assistant is doing.
 
 But there was one problem: **I had to be at my desk.**
 
@@ -14,24 +14,24 @@ AI coding assistants can take a while to work through complex tasks. You kick of
 
 ## The Solution
 
-I decided to add remote access to TaskSync. The goal was simple:
+I decided to add remote access to AskAway. The goal was simple:
 
-> **Access the full TaskSync UI from any browser, especially mobile.**
+> **Access the full AskAway UI from any browser, especially mobile.**
 
-Not a dumbed-down mobile app. Not a notification system. The *actual* TaskSync interface, running on my phone.
+Not a dumbed-down mobile app. Not a notification system. The *actual* AskAway interface, running on my phone.
 
-![TaskSync on Mobile](./screenshots/mobile-hero.png)
-*The full TaskSync experience, in your pocket*
+![AskAway on Mobile](./screenshots/mobile-hero.png)
+*The full AskAway experience, in your pocket*
 
 ## What I Built
 
 ### 1. An Embedded Web Server
 
-The extension now includes an Express.js server that starts on demand. When you click the remote button (📡) in the TaskSync panel, it:
+The extension now includes an Express.js server that starts on demand. When you click the remote button (📡) in the AskAway panel, it:
 
 1. Spins up an HTTP server on an available port
 2. Generates a 4-digit PIN for security
-3. Serves the TaskSync UI to any browser
+3. Serves the AskAway UI to any browser
 
 ```typescript
 // Simplified server setup
@@ -81,7 +81,7 @@ Security matters. Even on a local network, you don't want anyone stumbling onto 
 
 Here's a feature I'm particularly proud of: **Active Sessions**.
 
-If you have VS Code open on multiple projects, each one can run its own TaskSync remote server. The landing page shows all active sessions:
+If you have VS Code open on multiple projects, each one can run its own AskAway remote server. The landing page shows all active sessions:
 
 ![Active Sessions](./screenshots/active-sessions.png)
 *Switch between workspaces with one tap*
@@ -110,7 +110,7 @@ The result? The mobile UI looks almost identical to VS Code's dark theme.
 
 ### Starting the Server
 
-Click the broadcast icon in the TaskSync panel title bar:
+Click the broadcast icon in the AskAway panel title bar:
 
 ![Toggle Button](./screenshots/toggle-button.png)
 
@@ -156,7 +156,7 @@ VS Code Remote is great for accessing your full IDE remotely. But it requires:
 - Running a full VS Code instance
 - Decent bandwidth
 
-TaskSync Remote is lighter:
+AskAway Remote is lighter:
 - Works on any local network
 - Minimal bandwidth (just text/JSON)
 - Optimized for mobile
@@ -229,14 +229,14 @@ I'd love to add:
 
 ## Try It Yourself
 
-If you're using TaskSync, you can try this today:
+If you're using AskAway, you can try this today:
 
 1. Update to the latest version
-2. Click the broadcast icon (📡) in the TaskSync panel
+2. Click the broadcast icon (📡) in the AskAway panel
 3. Open the URL on your phone
 4. Enter the PIN
 
-That's it. Full TaskSync access from anywhere on your network.
+That's it. Full AskAway access from anywhere on your network.
 
 ---
 

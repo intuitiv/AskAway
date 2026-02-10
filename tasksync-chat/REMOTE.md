@@ -1,6 +1,6 @@
-# TaskSync Remote - Web & Mobile Access
+# AskAway Remote - Web & Mobile Access
 
-Control your VS Code TaskSync extension from any browser, phone, or tablet on your local network.
+Control your VS Code AskAway extension from any browser, phone, or tablet on your local network.
 
 ## Features
 
@@ -17,12 +17,12 @@ Control your VS Code TaskSync extension from any browser, phone, or tablet on yo
 
 **Option A: Via Command Palette**
 1. Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
-2. Type "TaskSync: Start Remote Server"
+2. Type "AskAway: Start Remote Server"
 3. Note the PIN displayed in the notification
 
 **Option B: Auto-Start**
 1. Open VS Code Settings (`Cmd+,`)
-2. Search for "TaskSync"
+2. Search for "AskAway"
 3. Enable "Remote Enabled"
 4. The server will start automatically on next VS Code launch
 
@@ -36,13 +36,13 @@ Control your VS Code TaskSync extension from any browser, phone, or tablet on yo
 ### 3. Install as an App (PWA)
 
 **iOS (Safari):**
-1. Open the TaskSync URL in Safari
+1. Open the AskAway URL in Safari
 2. Tap the Share button (box with arrow)
 3. Tap "Add to Home Screen"
-4. Name it "TaskSync" and tap "Add"
+4. Name it "AskAway" and tap "Add"
 
 **Android (Chrome):**
-1. Open the TaskSync URL in Chrome
+1. Open the AskAway URL in Chrome
 2. Tap the menu (three dots)
 3. Tap "Add to Home Screen" or "Install app"
 4. Tap "Install"
@@ -61,23 +61,23 @@ Control your VS Code TaskSync extension from any browser, phone, or tablet on yo
 
 ### 🖥️ Multi-Monitor Alternative
 - Don't have a second monitor?
-- Use your phone/tablet as a dedicated TaskSync display
+- Use your phone/tablet as a dedicated AskAway display
 - Keep your main screen for coding
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `TaskSync: Start Remote Server` | Start the remote UI server |
-| `TaskSync: Stop Remote Server` | Stop the remote UI server |
-| `TaskSync: Show Remote URL` | Display connection URL and PIN |
+| `AskAway: Start Remote Server` | Start the remote UI server |
+| `AskAway: Stop Remote Server` | Stop the remote UI server |
+| `AskAway: Show Remote URL` | Display connection URL and PIN |
 
 ## Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `tasksync.remoteEnabled` | `false` | Auto-start remote server on VS Code launch |
-| `tasksync.remotePort` | `3000` | Preferred port (auto-increments if in use) |
+| `askaway.remoteEnabled` | `false` | Auto-start remote server on VS Code launch |
+| `askaway.remotePort` | `3000` | Preferred port (auto-increments if in use) |
 
 ## Multiple VS Code Windows
 
@@ -95,7 +95,7 @@ The landing page shows all active sessions, letting you switch between them.
 - **Session-Based** - PINs are regenerated when VS Code restarts
 - **No Internet Exposure** - Your conversations never leave your local network
 
-⚠️ **Note**: If you're on a public/shared WiFi (coffee shop, airport), others on that network could potentially access your TaskSync if they know your IP and PIN. For sensitive work, only use on trusted private networks.
+⚠️ **Note**: If you're on a public/shared WiFi (coffee shop, airport), others on that network could potentially access your AskAway if they know your IP and PIN. For sensitive work, only use on trusted private networks.
 
 ## Troubleshooting
 
@@ -117,8 +117,8 @@ The landing page shows all active sessions, letting you switch between them.
 ### PWA Not Updating
 
 If the app shows old UI after an update:
-1. Close all TaskSync PWA windows
-2. Clear browser cache for the TaskSync URL
+1. Close all AskAway PWA windows
+2. Clear browser cache for the AskAway URL
 3. Re-open and re-install if needed
 
 ## Architecture
@@ -128,7 +128,7 @@ If the app shows old UI after an update:
 │                     Your Computer                            │
 │                                                              │
 │  ┌─────────────┐       ┌─────────────┐       ┌───────────┐ │
-│  │  VS Code    │◄─────►│  TaskSync   │◄─────►│  Express  │ │
+│  │  VS Code    │◄─────►│  AskAway   │◄─────►│  Express  │ │
 │  │  Extension  │       │  Webview    │       │  Server   │ │
 │  │             │       │  Provider   │       │  :3000    │ │
 │  └─────────────┘       └─────────────┘       └─────┬─────┘ │
@@ -141,7 +141,7 @@ If the app shows old UI after an update:
 │                      Your Phone                     │       │
 │                                                     ▼       │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │              TaskSync PWA / Browser                  │   │
+│  │              AskAway PWA / Browser                  │   │
 │  │                                                      │   │
 │  │   ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │   │
 │  │   │  Queue   │  │  Chat    │  │  Input / Actions │  │   │

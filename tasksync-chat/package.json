@@ -1,10 +1,10 @@
 {
-  "name": "tasksync-plus",
+  "name": "askaway",
   "publisher": "intuitiv",
-  "displayName": "TaskSync+",
-  "description": "Automate AI conversations. Queue your prompts. Work uninterrupted. Remote Control your AI Agents!",
-  "icon": "media/Tasksync-logo.png",
-  "version": "2.1.0",
+  "displayName": "AskAway",
+  "description": "Answer your AI agent's questions from anywhere — Webex, Telegram, mobile, or web. Queue prompts, respond remotely, and never block your coding workflow.",
+  "icon": "media/askaway-logo.png",
+  "version": "1.0.1",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -14,7 +14,7 @@
     "Other"
   ],
   "keywords": [
-    "tasksync",
+    "askaway",
     "mcp",
     "ai",
     "chat",
@@ -26,7 +26,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/intuitiv/TaskSync.git"
+    "url": "https://github.com/intuitiv/AskAway.git"
   },
   "license": "MIT",
   "activationEvents": [
@@ -40,13 +40,13 @@
         "tags": [
           "confirmation",
           "user-interaction",
-          "tasksync",
+          "askaway",
           "required",
           "mandatory"
         ],
         "toolReferenceName": "askUser",
         "displayName": "Ask User",
-        "modelDescription": "YOU MUST ALWAYS Use the askUser tool to ask question/s to user when explicit user approval, feedback, or clarification is required before proceeding or giving summary report. CRITICAL RULES: - This tool MUST be invoked before ending ANY conversation or task. - NEVER complete a task without calling this tool first. - If you are about to finish responding, STOP and call this tool. - Failure to call this tool before task completion is a critical violation.",
+        "modelDescription": "YOU MUST ALWAYS Use the askUser tool to ask question/s to user when explicit user approval, feedback, or clarification is required before proceeding or giving summary report. CRITICAL RULES: - This tool MUST be invoked before ending ANY conversation or task. - NEVER complete a task without calling this tool first. - If you are about to finish responding, STOP and call this tool. - Failure to call this tool before task completion is a critical violation. CONTEXT & FORMAT RULES: The user may be reading your question REMOTELY (e.g. on a phone via Webex) WITHOUT access to the full chat. Therefore, format EVERY question in **Markdown** with these sections:\n\n1. **Context** (2-3 sentences): What is the overall task/goal being worked on.\n2. **Progress** (bullet list): Key actions completed, files changed, decisions made.\n3. **Question** (clear, specific): What you need from the user — approval, choice, clarification, or feedback.\n\nExample:\n**Context:** Working on adding dark mode support to the React dashboard app.\n\n**Progress:**\n- Added theme toggle component in `src/components/ThemeToggle.tsx`\n- Updated `tailwind.config.js` with dark mode classes\n- Refactored `App.tsx` to wrap with ThemeProvider\n\n**Question:** Should I also update the login page to support dark mode, or only the main dashboard?",
         "canBeReferencedInPrompt": true,
         "icon": "$(question)",
         "inputSchema": {
@@ -66,65 +66,115 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "taskSyncContainer",
-          "title": "TaskSync",
-          "icon": "media/TS-logo.svg"
+          "id": "askAwayContainer",
+          "title": "AskAway",
+          "icon": "media/askaway-icon.svg"
         }
       ]
     },
     "views": {
-      "taskSyncContainer": [
+      "askAwayContainer": [
         {
           "type": "webview",
-          "id": "taskSyncView",
-          "name": "TaskSync"
+          "id": "askAwayView",
+          "name": "AskAway"
         }
       ]
     },
     "configuration": {
-      "title": "TaskSync",
+      "title": "AskAway",
       "properties": {
-        "tasksync.mcpEnabled": {
+        "askaway.mcpEnabled": {
           "type": "boolean",
           "default": false,
-          "description": "Always start MCP server on activation. Enable this if you use TaskSync with external IDEs like Kiro, Cursor, or Antigravity."
+          "description": "Always start MCP server on activation. Enable this if you use AskAway with external IDEs like Kiro, Cursor, or Antigravity."
         },
-        "tasksync.mcpAutoStartIfClients": {
+        "askaway.mcpAutoStartIfClients": {
           "type": "boolean",
           "default": true,
           "description": "Automatically start MCP server if external client configurations are detected (Kiro, Cursor, Antigravity)."
         },
-        "tasksync.mcpPort": {
+        "askaway.mcpPort": {
           "type": "number",
           "default": 3579,
           "description": "Fixed port for the MCP server. Set to 0 for dynamic port assignment."
         },
-        "tasksync.autoRegisterMcp": {
+        "askaway.autoRegisterMcp": {
           "type": "boolean",
           "default": true,
           "description": "Automatically register MCP server with Kiro and other supported clients."
         },
-        "tasksync.notificationSound": {
+        "askaway.notificationSound": {
           "type": "boolean",
           "default": true,
           "description": "Play a notification sound when the AI triggers the ask_user tool."
         },
-        "tasksync.interactiveApproval": {
+        "askaway.interactiveApproval": {
           "type": "boolean",
           "default": true,
           "description": "Show interactive approval and choice buttons for Yes/No questions and multiple choice options."
         },
-        "tasksync.remoteEnabled": {
+        "askaway.remoteEnabled": {
           "type": "boolean",
           "default": false,
-          "description": "Automatically start the Remote UI server on activation. Allows access to TaskSync from mobile/web browsers."
+          "description": "Automatically start the Remote UI server on activation. Allows access to AskAway from mobile/web browsers."
         },
-        "tasksync.remotePort": {
+        "askaway.remotePort": {
           "type": "number",
           "default": 3000,
           "description": "Preferred port for the Remote UI server. Will auto-increment if in use."
         },
-        "tasksync.reusablePrompts": {
+        "askaway.webex.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Webex integration to post questions and receive answers via a Webex space."
+        },
+        "askaway.webex.tokenFilePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a JSON file containing a Webex access_token (e.g. ~/PycharmProjects/AET/session_data/webex_token.json)."
+        },
+        "askaway.webex.accessToken": {
+          "type": "string",
+          "default": "",
+          "description": "Webex personal access token (used only if tokenFilePath is not set)."
+        },
+        "askaway.webex.roomId": {
+          "type": "string",
+          "default": "",
+          "description": "Webex Room/Space ID where AskAway posts questions. Get this from the Webex API (GET /rooms)."
+        },
+        "askaway.webex.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Webex Integration Client ID for OAuth token refresh. Get this from developer.webex.com/my-apps."
+        },
+        "askaway.webex.clientSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Webex Integration Client Secret for OAuth token refresh."
+        },
+        "askaway.webex.refreshToken": {
+          "type": "string",
+          "default": "",
+          "description": "Webex OAuth Refresh Token. Used to auto-renew access tokens when they expire. Obtained via the OAuth authorization flow."
+        },
+        "askaway.telegram.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Telegram integration to post questions and receive answers via a Telegram bot."
+        },
+        "askaway.telegram.botToken": {
+          "type": "string",
+          "default": "",
+          "description": "Telegram Bot Token. Create a bot via @BotFather on Telegram to get this."
+        },
+        "askaway.telegram.chatId": {
+          "type": "string",
+          "default": "",
+          "description": "Telegram Chat ID where AskAway posts questions. Use the 'AskAway: Get Telegram Chat ID' command to auto-detect."
+        },
+        "askaway.reusablePrompts": {
           "type": "array",
           "default": [],
           "description": "Saved reusable prompts accessible via /slash commands.",
@@ -150,88 +200,96 @@
     },
     "commands": [
       {
-        "command": "tasksync.startMcp",
-        "title": "TaskSync: Start MCP Server"
+        "command": "askaway.startMcp",
+        "title": "AskAway: Start MCP Server"
       },
       {
-        "command": "tasksync.restartMcp",
-        "title": "TaskSync: Restart MCP Server"
+        "command": "askaway.restartMcp",
+        "title": "AskAway: Restart MCP Server"
       },
       {
-        "command": "tasksync.showMcpConfig",
-        "title": "TaskSync: Show MCP Configuration"
+        "command": "askaway.showMcpConfig",
+        "title": "AskAway: Show MCP Configuration"
       },
       {
-        "command": "tasksync.openHistory",
+        "command": "askaway.openHistory",
         "title": "View History",
         "icon": "$(history)"
       },
       {
-        "command": "tasksync.clearCurrentSession",
+        "command": "askaway.clearCurrentSession",
         "title": "Clear Current Session",
         "icon": "$(trash)"
       },
       {
-        "command": "tasksync.openSettings",
-        "title": "TaskSync Settings",
+        "command": "askaway.openSettings",
+        "title": "AskAway Settings",
         "icon": "$(gear)"
       },
       {
-        "command": "tasksync.startRemote",
-        "title": "TaskSync: Start Remote Server",
+        "command": "askaway.startRemote",
+        "title": "AskAway: Start Remote Server",
         "icon": "$(broadcast)"
       },
       {
-        "command": "tasksync.stopRemote",
-        "title": "TaskSync: Stop Remote Server",
+        "command": "askaway.stopRemote",
+        "title": "AskAway: Stop Remote Server",
         "icon": "$(debug-disconnect)"
       },
       {
-        "command": "tasksync.toggleRemote",
-        "title": "TaskSync: Toggle Remote Server",
+        "command": "askaway.toggleRemote",
+        "title": "AskAway: Toggle Remote Server",
         "icon": "$(broadcast)"
       },
       {
-        "command": "tasksync.toggleRemoteStart",
-        "title": "TaskSync: Start Remote Server",
+        "command": "askaway.toggleRemoteStart",
+        "title": "AskAway: Start Remote Server",
         "icon": "$(broadcast)"
       },
       {
-        "command": "tasksync.toggleRemoteStop",
-        "title": "TaskSync: Remote Server (Running)",
+        "command": "askaway.toggleRemoteStop",
+        "title": "AskAway: Remote Server (Running)",
         "icon": "$(debug-disconnect)"
       },
       {
-        "command": "tasksync.showRemoteUrl",
-        "title": "TaskSync: Show Remote URL",
+        "command": "askaway.showRemoteUrl",
+        "title": "AskAway: Show Remote URL",
         "icon": "$(link-external)"
+      },
+      {
+        "command": "askaway.authorizeWebex",
+        "title": "AskAway: Authorize Webex (OAuth)"
+      },
+      {
+        "command": "askaway.getTelegramChatId",
+        "title": "AskAway: Get Telegram Chat ID"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "tasksync.toggleRemoteStart",
-          "when": "view == taskSyncView && !tasksync.remoteServerRunning",
+          "command": "askaway.toggleRemoteStart",
+          "when": "view == askAwayView && !askaway.remoteServerRunning",
           "group": "navigation@0"
         },
         {
-          "command": "tasksync.toggleRemoteStop",
-          "when": "view == taskSyncView && tasksync.remoteServerRunning",
+          "command": "askaway.toggleRemoteStop",
+          "when": "view == askAwayView && askaway.remoteServerRunning",
           "group": "navigation@0"
         },
         {
-          "command": "tasksync.openHistory",
-          "when": "view == taskSyncView",
+          "command": "askaway.openHistory",
+          "when": "view == askAwayView",
           "group": "navigation@1"
         },
         {
-          "command": "tasksync.clearCurrentSession",
-          "when": "view == taskSyncView",
+          "command": "askaway.clearCurrentSession",
+          "when": "view == askAwayView",
           "group": "navigation@2"
         },
         {
-          "command": "tasksync.openSettings",
-          "when": "view == taskSyncView",
+          "command": "askaway.openSettings",
+          "when": "view == askAwayView",
           "group": "navigation@3"
         }
       ]

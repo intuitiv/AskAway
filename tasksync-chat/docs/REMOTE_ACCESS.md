@@ -1,10 +1,10 @@
-# TaskSync Remote Access
+# AskAway Remote Access
 
 Control your VS Code AI coding sessions from your phone or any browser. No more being tied to your desk while AI works on your code!
 
 ## Overview
 
-TaskSync Remote Access lets you:
+AskAway Remote Access lets you:
 - **Monitor AI tool calls** from your mobile device
 - **Approve or respond** to AI requests on the go
 - **Queue prompts** for batch processing
@@ -17,12 +17,12 @@ TaskSync Remote Access lets you:
 
 ### 1. Start the Remote Server
 
-Click the **broadcast icon** (📡) in the TaskSync panel title bar.
+Click the **broadcast icon** (📡) in the AskAway panel title bar.
 
 <img src="./screenshots/remote-button.png" width="200" />
 
 Or use the command palette:
-- `Cmd/Ctrl + Shift + P` → "TaskSync: Toggle Remote Server"
+- `Cmd/Ctrl + Shift + P` → "AskAway: Toggle Remote Server"
 
 ### 2. Get Your Connection Info
 
@@ -41,12 +41,12 @@ When the server starts, you'll see:
 
 <img src="./screenshots/mobile-pin-entry.png" width="300" />
 
-### 4. Start Using TaskSync Remotely
+### 4. Start Using AskAway Remotely
 
 You'll see the same UI as VS Code, fully functional:
 
 <img src="./screenshots/mobile-app-view.png" width="300" />
-*TaskSync running on mobile with full functionality*
+*AskAway running on mobile with full functionality*
 
 ## Features
 
@@ -54,7 +54,7 @@ You'll see the same UI as VS Code, fully functional:
 Each session generates a unique 4-digit PIN. This ensures only you can access your VS Code instance.
 
 ### 📱 Multiple Active Sessions
-Running VS Code on multiple projects? The landing page shows all active TaskSync sessions. Just tap to switch!
+Running VS Code on multiple projects? The landing page shows all active AskAway sessions. Just tap to switch!
 
 ### ⚡ Real-time Sync
 All interactions sync instantly between VS Code and your mobile device:
@@ -69,7 +69,7 @@ Access from any device on the same network. Perfect for:
 - Quick approvals while away from your desk
 
 ### 📲 PWA Support
-Add TaskSync to your home screen for an app-like experience:
+Add AskAway to your home screen for an app-like experience:
 1. Open the URL in Safari/Chrome
 2. Tap "Add to Home Screen"
 3. Launch like a native app!
@@ -78,27 +78,27 @@ Add TaskSync to your home screen for an app-like experience:
 
 | Command | Description |
 |---------|-------------|
-| `TaskSync: Toggle Remote Server` | Start/stop the remote server (title bar button) |
-| `TaskSync: Start Remote Server` | Start the remote server |
-| `TaskSync: Stop Remote Server` | Stop the remote server |
-| `TaskSync: Show Remote URL` | Display connection URLs and PIN |
+| `AskAway: Toggle Remote Server` | Start/stop the remote server (title bar button) |
+| `AskAway: Start Remote Server` | Start the remote server |
+| `AskAway: Stop Remote Server` | Stop the remote server |
+| `AskAway: Show Remote URL` | Display connection URLs and PIN |
 
 ## Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `tasksync.remoteEnabled` | `false` | Auto-start remote server on extension activation |
-| `tasksync.remotePort` | `3000` | Preferred port for the remote server |
+| `askaway.remoteEnabled` | `false` | Auto-start remote server on extension activation |
+| `askaway.remotePort` | `3000` | Preferred port for the remote server |
 
 ## How Active Sessions Work
 
-When you start a Remote Server, TaskSync registers the session with:
+When you start a Remote Server, AskAway registers the session with:
 - **Workspace name** (your project folder name)
 - **Port number**
 - **Session PIN**
 - **Start time**
 
-This information is stored in VS Code's global state, allowing the landing page to show all your active TaskSync instances across different projects.
+This information is stored in VS Code's global state, allowing the landing page to show all your active AskAway instances across different projects.
 
 ## Security Considerations
 
@@ -115,8 +115,8 @@ This information is stored in VS Code's global state, allowing the landing page 
 - Try a different port in settings
 
 ### Server won't start?
-- Port might be in use. Change `tasksync.remotePort` in settings
-- Check the Output panel (TaskSync Remote) for errors
+- Port might be in use. Change `askaway.remotePort` in settings
+- Check the Output panel (AskAway Remote) for errors
 
 ### PIN not working?
 - PINs are regenerated each time the server starts
