@@ -50,6 +50,7 @@ A dedicated VS Code sidebar extension with smart prompt queue system.
 
 **Features:**
 - Smart Queue Mode - batch responses for AI agents
+- Autopilot - let agents work autonomously with customizable auto-responses
 - Give new tasks/feedback using ask_user tool
 - File/folder references with `#` autocomplete
 - Image paste support (copilot will view your image)

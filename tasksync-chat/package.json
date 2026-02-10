@@ -4,7 +4,7 @@
   "displayName": "AskAway",
   "description": "Answer your AI agent's questions from anywhere — Webex, Telegram, mobile, or web. Queue prompts, respond remotely, and never block your coding workflow.",
   "icon": "media/askaway-logo.png",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -104,6 +104,16 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically register MCP server with Kiro and other supported clients."
+        },
+        "askaway.autopilot": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Autopilot to automatically respond to ask_user prompts without waiting for your input, using a customizable prompt you can configure in Settings. Queued prompts always take priority over Autopilot responses."
+        },
+        "askaway.autopilotText": {
+          "type": "string",
+          "default": "You are temporarily in autonomous mode and must now make your own decision. If another question arises, be sure to ask it, as autonomous mode is temporary.",
+          "description": "Text returned when Autopilot is enabled. The agent receives this as an automatic response."
         },
         "askaway.notificationSound": {
           "type": "boolean",

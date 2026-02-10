@@ -26,6 +26,13 @@
     let interactiveApprovalEnabled = true;
     let webexEnabled = false;
     let telegramEnabled = false;
+    let autopilotEnabled = false;
+    let autopilotText = '';
+    let autopilotTextDebounceTimer = null;
+
+    // Tracks local edits to prevent stale settings overwriting user input mid-typing.
+    let autopilotTextEditVersion = 0;
+    let autopilotTextLastSentVersion = 0;
     let reusablePrompts = [];
     let audioUnlocked = false; // Track if audio playback has been unlocked by user gesture
 
@@ -67,7 +74,7 @@
     let slashDropdown, slashList, slashEmpty;
     // Settings modal elements
     let settingsModal, settingsModalOverlay, settingsModalClose;
-    let soundToggle, interactiveApprovalToggle, webexToggle, telegramToggle, promptsList, addPromptBtn, addPromptForm;
+    let soundToggle, interactiveApprovalToggle, webexToggle, telegramToggle, autopilotEditBtn, autopilotToggle, autopilotTextInput, promptsList, addPromptBtn, addPromptForm;
 
     function init() {
         try {
@@ -124,6 +131,7 @@
         modeBtn = document.getElementById('mode-btn');
         modeDropdown = document.getElementById('mode-dropdown');
         modeLabel = document.getElementById('mode-label');
+
         queueSection = document.getElementById('queue-section');
         queueHeader = document.getElementById('queue-header');
         queueList = document.getElementById('queue-list');
@@ -138,6 +146,7 @@
         welcomeSection = document.getElementById('welcome-section');
         cardVibe = document.getElementById('card-vibe');
         cardSpec = document.getElementById('card-spec');
+        autopilotToggle = document.getElementById('autopilot-toggle');
         toolHistoryArea = document.getElementById('tool-history-area');
         pendingMessage = document.getElementById('pending-message');
         // Slash command dropdown
@@ -356,6 +365,22 @@
             '</div>';
         modalContent.appendChild(approvalSection);
 
+        // Autopilot section
+        var autopilotSection = document.createElement('div');
+        autopilotSection.className = 'settings-section';
+        autopilotSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title">' +
+            '<span class="codicon codicon-rocket"></span> Autopilot Prompt' +
+            '<span class="settings-info-icon" title="When enabled, the AI automatically receives your configured text as a response instead of waiting for manual input.\n\nHow it works:\n• The agent calls ask_user → Autopilot instantly replies with your text\n• The agent continues working without waiting for you\n• Disable Autopilot at any time to regain manual control\n\nQueue Priority:\n• Queued prompts are ALWAYS sent first before Autopilot triggers\n• Autopilot only activates when the queue is empty\n• This lets you steer the agent with queued instructions while Autopilot handles routine questions" > ' +
+            '<span class="codicon codicon-info"></span></span>' +
+            '</div>' +
+            '<button class="add-prompt-btn-inline" id="autopilot-edit-btn" title="Edit Autopilot prompt" aria-label="Edit Autopilot prompt"><span class="codicon codicon-edit"></span></button>' +
+            '</div>' +
+            '<div class="form-row hidden">' +
+            '<textarea class="form-input form-textarea" id="autopilot-text" placeholder="Enter Autopilot response text..." maxlength="2000"></textarea>' +
+            '</div>';
+        modalContent.appendChild(autopilotSection);
+
         // Integrations header
         var integrationsHeader = document.createElement('div');
         integrationsHeader.className = 'settings-section';
@@ -415,6 +440,8 @@
         interactiveApprovalToggle = document.getElementById('interactive-approval-toggle');
         webexToggle = document.getElementById('webex-toggle');
         telegramToggle = document.getElementById('telegram-toggle');
+        autopilotEditBtn = document.getElementById('autopilot-edit-btn');
+        autopilotTextInput = document.getElementById('autopilot-text');
         promptsList = document.getElementById('prompts-list');
         addPromptBtn = document.getElementById('add-prompt-btn');
         addPromptForm = document.getElementById('add-prompt-form');
@@ -436,7 +463,7 @@
         if (attachBtn) attachBtn.addEventListener('click', handleAttach);
         if (modeBtn) modeBtn.addEventListener('click', toggleModeDropdown);
 
-        document.querySelectorAll('.mode-option').forEach(function (option) {
+        document.querySelectorAll('.mode-option[data-mode]').forEach(function (option) {
             option.addEventListener('click', function () {
                 setMode(option.getAttribute('data-mode'), true);
                 closeModeDropdown();
@@ -507,6 +534,22 @@
                     toggleTelegramSetting();
                 }
             });
+        }
+        if (autopilotEditBtn) {
+            autopilotEditBtn.addEventListener('click', toggleAutopilotTextEdit);
+        }
+        if (autopilotToggle) {
+            autopilotToggle.addEventListener('click', toggleAutopilotSetting);
+            autopilotToggle.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleAutopilotSetting();
+                }
+            });
+        }
+        if (autopilotTextInput) {
+            autopilotTextInput.addEventListener('input', handleAutopilotTextInput);
+            autopilotTextInput.addEventListener('blur', flushAutopilotTextUpdate);
         }
         if (addPromptBtn) addPromptBtn.addEventListener('click', showAddPromptForm);
         // Add prompt form events (deferred - bind after modal created)
@@ -797,7 +840,7 @@
 
     function updateModeUI() {
         if (modeLabel) modeLabel.textContent = queueEnabled ? 'Queue' : 'Normal';
-        document.querySelectorAll('.mode-option').forEach(function (opt) {
+        document.querySelectorAll('.mode-option[data-mode]').forEach(function (opt) {
             opt.classList.toggle('selected', opt.getAttribute('data-mode') === (queueEnabled ? 'queue' : 'normal'));
         });
     }
@@ -863,6 +906,8 @@
                 interactiveApprovalEnabled = message.interactiveApprovalEnabled !== false;
                 webexEnabled = message.webexEnabled === true;
                 telegramEnabled = message.telegramEnabled === true;
+                autopilotEnabled = message.autopilotEnabled === true;
+                autopilotText = typeof message.autopilotText === 'string' ? message.autopilotText : '';
                 reusablePrompts = message.reusablePrompts || [];
                 updateSoundToggleUI();
                 updateInteractiveApprovalToggleUI();
@@ -870,6 +915,8 @@
                 updateWebexStatusUI(message.webexStatus);
                 updateTelegramToggleUI();
                 updateTelegramStatusUI(message.telegramStatus);
+                updateAutopilotToggleUI();
+                updateAutopilotTextUI();
                 renderPromptsList();
                 break;
             case 'slashCommandResults':
@@ -1712,6 +1759,7 @@
 
     function closeSettingsModal() {
         if (!settingsModalOverlay) return;
+        flushAutopilotTextUpdate();
         settingsModalOverlay.classList.add('hidden');
         hideAddPromptForm();
     }
@@ -1786,6 +1834,79 @@
             el.title = status.hint;
         }
         el.className = 'settings-status settings-status-' + status.status;
+    }
+
+    function toggleAutopilotSetting() {
+        autopilotEnabled = !autopilotEnabled;
+        updateAutopilotToggleUI();
+        vscode.postMessage({ type: 'updateAutopilotSetting', enabled: autopilotEnabled });
+    }
+
+    function updateAutopilotToggleUI() {
+        if (autopilotToggle) {
+            autopilotToggle.classList.toggle('active', autopilotEnabled);
+            autopilotToggle.setAttribute('aria-checked', autopilotEnabled ? 'true' : 'false');
+        }
+    }
+
+    function toggleAutopilotTextEdit() {
+        var autopilotTextRow = autopilotTextInput ? autopilotTextInput.closest('.form-row') : null;
+        if (autopilotTextRow) {
+            var isHidden = autopilotTextRow.classList.toggle('hidden');
+            if (!isHidden && autopilotTextInput) {
+                autopilotTextInput.focus();
+            }
+        }
+    }
+
+    function handleAutopilotTextInput() {
+        if (!autopilotTextInput) return;
+        autopilotText = autopilotTextInput.value;
+        autopilotTextEditVersion++;
+        scheduleAutopilotTextUpdate();
+    }
+
+    function scheduleAutopilotTextUpdate() {
+        if (autopilotTextDebounceTimer) clearTimeout(autopilotTextDebounceTimer);
+        autopilotTextDebounceTimer = setTimeout(flushAutopilotTextUpdate, 400);
+    }
+
+    function flushAutopilotTextUpdate() {
+        if (autopilotTextDebounceTimer) {
+            clearTimeout(autopilotTextDebounceTimer);
+            autopilotTextDebounceTimer = null;
+        }
+        if (!autopilotTextInput) return;
+        autopilotText = autopilotTextInput.value;
+        autopilotTextLastSentVersion = autopilotTextEditVersion;
+        vscode.postMessage({ type: 'updateAutopilotText', text: autopilotText });
+    }
+
+    function updateAutopilotTextUI() {
+        if (!autopilotTextInput) return;
+
+        var isFocused = document.activeElement === autopilotTextInput;
+        var hasUnflushedEdits = autopilotTextEditVersion > autopilotTextLastSentVersion;
+
+        // While user is typing, do not apply incoming settings updates that could revert new characters.
+        if (isFocused && hasUnflushedEdits) {
+            return;
+        }
+
+        if (autopilotTextInput.value !== autopilotText) {
+            var selectionStart = autopilotTextInput.selectionStart;
+            var selectionEnd = autopilotTextInput.selectionEnd;
+
+            autopilotTextInput.value = autopilotText;
+
+            if (isFocused && selectionStart !== null && selectionEnd !== null) {
+                var maxPos = autopilotTextInput.value.length;
+                autopilotTextInput.setSelectionRange(
+                    Math.min(selectionStart, maxPos),
+                    Math.min(selectionEnd, maxPos)
+                );
+            }
+        }
     }
 
     function showAddPromptForm() {

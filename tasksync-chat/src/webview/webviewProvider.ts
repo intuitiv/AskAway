@@ -75,7 +75,7 @@ type ToWebviewMessage =
     | { type: 'updateAttachments'; attachments: AttachmentInfo[] }
     | { type: 'imageSaved'; attachment: AttachmentInfo }
     | { type: 'openSettingsModal' }
-    | { type: 'updateSettings'; soundEnabled: boolean; interactiveApprovalEnabled: boolean; webexEnabled: boolean; telegramEnabled: boolean; reusablePrompts: ReusablePrompt[] }
+    | { type: 'updateSettings'; soundEnabled: boolean; interactiveApprovalEnabled: boolean; webexEnabled: boolean; telegramEnabled: boolean; autopilotEnabled: boolean; autopilotText: string; reusablePrompts: ReusablePrompt[] }
     | { type: 'slashCommandResults'; prompts: ReusablePrompt[] }
     | { type: 'playNotificationSound' }
     | { type: 'contextSearchResults'; suggestions: Array<{ type: string; label: string; description: string; detail: string }> }
@@ -103,6 +103,8 @@ type FromWebviewMessage =
     | { type: 'updateInteractiveApprovalSetting'; enabled: boolean }
     | { type: 'updateWebexSetting'; enabled: boolean }
     | { type: 'updateTelegramSetting'; enabled: boolean }
+    | { type: 'updateAutopilotSetting'; enabled: boolean }
+    | { type: 'updateAutopilotText'; text: string }
     | { type: 'addReusablePrompt'; name: string; prompt: string }
     | { type: 'editReusablePrompt'; id: string; name: string; prompt: string }
     | { type: 'removeReusablePrompt'; id: string }
@@ -173,6 +175,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _webexService: any = null;
     private _telegramService: any = null;
 
+    private readonly _AUTOPILOT_DEFAULT_TEXT = 'You are temporarily in autonomous mode and must now make your own decision. If another question arises, be sure to ask it, as autonomous mode is temporary.';
+
+    // Autopilot enabled (loaded from VS Code settings)
+    private _autopilotEnabled: boolean = false;
+
+    // Autopilot text (loaded from VS Code settings)
+    private _autopilotText: string = '';
+
     // Flag to prevent config reload during our own updates (avoids race condition)
     private _isUpdatingConfig: boolean = false;
 
@@ -213,6 +223,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 }
                 if (e.affectsConfiguration('tasksync.notificationSound') ||
                     e.affectsConfiguration('tasksync.interactiveApproval') ||
+                    e.affectsConfiguration('tasksync.autopilot') ||
+                    e.affectsConfiguration('tasksync.autopilotText') ||
+                    e.affectsConfiguration('tasksync.autoAnswer') ||
+                    e.affectsConfiguration('tasksync.autoAnswerText') ||
                     e.affectsConfiguration('tasksync.reusablePrompts')) {
                     this._loadSettings();
                     this._updateSettingsUI();
@@ -382,8 +396,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      */
     public openSettingsModal(): void {
         this._view?.webview.postMessage({ type: 'openSettingsModal' } as ToWebviewMessage);
-        // Don't reload settings here - they should already be in sync
-        // Just send current state without reloading from config
         this._updateSettingsUI();
     }
 
@@ -459,10 +471,66 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     /**
      * Load settings from VS Code configuration
      */
+    private _getAutopilotDefaultText(config?: vscode.WorkspaceConfiguration): string {
+        const settings = config ?? vscode.workspace.getConfiguration('askaway');
+        const inspected = settings.inspect<string>('autopilotText');
+        const defaultValue = typeof inspected?.defaultValue === 'string' ? inspected.defaultValue : '';
+        return defaultValue.trim().length > 0 ? defaultValue : this._AUTOPILOT_DEFAULT_TEXT;
+    }
+
+    private _normalizeAutopilotText(text: string, config?: vscode.WorkspaceConfiguration): string {
+        const defaultAutopilotText = this._getAutopilotDefaultText(config);
+        return text.trim().length > 0 ? text : defaultAutopilotText;
+    }
+
     private _loadSettings(): void {
         const config = vscode.workspace.getConfiguration('askaway');
         this._soundEnabled = config.get<boolean>('notificationSound', true);
         this._interactiveApprovalEnabled = config.get<boolean>('interactiveApproval', true);
+
+        // Backward-compatible migration: read old 'autoAnswer'/'autoAnswerText' keys
+        // if the new 'autopilot'/'autopilotText' keys have not been explicitly set by the user.
+        const inspectedAutopilot = config.inspect<boolean>('autopilot');
+        const hasNewAutopilotKey = inspectedAutopilot?.globalValue !== undefined
+            || inspectedAutopilot?.workspaceValue !== undefined
+            || inspectedAutopilot?.workspaceFolderValue !== undefined;
+
+        if (!hasNewAutopilotKey) {
+            const oldVal = config.inspect<boolean>('autoAnswer');
+            const hasOldKey = oldVal?.globalValue !== undefined
+                || oldVal?.workspaceValue !== undefined
+                || oldVal?.workspaceFolderValue !== undefined;
+            if (hasOldKey) {
+                this._autopilotEnabled = config.get<boolean>('autoAnswer', false);
+            } else {
+                this._autopilotEnabled = false;
+            }
+        } else {
+            this._autopilotEnabled = config.get<boolean>('autopilot', false);
+        }
+
+        const defaultAutopilotText = this._getAutopilotDefaultText(config);
+
+        const inspectedAutopilotText = config.inspect<string>('autopilotText');
+        const hasNewAutopilotTextKey = inspectedAutopilotText?.globalValue !== undefined
+            || inspectedAutopilotText?.workspaceValue !== undefined
+            || inspectedAutopilotText?.workspaceFolderValue !== undefined;
+
+        if (!hasNewAutopilotTextKey) {
+            const oldTextVal = config.inspect<string>('autoAnswerText');
+            const hasOldTextKey = oldTextVal?.globalValue !== undefined
+                || oldTextVal?.workspaceValue !== undefined
+                || oldTextVal?.workspaceFolderValue !== undefined;
+            if (hasOldTextKey) {
+                const oldText = config.get<string>('autoAnswerText', defaultAutopilotText);
+                this._autopilotText = this._normalizeAutopilotText(oldText, config);
+            } else {
+                this._autopilotText = defaultAutopilotText;
+            }
+        } else {
+            const configuredAutopilotText = config.get<string>('autopilotText', defaultAutopilotText);
+            this._autopilotText = this._normalizeAutopilotText(configuredAutopilotText, config);
+        }
 
         // Load reusable prompts from settings
         const savedPrompts = config.get<Array<{ name: string; prompt: string }>>('reusablePrompts', []);
@@ -504,6 +572,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             interactiveApprovalEnabled: this._interactiveApprovalEnabled,
             webexEnabled: this._getWebexEnabled(),
             telegramEnabled: this._getTelegramEnabled(),
+            autopilotEnabled: this._autopilotEnabled,
+            autopilotText: this._autopilotText,
             reusablePrompts: this._reusablePrompts,
             webexStatus,
             telegramStatus
@@ -610,7 +680,64 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     /**
      * Wait for user response
      */
+    private _cancelSupersededPendingRequest(): void {
+        if (!this._currentToolCallId || !this._pendingRequests.has(this._currentToolCallId)) {
+            return;
+        }
+
+        const oldToolCallId = this._currentToolCallId;
+        const oldResolve = this._pendingRequests.get(oldToolCallId);
+        if (oldResolve) {
+            // Resolve the orphaned promise with a cancellation indicator
+            oldResolve({
+                value: '[CANCELLED: New request superseded this one]',
+                queue: this._queueEnabled && this._promptQueue.length > 0,
+                attachments: [],
+                cancelled: true
+            });
+            this._pendingRequests.delete(oldToolCallId);
+
+            // Update the old entry status to indicate it was superseded
+            const oldEntry = this._currentSessionCallsMap.get(oldToolCallId);
+            if (oldEntry && oldEntry.status === 'pending') {
+                oldEntry.status = 'cancelled';
+                oldEntry.response = '[Superseded by new request]';
+                this._updateCurrentSessionUI();
+            }
+            console.warn(`[TaskSync] Previous request ${oldToolCallId} was superseded by new request`);
+        }
+    }
+
     public async waitForUserResponse(question: string): Promise<UserResponseResult> {
+        if (this._autopilotEnabled && !(this._queueEnabled && this._promptQueue.length > 0)) {
+            // Race condition prevention: If there's already a pending request, cancel it
+            // This prevents orphaned promises when waitForUserResponse is called multiple times
+            this._cancelSupersededPendingRequest();
+
+            const toolCallId = `tc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+            this._currentToolCallId = toolCallId;
+
+            const effectiveText = this._normalizeAutopilotText(this._autopilotText);
+            const entry: ToolCallEntry = {
+                id: toolCallId,
+                prompt: question,
+                response: effectiveText,
+                timestamp: Date.now(),
+                isFromQueue: false,
+                status: 'completed'
+            };
+            this._currentSessionCalls.unshift(entry);
+            this._currentSessionCallsMap.set(entry.id, entry);
+            this._updateCurrentSessionUI();
+            this._currentToolCallId = null;
+
+            return {
+                value: effectiveText,
+                queue: this._queueEnabled && this._promptQueue.length > 0,
+                attachments: []
+            };
+        }
+
         // If view is not available, open the sidebar first
         if (!this._view) {
             // Open the TaskSync sidebar view
@@ -631,29 +758,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         // Race condition prevention: If there's already a pending request, cancel it
         // This prevents orphaned promises when waitForUserResponse is called multiple times
-        if (this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId)) {
-            const oldToolCallId = this._currentToolCallId;
-            const oldResolve = this._pendingRequests.get(oldToolCallId);
-            if (oldResolve) {
-                // Resolve the orphaned promise with a cancellation indicator
-                oldResolve({
-                    value: '[CANCELLED: New request superseded this one]',
-                    queue: false,
-                    attachments: [],
-                    cancelled: true
-                });
-                this._pendingRequests.delete(oldToolCallId);
-
-                // Update the old entry status to indicate it was superseded
-                const oldEntry = this._currentSessionCallsMap.get(oldToolCallId);
-                if (oldEntry && oldEntry.status === 'pending') {
-                    oldEntry.status = 'cancelled';
-                    oldEntry.response = '[Superseded by new request]';
-                    this._updateCurrentSessionUI();
-                }
-                console.warn(`[TaskSync] Previous request ${oldToolCallId} was superseded by new request`);
-            }
-        }
+        this._cancelSupersededPendingRequest();
 
         const toolCallId = `tc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         this._currentToolCallId = toolCallId;
@@ -681,7 +786,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
                 return {
                     value: queuedPrompt.prompt,
-                    queue: true,
+                    queue: this._queueEnabled && this._promptQueue.length > 0,
                     attachments: queuedPrompt.attachments || []  // Return stored attachments
                 };
             }
@@ -841,6 +946,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'updateTelegramSetting':
                 this._handleUpdateTelegramSetting(message.enabled);
                 break;
+            case 'updateAutopilotSetting':
+                this._handleUpdateAutopilotSetting(message.enabled);
+                break;
+            case 'updateAutopilotText':
+                this._handleUpdateAutopilotText(message.text);
+                break;
             case 'addReusablePrompt':
                 this._handleAddReusablePrompt(message.name, message.prompt);
                 break;
@@ -956,7 +1067,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 });
 
                 this._updateCurrentSessionUI();
-                resolve({ value, queue: this._queueEnabled, attachments });
+                resolve({ value, queue: this._queueEnabled && this._promptQueue.length > 0, attachments });
                 this._pendingRequests.delete(this._currentToolCallId);
                 this._currentToolCallId = null;
             } else {
@@ -1399,7 +1510,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             this._saveQueueToDisk();
             this._updateQueueUI();
 
-            resolve({ value: queuedPrompt.prompt, queue: true, attachments: queuedPrompt.attachments || [] });
+            resolve({ value: queuedPrompt.prompt, queue: this._queueEnabled && this._promptQueue.length > 0, attachments: queuedPrompt.attachments || [] });
             this._pendingRequests.delete(this._currentToolCallId!);
             this._currentToolCallId = null;
         } else {
@@ -1509,8 +1620,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      * Handle opening settings modal - send settings to webview
      */
     private _handleOpenSettingsModal(): void {
-        // Don't reload settings here - just send current state
-        // Settings are already kept in sync via onDidChangeConfiguration
         this._updateSettingsUI();
     }
 
@@ -1566,6 +1675,24 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
+     * Handle updating autopilot setting
+     */
+    private async _handleUpdateAutopilotSetting(enabled: boolean): Promise<void> {
+        this._autopilotEnabled = enabled;
+        this._isUpdatingConfig = true;
+        try {
+            const config = vscode.workspace.getConfiguration('askaway');
+            await config.update('autopilot', enabled, vscode.ConfigurationTarget.Global);
+            // Reload settings after update to ensure consistency
+            this._loadSettings();
+            // Update UI to reflect the saved state
+            this._updateSettingsUI();
+        } finally {
+            this._isUpdatingConfig = false;
+        }
+    }
+
+    /**
      * Handle updating telegram enabled setting
      */
     private async _handleUpdateTelegramSetting(enabled: boolean): Promise<void> {
@@ -1574,6 +1701,25 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             const config = vscode.workspace.getConfiguration('askaway.telegram');
             await config.update('enabled', enabled, vscode.ConfigurationTarget.Global);
             // The config watcher in extension.ts will call telegramService.reloadConfig()
+            this._updateSettingsUI();
+        } finally {
+            this._isUpdatingConfig = false;
+        }
+    }
+
+    /**
+     * Handle updating autopilot text
+     */
+    private async _handleUpdateAutopilotText(text: string): Promise<void> {
+        this._isUpdatingConfig = true;
+        try {
+            const config = vscode.workspace.getConfiguration('askaway');
+            const normalizedText = this._normalizeAutopilotText(text, config);
+            this._autopilotText = normalizedText;
+            await config.update('autopilotText', normalizedText, vscode.ConfigurationTarget.Global);
+            // Reload settings after update to ensure consistency
+            this._loadSettings();
+            // Update UI to reflect the saved state
             this._updateSettingsUI();
         } finally {
             this._isUpdatingConfig = false;
@@ -2010,6 +2156,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                         <p class="welcome-card-desc">Batch your responses. AI consumes from queue automatically, one by one.</p>
                     </div>
                 </div>
+
+                <p class="welcome-autopilot-info"> Tip: Enable <strong>Autopilot</strong> to automatically respond to ask_user prompts without waiting for your input, using a customizable prompt you can configure in Settings.<br>Queued prompts always take priority over Autopilot responses.</p>
             </div>
 
             <!-- Tool Call History Area -->
@@ -2069,6 +2217,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     </div>
                 </div>
                 <div class="actions-right">
+                    <span class="autopilot-label">Autopilot</span>
+                    <div class="toggle-switch" id="autopilot-toggle" role="switch" aria-checked="false" aria-label="Enable Autopilot mode" tabindex="0"></div>
                     <button id="send-btn" title="Send message" aria-label="Send message">
                         <span class="codicon codicon-arrow-up"></span>
                     </button>
@@ -2078,9 +2228,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         <!-- Mode Dropdown - positioned outside input-container to avoid clipping -->
         <div class="mode-dropdown hidden" id="mode-dropdown">
             <div class="mode-option" data-mode="normal">
+                <span class="codicon codicon-comment-discussion"></span>
                 <span>Normal</span>
             </div>
             <div class="mode-option" data-mode="queue">
+                <span class="codicon codicon-layers"></span>
                 <span>Queue</span>
             </div>
         </div>

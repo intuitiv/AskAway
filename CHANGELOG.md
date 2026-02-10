@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## TaskSync v2.0.14 (02-07-26)
+- refactor: rename Auto Answer to Autopilot, improve UI and settings
+- - Rename all autoAnswer references to autopilot across codebase
+-   (package.json, webviewProvider.ts, webview.js, CHANGELOG, READMEs)
+- - Add backward-compatible settings migration from old keys
+-   (tasksync.autoAnswer  tasksync.autopilot, tasksync.autoAnswerText  tasksync.autopilotText)
+- - Move Autopilot toggle beside the send button in the action bar
+- - Remove redundant autopilot-bar row to eliminate unnecessary spacing
+- - Update welcome section info tip with clearer Autopilot description
+- - Replace toggle switch in Settings modal with Edit button for Autopilot prompt
+-   (on/off control remains solely in the action bar toggle)
+
+
+## TaskSync v2.0.13 
+- **Autopilot Mode** (renamed from Auto Answer): Automatically respond to `ask_user` prompts with configurable text for hands-free agent operation
+- Autopilot toggle below the send button for quick access
+- Customizable Autopilot response text via settings (`tasksync.autopilot`, `tasksync.autopilotText`)
+- Queue priority: queued prompts are ALWAYS sent before Autopilot triggers
+- Show tool call name preview in chat (truncated to 40 chars)
+- Fix queue state reporting to accurately reflect whether response came from queue
+- Fix stale settings overwriting user input for Autopilot text
+- Fix redundant settings load in settings modal
+
 ## TaskSync v2.0.12 (01-06-26)
 - Modified card rendering to add 'expanded' class only to the latest tool call
 - Older tool call cards are now collapsed by default

@@ -10,6 +10,7 @@ export interface Input {
 export interface AskUserToolResult {
     response: string;
     attachments: string[];
+    queue: boolean;
 }
 
 /**
@@ -81,7 +82,8 @@ export async function askUser(
         if (result.cancelled) {
             return {
                 response: result.value,
-                attachments: []
+                attachments: [],
+                queue: result.queue
             };
         }
 
@@ -113,7 +115,8 @@ export async function askUser(
 
         return {
             response: responseText,
-            attachments: validAttachments
+            attachments: validAttachments,
+            queue: result.queue
         };
     } catch (error) {
         // Re-throw cancellation errors without logging (they're expected)
@@ -129,7 +132,8 @@ export async function askUser(
         vscode.window.showErrorMessage(`AskAway: ${error instanceof Error ? error.message : 'Failed to show question'}`);
         return {
             response: '',
-            attachments: []
+            attachments: [],
+            queue: false
         };
     } finally {
         // Always clean up the cancellation listener to prevent memory leaks
@@ -143,6 +147,19 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     let askUserTool: vscode.Disposable | undefined;
     try {
         askUserTool = vscode.lm.registerTool('ask_user', {
+        prepareInvocation(options: vscode.LanguageModelToolInvocationPrepareOptions<Input>) {
+            const rawQuestion = typeof options?.input?.question === 'string' ? options.input.question : '';
+            const questionPreview = rawQuestion.trim().replace(/\s+/g, ' ');
+
+            const MAX_PREVIEW_LEN = 40;
+            const truncated = questionPreview.length > MAX_PREVIEW_LEN
+                ? questionPreview.slice(0, MAX_PREVIEW_LEN - 3) + '...'
+                : questionPreview;
+
+            return {
+                invocationMessage: truncated ? `ask_user: ${truncated}` : 'ask_user'
+            };
+        },
         async invoke(options: vscode.LanguageModelToolInvocationOptions<Input>, token: vscode.CancellationToken) {
             const params = options.input;
 
@@ -153,7 +170,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
                 const resultParts: (vscode.LanguageModelTextPart | vscode.LanguageModelDataPart)[] = [
                     new vscode.LanguageModelTextPart(JSON.stringify({
                         response: result.response,
-                        queued: provider.isQueueEnabled(),
+                        queued: result.queue,
                         attachmentCount: result.attachments.length
                     }))
                 ];
