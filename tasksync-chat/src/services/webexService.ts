@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { CONFIG_NAMESPACE } from '../constants/branding';
 
 // ── Interfaces ─────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ export class WebexService {
     // ── Configuration ──────────────────────────────────────────
 
     public reloadConfig() {
-        const config = vscode.workspace.getConfiguration('askaway');
+        const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         this._enabled = config.get<boolean>('webex.enabled', false);
         this._roomId = config.get<string>('webex.roomId', '');
         this._tokenFilePath = config.get<string>('webex.tokenFilePath', '');
@@ -198,7 +199,7 @@ export class WebexService {
             // Persist the new refresh token to settings (Webex rotates it)
             if (data.refresh_token && data.refresh_token !== this._refreshToken) {
                 this._refreshToken = data.refresh_token;
-                const config = vscode.workspace.getConfiguration('askaway');
+                const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
                 await config.update('webex.refreshToken', data.refresh_token, vscode.ConfigurationTarget.Global);
                 console.log('AskAway/Webex: New refresh token saved to settings');
             }

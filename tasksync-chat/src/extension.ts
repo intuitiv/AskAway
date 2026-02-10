@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, DEBUG_LOG_FILENAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
 import { registerTools } from './tools';
 import { McpServerManager } from './mcp/mcpServer';
@@ -17,7 +18,7 @@ let remoteServer: RemoteUiServer | undefined;
 let remoteOutputChannel: vscode.OutputChannel | undefined;
 
 // File-based logger for debugging activation issues
-const LOG_FILE = path.join(os.homedir(), 'askaway-debug.log');
+const LOG_FILE = path.join(os.homedir(), DEBUG_LOG_FILENAME);
 function fileLog(msg: string) {
     const line = `[${new Date().toISOString()}] ${msg}\n`;
     try { fs.appendFileSync(LOG_FILE, line); } catch { /* ignore */ }
@@ -49,7 +50,7 @@ async function hasExternalMcpClientsAsync(): Promise<boolean> {
             const content = await fs.promises.readFile(configPath, 'utf8');
             const config = JSON.parse(content);
             // Check if askaway is registered
-            if (config.mcpServers?.['askaway']) {
+            if (config.mcpServers?.[MCP_SERVER_NAME]) {
                 _hasExternalMcpClientsResult = true;
                 return true;
             }
@@ -70,7 +71,7 @@ export function activate(context: vscode.ExtensionContext) {
     fileLog(`extensionPath: ${context.extensionPath}`);
 
     // Create output channel for logging
-    const outputChannel = vscode.window.createOutputChannel('AskAway');
+    const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
     context.subscriptions.push(outputChannel);
     outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Extension activating...`);
     outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Debug log at ${LOG_FILE}`);
@@ -104,7 +105,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Watch for Webex configuration changes
         context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('askaway.webex')) {
+            if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.webex`)) {
                 outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Webex configuration changed, reloading...`);
                 webexService.reloadConfig();
                 webexService.start(); // re-start if newly configured
@@ -121,7 +122,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Watch for Telegram configuration changes
         context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('askaway.telegram')) {
+            if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.telegram`)) {
                 outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Telegram configuration changed, reloading...`);
                 telegramService.reloadConfig();
             }
@@ -178,7 +179,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Check if MCP should auto-start based on settings and external client configs
     // Deferred to avoid blocking activation with file I/O
-    const config = vscode.workspace.getConfiguration('askaway');
+    const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
     const mcpEnabled = config.get<boolean>('mcpEnabled', false);
     const autoStartIfClients = config.get<boolean>('mcpAutoStartIfClients', true);
 
@@ -388,7 +389,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── Webex OAuth Authorization Command ──
     const authorizeWebexCmd = vscode.commands.registerCommand('askaway.authorizeWebex', async () => {
-        const config = vscode.workspace.getConfiguration('askaway');
+        const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         const clientId = config.get<string>('webex.clientId', '');
 
         if (!clientId) {

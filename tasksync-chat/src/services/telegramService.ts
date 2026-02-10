@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { CONFIG_NAMESPACE } from '../constants/branding';
 
 // ── Interfaces ─────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ export class TelegramService {
     // ── Configuration ──────────────────────────────────────────
 
     public reloadConfig() {
-        const config = vscode.workspace.getConfiguration('askaway');
+        const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         this._enabled = config.get<boolean>('telegram.enabled', false);
         this._botToken = config.get<string>('telegram.botToken', '') || undefined;
         this._chatId = config.get<string>('telegram.chatId', '') || undefined;

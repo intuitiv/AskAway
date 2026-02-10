@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { CONFIG_NAMESPACE, VIEW_TYPE, VIEW_FOCUS_COMMAND } from '../constants/branding';
 import { FILE_EXCLUSION_PATTERNS, FILE_SEARCH_EXCLUSION_PATTERNS, formatExcludePattern } from '../constants/fileExclusions';
 import { ContextManager, ContextReferenceType, ContextReference } from '../context';
 
@@ -115,7 +116,7 @@ type FromWebviewMessage =
 
 
 export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
-    public static readonly viewType = 'askAwayView';
+    public static readonly viewType = VIEW_TYPE;
 
     private _view?: vscode.WebviewView;
     private _pendingRequests: Map<string, (result: UserResponseResult) => void> = new Map();
@@ -472,7 +473,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      * Load settings from VS Code configuration
      */
     private _getAutopilotDefaultText(config?: vscode.WorkspaceConfiguration): string {
-        const settings = config ?? vscode.workspace.getConfiguration('askaway');
+        const settings = config ?? vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         const inspected = settings.inspect<string>('autopilotText');
         const defaultValue = typeof inspected?.defaultValue === 'string' ? inspected.defaultValue : '';
         return defaultValue.trim().length > 0 ? defaultValue : this._AUTOPILOT_DEFAULT_TEXT;
@@ -484,7 +485,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     private _loadSettings(): void {
-        const config = vscode.workspace.getConfiguration('askaway');
+        const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         this._soundEnabled = config.get<boolean>('notificationSound', true);
         this._interactiveApprovalEnabled = config.get<boolean>('interactiveApproval', true);
 
@@ -547,7 +548,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private async _saveReusablePrompts(): Promise<void> {
         this._isUpdatingConfig = true;
         try {
-            const config = vscode.workspace.getConfiguration('askaway');
+            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
             const promptsToSave = this._reusablePrompts.map(p => ({
                 name: p.name,
                 prompt: p.prompt
@@ -741,7 +742,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         // If view is not available, open the sidebar first
         if (!this._view) {
             // Open the TaskSync sidebar view
-            await vscode.commands.executeCommand('askAwayView.focus');
+            await vscode.commands.executeCommand(VIEW_FOCUS_COMMAND);
 
             // Wait for view to be resolved (up to configured timeout)
             let waited = 0;
@@ -1630,7 +1631,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._soundEnabled = enabled;
         this._isUpdatingConfig = true;
         try {
-            const config = vscode.workspace.getConfiguration('askaway');
+            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
             await config.update('notificationSound', enabled, vscode.ConfigurationTarget.Global);
             // Reload settings after update to ensure consistency
             this._loadSettings();
@@ -1648,7 +1649,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._interactiveApprovalEnabled = enabled;
         this._isUpdatingConfig = true;
         try {
-            const config = vscode.workspace.getConfiguration('askaway');
+            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
             await config.update('interactiveApproval', enabled, vscode.ConfigurationTarget.Global);
             // Reload settings after update to ensure consistency
             this._loadSettings();
@@ -1681,7 +1682,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._autopilotEnabled = enabled;
         this._isUpdatingConfig = true;
         try {
-            const config = vscode.workspace.getConfiguration('askaway');
+            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
             await config.update('autopilot', enabled, vscode.ConfigurationTarget.Global);
             // Reload settings after update to ensure consistency
             this._loadSettings();
@@ -1713,7 +1714,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private async _handleUpdateAutopilotText(text: string): Promise<void> {
         this._isUpdatingConfig = true;
         try {
-            const config = vscode.workspace.getConfiguration('askaway');
+            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
             const normalizedText = this._normalizeAutopilotText(text, config);
             this._autopilotText = normalizedText;
             await config.update('autopilotText', normalizedText, vscode.ConfigurationTarget.Global);

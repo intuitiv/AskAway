@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { AskAwayWebviewProvider } from '../webview/webviewProvider';
 import { askUser } from '../tools';
 import { getImageMimeType } from '../utils/imageUtils';
+import { CONFIG_NAMESPACE, MCP_SERVER_NAME } from '../constants/branding';
 
 
 async function tryReadImageAsMcpContent(uri: string): Promise<null | { type: 'image'; data: string; mimeType: string }> {
@@ -67,7 +68,7 @@ export class McpServerManager {
         try {
             if (!reusePort || !this.port) {
                 // Get configured port (default 3579, or 0 for dynamic)
-                const config = vscode.workspace.getConfiguration('askaway');
+                const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
                 const configuredPort = config.get<number>('mcpPort', 3579);
 
                 if (configuredPort > 0) {
@@ -185,7 +186,7 @@ export class McpServerManager {
             this._isRunning = true;
 
             // Auto-register with supported clients
-            const config = vscode.workspace.getConfiguration('askaway');
+            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
             if (config.get<boolean>('autoRegisterMcp', true)) {
                 await this.autoRegisterMcp();
             }
@@ -221,14 +222,14 @@ export class McpServerManager {
         // Register with Kiro
         await this.registerWithClient(
             path.join(os.homedir(), '.kiro', 'settings', 'mcp.json'),
-            'askaway',
+            MCP_SERVER_NAME,
             { url: serverUrl }
         );
 
         // Register with Antigravity/Gemini CLI
         await this.registerWithClient(
             path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json'),
-            'askaway',
+            MCP_SERVER_NAME,
             { serverUrl: serverUrl }
         );
 
@@ -282,8 +283,8 @@ export class McpServerManager {
             try {
                 const content = await fs.promises.readFile(configPath, 'utf8');
                 const config = JSON.parse(content);
-                if (config.mcpServers?.['askaway']) {
-                    delete config.mcpServers['askaway'];
+                if (config.mcpServers?.[MCP_SERVER_NAME]) {
+                    delete config.mcpServers[MCP_SERVER_NAME];
                     await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2));
                 }
             } catch {
