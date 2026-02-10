@@ -2360,6 +2360,27 @@ button#send-btn:disabled {
     font-size: 12px;
 }
 
+/* Generic integration status text */
+.settings-status {
+    padding: 4px 0 2px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    line-height: 1.4;
+}
+
+.settings-status-connected {
+    color: var(--vscode-testing-iconPassed, #73c991);
+}
+
+.settings-status-disabled {
+    color: var(--vscode-descriptionForeground);
+}
+
+.settings-status-token-missing,
+.settings-status-incomplete {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
 .webex-status-badge {
     display: inline-block;
     padding: 2px 8px;

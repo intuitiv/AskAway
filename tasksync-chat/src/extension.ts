@@ -16,6 +16,13 @@ let contextManager: ContextManager | undefined;
 let remoteServer: RemoteUiServer | undefined;
 let remoteOutputChannel: vscode.OutputChannel | undefined;
 
+// File-based logger for debugging activation issues
+const LOG_FILE = path.join(os.homedir(), 'askaway-debug.log');
+function fileLog(msg: string) {
+    const line = `[${new Date().toISOString()}] ${msg}\n`;
+    try { fs.appendFileSync(LOG_FILE, line); } catch { /* ignore */ }
+}
+
 // Memoized result for external MCP client check (only checked once per activation)
 let _hasExternalMcpClientsResult: boolean | undefined;
 
@@ -55,38 +62,70 @@ async function hasExternalMcpClientsAsync(): Promise<boolean> {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-    // Initialize context manager for #terminal, #problems features
-    contextManager = new ContextManager();
-    context.subscriptions.push({ dispose: () => contextManager?.dispose() });
+    // Clear old log file on each activation
+    try { fs.writeFileSync(LOG_FILE, ''); } catch { /* ignore */ }
+    fileLog('=== AskAway Extension Activation Start ===');
+    fileLog(`LOG_FILE: ${LOG_FILE}`);
+    fileLog(`extensionUri: ${context.extensionUri.toString()}`);
+    fileLog(`extensionPath: ${context.extensionPath}`);
 
-    const provider = new AskAwayWebviewProvider(context.extensionUri, context, contextManager);
-    webviewProvider = provider;
+    // Create output channel for logging
+    const outputChannel = vscode.window.createOutputChannel('AskAway');
+    context.subscriptions.push(outputChannel);
+    outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Extension activating...`);
+    outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Debug log at ${LOG_FILE}`);
 
-    // Initialize Webex Service
-    const webexService = new WebexService();
-    provider.setWebexService(webexService);
-    webexService.start();
-    context.subscriptions.push({ dispose: () => webexService.dispose() });
+    try {
+        // Initialize context manager for #terminal, #problems features
+        fileLog('Step 1: Initializing ContextManager...');
+        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Initializing ContextManager...`);
+        contextManager = new ContextManager();
+        context.subscriptions.push({ dispose: () => contextManager?.dispose() });
+        fileLog('Step 1: ContextManager OK');
 
-    // Watch for Webex configuration changes
-    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-        if (e.affectsConfiguration('askaway.webex')) {
-            webexService.reloadConfig();
-            webexService.start(); // re-start if newly configured
-        }
-    }));
+        fileLog('Step 2: Initializing WebviewProvider...');
+        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Initializing WebviewProvider...`);
+        const provider = new AskAwayWebviewProvider(context.extensionUri, context, contextManager);
+        webviewProvider = provider;
+        fileLog(`Step 2: WebviewProvider OK, viewType="${AskAwayWebviewProvider.viewType}"`);
 
-    // Initialize Telegram Service
-    const telegramService = new TelegramService();
-    provider.setTelegramService(telegramService);
-    context.subscriptions.push({ dispose: () => telegramService.dispose() });
+        // Initialize Webex Service
+        fileLog('Step 3: Initializing WebexService...');
+        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Initializing WebexService...`);
+        const webexService = new WebexService(outputChannel);
+        provider.setWebexService(webexService);
+        fileLog('Step 3: WebexService created');
+        
+        fileLog('Step 3b: Starting WebexService...');
+        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Starting WebexService...`);
+        webexService.start();
+        context.subscriptions.push({ dispose: () => webexService.dispose() });
+        fileLog('Step 3b: WebexService started');
 
-    // Watch for Telegram configuration changes
-    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-        if (e.affectsConfiguration('askaway.telegram')) {
-            telegramService.reloadConfig();
-        }
-    }));
+        // Watch for Webex configuration changes
+        context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('askaway.webex')) {
+                outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Webex configuration changed, reloading...`);
+                webexService.reloadConfig();
+                webexService.start(); // re-start if newly configured
+            }
+        }));
+
+        // Initialize Telegram Service
+        fileLog('Step 4: Initializing TelegramService...');
+        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Initializing TelegramService...`);
+        const telegramService = new TelegramService();
+        provider.setTelegramService(telegramService);
+        context.subscriptions.push({ dispose: () => telegramService.dispose() });
+        fileLog('Step 4: TelegramService OK');
+
+        // Watch for Telegram configuration changes
+        context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('askaway.telegram')) {
+                outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Telegram configuration changed, reloading...`);
+                telegramService.reloadConfig();
+            }
+        }));
 
     // ── Copilot Progress: Track file changes for Webex/Telegram visibility ──
     // When Copilot modifies files, we accumulate a list so it can be
@@ -113,16 +152,29 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(fileWatcher);
 
     // Register the provider and add it to disposables for proper cleanup
+    fileLog('Step 5: Registering WebviewViewProvider...');
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(AskAwayWebviewProvider.viewType, provider),
         provider // Provider implements Disposable for cleanup
     );
+    fileLog(`Step 5: Registered provider with viewType="${AskAwayWebviewProvider.viewType}"`);
 
     // Register VS Code LM Tools (always available for Copilot)
-    registerTools(context, provider);
+    fileLog('Step 6: Registering LM tools...');
+    outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Registering LM tools...`);
+    try {
+        registerTools(context, provider);
+        fileLog('Step 6: LM tools registered OK');
+    } catch (e) {
+        fileLog(`Step 6: ERROR registering LM tools: ${e}`);
+        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Error registering tools: ${e}`);
+    }
 
     // Initialize MCP server manager (but don't start yet)
+    fileLog('Step 7: Initializing MCP Server manager...');
+    outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Initializing MCP Server manager...`);
     mcpServer = new McpServerManager(provider);
+    fileLog('Step 7: MCP Server manager initialized');
 
     // Check if MCP should auto-start based on settings and external client configs
     // Deferred to avoid blocking activation with file I/O
@@ -448,6 +500,16 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(authorizeWebexCmd, getTelegramChatIdCmd);
+    fileLog('=== AskAway Extension Activation Complete ===');
+    outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Activation complete!`);
+    } catch (error) {
+        fileLog(`CRITICAL ACTIVATION ERROR: ${error}`);
+        if (error instanceof Error) {
+            fileLog(`Stack: ${error.stack}`);
+        }
+        outputChannel.appendLine(`[AskAway] CRITICAL ACTIVATION ERROR: ${error}`);
+        console.error('AskAway Activation Error:', error);
+    }
 }
 
 /**

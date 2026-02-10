@@ -1,5 +1,5 @@
 /**
- * AskAway Extension - Webview Script
+ * TaskSync Extension - Webview Script
  * Handles tool call history, prompt queue, attachments, and file autocomplete
  */
 (function () {
@@ -24,6 +24,8 @@
     // Settings state
     let soundEnabled = true;
     let interactiveApprovalEnabled = true;
+    let webexEnabled = false;
+    let telegramEnabled = false;
     let reusablePrompts = [];
     let audioUnlocked = false; // Track if audio playback has been unlocked by user gesture
 
@@ -65,11 +67,11 @@
     let slashDropdown, slashList, slashEmpty;
     // Settings modal elements
     let settingsModal, settingsModalOverlay, settingsModalClose;
-    let soundToggle, interactiveApprovalToggle, promptsList, addPromptBtn, addPromptForm;
+    let soundToggle, interactiveApprovalToggle, webexToggle, telegramToggle, promptsList, addPromptBtn, addPromptForm;
 
     function init() {
         try {
-            console.log('[AskAway Webview] init() starting...');
+            console.log('[TaskSync Webview] init() starting...');
             cacheDOMElements();
             createHistoryModal();
             createEditModeUI();
@@ -77,7 +79,7 @@
             createSettingsModal();
             bindEventListeners();
             unlockAudioOnInteraction(); // Enable audio after first user interaction
-            console.log('[AskAway Webview] Event listeners bound, pendingMessage element:', !!pendingMessage);
+            console.log('[TaskSync Webview] Event listeners bound, pendingMessage element:', !!pendingMessage);
             renderQueue();
             updateModeUI();
             updateQueueVisibility();
@@ -97,10 +99,10 @@
             }
 
             // Signal to extension that webview is ready to receive messages
-            console.log('[AskAway Webview] Sending webviewReady message');
+            console.log('[TaskSync Webview] Sending webviewReady message');
             vscode.postMessage({ type: 'webviewReady' });
         } catch (err) {
-            console.error('[AskAway] Init error:', err);
+            console.error('[TaskSync] Init error:', err);
         }
     }
 
@@ -318,7 +320,7 @@
         reportBtn.title = 'Report Issue';
         reportBtn.setAttribute('aria-label', 'Report an issue on GitHub');
         reportBtn.addEventListener('click', function () {
-            vscode.postMessage({ type: 'openExternal', url: 'https://github.com/intuitiv/AskAway/issues/new' });
+            vscode.postMessage({ type: 'openExternal', url: 'https://github.com/intuitiv/TaskSync/issues/new' });
         });
         headerButtons.appendChild(reportBtn);
 
@@ -354,6 +356,34 @@
             '</div>';
         modalContent.appendChild(approvalSection);
 
+        // Integrations header
+        var integrationsHeader = document.createElement('div');
+        integrationsHeader.className = 'settings-section';
+        integrationsHeader.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title" style="font-size:12px;opacity:0.6;text-transform:uppercase;letter-spacing:0.5px;"><span class="codicon codicon-plug"></span> Integrations</div>' +
+            '</div>';
+        modalContent.appendChild(integrationsHeader);
+
+        // Webex integration toggle
+        var webexSection = document.createElement('div');
+        webexSection.className = 'settings-section';
+        webexSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title"><span class="codicon codicon-broadcast"></span> Webex</div>' +
+            '<div class="toggle-switch" id="webex-toggle" role="switch" aria-checked="false" aria-label="Enable Webex integration" tabindex="0"></div>' +
+            '</div>' +
+            '<div class="settings-status" id="webex-status"></div>';
+        modalContent.appendChild(webexSection);
+
+        // Telegram integration toggle
+        var telegramSection = document.createElement('div');
+        telegramSection.className = 'settings-section';
+        telegramSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title"><span class="codicon codicon-comment-discussion"></span> Telegram</div>' +
+            '<div class="toggle-switch" id="telegram-toggle" role="switch" aria-checked="false" aria-label="Enable Telegram integration" tabindex="0"></div>' +
+            '</div>' +
+            '<div class="settings-status" id="telegram-status"></div>';
+        modalContent.appendChild(telegramSection);
+
         // Reusable Prompts section - plus button next to title
         var promptsSection = document.createElement('div');
         promptsSection.className = 'settings-section';
@@ -372,30 +402,6 @@
             '<button class="form-btn form-btn-save" id="save-prompt-btn">Save</button></div></div>';
         modalContent.appendChild(promptsSection);
 
-        // Webex Integration section
-        var webexSection = document.createElement('div');
-        webexSection.className = 'settings-section';
-        webexSection.innerHTML = '<div class="settings-section-header">' +
-            '<div class="settings-section-title"><span class="codicon codicon-broadcast"></span> Webex Integration</div>' +
-            '</div>' +
-            '<div class="settings-section-desc" id="webex-status">' +
-            '<span class="webex-status-badge not-configured">Not Configured</span>' +
-            '<div style="margin-top:6px;font-size:11px;opacity:0.7;">Configure in VS Code Settings → <strong>askaway.webex</strong></div>' +
-            '</div>';
-        modalContent.appendChild(webexSection);
-
-        // Telegram Integration section
-        var telegramSection = document.createElement('div');
-        telegramSection.className = 'settings-section';
-        telegramSection.innerHTML = '<div class="settings-section-header">' +
-            '<div class="settings-section-title"><span class="codicon codicon-comment-discussion"></span> Telegram Integration</div>' +
-            '</div>' +
-            '<div class="settings-section-desc" id="telegram-status">' +
-            '<span class="webex-status-badge not-configured">Not Configured</span>' +
-            '<div style="margin-top:6px;font-size:11px;opacity:0.7;">Configure in VS Code Settings → <strong>askaway.telegram</strong></div>' +
-            '</div>';
-        modalContent.appendChild(telegramSection);
-
         // Assemble modal
         settingsModal.appendChild(modalHeader);
         settingsModal.appendChild(modalContent);
@@ -407,6 +413,8 @@
         // Cache inner elements
         soundToggle = document.getElementById('sound-toggle');
         interactiveApprovalToggle = document.getElementById('interactive-approval-toggle');
+        webexToggle = document.getElementById('webex-toggle');
+        telegramToggle = document.getElementById('telegram-toggle');
         promptsList = document.getElementById('prompts-list');
         addPromptBtn = document.getElementById('add-prompt-btn');
         addPromptForm = document.getElementById('add-prompt-form');
@@ -479,6 +487,24 @@
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     toggleInteractiveApprovalSetting();
+                }
+            });
+        }
+        if (webexToggle) {
+            webexToggle.addEventListener('click', toggleWebexSetting);
+            webexToggle.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleWebexSetting();
+                }
+            });
+        }
+        if (telegramToggle) {
+            telegramToggle.addEventListener('click', toggleTelegramSetting);
+            telegramToggle.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleTelegramSetting();
                 }
             });
         }
@@ -606,23 +632,16 @@
         inputHighlighter.scrollTop = chatInput.scrollTop;
     }
 
-    // Debounce timer for heavy operations during typing
-    var _debouncedInputTimer = null;
-
     function handleTextareaInput() {
-        // Immediate: UI-critical operations
         autoResizeTextarea();
         updateInputHighlighter();
         handleAutocomplete();
         handleSlashCommands();
+        // Context items (#terminal, #problems) now handled via handleAutocomplete()
+        syncAttachmentsWithText();
         updateSendButtonState();
-
-        // Debounced: heavier operations (300ms)
-        if (_debouncedInputTimer) { clearTimeout(_debouncedInputTimer); }
-        _debouncedInputTimer = setTimeout(function() {
-            syncAttachmentsWithText();
-            saveWebviewState();
-        }, 300);
+        // Persist input value so it survives sidebar tab switches
+        saveWebviewState();
     }
 
     function updateSendButtonState() {
@@ -802,7 +821,7 @@
 
     function handleExtensionMessage(event) {
         var message = event.data;
-        console.log('[AskAway Webview] Received message:', message.type, message);
+        console.log('[TaskSync Webview] Received message:', message.type, message);
         switch (message.type) {
             case 'updateQueue':
                 promptQueue = message.queue || [];
@@ -815,7 +834,7 @@
                 updateWelcomeSectionVisibility();
                 break;
             case 'toolCallPending':
-                console.log('[AskAway Webview] toolCallPending - showing question:', message.prompt?.substring(0, 50));
+                console.log('[TaskSync Webview] toolCallPending - showing question:', message.prompt?.substring(0, 50));
                 showPendingToolCall(message.id, message.prompt, message.isApprovalQuestion, message.choices);
                 break;
             case 'toolCallCompleted':
@@ -842,91 +861,16 @@
             case 'updateSettings':
                 soundEnabled = message.soundEnabled !== false;
                 interactiveApprovalEnabled = message.interactiveApprovalEnabled !== false;
+                webexEnabled = message.webexEnabled === true;
+                telegramEnabled = message.telegramEnabled === true;
                 reusablePrompts = message.reusablePrompts || [];
                 updateSoundToggleUI();
                 updateInteractiveApprovalToggleUI();
+                updateWebexToggleUI();
+                updateWebexStatusUI(message.webexStatus);
+                updateTelegramToggleUI();
+                updateTelegramStatusUI(message.telegramStatus);
                 renderPromptsList();
-                // Update Webex status badge with detailed token status
-                var webexStatusEl = document.getElementById('webex-status');
-                if (webexStatusEl) {
-                    var ts = message.webexTokenStatus;
-                    if (ts) {
-                        var badgeClass = 'not-configured';
-                        var badgeIcon = '';
-                        if (ts.status === 'connected') { badgeClass = 'configured'; badgeIcon = '✓'; }
-                        else if (ts.status === 'token-expired') { badgeClass = 'expired'; badgeIcon = '✕'; }
-                        else if (ts.status === 'incomplete') { badgeClass = 'partially'; badgeIcon = '⚠'; }
-                        else if (ts.status === 'token-missing') { badgeClass = 'partially'; badgeIcon = '⚠'; }
-                        else if (ts.status === 'disabled') { badgeClass = 'not-configured'; badgeIcon = '○'; }
-
-                        var statusLabel = ts.status === 'connected' ? 'Connected' :
-                            ts.status === 'token-expired' ? 'Token Expired' :
-                            ts.status === 'token-missing' ? 'Token Missing' :
-                            ts.status === 'incomplete' ? 'Incomplete' : 'Disabled';
-
-                        var sourceLabel = ts.tokenSource === 'oauth' ? 'OAuth' :
-                            ts.tokenSource === 'file' ? 'Token File' :
-                            ts.tokenSource === 'setting' ? 'VS Code Setting' : '—';
-
-                        var detailRows = '<table class="webex-status-table">' +
-                            '<tr><td class="ws-label">Status</td><td>' + badgeIcon + ' ' + statusLabel + '</td></tr>' +
-                            '<tr><td class="ws-label">Token Source</td><td>' + sourceLabel + '</td></tr>' +
-                            '<tr><td class="ws-label">OAuth Auto-Refresh</td><td>' + (ts.hasOAuth ? '✓ Configured' : '✕ Not set') + '</td></tr>' +
-                            '<tr><td class="ws-label">Room ID</td><td>' + (ts.hasRoomId ? '✓ Set' : '✕ Missing') + '</td></tr>' +
-                            '<tr><td class="ws-label">Polling</td><td>' + (ts.isPolling ? '● Active (' + ts.activeTasks + ' task' + (ts.activeTasks !== 1 ? 's' : '') + ')' : '○ Idle') + '</td></tr>' +
-                            '</table>';
-
-                        webexStatusEl.innerHTML = '<span class="webex-status-badge ' + badgeClass + '">' + badgeIcon + ' ' + statusLabel + '</span>' +
-                            detailRows +
-                            '<div class="ws-hint">' + ts.hint + '</div>';
-                    } else if (message.webexConfigured) {
-                        webexStatusEl.innerHTML = '<span class="webex-status-badge configured">✓ Connected</span>' +
-                            '<div style="margin-top:6px;font-size:11px;opacity:0.7;">Questions are posted to Webex. Replies sync back automatically.</div>';
-                    } else if (message.webexEnabled) {
-                        webexStatusEl.innerHTML = '<span class="webex-status-badge partially">⚠ Incomplete</span>' +
-                            '<div style="margin-top:6px;font-size:11px;opacity:0.7;">Enabled but missing token or room ID. Check VS Code Settings → <strong>askaway.webex</strong></div>';
-                    } else {
-                        webexStatusEl.innerHTML = '<span class="webex-status-badge not-configured">Not Configured</span>' +
-                            '<div style="margin-top:6px;font-size:11px;opacity:0.7;">Configure in VS Code Settings → <strong>askaway.webex</strong></div>';
-                    }
-                }
-                // Update Telegram status
-                var telegramStatusEl = document.getElementById('telegram-status');
-                if (telegramStatusEl) {
-                    var tg = message.telegramStatus;
-                    if (tg) {
-                        var tgBadgeClass = 'not-configured';
-                        var tgBadgeIcon = '';
-                        if (tg.status === 'connected') { tgBadgeClass = 'configured'; tgBadgeIcon = '✓'; }
-                        else if (tg.status === 'token-missing') { tgBadgeClass = 'partially'; tgBadgeIcon = '⚠'; }
-                        else if (tg.status === 'incomplete') { tgBadgeClass = 'partially'; tgBadgeIcon = '⚠'; }
-                        else if (tg.status === 'disabled') { tgBadgeClass = 'not-configured'; tgBadgeIcon = '○'; }
-
-                        var tgStatusLabel = tg.status === 'connected' ? 'Connected' :
-                            tg.status === 'token-missing' ? 'Token Missing' :
-                            tg.status === 'incomplete' ? 'Incomplete' : 'Disabled';
-
-                        var tgDetailRows = '<table class="webex-status-table">' +
-                            '<tr><td class="ws-label">Status</td><td>' + tgBadgeIcon + ' ' + tgStatusLabel + '</td></tr>' +
-                            '<tr><td class="ws-label">Bot Token</td><td>' + (tg.hasToken ? '✓ Set' : '✕ Missing') + '</td></tr>' +
-                            '<tr><td class="ws-label">Chat ID</td><td>' + (tg.hasChatId ? '✓ Set' : '✕ Missing') + '</td></tr>' +
-                            '<tr><td class="ws-label">Polling</td><td>' + (tg.isPolling ? '● Active (' + tg.activeTasks + ' task' + (tg.activeTasks !== 1 ? 's' : '') + ')' : '○ Idle') + '</td></tr>' +
-                            '</table>';
-
-                        telegramStatusEl.innerHTML = '<span class="webex-status-badge ' + tgBadgeClass + '">' + tgBadgeIcon + ' ' + tgStatusLabel + '</span>' +
-                            tgDetailRows +
-                            '<div class="ws-hint">' + tg.hint + '</div>';
-                    } else if (message.telegramConfigured) {
-                        telegramStatusEl.innerHTML = '<span class="webex-status-badge configured">✓ Connected</span>' +
-                            '<div style="margin-top:6px;font-size:11px;opacity:0.7;">Questions are posted to Telegram. Replies sync back automatically.</div>';
-                    } else if (message.telegramEnabled) {
-                        telegramStatusEl.innerHTML = '<span class="webex-status-badge partially">⚠ Incomplete</span>' +
-                            '<div style="margin-top:6px;font-size:11px;opacity:0.7;">Enabled but missing bot token or chat ID. Check VS Code Settings → <strong>askaway.telegram</strong></div>';
-                    } else {
-                        telegramStatusEl.innerHTML = '<span class="webex-status-badge not-configured">Not Configured</span>' +
-                            '<div style="margin-top:6px;font-size:11px;opacity:0.7;">Configure in VS Code Settings → <strong>askaway.telegram</strong></div>';
-                    }
-                }
                 break;
             case 'slashCommandResults':
                 showSlashDropdown(message.prompts || []);
@@ -957,7 +901,7 @@
     }
 
     function showPendingToolCall(id, prompt, isApproval, choices) {
-        console.log('[AskAway Webview] showPendingToolCall called with id:', id);
+        console.log('[TaskSync Webview] showPendingToolCall called with id:', id);
         pendingToolCall = { id: id, prompt: prompt };
         isProcessingResponse = false; // AI is now asking, not processing
         isApprovalQuestion = isApproval === true;
@@ -972,12 +916,12 @@
 
         // Show AI question as plain text (hide "Working...." since AI asked a question)
         if (pendingMessage) {
-            console.log('[AskAway Webview] Setting pendingMessage innerHTML...');
+            console.log('[TaskSync Webview] Setting pendingMessage innerHTML...');
             pendingMessage.classList.remove('hidden');
             pendingMessage.innerHTML = '<div class="pending-ai-question">' + formatMarkdown(prompt) + '</div>';
-            console.log('[AskAway Webview] pendingMessage.innerHTML set, length:', pendingMessage.innerHTML.length);
+            console.log('[TaskSync Webview] pendingMessage.innerHTML set, length:', pendingMessage.innerHTML.length);
         } else {
-            console.error('[AskAway Webview] pendingMessage element is null!');
+            console.error('[TaskSync Webview] pendingMessage element is null!');
         }
 
         // Re-render current session (without the pending item - it's shown separately)
@@ -1796,6 +1740,54 @@
         interactiveApprovalToggle.setAttribute('aria-checked', interactiveApprovalEnabled ? 'true' : 'false');
     }
 
+    function toggleWebexSetting() {
+        webexEnabled = !webexEnabled;
+        updateWebexToggleUI();
+        vscode.postMessage({ type: 'updateWebexSetting', enabled: webexEnabled });
+    }
+
+    function updateWebexToggleUI() {
+        if (!webexToggle) return;
+        webexToggle.classList.toggle('active', webexEnabled);
+        webexToggle.setAttribute('aria-checked', webexEnabled ? 'true' : 'false');
+    }
+
+    function updateWebexStatusUI(status) {
+        var el = document.getElementById('webex-status');
+        if (!el) return;
+        if (!status) { el.textContent = ''; return; }
+        var icon = status.status === 'connected' ? '✅' : status.status === 'disabled' ? '⏸' : '⚠️';
+        el.textContent = icon + ' ' + status.message;
+        if (status.hint) {
+            el.title = status.hint;
+        }
+        el.className = 'settings-status settings-status-' + status.status;
+    }
+
+    function toggleTelegramSetting() {
+        telegramEnabled = !telegramEnabled;
+        updateTelegramToggleUI();
+        vscode.postMessage({ type: 'updateTelegramSetting', enabled: telegramEnabled });
+    }
+
+    function updateTelegramToggleUI() {
+        if (!telegramToggle) return;
+        telegramToggle.classList.toggle('active', telegramEnabled);
+        telegramToggle.setAttribute('aria-checked', telegramEnabled ? 'true' : 'false');
+    }
+
+    function updateTelegramStatusUI(status) {
+        var el = document.getElementById('telegram-status');
+        if (!el) return;
+        if (!status) { el.textContent = ''; return; }
+        var icon = status.status === 'connected' ? '✅' : status.status === 'disabled' ? '⏸' : '⚠️';
+        el.textContent = icon + ' ' + status.message;
+        if (status.hint) {
+            el.title = status.hint;
+        }
+        el.className = 'settings-status settings-status-' + status.status;
+    }
+
     function showAddPromptForm() {
         if (!addPromptForm || !addPromptBtn) return;
         addPromptForm.classList.remove('hidden');
@@ -2081,7 +2073,7 @@
                         audio.currentTime = 0;
                         audio.volume = 0.5;
                         audioUnlocked = true;
-                        console.log('[AskAway] Audio unlocked successfully');
+                        console.log('[TaskSync] Audio unlocked successfully');
                     }).catch(function () {
                         // Still locked, will try again on next interaction
                     });
@@ -2096,32 +2088,32 @@
     }
 
     function playNotificationSound() {
-        console.log('[AskAway] playNotificationSound called, audioUnlocked:', audioUnlocked);
+        console.log('[TaskSync] playNotificationSound called, audioUnlocked:', audioUnlocked);
         // Play the preloaded audio element
         try {
             var audio = document.getElementById('notification-sound');
-            console.log('[AskAway] Audio element found:', !!audio);
+            console.log('[TaskSync] Audio element found:', !!audio);
             if (audio) {
                 audio.currentTime = 0; // Reset to beginning
                 audio.volume = 0.5;
-                console.log('[AskAway] Attempting to play audio...');
+                console.log('[TaskSync] Attempting to play audio...');
                 var playPromise = audio.play();
                 if (playPromise !== undefined) {
                     playPromise.then(function () {
-                        console.log('[AskAway] Audio playback started successfully');
+                        console.log('[TaskSync] Audio playback started successfully');
                     }).catch(function (e) {
-                        console.log('[AskAway] Could not play audio:', e.message);
-                        console.log('[AskAway] Error name:', e.name);
+                        console.log('[TaskSync] Could not play audio:', e.message);
+                        console.log('[TaskSync] Error name:', e.name);
                         // If autoplay blocked, show visual feedback
                         flashNotification();
                     });
                 }
             } else {
-                console.log('[AskAway] No audio element found, showing visual notification');
+                console.log('[TaskSync] No audio element found, showing visual notification');
                 flashNotification();
             }
         } catch (e) {
-            console.log('[AskAway] Could not play notification sound:', e);
+            console.log('[TaskSync] Could not play notification sound:', e);
             flashNotification();
         }
     }

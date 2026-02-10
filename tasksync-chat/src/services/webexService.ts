@@ -58,7 +58,7 @@ export class WebexService {
     private _clientSecret: string | undefined;
     private _refreshToken: string | undefined;
 
-    constructor() {
+    constructor(private logger?: vscode.OutputChannel) {
         this.reloadConfig();
     }
 
@@ -70,6 +70,8 @@ export class WebexService {
         this._roomId = config.get<string>('webex.roomId', '');
         this._tokenFilePath = config.get<string>('webex.tokenFilePath', '');
         const directToken = config.get<string>('webex.accessToken', '');
+
+        this.logger?.appendLine(`[WebexService] Reloading config. Enabled: ${this._enabled}, TokenPath: ${this._tokenFilePath}`);
 
         // OAuth credentials for auto-refresh
         this._clientId = config.get<string>('webex.clientId', '') || undefined;
@@ -116,6 +118,8 @@ export class WebexService {
             const resolved = filePath.startsWith('~')
                 ? path.join(os.homedir(), filePath.slice(1))
                 : filePath;
+            
+            this.logger?.appendLine(`[WebexService] Reading token file: ${resolved}`);
             const content = fs.readFileSync(resolved, 'utf8');
             const json = JSON.parse(content);
 
