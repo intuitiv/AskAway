@@ -222,13 +222,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 if (this._isUpdatingConfig) {
                     return;
                 }
-                if (e.affectsConfiguration('tasksync.notificationSound') ||
-                    e.affectsConfiguration('tasksync.interactiveApproval') ||
-                    e.affectsConfiguration('tasksync.autopilot') ||
-                    e.affectsConfiguration('tasksync.autopilotText') ||
-                    e.affectsConfiguration('tasksync.autoAnswer') ||
-                    e.affectsConfiguration('tasksync.autoAnswerText') ||
-                    e.affectsConfiguration('tasksync.reusablePrompts')) {
+                if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.notificationSound`) ||
+                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.interactiveApproval`) ||
+                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.autopilot`) ||
+                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.autopilotText`) ||
+                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.autoAnswer`) ||
+                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.autoAnswerText`) ||
+                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.reusablePrompts`)) {
                     this._loadSettings();
                     this._updateSettingsUI();
                 }
@@ -2114,7 +2114,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'main.css'));
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'webview.js'));
         const codiconsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'));
-        const logoUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'TS-logo.svg'));
+        const logoUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'askaway-icon.svg'));
         const notificationSoundUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'notification.wav'));
         const nonce = this._getNonce();
 
@@ -2126,7 +2126,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource}; script-src 'nonce-${nonce}' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src ${webview.cspSource} data:;">
     <link href="${codiconsUri}" rel="stylesheet">
     <link href="${styleUri}" rel="stylesheet">
-    <title>TaskSync Chat</title>
+    <title>AskAway</title>
     <audio id="notification-sound" preload="auto" src="${notificationSoundUri}"></audio>
 </head>
 <body>
@@ -2136,7 +2136,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <!-- Welcome Section - Let's build -->
             <div class="welcome-section" id="welcome-section">
                 <div class="welcome-icon">
-                    <img src="${logoUri}" alt="TaskSync Logo" width="48" height="48" class="welcome-logo">
+                    <img src="${logoUri}" alt="AskAway Logo" width="48" height="48" class="welcome-logo">
                 </div>
                 <h1 class="welcome-title">Let's build</h1>
                 <p class="welcome-subtitle">Sync your tasks, automate your workflow</p>

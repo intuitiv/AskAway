@@ -1,11 +1,28 @@
-# TaskSync+
+# AskAway
+
+> **Based on [TaskSync v2.0.14](https://github.com/4regab/TaskSync)** — fully synced with upstream as of July 2025. All upstream features (Autopilot, Settings Modal, Reusable Prompts, Notification Sound, Interactive Approvals) are included.
 
 > [!WARNING]  
 > **CONFLICT WARNING**: This extension (`AskAway`) uses the tool name `ask_user`. It conflicts with the `TaskSync` extension which uses the same tool name. **You must disable one of these extensions before using the other.**
 
 **Automate AI conversations. Queue your prompts. Remote Control your AI Agents.**
 
-TaskSync+ extends the original TaskSync with **Remote Mobile & Web Access**, created by [intuitiv](https://github.com/intuitiv). It keeps all the powerful queuing features you love, but now lets you control your AI workflows from your phone, tablet, or anywhere on your local network.
+AskAway extends the original [TaskSync](https://github.com/4regab/TaskSync) with **Remote Mobile & Web Access** and **Messaging Integration** (Webex, Telegram), created by [intuitiv](https://github.com/intuitiv). It keeps all the powerful queuing features you love, but now lets you control your AI workflows from your phone, tablet, or anywhere on your local network.
+
+### What's different from TaskSync?
+
+| Feature | TaskSync | AskAway |
+|---------|----------|---------|
+| Smart Queue / Normal / Autopilot modes | ✅ | ✅ |
+| File & Folder References (#mentions) | ✅ | ✅ |
+| Image Support (paste/drag-drop) | ✅ | ✅ |
+| Tool Call History & Settings Modal | ✅ | ✅ |
+| Reusable Prompts (/slash commands) | ✅ | ✅ |
+| Interactive Approvals | ✅ | ✅ |
+| MCP Server Integration | ✅ | ✅ |
+| Remote Mobile & Web Access (QR code) | ❌ | ✅ |
+| Webex Messaging Integration | ❌ | ✅ |
+| Telegram Bot Integration | ❌ | ✅ |
 
 ## 📱 NEW: Remote Mobile & Web Access
 
@@ -65,7 +82,7 @@ Paste or drag-and-drop images directly into the chat input. Images are automatic
 ## Installation
 
 1. Install from VS Code Marketplace
-2. Open VS Code and access TaskSync from the Activity Bar
+2. Open VS Code and access AskAway from the Activity Bar
 3. Enable the tool
 
 ### For better performance add this on your instructions or make it a custom chatmode. 
@@ -129,7 +146,7 @@ TaskSync automatically registers with Kiro and Cursor. For other clients, add th
 ```json
 {
   "mcpServers": {
-    "tasksync": {
+    "askaway": {
       "transport": "sse",
       "url": "http://localhost:3579/sse"
     }
