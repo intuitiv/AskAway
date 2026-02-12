@@ -17,11 +17,12 @@
 </p>
 
 <p align="center">
-  <a href="#-remote-mobile--web-access">📱 Remote Access</a> •
-  <a href="#-webex-integration">💬 Webex</a> •
   <a href="#-telegram-integration">🤖 Telegram</a> •
+  <a href="#-webex-integration">💬 Webex</a> •
+  <a href="#-remote-mobile--web-access">📱 Remote Access</a> •
   <a href="#-installation">⚡ Install</a> •
-  <a href="#-features">✨ Features</a>
+  <a href="#-features">✨ Features</a> •
+  <a href="#-faq">❓ FAQ</a>
 </p>
 
 ---
@@ -58,9 +59,10 @@ AI coding agents (Copilot, Cursor, Kiro) frequently pause to ask for approval or
 
 | Feature | Description |
 |---------|-------------|
-| **📱 Remote Access** | Full UI on your phone/tablet via local web server |
+| **🤖 Telegram** | Push notifications + inline keyboard buttons — the main addition |
 | **💬 Webex** | Rich Adaptive Cards in your Webex space with OAuth auto-refresh |
-| **🤖 Telegram** | Push notifications + inline keyboard buttons |
+| **📱 Remote Access** | Full UI on your phone/tablet via local web server |
+| **🧠 Context-enriched prompts** | Questions sent to Telegram/Webex include full context so you can answer without seeing the VS Code chat |
 
 ---
 
@@ -86,22 +88,34 @@ code --install-extension askaway-*.vsix
 
 ---
 
-## 📱 Remote Mobile & Web Access
+## 🤖 Telegram Integration
 
-Control AskAway from your phone, tablet, or any browser on your network.
+The primary addition — receive AI agent questions and respond from **Telegram** with instant push notifications.
 
-| | |
-|---|---|
-| 🛋️ Work from your couch while AI agents run on your computer | 📱 Full mobile-responsive UI |
-| 🔒 Works when your computer screen is locked | ⚡ Real-time WebSocket sync |
+**How it works:**
+1. Agent calls `ask_user` → question sent to your Telegram chat with **full context** (what the agent is working on, what it's already done, and what it needs from you)
+2. Reply to the bot → answer flows back to VS Code
+3. Tap inline keyboard buttons for choice-based questions
 
-**Quick Start:**
-1. Click the broadcast icon in the AskAway panel (or run `AskAway: Start Remote Server`)
-2. Open the URL on your phone (e.g., `http://192.168.1.5:3000`)
-3. Enter the 4-digit PIN shown in VS Code
-4. Answer agent questions from anywhere!
+**Why context matters:** In VS Code, you have the full Copilot chat visible. On Telegram, you don't. AskAway enriches every question with enough context that you can give a meaningful answer just from the Telegram message — no need to switch back to your computer.
 
-**Highlights:** PWA installable • Session isolation per VS Code window • See [full docs](tasksync-chat/docs/REMOTE_ACCESS.md)
+**Highlights:**
+- 📲 Instant push notifications on your phone
+- 🧠 Context-enriched questions — answer without seeing VS Code
+- 🔘 Inline keyboard buttons for multiple-choice questions
+- 📁 File change tracking in each message
+- ⏳ Status updates when answered
+
+<details>
+<summary><strong>Setup Instructions (2 minutes)</strong></summary>
+
+1. Create a bot via [@BotFather](https://t.me/BotFather) — copy the token
+2. Open VS Code Settings → search `askaway.telegram`
+3. Enable `askaway.telegram.enabled`
+4. Paste bot token in `askaway.telegram.botToken`
+5. Run `AskAway: Get Telegram Chat ID` — send any message to your bot for auto-detection
+
+</details>
 
 ---
 
@@ -110,12 +124,13 @@ Control AskAway from your phone, tablet, or any browser on your network.
 Receive AI agent questions and respond directly from a **Webex space** — desktop, mobile, or web.
 
 **How it works:**
-1. Agent calls `ask_user` → question posted as a rich **Adaptive Card** in your Webex room
+1. Agent calls `ask_user` → question posted as a rich **Adaptive Card** in your Webex room with full context
 2. Reply in the thread → answer flows back to the agent in VS Code
 3. Smart backoff polling: fast initially (2s), slows to 5min when idle
 
 **Highlights:**
 - 🃏 Rich Adaptive Cards with markdown, code blocks, and choice buttons
+- 🧠 Context-enriched questions — same as Telegram
 - 🔄 OAuth auto-refresh — tokens renew automatically
 - 📁 File change tracking — see which files the agent modified
 - ⏳ Live status — cards update from "⏳ Awaiting" → "✅ Answered"
@@ -136,31 +151,22 @@ Receive AI agent questions and respond directly from a **Webex space** — deskt
 
 ---
 
-## 🤖 Telegram Integration
+## 📱 Remote Mobile & Web Access
 
-Receive AI agent questions and respond from **Telegram** — instant push notifications on your phone.
+Also included: a local web server that serves the full AskAway UI to your phone, tablet, or any browser on your network.
 
-**How it works:**
-1. Agent calls `ask_user` → question sent to your Telegram chat
-2. Reply to the bot → answer flows back to VS Code
-3. Tap inline keyboard buttons for choice-based questions
+| | |
+|---|---|
+| 🛋️ Work from your couch while AI agents run on your computer | 📱 Full mobile-responsive UI |
+| 🔒 Works when your computer screen is locked | ⚡ Real-time WebSocket sync |
 
-**Highlights:**
-- 📲 Instant push notifications on your phone
-- 🔘 Inline keyboard buttons for multiple-choice questions
-- 📁 File change tracking in each message
-- ⏳ Status updates when answered
+**Quick Start:**
+1. Click the broadcast icon in the AskAway panel (or run `AskAway: Start Remote Server`)
+2. Open the URL on your phone (e.g., `http://192.168.1.5:3000`)
+3. Enter the 4-digit PIN shown in VS Code
+4. Answer agent questions from anywhere!
 
-<details>
-<summary><strong>Setup Instructions</strong></summary>
-
-1. Create a bot via [@BotFather](https://t.me/BotFather) — copy the token
-2. Open VS Code Settings → search `askaway.telegram`
-3. Enable `askaway.telegram.enabled`
-4. Paste bot token in `askaway.telegram.botToken`
-5. Run `AskAway: Get Telegram Chat ID` — send any message to your bot for auto-detection
-
-</details>
+**Highlights:** PWA installable • Session isolation per VS Code window • See [full docs](tasksync-chat/docs/REMOTE_ACCESS.md)
 
 ---
 
@@ -176,6 +182,19 @@ Auto-starts when it detects external client configs, or enable manually:
 ```
 
 Run `AskAway: Show MCP Config` to get the JSON snippet for your preferred client.
+
+---
+
+## ❓ FAQ
+
+**Q: Can I use both TaskSync and AskAway at the same time?**
+No. Both extensions register the same `ask_user` tool, so only one can be active. Disable one before enabling the other. AskAway includes all TaskSync features plus the messaging integrations, so you don't lose anything by switching.
+
+**Q: Will this fall behind the main TaskSync extension?**
+This fork is kept fairly up-to-date with upstream [TaskSync](https://github.com/4regab/TaskSync). Merges are done regularly to bring in new features and fixes from the original project. The fork-specific code (Telegram, Webex, Remote Access) is isolated in separate modules to minimize merge conflicts.
+
+**Q: Why are questions on Telegram/Webex more detailed than in VS Code?**
+By design. In VS Code you can see the full Copilot chat history for context. On Telegram or Webex, you're reading a standalone message on your phone. AskAway enriches the prompt sent to messaging services with additional context — what the agent is working on, progress so far, and what it needs — so you can give a meaningful answer without switching back to your computer.
 
 ---
 
