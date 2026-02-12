@@ -1,5 +1,5 @@
 > [!WARNING]
-> **This is a fork of [4regab/TaskSync](https://github.com/4regab/TaskSync)** with additional features including Remote Mobile/Web Access. See the [original repository](https://github.com/4regab/TaskSync) for the upstream project and community discussions.
+> **This is a fork of [4regab/TaskSync](https://github.com/4regab/TaskSync)** with additional features including Remote Mobile/Web Access, Webex, and Telegram integration. See the [original repository](https://github.com/4regab/TaskSync) for the upstream project and community discussions.
 
 ---
 
@@ -26,6 +26,58 @@
 - Session isolation - each VS Code window gets its own PIN
 - Same full UI as the desktop extension
 - See [Remote Access Documentation](tasksync-chat/docs/REMOTE_ACCESS.md) for details
+
+---
+
+## 💬 Webex Integration
+
+Receive AI agent questions and respond directly from a **Webex space** — on desktop, mobile, or web.
+
+**How it works:**
+1. When your AI agent calls `ask_user`, the question is posted as a rich **Adaptive Card** in your Webex room
+2. Reply in the Webex thread — your answer flows back to the agent in VS Code
+3. Smart backoff polling: fast initially (2s), slows down over time to save API calls
+
+**Features:**
+- 🃏 Rich Adaptive Cards with markdown rendering, code blocks, and choice buttons
+- 🔄 OAuth auto-refresh — tokens renew automatically, no manual token rotation
+- 📁 File change tracking — see which files the agent modified since the last question
+- ⏳ Status updates — cards show "Awaiting Response" → "✅ Answered" with responder info
+- 🔒 Token file support — load tokens from a file on disk (useful for CI/automation)
+
+**Setup:**
+1. Open VS Code Settings → search `askaway.webex`
+2. Enable `askaway.webex.enabled`
+3. Set your `askaway.webex.roomId` (get from Webex API: `GET /rooms`)
+4. Provide authentication (choose one):
+   - **Simple:** Paste a personal access token in `askaway.webex.accessToken`
+   - **Token file:** Point `askaway.webex.tokenFilePath` to a JSON file with `{ "access_token": "..." }`
+   - **OAuth (recommended):** Set `clientId`, `clientSecret`, and `refreshToken` for automatic renewal
+
+---
+
+## 🤖 Telegram Integration
+
+Receive AI agent questions and respond from **Telegram** — perfect for mobile notifications.
+
+**How it works:**
+1. When your AI agent calls `ask_user`, the question is sent to your Telegram chat via a bot
+2. Reply to the bot message — your answer flows back to the agent in VS Code
+3. Inline keyboard buttons for choice-based questions (tap to answer)
+
+**Features:**
+- 📲 Push notifications — get notified instantly on your phone when agent needs input
+- 🔘 Inline keyboard buttons for multiple-choice questions
+- 📁 File change tracking — see which files were modified
+- ⏳ Status updates — messages show when answered and by whom
+- 🔄 Smart backoff polling — same efficient schedule as Webex
+
+**Setup:**
+1. Create a Telegram bot via [@BotFather](https://t.me/BotFather) and copy the bot token
+2. Open VS Code Settings → search `askaway.telegram`
+3. Enable `askaway.telegram.enabled`
+4. Paste your bot token in `askaway.telegram.botToken`
+5. Run command: `AskAway: Get Telegram Chat ID` — send any message to your bot, and the chat ID is auto-detected
 
 ---
 
@@ -56,6 +108,8 @@ A dedicated VS Code sidebar extension with smart prompt queue system.
 - Image paste support (copilot will view your image)
 - Tool call history with session tracking
 - **📱 Remote Mobile/Web Access** - control from your phone!
+- **💬 Webex Integration** - respond via Adaptive Cards in a Webex space
+- **🤖 Telegram Integration** - respond via a Telegram bot with inline buttons
 
 **Installation:** Install from [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intuitiv.tasksync-chat) or build from source with `npx vsce package`.
 
