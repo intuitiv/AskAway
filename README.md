@@ -5,7 +5,8 @@
 <h1 align="center">AskAway</h1>
 
 <p align="center">
-  <strong>Answer your AI agent's questions from anywhere — Webex, Telegram, mobile, or web.</strong>
+  <strong>A fork of <a href="https://github.com/4regab/TaskSync">TaskSync</a> adding Webex, Telegram, and Remote Mobile/Web access.</strong><br/>
+  <sub>All credit for the core extension goes to <a href="https://github.com/4regab">@4regab</a> and the TaskSync project.</sub>
 </p>
 
 <p align="center">
@@ -25,7 +26,7 @@
 
 ---
 
-> **Fork of [4regab/TaskSync](https://github.com/4regab/TaskSync)** with Webex, Telegram, and Remote Mobile/Web access. See the [upstream repo](https://github.com/4regab/TaskSync) for community discussions.
+> **This is a fork of [4regab/TaskSync](https://github.com/4regab/TaskSync).** The core extension — sidebar UI, smart queue, autopilot, MCP server, tool call history — is built by [@4regab](https://github.com/4regab). This fork adds Webex, Telegram, and Remote Mobile/Web integrations on top. See the [upstream repo](https://github.com/4regab/TaskSync) for the original project and community discussions.
 
 ---
 
@@ -33,26 +34,33 @@
 
 AI coding agents (Copilot, Cursor, Kiro) frequently pause to ask for approval or clarification. **You have to sit at your desk watching the screen.** If you step away, the agent blocks — wasting time and premium API requests.
 
-## The Solution
+## What This Fork Adds
 
-**AskAway** routes agent questions to wherever you are — your phone, a Webex space, a Telegram bot, or a browser on your network. Reply from anywhere, and the agent continues seamlessly.
+[TaskSync](https://github.com/4regab/TaskSync) already solves the human-in-the-loop problem with a great sidebar UI. **AskAway** extends it by routing agent questions to wherever you are — a Webex space, a Telegram bot, or a browser on your network. Reply from anywhere, and the agent continues seamlessly.
 
 ---
 
 ## ✨ Features
 
+### From [TaskSync](https://github.com/4regab/TaskSync) (upstream)
+
 | Feature | Description |
 |---------|-------------|
 | **Smart Queue** | Batch multiple agent questions and respond when ready |
 | **Autopilot** | Let agents work autonomously with customizable auto-responses |
-| **📱 Remote Access** | Full UI on your phone/tablet via local web server |
-| **💬 Webex** | Rich Adaptive Cards in your Webex space with OAuth auto-refresh |
-| **🤖 Telegram** | Push notifications + inline keyboard buttons |
 | **🔌 MCP Server** | Works with Kiro, Cursor, Gemini CLI, and any MCP client |
 | **📎 Attachments** | Image paste support — agent sees your screenshots |
 | **#️⃣ Context** | File/folder references with `#` autocomplete, `#terminal`, `#problems` |
 | **📜 History** | Full tool call history with session tracking |
 | **/ Commands** | Reusable prompt templates via `/slash` commands |
+
+### Added in this fork
+
+| Feature | Description |
+|---------|-------------|
+| **📱 Remote Access** | Full UI on your phone/tablet via local web server |
+| **💬 Webex** | Rich Adaptive Cards in your Webex space with OAuth auto-refresh |
+| **🤖 Telegram** | Push notifications + inline keyboard buttons |
 
 ---
 
