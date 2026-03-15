@@ -13,15 +13,10 @@ interface TrackedTask {
 
 // ── Constants ──────────────────────────────────────────────────
 
-// Same backoff schedule as WebexService
-const POLL_BACKOFF_SCHEDULE_S = [
-    2, 2, 5, 10, 30, 60,
-    60, 60, 60, 60, 60,
-    60, 60, 60, 60, 60,
-    60, 60, 60, 60, 60,
-    60, 60, 60, 60, 60,
-    300
-];
+// Quick ramp-up schedule before switching to configurable steady interval.
+const INITIAL_POLL_BACKOFF_SCHEDULE_S = [2, 2, 5, 10, 30];
+const LONG_WAIT_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+const LONG_WAIT_INTERVAL_SECONDS = 4 * 60; // 4 minutes
 const EXPIRY_MS = 36 * 60 * 60 * 1000;  // 36 hours
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 
@@ -39,10 +34,14 @@ export class TelegramService {
     // ── Backoff polling state ──
     private _pollTickIndex: number = 0;
     private _pollCount: number = 0;
+    private _pollingStartedAtMs: number = 0;
 
     // ── Copilot activity tracking ──
     private _lastCopilotActivity: number = 0;
-    private _copilotIdleThresholdMs: number = 5 * 60 * 1000;
+    private _copilotIdleThresholdMs: number = 0;
+
+    // ── Polling configuration ──
+    private _steadyPollIntervalSeconds: number = 60;
 
     // ── File change tracking ──
     private _recentFileChanges: string[] = [];
@@ -61,6 +60,19 @@ export class TelegramService {
         this._enabled = config.get<boolean>('telegram.enabled', false);
         this._botToken = config.get<string>('telegram.botToken', '') || undefined;
         this._chatId = config.get<string>('telegram.chatId', '') || undefined;
+
+        const configuredRetrySec = config.get<number>('telegram.retryIntervalSeconds', 60);
+        // Allowed bounds: 10s to 15min for steady polling interval.
+        this._steadyPollIntervalSeconds = Math.min(900, Math.max(10, Math.floor(configuredRetrySec || 60)));
+
+        const configuredIdleMinutes = config.get<number>('telegram.idlePauseMinutes', 0);
+        // 0 disables idle-pause, otherwise clamp to 1 minute..12 hours.
+        const idleMinutes = Math.min(720, Math.max(0, Math.floor(configuredIdleMinutes || 0)));
+        this._copilotIdleThresholdMs = idleMinutes > 0 ? idleMinutes * 60 * 1000 : 0;
+
+        console.log(
+            `AskAway/Telegram: Config reloaded (enabled=${this._enabled}, hasToken=${!!this._botToken}, hasChatId=${!!this._chatId}, retry=${this._steadyPollIntervalSeconds}s, idlePause=${idleMinutes}m)`
+        );
 
         // Re-evaluate polling state
         if (this._enabled && this._botToken && this._chatId && this._activeTasks.size > 0) {
@@ -260,6 +272,7 @@ export class TelegramService {
         if (this._pollingTimer) { return; }
         this._pollTickIndex = 0;
         this._pollCount = 0;
+        this._pollingStartedAtMs = Date.now();
         this._scheduleNextPoll();
         console.log('AskAway/Telegram: Polling started.');
     }
@@ -268,21 +281,33 @@ export class TelegramService {
         if (this._pollingTimer) {
             clearTimeout(this._pollingTimer);
         }
-        const delaySec = POLL_BACKOFF_SCHEDULE_S[
-            Math.min(this._pollTickIndex, POLL_BACKOFF_SCHEDULE_S.length - 1)
-        ];
+        const delaySec = this._getPollDelaySeconds();
         this._pollingTimer = setTimeout(() => this._poll(), delaySec * 1000);
+    }
+
+    private _getPollDelaySeconds(): number {
+        const elapsedMs = this._pollingStartedAtMs > 0 ? (Date.now() - this._pollingStartedAtMs) : 0;
+        if (elapsedMs >= LONG_WAIT_THRESHOLD_MS) {
+            return LONG_WAIT_INTERVAL_SECONDS;
+        }
+
+        if (this._pollTickIndex < INITIAL_POLL_BACKOFF_SCHEDULE_S.length) {
+            return INITIAL_POLL_BACKOFF_SCHEDULE_S[this._pollTickIndex];
+        }
+        return this._steadyPollIntervalSeconds;
     }
 
     private _resetBackoff() {
         this._pollTickIndex = 0;
         this._pollCount = 0;
+        this._pollingStartedAtMs = Date.now();
     }
 
     public stopPolling() {
         if (this._pollingTimer) {
             clearTimeout(this._pollingTimer);
             this._pollingTimer = undefined;
+            this._pollingStartedAtMs = 0;
             console.log('AskAway/Telegram: Polling stopped.');
         }
     }
@@ -295,17 +320,16 @@ export class TelegramService {
             return;
         }
 
-        // Check Copilot idle
-        if (this._lastCopilotActivity > 0 && (Date.now() - this._lastCopilotActivity > this._copilotIdleThresholdMs)) {
-            console.log('AskAway/Telegram: Copilot idle >5min, pausing polls.');
-            this.stopPolling();
-            return;
+        // Keep polling while tasks are active, even if Copilot is idle.
+        // Stopping here causes delayed user replies to be missed.
+        if (this._copilotIdleThresholdMs > 0 && this._lastCopilotActivity > 0) {
+            if (Date.now() - this._lastCopilotActivity > this._copilotIdleThresholdMs) {
+                console.log(`AskAway/Telegram: Copilot idle exceeded ${Math.floor(this._copilotIdleThresholdMs / 60000)}min, continuing polling to catch delayed replies.`);
+            }
         }
 
         this._pollCount++;
-        const currentDelaySec = POLL_BACKOFF_SCHEDULE_S[
-            Math.min(this._pollTickIndex, POLL_BACKOFF_SCHEDULE_S.length - 1)
-        ];
+        const currentDelaySec = this._getPollDelaySeconds();
         console.log(`AskAway/Telegram: Poll #${this._pollCount} (interval: ${currentDelaySec}s, tick: ${this._pollTickIndex})`);
 
         // Cache bot ID
@@ -400,6 +424,37 @@ export class TelegramService {
 
                     // Check if this is a reply to one of our messages
                     const replyToMsgId = msg.reply_to_message?.message_id;
+
+                    // Fallback: if there is exactly one active task, accept plain chat
+                    // messages even when Telegram doesn't include reply_to_message.
+                    if (!replyToMsgId && this._activeTasks.size === 1) {
+                        const onlyTask = this._activeTasks.values().next().value as TrackedTask | undefined;
+                        if (onlyTask) {
+                            const answer = msg.text.trim();
+                            const user = msg.from?.username || msg.from?.first_name || 'unknown';
+
+                            if (!answer) { continue; }
+
+                            console.log(`AskAway/Telegram: Plain message fallback matched task ${onlyTask.taskId} from ${user}: "${answer.substring(0, 80)}..."`);
+
+                            let resolvedAnswer = answer;
+                            if (onlyTask.choices && onlyTask.choices.length > 0) {
+                                const num = parseInt(answer, 10);
+                                if (num >= 1 && num <= onlyTask.choices.length) {
+                                    resolvedAnswer = onlyTask.choices[num - 1];
+                                }
+                            }
+
+                            if (this._onResponseReceived) {
+                                this._onResponseReceived(onlyTask.taskId, resolvedAnswer, `${user} (via Telegram)`);
+                            }
+
+                            await this._markResolved(onlyTask, resolvedAnswer, user);
+                            this._activeTasks.delete(onlyTask.taskId);
+                            continue;
+                        }
+                    }
+
                     if (!replyToMsgId) { continue; }
 
                     // Find the task this reply belongs to

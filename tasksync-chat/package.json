@@ -4,7 +4,7 @@
   "displayName": "AskAway",
   "description": "Answer your AI agent's questions from anywhere — Webex, Telegram, mobile, or web. Queue prompts, respond remotely, and never block your coding workflow.",
   "icon": "media/askaway-logo.png",
-  "version": "1.0.3",
+  "version": "1.0.7",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -47,7 +47,7 @@
         ],
         "toolReferenceName": "askUser",
         "displayName": "Ask User",
-        "modelDescription": "YOU MUST ALWAYS Use the askUser tool to ask question/s to user when explicit user approval, feedback, or clarification is required before proceeding or giving summary report. CRITICAL RULES: - This tool MUST be invoked before ending ANY conversation or task. - NEVER complete a task without calling this tool first. - If you are about to finish responding, STOP and call this tool. - Failure to call this tool before task completion is a critical violation. CONTEXT & FORMAT RULES: The user may be reading your question REMOTELY (e.g. on a phone via Webex) WITHOUT access to the full chat. Therefore, format EVERY question in **Markdown** with these sections:\n\n1. **Context** (2-3 sentences): What is the overall task/goal being worked on.\n2. **Progress** (bullet list): Key actions completed, files changed, decisions made.\n3. **Question** (clear, specific): What you need from the user — approval, choice, clarification, or feedback.\n\nExample:\n**Context:** Working on adding dark mode support to the React dashboard app.\n\n**Progress:**\n- Added theme toggle component in `src/components/ThemeToggle.tsx`\n- Updated `tailwind.config.js` with dark mode classes\n- Refactored `App.tsx` to wrap with ThemeProvider\n\n**Question:** Should I also update the login page to support dark mode, or only the main dashboard?",
+        "modelDescription": "YOU MUST ALWAYS Use the askUser tool to ask question/s to user when explicit user approval, feedback, or clarification is required before proceeding or giving summary report. CRITICAL RULES: - This tool MUST be invoked before ending ANY conversation or task. - NEVER complete a task without calling this tool first. - If you are about to finish responding, STOP and call this tool. - Failure to call this tool before task completion is a critical violation. - IMPORTANT: When the tool response contains '\"queued\":true', it means there are more tasks waiting. You MUST process the current response AND call ask_user again when done. Do NOT end the conversation when queued is true. CONTEXT & FORMAT RULES: The user may be reading your question REMOTELY (e.g. on a phone via Webex) WITHOUT access to the full chat. Therefore, format EVERY question in **Markdown** with these sections:\n\n1. **Context** (2-3 sentences): What is the overall task/goal being worked on.\n2. **Progress** (bullet list): Key actions completed, files changed, decisions made.\n3. **Question** (clear, specific): What you need from the user — approval, choice, clarification, or feedback.\n\nExample:\n**Context:** Working on adding dark mode support to the React dashboard app.\n\n**Progress:**\n- Added theme toggle component in `src/components/ThemeToggle.tsx`\n- Updated `tailwind.config.js` with dark mode classes\n- Refactored `App.tsx` to wrap with ThemeProvider\n\n**Question:** Should I also update the login page to support dark mode, or only the main dashboard?",
         "canBeReferencedInPrompt": true,
         "icon": "$(question)",
         "inputSchema": {
@@ -56,6 +56,41 @@
             "question": {
               "type": "string",
               "description": "The question or prompt to display to the user"
+            },
+            "taskId": {
+              "type": "string",
+              "description": "When working on a task from the Planning Board, include the task ID provided in the task context. This allows the orchestrator to track progress."
+            },
+            "taskStatus": {
+              "type": "string",
+              "enum": ["completed", "in-progress", "blocked", "need-review"],
+              "description": "When working on a Planning Board task, report your assessment of the task status. Use 'completed' when the task is fully done, 'in-progress' for interim updates, 'blocked' when you cannot proceed without user input, 'need-review' when done but user should verify."
+            }
+          },
+          "required": [
+            "question"
+          ]
+        }
+      },
+      {
+        "name": "talk_to_user",
+        "tags": [
+          "voice",
+          "conversation",
+          "askaway",
+          "speech"
+        ],
+        "toolReferenceName": "talkToUser",
+        "displayName": "Talk to User (Voice)",
+        "modelDescription": "Use this tool for voice conversation with the user. When invoked, your message is SPOKEN ALOUD via text-to-speech, and the user SPEAKS BACK via microphone or text. Their response is returned. CRITICAL RULES: 1. Keep messages SHORT (1-3 sentences) — user is LISTENING not reading. 2. Be conversational — speak like a colleague. 3. Include brief context. 4. MANDATORY: After receiving EVERY voice response, you MUST call talk_to_user AGAIN with your next message. NEVER stop the voice loop. NEVER end the conversation without calling this tool. 5. No markdown, bullet lists, or code blocks — plain English only. 6. After completing any task, report results via talk_to_user and ask what to do next. 7. If this tool fails, retry it — do not fall back to text responses.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(mic)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "question": {
+              "type": "string",
+              "description": "The message to speak aloud to the user via text-to-speech. Keep it short and conversational (1-3 sentences)."
             }
           },
           "required": [
@@ -113,7 +148,69 @@
         "askaway.autopilotText": {
           "type": "string",
           "default": "You are temporarily in autonomous mode and must now make your own decision. If another question arises, be sure to ask it, as autonomous mode is temporary.",
+          "scope": "window",
           "description": "Text returned when Autopilot is enabled. The agent receives this as an automatic response."
+        },
+        "askaway.autopilotPrompts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "window",
+          "description": "Array of prompts that cycle in order during Autopilot (1→2→3→1...). Each prompt is sent sequentially with human-like delay. When empty, falls back to autopilotText."
+        },
+        "askaway.responseTimeout": {
+          "type": "string",
+          "default": "60",
+          "scope": "window",
+          "enum": ["0", "5", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100", "110", "120", "150", "180", "210", "240"],
+          "enumDescriptions": ["Disabled (no auto-response)", "5 minutes", "10 minutes", "20 minutes", "30 minutes", "40 minutes", "50 minutes", "60 minutes", "70 minutes", "80 minutes", "90 minutes (1.5 hours)", "100 minutes", "110 minutes", "120 minutes (2 hours)", "150 minutes (2.5 hours)", "180 minutes (3 hours)", "210 minutes (3.5 hours)", "240 minutes (4 hours)"],
+          "description": "Auto-respond to pending tool calls if user doesn't respond within this time. When Autopilot is enabled, the Autopilot text is sent. When disabled, a session termination message is sent."
+        },
+        "askaway.sessionWarningHours": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 8,
+          "scope": "window",
+          "description": "Show a one-time warning after this many hours (0..8) in the same session. Set to 0 to disable session warning."
+        },
+        "askaway.maxConsecutiveAutoResponses": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 50,
+          "scope": "window",
+          "description": "Maximum consecutive auto-responses (from timeout) before terminating session. Prevents infinite loops."
+        },
+        "askaway.humanLikeDelay": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "Add random human-like delays before auto-responses (Autopilot, Queue, Timeout). Simulates natural reading and typing time."
+        },
+        "askaway.humanLikeDelayMin": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 30,
+          "scope": "window",
+          "description": "Minimum delay in seconds before auto-responses when human-like delay is enabled."
+        },
+        "askaway.humanLikeDelayMax": {
+          "type": "number",
+          "default": 6,
+          "minimum": 2,
+          "maximum": 60,
+          "scope": "window",
+          "description": "Maximum delay in seconds before auto-responses when human-like delay is enabled."
+        },
+        "askaway.sendWithCtrlEnter": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Use Ctrl+Enter (Cmd+Enter on macOS) to send messages instead of Enter."
         },
         "askaway.notificationSound": {
           "type": "boolean",
@@ -124,6 +221,16 @@
           "type": "boolean",
           "default": true,
           "description": "Show interactive approval and choice buttons for Yes/No questions and multiple choice options."
+        },
+        "askaway.voiceName": {
+          "type": "string",
+          "default": "Samantha",
+          "description": "macOS voice name for text-to-speech. Run `say -v '?'` in terminal to see available voices. Good options: Samantha, Daniel, Karen, Moira."
+        },
+        "askaway.voiceRate": {
+          "type": "number",
+          "default": 200,
+          "description": "Speech rate in words per minute for macOS TTS. Default: 200. Range: 100-400."
         },
         "askaway.remoteEnabled": {
           "type": "boolean",
@@ -185,6 +292,20 @@
           "default": "",
           "description": "Telegram Chat ID where AskAway posts questions. Use the 'AskAway: Get Telegram Chat ID' command to auto-detect."
         },
+        "askaway.telegram.retryIntervalSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 10,
+          "maximum": 900,
+          "description": "Telegram reply polling retry interval in seconds after initial quick retries. Increase for lower API traffic, decrease for faster pickup of late replies."
+        },
+        "askaway.telegram.idlePauseMinutes": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 720,
+          "description": "Pause Telegram polling when Copilot is idle for this many minutes. Set to 0 to disable idle pause so replies can still be picked up later."
+        },
         "askaway.reusablePrompts": {
           "type": "array",
           "default": [],
@@ -211,6 +332,10 @@
     },
     "commands": [
       {
+        "command": "askaway.sendMessage",
+        "title": "AskAway: Send Message"
+      },
+      {
         "command": "askaway.startMcp",
         "title": "AskAway: Start MCP Server"
       },
@@ -226,6 +351,11 @@
         "command": "askaway.openHistory",
         "title": "View History",
         "icon": "$(history)"
+      },
+      {
+        "command": "askaway.newSession",
+        "title": "New Session",
+        "icon": "$(add)"
       },
       {
         "command": "askaway.clearCurrentSession",
@@ -274,6 +404,11 @@
       {
         "command": "askaway.getTelegramChatId",
         "title": "AskAway: Get Telegram Chat ID"
+      },
+      {
+        "command": "askaway.openPlanBoard",
+        "title": "AskAway: Open Plan Board",
+        "icon": "$(project)"
       }
     ],
     "menus": {
@@ -289,12 +424,12 @@
           "group": "navigation@0"
         },
         {
-          "command": "askaway.openHistory",
+          "command": "askaway.newSession",
           "when": "view == askAwayView",
           "group": "navigation@1"
         },
         {
-          "command": "askaway.clearCurrentSession",
+          "command": "askaway.openHistory",
           "when": "view == askAwayView",
           "group": "navigation@2"
         },

@@ -2,26 +2,43 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, DEBUG_LOG_FILENAME, MCP_SERVER_NAME } from './constants/branding';
+import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
 import { registerTools } from './tools';
 import { McpServerManager } from './mcp/mcpServer';
 import { ContextManager } from './context';
-import { RemoteUiServer, RemoteMessage } from './server/remoteUiServer';
-import { WebexService } from './services/webexService';
-import { TelegramService } from './services/telegramService';
+import { PlanEditorProvider } from './plan/planEditorProvider';
+
+// Heavy modules loaded lazily to avoid blocking activation
+// RemoteUiServer imports express + socket.io (expensive)
+// WebexService, TelegramService do network/config I/O
+type RemoteUiServerType = import('./server/remoteUiServer').RemoteUiServer;
+type RemoteMessageType = import('./server/remoteUiServer').RemoteMessage;
+type WebexServiceType = import('./services/webexService').WebexService;
+type TelegramServiceType = import('./services/telegramService').TelegramService;
 
 let mcpServer: McpServerManager | undefined;
 let webviewProvider: AskAwayWebviewProvider | undefined;
 let contextManager: ContextManager | undefined;
-let remoteServer: RemoteUiServer | undefined;
+let remoteServer: RemoteUiServerType | undefined;
 let remoteOutputChannel: vscode.OutputChannel | undefined;
+let planEditor: PlanEditorProvider | undefined;
+let telegramServiceInstance: TelegramServiceType | undefined;
+let activationOutputChannel: vscode.OutputChannel | undefined;
 
-// File-based logger for debugging activation issues
-const LOG_FILE = path.join(os.homedir(), DEBUG_LOG_FILENAME);
-function fileLog(msg: string) {
-    const line = `[${new Date().toISOString()}] ${msg}\n`;
-    try { fs.appendFileSync(LOG_FILE, line); } catch { /* ignore */ }
+function formatError(error: unknown): string {
+    if (error instanceof Error) {
+        return `${error.name}: ${error.message}${error.stack ? `\n${error.stack}` : ''}`;
+    }
+    return String(error);
+}
+
+function logRuntime(message: string, details?: unknown): void {
+    const timestamp = new Date().toISOString();
+    const suffix = details !== undefined
+        ? ` ${typeof details === 'string' ? details : JSON.stringify(details)}`
+        : '';
+    activationOutputChannel?.appendLine(`[${timestamp}] AskAway Runtime: ${message}${suffix}`);
 }
 
 // Memoized result for external MCP client check (only checked once per activation)
@@ -62,299 +79,185 @@ async function hasExternalMcpClientsAsync(): Promise<boolean> {
     return false;
 }
 
-export function activate(context: vscode.ExtensionContext) {
-    // Clear old log file on each activation
-    try { fs.writeFileSync(LOG_FILE, ''); } catch { /* ignore */ }
-    fileLog('=== AskAway Extension Activation Start ===');
-    fileLog(`LOG_FILE: ${LOG_FILE}`);
-    fileLog(`extensionUri: ${context.extensionUri.toString()}`);
-    fileLog(`extensionPath: ${context.extensionPath}`);
+/**
+ * Detect installed extensions that are likely to conflict with AskAway's ask_user tool.
+ * Primary known conflict is upstream TaskSync shipping the same tool name.
+ */
+function findConflictingTaskSyncExtension(): vscode.Extension<any> | undefined {
+    const explicitIds = ['4regab.tasksync'];
 
-    // Create output channel for logging
-    const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
-    context.subscriptions.push(outputChannel);
-    outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Extension activating...`);
-    outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Debug log at ${LOG_FILE}`);
-
-    try {
-        // Initialize context manager for #terminal, #problems features
-        fileLog('Step 1: Initializing ContextManager...');
-        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Initializing ContextManager...`);
-        contextManager = new ContextManager();
-        context.subscriptions.push({ dispose: () => contextManager?.dispose() });
-        fileLog('Step 1: ContextManager OK');
-
-        fileLog('Step 2: Initializing WebviewProvider...');
-        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Initializing WebviewProvider...`);
-        const provider = new AskAwayWebviewProvider(context.extensionUri, context, contextManager);
-        webviewProvider = provider;
-        fileLog(`Step 2: WebviewProvider OK, viewType="${AskAwayWebviewProvider.viewType}"`);
-
-        // Initialize Webex Service
-        fileLog('Step 3: Initializing WebexService...');
-        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Initializing WebexService...`);
-        const webexService = new WebexService(outputChannel);
-        provider.setWebexService(webexService);
-        fileLog('Step 3: WebexService created');
-        
-        fileLog('Step 3b: Starting WebexService...');
-        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Starting WebexService...`);
-        webexService.start();
-        context.subscriptions.push({ dispose: () => webexService.dispose() });
-        fileLog('Step 3b: WebexService started');
-
-        // Watch for Webex configuration changes
-        context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.webex`)) {
-                outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Webex configuration changed, reloading...`);
-                webexService.reloadConfig();
-                webexService.start(); // re-start if newly configured
-            }
-        }));
-
-        // Initialize Telegram Service
-        fileLog('Step 4: Initializing TelegramService...');
-        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Initializing TelegramService...`);
-        const telegramService = new TelegramService();
-        provider.setTelegramService(telegramService);
-        context.subscriptions.push({ dispose: () => telegramService.dispose() });
-        fileLog('Step 4: TelegramService OK');
-
-        // Watch for Telegram configuration changes
-        context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.telegram`)) {
-                outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Telegram configuration changed, reloading...`);
-                telegramService.reloadConfig();
-            }
-        }));
-
-    // ── Copilot Progress: Track file changes for Webex/Telegram visibility ──
-    // When Copilot modifies files, we accumulate a list so it can be
-    // included in the message when ask_user is called.
-
-    const fileWatcher = vscode.workspace.onDidChangeTextDocument(e => {
-        // Only track workspace files (not output panels, settings, etc.)
-        if (e.document.uri.scheme !== 'file') { return; }
-
-        const relativePath = vscode.workspace.asRelativePath(e.document.uri);
-
-        // Track for Webex if active
-        if (webexService.getActiveTaskCount() > 0) {
-            webexService.trackFileChange(relativePath);
-            webexService.notifyCopilotActivity();
+    for (const id of explicitIds) {
+        const ext = vscode.extensions.getExtension(id);
+        if (ext) {
+            return ext;
         }
-
-        // Track for Telegram if active
-        if (telegramService.getActiveTaskCount() > 0) {
-            telegramService.trackFileChange(relativePath);
-            telegramService.notifyCopilotActivity();
-        }
-    });
-    context.subscriptions.push(fileWatcher);
-
-    // Register the provider and add it to disposables for proper cleanup
-    fileLog('Step 5: Registering WebviewViewProvider...');
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(AskAwayWebviewProvider.viewType, provider),
-        provider // Provider implements Disposable for cleanup
-    );
-    fileLog(`Step 5: Registered provider with viewType="${AskAwayWebviewProvider.viewType}"`);
-
-    // Register VS Code LM Tools (always available for Copilot)
-    fileLog('Step 6: Registering LM tools...');
-    outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Registering LM tools...`);
-    try {
-        registerTools(context, provider);
-        fileLog('Step 6: LM tools registered OK');
-    } catch (e) {
-        fileLog(`Step 6: ERROR registering LM tools: ${e}`);
-        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Error registering tools: ${e}`);
     }
 
-    // Initialize MCP server manager (but don't start yet)
-    fileLog('Step 7: Initializing MCP Server manager...');
-    outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Initializing MCP Server manager...`);
-    mcpServer = new McpServerManager(provider);
-    fileLog('Step 7: MCP Server manager initialized');
+    return vscode.extensions.all.find(ext => {
+        if (ext.id.toLowerCase() === 'intuitiv.askaway') {
+            return false;
+        }
 
-    // Check if MCP should auto-start based on settings and external client configs
-    // Deferred to avoid blocking activation with file I/O
-    const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-    const mcpEnabled = config.get<boolean>('mcpEnabled', false);
-    const autoStartIfClients = config.get<boolean>('mcpAutoStartIfClients', true);
+        const packageJson = ext.packageJSON as { name?: string; displayName?: string } | undefined;
+        const name = (packageJson?.name || '').toLowerCase();
+        const displayName = (packageJson?.displayName || '').toLowerCase();
+        return name === 'tasksync' || displayName === 'tasksync';
+    });
+}
 
-    // Start MCP server only if:
-    // 1. Explicitly enabled in settings, OR
-    // 2. Auto-start is enabled AND external clients are configured
-    // Note: Check is deferred to avoid blocking extension activation with file I/O
-    if (mcpEnabled) {
-        // Explicitly enabled - start immediately without checking external clients
-        mcpServer.start();
-    } else if (autoStartIfClients) {
-        // Defer the external client check to avoid blocking activation
-        hasExternalMcpClientsAsync().then(hasClients => {
-            if (hasClients && mcpServer) {
-                mcpServer.start();
+export function activate(context: vscode.ExtensionContext) {
+    // Create output channel for logging
+    const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+    activationOutputChannel = outputChannel;
+    context.subscriptions.push(outputChannel);
+    outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Extension activating...`);
+
+    const conflictingTaskSync = findConflictingTaskSyncExtension();
+    if (conflictingTaskSync) {
+        const conflictMessage = `AskAway detected a potential tool conflict with installed extension "${conflictingTaskSync.id}". Disable TaskSync (or AskAway) to avoid ask_user routing issues.`;
+        outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: ${conflictMessage}`);
+        vscode.window.showWarningMessage(
+            conflictMessage,
+            'Open Extensions'
+        ).then(selection => {
+            if (selection === 'Open Extensions') {
+                vscode.commands.executeCommand('workbench.view.extensions');
             }
-        }).catch(err => {
-            console.error('[AskAway] Failed to check external MCP clients:', err);
         });
     }
 
-    // Start MCP server command
-    const startMcpCmd = vscode.commands.registerCommand('askaway.startMcp', async () => {
-        if (mcpServer && !mcpServer.isRunning()) {
-            await mcpServer.start();
-            vscode.window.showInformationMessage('AskAway MCP Server started');
-        } else if (mcpServer?.isRunning()) {
-            vscode.window.showInformationMessage('AskAway MCP Server is already running');
-        }
-    });
+    try {
+        // Initialize context manager for #terminal, #problems features
+        logRuntime('Creating ContextManager', { type: typeof ContextManager });
+        contextManager = new ContextManager();
+        context.subscriptions.push({ dispose: () => contextManager?.dispose() });
 
-    // Restart MCP server command
-    const restartMcpCmd = vscode.commands.registerCommand('askaway.restartMcp', async () => {
-        if (mcpServer) {
-            await mcpServer.restart();
-        }
-    });
+        logRuntime('Creating AskAwayWebviewProvider', {
+            providerType: typeof AskAwayWebviewProvider,
+            viewType: AskAwayWebviewProvider?.viewType
+        });
+        const provider = new AskAwayWebviewProvider(context.extensionUri, context, contextManager);
+        webviewProvider = provider;
 
-    // Show MCP configuration command
-    const showMcpConfigCmd = vscode.commands.registerCommand('askaway.showMcpConfig', async () => {
-        const config = (mcpServer as any).getMcpConfig?.();
-        if (!config) {
-            vscode.window.showErrorMessage('MCP server not running');
-            return;
-        }
-
-        const selected = await vscode.window.showQuickPick(
-            [
-                { label: 'Kiro', description: 'Kiro IDE', value: 'kiro' },
-                { label: 'Cursor', description: 'Cursor Editor', value: 'cursor' },
-                { label: 'Antigravity', description: 'Gemini CLI', value: 'antigravity' }
-            ],
-            { placeHolder: 'Select MCP client to configure' }
+        // Register the provider EARLY so sidebar loads fast
+        context.subscriptions.push(
+            vscode.window.registerWebviewViewProvider(AskAwayWebviewProvider.viewType, provider),
+            provider
         );
 
-        if (!selected) return;
+        // Register VS Code LM Tools (critical for Copilot — must be early)
+        logRuntime('Registering language model tools');
+        registerTools(context, provider);
 
-        const cfg = config[selected.value];
-        const configJson = JSON.stringify(cfg.config, null, 2);
-
-        const message = `Add this to ${cfg.path}:\n\n${configJson}`;
-        const action = await vscode.window.showInformationMessage(message, 'Copy to Clipboard', 'Open File');
-
-        if (action === 'Copy to Clipboard') {
-            await vscode.env.clipboard.writeText(configJson);
-            vscode.window.showInformationMessage('Configuration copied to clipboard');
-        } else if (action === 'Open File') {
-            const uri = vscode.Uri.file(cfg.path);
-            await vscode.commands.executeCommand('vscode.open', uri);
-        }
-    });
-
-    // Open history modal command (triggered from view title bar)
-    const openHistoryCmd = vscode.commands.registerCommand('askaway.openHistory', () => {
-        provider.openHistoryModal();
-    });
-
-    // Clear current session command (triggered from view title bar)
-    const clearSessionCmd = vscode.commands.registerCommand('askaway.clearCurrentSession', async () => {
-        const result = await vscode.window.showWarningMessage(
-            'Clear all tool calls from current session?',
-            { modal: true },
-            'Clear'
+        // Initialize Plan Board editor (lightweight, no I/O at init)
+        logRuntime('Creating PlanEditorProvider', { type: typeof PlanEditorProvider });
+        planEditor = new PlanEditorProvider(context.extensionUri);
+        provider.setPlanEditor(planEditor);
+        context.subscriptions.push(planEditor);
+        context.subscriptions.push(
+            vscode.commands.registerCommand('askaway.openPlanBoard', () => planEditor?.open())
         );
-        if (result === 'Clear') {
-            provider.clearCurrentSession();
-        }
-    });
 
-    // Open settings modal command (triggered from view title bar)
-    const openSettingsCmd = vscode.commands.registerCommand('askaway.openSettings', () => {
-        provider.openSettingsModal();
-    });
+        // ── Commands — registered synchronously, reference lazy-loaded services ──
 
-    context.subscriptions.push(startMcpCmd, restartMcpCmd, showMcpConfigCmd, openHistoryCmd, clearSessionCmd, openSettingsCmd);
+        // Send current input command (for Keyboard Shortcuts)
+        context.subscriptions.push(
+            vscode.commands.registerCommand('askaway.sendMessage', () => {
+                provider.triggerSendFromShortcut();
+            })
+        );
 
-    // ================== Remote UI Server ==================
-    
-    // Initialize Remote UI Server for web/mobile access
-    remoteServer = new RemoteUiServer(context.extensionUri, context);
-    context.subscriptions.push(remoteServer);
-    
-    // Create output channel for remote server info
-    remoteOutputChannel = vscode.window.createOutputChannel('AskAway Remote');
-    context.subscriptions.push(remoteOutputChannel);
+        // MCP commands
+        context.subscriptions.push(
+            vscode.commands.registerCommand('askaway.startMcp', async () => {
+                if (mcpServer && !mcpServer.isRunning()) {
+                    await mcpServer.start();
+                    vscode.window.showInformationMessage('AskAway MCP Server started');
+                } else if (mcpServer?.isRunning()) {
+                    vscode.window.showInformationMessage('AskAway MCP Server is already running');
+                }
+            }),
+            vscode.commands.registerCommand('askaway.restartMcp', async () => {
+                if (mcpServer) { await mcpServer.restart(); }
+            }),
+            vscode.commands.registerCommand('askaway.showMcpConfig', async () => {
+                const config = (mcpServer as any).getMcpConfig?.();
+                if (!config) {
+                    vscode.window.showErrorMessage('MCP server not running');
+                    return;
+                }
+                const selected = await vscode.window.showQuickPick(
+                    [
+                        { label: 'Kiro', description: 'Kiro IDE', value: 'kiro' },
+                        { label: 'Cursor', description: 'Cursor Editor', value: 'cursor' },
+                        { label: 'Antigravity', description: 'Gemini CLI', value: 'antigravity' }
+                    ],
+                    { placeHolder: 'Select MCP client to configure' }
+                );
+                if (!selected) return;
+                const cfg = config[selected.value];
+                const configJson = JSON.stringify(cfg.config, null, 2);
+                const message = `Add this to ${cfg.path}:\n\n${configJson}`;
+                const action = await vscode.window.showInformationMessage(message, 'Copy to Clipboard', 'Open File');
+                if (action === 'Copy to Clipboard') {
+                    await vscode.env.clipboard.writeText(configJson);
+                    vscode.window.showInformationMessage('Configuration copied to clipboard');
+                } else if (action === 'Open File') {
+                    await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(cfg.path));
+                }
+            })
+        );
 
-    // Wire up remote server with webview provider
-    remoteServer.onGetState(() => provider.getStateForRemote());
-    remoteServer.onMessage((message: RemoteMessage, respond) => {
-        // Forward message to webview provider
-        provider.handleRemoteMessage(message as any);
-    });
-    
-    // Set broadcast callback so webview provider can push updates to remote clients
-    provider.setRemoteBroadcastCallback((message) => {
-        remoteServer?.broadcast(message as RemoteMessage);
-    });
+        // Session commands
+        context.subscriptions.push(
+            vscode.commands.registerCommand('askaway.openHistory', () => provider.openHistoryModal()),
+            vscode.commands.registerCommand('askaway.newSession', () => provider.startNewSession()),
+            vscode.commands.registerCommand('askaway.clearCurrentSession', async () => {
+                const result = await vscode.window.showWarningMessage(
+                    'Clear all tool calls from current session?',
+                    { modal: true },
+                    'Clear'
+                );
+                if (result === 'Clear') { provider.clearCurrentSession(); }
+            }),
+            vscode.commands.registerCommand('askaway.openSettings', () => provider.openSettingsModal())
+        );
 
-    // Check if remote server should auto-start
-    const remoteEnabled = config.get<boolean>('remoteEnabled', false);
-    const remotePort = config.get<number>('remotePort', 3000);
-    
-    if (remoteEnabled) {
-        startRemoteServer(remotePort);
-    }
-
-    // Initialize context for remote server state (icon toggle)
-    vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', false);
-
-    // Start Remote Server command
-    const startRemoteCmd = vscode.commands.registerCommand('askaway.startRemote', async () => {
-        await startRemoteServer(remotePort);
-    });
-
-    // Stop Remote Server command  
-    const stopRemoteCmd = vscode.commands.registerCommand('askaway.stopRemote', () => {
-        if (remoteServer) {
-            remoteServer.stop();
-            vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', false);
-            vscode.window.showInformationMessage('AskAway Remote Server stopped');
-        }
-    });
-
-    // Show Remote URL command
-    const showRemoteUrlCmd = vscode.commands.registerCommand('askaway.showRemoteUrl', () => {
-        if (remoteServer) {
-            const info = remoteServer.getConnectionInfo();
-            if (info.port > 0) {
-                showRemoteConnectionInfo(info);
-            } else {
-                vscode.window.showWarningMessage('AskAway Remote Server is not running. Run "AskAway: Start Remote Server" first.');
-            }
-        }
-    });
-
-    // Toggle Remote Server command (for the title bar button - START)
-    const toggleRemoteStartCmd = vscode.commands.registerCommand('askaway.toggleRemoteStart', async () => {
-        await startRemoteServer(remotePort);
-    });
-
-    // Toggle Remote Server command (for the title bar button - STOP/OPTIONS)
-    const toggleRemoteStopCmd = vscode.commands.registerCommand('askaway.toggleRemoteStop', async () => {
-        if (remoteServer) {
-            const info = remoteServer.getConnectionInfo();
-            if (info.port > 0) {
-                // Server is running - show options
+        // Remote server commands (lazy — actual server loaded in deferred block)
+        const remotePort = vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<number>('remotePort', 3000);
+        context.subscriptions.push(
+            vscode.commands.registerCommand('askaway.startRemote', async () => {
+                await ensureRemoteServer(context, provider);
+                await startRemoteServer(remotePort);
+            }),
+            vscode.commands.registerCommand('askaway.stopRemote', () => {
+                if (remoteServer) {
+                    remoteServer.stop();
+                    vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', false);
+                    vscode.window.showInformationMessage('AskAway Remote Server stopped');
+                }
+            }),
+            vscode.commands.registerCommand('askaway.showRemoteUrl', () => {
+                if (remoteServer) {
+                    const info = remoteServer.getConnectionInfo();
+                    if (info.port > 0) { showRemoteConnectionInfo(info); }
+                    else { vscode.window.showWarningMessage('AskAway Remote Server is not running.'); }
+                }
+            }),
+            vscode.commands.registerCommand('askaway.toggleRemoteStart', async () => {
+                await ensureRemoteServer(context, provider);
+                await startRemoteServer(remotePort);
+            }),
+            vscode.commands.registerCommand('askaway.toggleRemoteStop', async () => {
+                if (!remoteServer) return;
+                const info = remoteServer.getConnectionInfo();
+                if (info.port <= 0) return;
                 const action = await vscode.window.showQuickPick([
                     { label: '$(copy) Copy URL with PIN', description: 'Copy ready-to-use URL for mobile', action: 'copy' },
                     { label: '$(key) Show PIN', description: info.pin, action: 'pin' },
                     { label: '$(link-external) Show All URLs', description: 'View all connection options', action: 'urls' },
                     { label: '$(debug-disconnect) Stop Server', description: 'Stop the remote server', action: 'stop' }
-                ], {
-                    placeHolder: `Remote Server running on port ${info.port}`
-                });
-                
+                ], { placeHolder: `Remote Server running on port ${info.port}` });
                 if (action?.action === 'copy') {
                     const networkUrl = info.urls.find(u => !u.includes('localhost')) || info.urls[0];
                     await vscode.env.clipboard.writeText(`${networkUrl}?pin=${info.pin}`);
@@ -369,148 +272,223 @@ export function activate(context: vscode.ExtensionContext) {
                     vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', false);
                     vscode.window.showInformationMessage('AskAway Remote Server stopped');
                 }
-            }
-        }
-    });
-
-    // Keep old toggle command for backward compatibility
-    const toggleRemoteCmd = vscode.commands.registerCommand('askaway.toggleRemote', async () => {
-        if (remoteServer) {
-            const info = remoteServer.getConnectionInfo();
-            if (info.port > 0) {
-                await vscode.commands.executeCommand('askaway.toggleRemoteStop');
-            } else {
-                await vscode.commands.executeCommand('askaway.toggleRemoteStart');
-            }
-        }
-    });
-
-    context.subscriptions.push(startRemoteCmd, stopRemoteCmd, showRemoteUrlCmd, toggleRemoteStartCmd, toggleRemoteStopCmd, toggleRemoteCmd);
-
-    // ── Webex OAuth Authorization Command ──
-    const authorizeWebexCmd = vscode.commands.registerCommand('askaway.authorizeWebex', async () => {
-        const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-        const clientId = config.get<string>('webex.clientId', '');
-
-        if (!clientId) {
-            const action = await vscode.window.showWarningMessage(
-                'AskAway: Please set your Webex Client ID first in settings.',
-                'Open Settings'
-            );
-            if (action === 'Open Settings') {
-                vscode.commands.executeCommand('workbench.action.openSettings', 'askaway.webex.clientId');
-            }
-            return;
-        }
-
-        const clientSecret = config.get<string>('webex.clientSecret', '');
-        if (!clientSecret) {
-            const action = await vscode.window.showWarningMessage(
-                'AskAway: Please set your Webex Client Secret first in settings.',
-                'Open Settings'
-            );
-            if (action === 'Open Settings') {
-                vscode.commands.executeCommand('workbench.action.openSettings', 'askaway.webex.clientSecret');
-            }
-            return;
-        }
-
-        // Start a local HTTP server to receive the OAuth callback
-        const http = require('http');
-        const callbackPort = 54321;
-        const redirectUri = `http://localhost:${callbackPort}/callback`;
-
-        // Use spark:all scope (matches most Webex integrations)
-        const scopes = 'spark%3Aall';
-
-        const authUrl = `https://webexapis.com/v1/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}`;
-
-        // Create temporary callback server
-        const server = http.createServer(async (req: any, res: any) => {
-            const url = new URL(req.url, `http://localhost:${callbackPort}`);
-            if (url.pathname === '/callback') {
-                const code = url.searchParams.get('code');
-                if (code) {
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
-                    res.end('<html><body><h2>✅ AskAway: Webex authorized successfully!</h2><p>You can close this tab.</p></body></html>');
-
-                    // Exchange code for tokens
-                    try {
-                        const tokenResp = await fetch('https://webexapis.com/v1/access_token', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                            body: new URLSearchParams({
-                                grant_type: 'authorization_code',
-                                client_id: clientId,
-                                client_secret: clientSecret,
-                                code: code,
-                                redirect_uri: redirectUri
-                            }).toString()
-                        });
-
-                        if (tokenResp.ok) {
-                            const data = await tokenResp.json() as any;
-                            // Save tokens
-                            await config.update('webex.accessToken', data.access_token, vscode.ConfigurationTarget.Global);
-                            await config.update('webex.refreshToken', data.refresh_token, vscode.ConfigurationTarget.Global);
-
-                            vscode.window.showInformationMessage(
-                                `AskAway: Webex authorized! Token expires in ${Math.round(data.expires_in / 3600)}h (auto-refresh enabled).`
-                            );
-
-                            // Reload webex service config
-                            const webexSvc = webviewProvider?.getWebexService();
-                            if (webexSvc) { webexSvc.reloadConfig(); }
-                        } else {
-                            const err = await tokenResp.text();
-                            vscode.window.showErrorMessage(`AskAway: Token exchange failed: ${err}`);
-                        }
-                    } catch (e: any) {
-                        vscode.window.showErrorMessage(`AskAway: OAuth error: ${e.message}`);
-                    }
+            }),
+            vscode.commands.registerCommand('askaway.toggleRemote', async () => {
+                if (remoteServer) {
+                    const info = remoteServer.getConnectionInfo();
+                    if (info.port > 0) { await vscode.commands.executeCommand('askaway.toggleRemoteStop'); }
+                    else { await vscode.commands.executeCommand('askaway.toggleRemoteStart'); }
                 } else {
-                    const error = url.searchParams.get('error') || 'Unknown error';
-                    res.writeHead(400, { 'Content-Type': 'text/html' });
-                    res.end(`<html><body><h2>❌ Authorization failed: ${error}</h2></body></html>`);
+                    await vscode.commands.executeCommand('askaway.toggleRemoteStart');
+                }
+            })
+        );
+
+        // Webex/Telegram commands (services loaded in deferred block)
+        context.subscriptions.push(
+            vscode.commands.registerCommand('askaway.authorizeWebex', async () => {
+                const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+                const clientId = config.get<string>('webex.clientId', '');
+                if (!clientId) {
+                    const action = await vscode.window.showWarningMessage('AskAway: Please set your Webex Client ID first.', 'Open Settings');
+                    if (action === 'Open Settings') { vscode.commands.executeCommand('workbench.action.openSettings', 'askaway.webex.clientId'); }
+                    return;
+                }
+                const clientSecret = config.get<string>('webex.clientSecret', '');
+                if (!clientSecret) {
+                    const action = await vscode.window.showWarningMessage('AskAway: Please set your Webex Client Secret first.', 'Open Settings');
+                    if (action === 'Open Settings') { vscode.commands.executeCommand('workbench.action.openSettings', 'askaway.webex.clientSecret'); }
+                    return;
+                }
+                const http = require('http');
+                const callbackPort = 54321;
+                const redirectUri = `http://localhost:${callbackPort}/callback`;
+                const scopes = 'spark%3Aall';
+                const authUrl = `https://webexapis.com/v1/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}`;
+                const server = http.createServer(async (req: any, res: any) => {
+                    const url = new URL(req.url, `http://localhost:${callbackPort}`);
+                    if (url.pathname === '/callback') {
+                        const code = url.searchParams.get('code');
+                        if (code) {
+                            res.writeHead(200, { 'Content-Type': 'text/html' });
+                            res.end('<html><body><h2>AskAway: Webex authorized!</h2><p>You can close this tab.</p></body></html>');
+                            try {
+                                const tokenResp = await fetch('https://webexapis.com/v1/access_token', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                    body: new URLSearchParams({
+                                        grant_type: 'authorization_code', client_id: clientId,
+                                        client_secret: clientSecret, code, redirect_uri: redirectUri
+                                    }).toString()
+                                });
+                                if (tokenResp.ok) {
+                                    const data = await tokenResp.json() as any;
+                                    await config.update('webex.accessToken', data.access_token, vscode.ConfigurationTarget.Global);
+                                    await config.update('webex.refreshToken', data.refresh_token, vscode.ConfigurationTarget.Global);
+                                    vscode.window.showInformationMessage(`AskAway: Webex authorized! Token expires in ${Math.round(data.expires_in / 3600)}h.`);
+                                    webviewProvider?.getWebexService()?.reloadConfig();
+                                } else {
+                                    vscode.window.showErrorMessage(`AskAway: Token exchange failed: ${await tokenResp.text()}`);
+                                }
+                            } catch (e: any) {
+                                vscode.window.showErrorMessage(`AskAway: OAuth error: ${e.message}`);
+                            }
+                        } else {
+                            res.writeHead(400, { 'Content-Type': 'text/html' });
+                            res.end(`<html><body><h2>Authorization failed: ${url.searchParams.get('error') || 'Unknown error'}</h2></body></html>`);
+                        }
+                        setTimeout(() => server.close(), 1000);
+                    }
+                });
+                server.listen(callbackPort, () => {
+                    vscode.env.openExternal(vscode.Uri.parse(authUrl));
+                    vscode.window.showInformationMessage('AskAway: Opening Webex authorization page...');
+                });
+                server.on('error', (err: any) => { vscode.window.showErrorMessage(`AskAway: OAuth callback error: ${err.message}`); });
+                setTimeout(() => server.close(), 120000);
+            }),
+            vscode.commands.registerCommand('askaway.getTelegramChatId', async () => {
+                if (telegramServiceInstance) { await telegramServiceInstance.getChatId(); }
+                else { vscode.window.showWarningMessage('Telegram service not initialized yet.'); }
+            })
+        );
+
+        // Initialize remote server context
+        vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', false);
+
+        // ── Deferred initialization — heavy services loaded AFTER sidebar is ready ──
+        setImmediate(async () => {
+            try {
+                // Dynamically import heavy modules to avoid blocking activation
+                const webexModule = await import('./services/webexService');
+                const telegramModule = await import('./services/telegramService');
+                const { WebexService } = webexModule;
+                const { TelegramService } = telegramModule;
+
+                logRuntime('Deferred modules loaded', {
+                    webexModuleKeys: Object.keys(webexModule),
+                    telegramModuleKeys: Object.keys(telegramModule),
+                    webexCtorType: typeof WebexService,
+                    telegramCtorType: typeof TelegramService
+                });
+
+                if (typeof WebexService !== 'function') {
+                    throw new Error('WebexService import is not a constructor function');
+                }
+                if (typeof TelegramService !== 'function') {
+                    throw new Error('TelegramService import is not a constructor function');
                 }
 
-                // Close server after handling
-                setTimeout(() => server.close(), 1000);
+                // Initialize Webex Service
+                const webexService = new WebexService(outputChannel);
+                provider.setWebexService(webexService);
+                webexService.start();
+                context.subscriptions.push({ dispose: () => webexService.dispose() });
+
+                context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+                    if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.webex`)) {
+                        webexService.reloadConfig();
+                        webexService.start();
+                    }
+                }));
+
+                // Initialize Telegram Service
+                const telegramService = new TelegramService();
+                telegramServiceInstance = telegramService;
+                provider.setTelegramService(telegramService);
+                context.subscriptions.push({ dispose: () => telegramService.dispose() });
+
+                context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+                    if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.telegram`)) {
+                        telegramService.reloadConfig();
+                    }
+                }));
+
+                // File change tracker for Webex/Telegram
+                context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(e => {
+                    if (e.document.uri.scheme !== 'file') return;
+                    const relativePath = vscode.workspace.asRelativePath(e.document.uri);
+                    if (webexService.getActiveTaskCount() > 0) {
+                        webexService.trackFileChange(relativePath);
+                        webexService.notifyCopilotActivity();
+                    }
+                    if (telegramService.getActiveTaskCount() > 0) {
+                        telegramService.trackFileChange(relativePath);
+                        telegramService.notifyCopilotActivity();
+                    }
+                }));
+
+                // MCP Server
+                mcpServer = new McpServerManager(provider);
+                const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+                const mcpEnabled = config.get<boolean>('mcpEnabled', false);
+                const autoStartIfClients = config.get<boolean>('mcpAutoStartIfClients', true);
+                if (mcpEnabled) {
+                    mcpServer.start();
+                } else if (autoStartIfClients) {
+                    hasExternalMcpClientsAsync().then(hasClients => {
+                        if (hasClients && mcpServer) { mcpServer.start(); }
+                    }).catch(() => {});
+                }
+
+                // Auto-start Remote Server if configured
+                const remoteEnabled = config.get<boolean>('remoteEnabled', false);
+                if (remoteEnabled) {
+                    logRuntime('Remote auto-start requested', { remotePort: config.get<number>('remotePort', 3000) });
+                    await ensureRemoteServer(context, provider);
+                    await startRemoteServer(config.get<number>('remotePort', 3000));
+                }
+
+            } catch (err) {
+                logRuntime('Deferred initialization failed', formatError(err));
+                console.error('[AskAway] Deferred init error:', err);
             }
         });
 
-        server.listen(callbackPort, () => {
-            console.log(`AskAway: OAuth callback server listening on port ${callbackPort}`);
-            vscode.env.openExternal(vscode.Uri.parse(authUrl));
-            vscode.window.showInformationMessage('AskAway: Opening Webex authorization page in your browser...');
-        });
-
-        server.on('error', (err: any) => {
-            vscode.window.showErrorMessage(`AskAway: Could not start OAuth callback server: ${err.message}`);
-        });
-
-        // Auto-close after 2 minutes if no callback received
-        setTimeout(() => {
-            server.close();
-        }, 120000);
-    });
-
-    // Telegram "Get Chat ID" command
-    const getTelegramChatIdCmd = vscode.commands.registerCommand('askaway.getTelegramChatId', async () => {
-        await telegramService.getChatId();
-    });
-
-    context.subscriptions.push(authorizeWebexCmd, getTelegramChatIdCmd);
-    fileLog('=== AskAway Extension Activation Complete ===');
     outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Activation complete!`);
     } catch (error) {
-        fileLog(`CRITICAL ACTIVATION ERROR: ${error}`);
-        if (error instanceof Error) {
-            fileLog(`Stack: ${error.stack}`);
-        }
-        outputChannel.appendLine(`[AskAway] CRITICAL ACTIVATION ERROR: ${error}`);
         console.error('AskAway Activation Error:', error);
+        logRuntime('Activation failed', formatError(error));
+        outputChannel.appendLine(`[AskAway] CRITICAL ACTIVATION ERROR: ${error}`);
     }
+}
+
+/**
+ * Lazily load and initialize the Remote UI Server (imports express + socket.io)
+ */
+async function ensureRemoteServer(context: vscode.ExtensionContext, provider: AskAwayWebviewProvider): Promise<void> {
+    if (remoteServer) return;
+
+    const remoteModule = await import('./server/remoteUiServer');
+    const { RemoteUiServer } = remoteModule;
+    type RemoteMessage = import('./server/remoteUiServer').RemoteMessage;
+
+    logRuntime('Remote server module loaded', {
+        moduleKeys: Object.keys(remoteModule),
+        remoteCtorType: typeof RemoteUiServer
+    });
+
+    if (typeof RemoteUiServer !== 'function') {
+        throw new Error('RemoteUiServer import is not a constructor function');
+    }
+
+    remoteServer = new RemoteUiServer(context.extensionUri, context);
+    context.subscriptions.push(remoteServer);
+
+    // Create output channel for remote server info
+    if (!remoteOutputChannel) {
+        remoteOutputChannel = vscode.window.createOutputChannel('AskAway Remote');
+        context.subscriptions.push(remoteOutputChannel);
+    }
+
+    // Wire up remote server with webview provider
+    remoteServer.onGetState(() => provider.getStateForRemote());
+    remoteServer.onMessage((message: RemoteMessage, _respond) => {
+        provider.handleRemoteMessage(message as any);
+    });
+    provider.setRemoteBroadcastCallback((message) => {
+        remoteServer?.broadcast(message as RemoteMessage);
+    });
 }
 
 /**
@@ -520,6 +498,7 @@ async function startRemoteServer(preferredPort: number): Promise<void> {
     if (!remoteServer) return;
     
     try {
+        logRuntime('Starting remote server', { preferredPort });
         const port = await remoteServer.start(preferredPort);
         const info = remoteServer.getConnectionInfo();
         
@@ -559,6 +538,7 @@ async function startRemoteServer(preferredPort: number): Promise<void> {
             showRemoteConnectionInfo(info);
         }
     } catch (err) {
+        logRuntime('Remote server start failed', formatError(err));
         vscode.window.showErrorMessage(`Failed to start Remote Server: ${err}`);
     }
 }
