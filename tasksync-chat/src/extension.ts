@@ -358,67 +358,90 @@ export function activate(context: vscode.ExtensionContext) {
 
         // ── Deferred initialization — heavy services loaded AFTER sidebar is ready ──
         setImmediate(async () => {
-            try {
-                // Dynamically import heavy modules to avoid blocking activation
-                const webexModule = await import('./services/webexService');
-                const telegramModule = await import('./services/telegramService');
-                const { WebexService } = webexModule;
-                const { TelegramService } = telegramModule;
+            let webexService: WebexServiceType | undefined;
+            let telegramService: TelegramServiceType | undefined;
 
-                logRuntime('Deferred modules loaded', {
-                    webexModuleKeys: Object.keys(webexModule),
-                    telegramModuleKeys: Object.keys(telegramModule),
-                    webexCtorType: typeof WebexService,
-                    telegramCtorType: typeof TelegramService
+            // Initialize Webex independently so its failure does not block Telegram.
+            try {
+                const webexModule = await import('./services/webexService');
+                const { WebexService } = webexModule;
+                logRuntime('Webex module loaded', {
+                    moduleKeys: Object.keys(webexModule),
+                    ctorType: typeof WebexService
                 });
 
                 if (typeof WebexService !== 'function') {
                     throw new Error('WebexService import is not a constructor function');
                 }
-                if (typeof TelegramService !== 'function') {
-                    throw new Error('TelegramService import is not a constructor function');
-                }
 
-                // Initialize Webex Service
-                const webexService = new WebexService(outputChannel);
+                webexService = new WebexService(outputChannel);
                 provider.setWebexService(webexService);
                 webexService.start();
-                context.subscriptions.push({ dispose: () => webexService.dispose() });
+                context.subscriptions.push({ dispose: () => webexService?.dispose() });
 
                 context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-                    if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.webex`)) {
+                    if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.webex`) && webexService) {
                         webexService.reloadConfig();
                         webexService.start();
                     }
                 }));
+            } catch (err) {
+                logRuntime('Webex deferred init failed', formatError(err));
+                console.error('[AskAway] Webex deferred init error:', err);
+            }
 
-                // Initialize Telegram Service
-                const telegramService = new TelegramService();
+            // Initialize Telegram independently so it is available even if Webex fails.
+            try {
+                const telegramModule = await import('./services/telegramService');
+                const { TelegramService } = telegramModule;
+                logRuntime('Telegram module loaded', {
+                    moduleKeys: Object.keys(telegramModule),
+                    ctorType: typeof TelegramService
+                });
+
+                if (typeof TelegramService !== 'function') {
+                    throw new Error('TelegramService import is not a constructor function');
+                }
+
+                telegramService = new TelegramService();
                 telegramServiceInstance = telegramService;
                 provider.setTelegramService(telegramService);
-                context.subscriptions.push({ dispose: () => telegramService.dispose() });
+                context.subscriptions.push({ dispose: () => telegramService?.dispose() });
 
                 context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-                    if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.telegram`)) {
+                    if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.telegram`) && telegramService) {
                         telegramService.reloadConfig();
                     }
                 }));
-
-                // File change tracker for Webex/Telegram
-                context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(e => {
-                    if (e.document.uri.scheme !== 'file') return;
-                    const relativePath = vscode.workspace.asRelativePath(e.document.uri);
-                    if (webexService.getActiveTaskCount() > 0) {
-                        webexService.trackFileChange(relativePath);
-                        webexService.notifyCopilotActivity();
+            } catch (err) {
+                logRuntime('Telegram deferred init failed', formatError(err));
+                console.error('[AskAway] Telegram deferred init error:', err);
+                vscode.window.showWarningMessage(
+                    'AskAway: Telegram service failed to initialize. Open "AskAway" output for details.',
+                    'Open Output'
+                ).then(selection => {
+                    if (selection === 'Open Output') {
+                        outputChannel.show(true);
                     }
-                    if (telegramService.getActiveTaskCount() > 0) {
-                        telegramService.trackFileChange(relativePath);
-                        telegramService.notifyCopilotActivity();
-                    }
-                }));
+                });
+            }
 
-                // MCP Server
+            // File change tracker for Webex/Telegram
+            context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(e => {
+                if (e.document.uri.scheme !== 'file') return;
+                const relativePath = vscode.workspace.asRelativePath(e.document.uri);
+                if (webexService && webexService.getActiveTaskCount() > 0) {
+                    webexService.trackFileChange(relativePath);
+                    webexService.notifyCopilotActivity();
+                }
+                if (telegramService && telegramService.getActiveTaskCount() > 0) {
+                    telegramService.trackFileChange(relativePath);
+                    telegramService.notifyCopilotActivity();
+                }
+            }));
+
+            // MCP Server initialization should not block other services.
+            try {
                 mcpServer = new McpServerManager(provider);
                 const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
                 const mcpEnabled = config.get<boolean>('mcpEnabled', false);
@@ -438,10 +461,9 @@ export function activate(context: vscode.ExtensionContext) {
                     await ensureRemoteServer(context, provider);
                     await startRemoteServer(config.get<number>('remotePort', 3000));
                 }
-
             } catch (err) {
-                logRuntime('Deferred initialization failed', formatError(err));
-                console.error('[AskAway] Deferred init error:', err);
+                logRuntime('MCP/Remote deferred init failed', formatError(err));
+                console.error('[AskAway] MCP/Remote deferred init error:', err);
             }
         });
 
