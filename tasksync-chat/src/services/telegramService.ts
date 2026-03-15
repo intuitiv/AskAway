@@ -9,6 +9,8 @@ interface TrackedTask {
     question: string;
     choices?: string[];
     timestamp: number;
+    /** Rendered HTML body (without footer) — used when editing for sync-time updates */
+    formattedText: string;
 }
 
 // ── Constants ──────────────────────────────────────────────────
@@ -189,7 +191,7 @@ export class TelegramService {
         try {
             // Format the message with HTML (more reliable than MarkdownV2)
             const fileChanges = this._consumeFileChanges();
-            let text = `🔔 <b>AskAway — Question</b>\n\n${this._escapeHtml(question)}`;
+            let text = `🔔 <b>AskAway — Question</b>\n\n${this._markdownToHtml(question)}`;
 
             if (choices && choices.length > 0) {
                 text += '\n\n<b>Options:</b>\n';
@@ -250,7 +252,8 @@ export class TelegramService {
                 messageId,
                 question,
                 choices,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                formattedText: text   // store rendered HTML body for footer edits
             });
 
             // Reset backoff and start polling
@@ -264,6 +267,72 @@ export class TelegramService {
     /** Escape special characters for Telegram HTML */
     private _escapeHtml(text: string): string {
         return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    /**
+     * Convert Markdown formatting to Telegram HTML.
+     * Handles **bold**, *italic*, _italic_, `code`, and plain text.
+     * HTML-escapes all content first so angle brackets in source are safe.
+     */
+    private _markdownToHtml(text: string): string {
+        // 1. Escape HTML-special chars in raw content first
+        let result = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        // 2. Bold: **text** or __text__
+        result = result.replace(/\*\*([\s\S]+?)\*\*/g, '<b>$1</b>');
+        result = result.replace(/__([\s\S]+?)__/g, '<b>$1</b>');
+        // 3. Italic: *text* or _text_ (single markers, not double)
+        result = result.replace(/\*([^*\n]+?)\*/g, '<i>$1</i>');
+        result = result.replace(/_([^_\n]+?)_/g, '<i>$1</i>');
+        // 4. Inline code: `code`
+        result = result.replace(/`([^`]+?)`/g, '<code>$1</code>');
+        return result;
+    }
+
+    /** Format a timestamp as 12-hour clock string, e.g. "3:34 PM" */
+    private _formatTime(ts: number): string {
+        return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+
+    /**
+     * Edit each active task's Telegram message to update the sync-time footer.
+     * Called after every poll cycle so the user can see exactly when the last
+     * check happened and when the next one is scheduled.
+     */
+    private async _updateMessageFooters(): Promise<void> {
+        if (this._activeTasks.size === 0) { return; }
+        const nextDelaySec = this._getPollDelaySeconds();
+        const lastSyncTime = this._formatTime(Date.now());
+        const nextSyncTime = this._formatTime(Date.now() + nextDelaySec * 1000);
+        const footer = `\n\n<i>🔄 Last sync: ${lastSyncTime} · Next sync: ${nextSyncTime}</i>`;
+
+        for (const task of this._activeTasks.values()) {
+            try {
+                const body: any = {
+                    chat_id: this._chatId,
+                    message_id: task.messageId,
+                    text: task.formattedText + footer,
+                    parse_mode: 'HTML'
+                };
+                if (task.choices && task.choices.length > 0) {
+                    body.reply_markup = {
+                        inline_keyboard: task.choices.map(c => ([{
+                            text: c,
+                            callback_data: `askaway:${task.taskId}:${c.substring(0, 60)}`
+                        }]))
+                    };
+                }
+                await fetch(this._apiUrl('editMessageText'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+            } catch (e) {
+                // Non-critical — footer update failure should not break polling
+            }
+        }
     }
 
     // ── Polling for Replies (with backoff) ─────────────────────
@@ -493,6 +562,11 @@ export class TelegramService {
 
         // Advance backoff tick
         this._pollTickIndex++;
+
+        // Update footer on all live messages so user sees sync timestamps
+        if (this._activeTasks.size > 0) {
+            await this._updateMessageFooters();
+        }
 
         // Schedule next poll if still have tasks
         if (this._activeTasks.size > 0) {
