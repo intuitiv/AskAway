@@ -25,6 +25,7 @@ const TELEGRAM_API = 'https://api.telegram.org/bot';
 // ── Service ────────────────────────────────────────────────────
 
 export class TelegramService {
+    private _out: vscode.OutputChannel | undefined;
     private _enabled: boolean = false;
     private _botToken: string | undefined;
     private _chatId: string | undefined;
@@ -51,8 +52,28 @@ export class TelegramService {
     // ── Bot info ──
     private _botId: number | undefined;
 
-    constructor() {
+    constructor(outputChannel?: vscode.OutputChannel) {
+        this._out = outputChannel;
         this.reloadConfig();
+    }
+
+    private _log(msg: string): void {
+        const line = `[${new Date().toISOString()}] ${msg}`;
+        this._out?.appendLine(line);
+        console.log(msg);
+    }
+
+    private _warn(msg: string): void {
+        const line = `[${new Date().toISOString()}] WARN: ${msg}`;
+        this._out?.appendLine(line);
+        console.warn(msg);
+    }
+
+    private _err(msg: string, error?: unknown): void {
+        const detail = error instanceof Error ? ` — ${error.message}` : (error ? ` — ${error}` : '');
+        const line = `[${new Date().toISOString()}] ERROR: ${msg}${detail}`;
+        this._out?.appendLine(line);
+        console.error(msg, error ?? '');
     }
 
     // ── Configuration ──────────────────────────────────────────
@@ -72,8 +93,8 @@ export class TelegramService {
         const idleMinutes = Math.min(720, Math.max(0, Math.floor(configuredIdleMinutes || 0)));
         this._copilotIdleThresholdMs = idleMinutes > 0 ? idleMinutes * 60 * 1000 : 0;
 
-        console.log(
-            `AskAway/Telegram: Config reloaded (enabled=${this._enabled}, hasToken=${!!this._botToken}, hasChatId=${!!this._chatId}, retry=${this._steadyPollIntervalSeconds}s, idlePause=${idleMinutes}m)`
+        this._log(
+            `AskAway/Telegram: Config reloaded — enabled=${this._enabled}, hasToken=${!!this._botToken}, hasChatId=${!!this._chatId}, retry=${this._steadyPollIntervalSeconds}s, idlePause=${idleMinutes}m`
         );
 
         // Re-evaluate polling state
@@ -169,10 +190,12 @@ export class TelegramService {
             if (resp.ok) {
                 const data = await resp.json() as any;
                 this._botId = data.result?.id;
-                console.log(`AskAway/Telegram: Bot ID: ${this._botId}`);
+                this._log(`AskAway/Telegram: Bot ID cached: ${this._botId}`);
+            } else {
+                this._warn(`AskAway/Telegram: getMe failed ${resp.status}`);
             }
         } catch (e) {
-            console.warn('AskAway/Telegram: Failed to get bot info:', e);
+            this._warn(`AskAway/Telegram: Failed to get bot info: ${e}`);
         }
     }
 
@@ -183,8 +206,9 @@ export class TelegramService {
      * If choices are provided, includes inline keyboard buttons.
      */
     public async postQuestion(taskId: string, question: string, choices?: string[]): Promise<void> {
+        this._log(`AskAway/Telegram: postQuestion called — taskId=${taskId}, enabled=${this._enabled}, hasToken=${!!this._botToken}, hasChatId=${!!this._chatId}`);
         if (!this.isConfigured()) {
-            console.log('AskAway/Telegram: Not configured, skipping post.');
+            this._log(`AskAway/Telegram: SKIPPED — not configured (enabled=${this._enabled}, token=${!!this._botToken}, chatId=${!!this._chatId})`);
             return;
         }
 
@@ -239,13 +263,13 @@ export class TelegramService {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error(`AskAway/Telegram: Failed to post message: ${response.status} ${errorText}`);
+                this._err(`AskAway/Telegram: SEND FAILED ${response.status}: ${errorText}`);
                 return;
             }
 
             const result = await response.json() as any;
             const messageId = result.result?.message_id;
-            console.log(`AskAway/Telegram: Posted task ${taskId} (msgId: ${messageId})`);
+            this._log(`AskAway/Telegram: ✅ Message sent — taskId=${taskId}, msgId=${messageId}`);
 
             this._activeTasks.set(taskId, {
                 taskId,
@@ -260,7 +284,7 @@ export class TelegramService {
             this._resetBackoff();
             this.startPolling();
         } catch (error) {
-            console.error('AskAway/Telegram: Error posting message:', error);
+            this._err('AskAway/Telegram: Error posting message', error);
         }
     }
 
@@ -343,7 +367,7 @@ export class TelegramService {
         this._pollCount = 0;
         this._pollingStartedAtMs = Date.now();
         this._scheduleNextPoll();
-        console.log('AskAway/Telegram: Polling started.');
+        this._log('AskAway/Telegram: Polling started.');
     }
 
     private _scheduleNextPoll() {
@@ -377,7 +401,7 @@ export class TelegramService {
             clearTimeout(this._pollingTimer);
             this._pollingTimer = undefined;
             this._pollingStartedAtMs = 0;
-            console.log('AskAway/Telegram: Polling stopped.');
+            this._log('AskAway/Telegram: Polling stopped.');
         }
     }
 
@@ -385,6 +409,7 @@ export class TelegramService {
         this._pollingTimer = undefined;
 
         if (!this.isConfigured() || this._activeTasks.size === 0) {
+            this._log(`AskAway/Telegram: Poll skipped — configured=${this.isConfigured()}, activeTasks=${this._activeTasks.size}`);
             this.stopPolling();
             return;
         }
@@ -399,7 +424,7 @@ export class TelegramService {
 
         this._pollCount++;
         const currentDelaySec = this._getPollDelaySeconds();
-        console.log(`AskAway/Telegram: Poll #${this._pollCount} (interval: ${currentDelaySec}s, tick: ${this._pollTickIndex})`);
+        this._log(`AskAway/Telegram: Poll #${this._pollCount} — interval=${currentDelaySec}s, tick=${this._pollTickIndex}, activeTasks=${this._activeTasks.size}`);
 
         // Cache bot ID
         if (!this._botId) {
@@ -411,7 +436,7 @@ export class TelegramService {
         // Expire old tasks (36 hours)
         for (const [taskId, task] of this._activeTasks.entries()) {
             if (now - task.timestamp > EXPIRY_MS) {
-                console.log(`AskAway/Telegram: Task ${taskId} expired (36h).`);
+                this._log(`AskAway/Telegram: Task ${taskId} expired (36h), removing.`);
                 this._activeTasks.delete(taskId);
             }
         }
@@ -427,9 +452,9 @@ export class TelegramService {
             const resp = await fetch(url);
 
             if (!resp.ok) {
-                console.log(`AskAway/Telegram: Poll failed ${resp.status} ${resp.statusText}`);
+                this._err(`AskAway/Telegram: Poll HTTP error ${resp.status} ${resp.statusText}`);
                 if (resp.status === 401) {
-                    console.error('AskAway/Telegram: Bot token is invalid or expired.');
+                    this._err('AskAway/Telegram: Bot token is invalid or expired.');
                     vscode.window.showErrorMessage(
                         'AskAway: Telegram bot token is invalid. Please update it in settings.',
                         'Open Settings'
@@ -460,7 +485,7 @@ export class TelegramService {
                                 || 'unknown';
 
                             if (this._activeTasks.has(cbTaskId)) {
-                                console.log(`AskAway/Telegram: Button reply for ${cbTaskId} from ${user}: "${answer}"`);
+                                this._log(`AskAway/Telegram: Button reply for ${cbTaskId} from ${user}: "${answer.substring(0, 80)}"`); 
 
                                 // Answer the callback to remove the loading indicator
                                 await fetch(this._apiUrl('answerCallbackQuery'), {
@@ -504,7 +529,7 @@ export class TelegramService {
 
                             if (!answer) { continue; }
 
-                            console.log(`AskAway/Telegram: Plain message fallback matched task ${onlyTask.taskId} from ${user}: "${answer.substring(0, 80)}..."`);
+                            this._log(`AskAway/Telegram: Plain-message fallback matched task ${onlyTask.taskId} from ${user}: "${answer.substring(0, 80)}"`);
 
                             let resolvedAnswer = answer;
                             if (onlyTask.choices && onlyTask.choices.length > 0) {
@@ -534,7 +559,7 @@ export class TelegramService {
 
                             if (!answer) { continue; }
 
-                            console.log(`AskAway/Telegram: Reply for ${taskId} from ${user}: "${answer.substring(0, 80)}..."`);
+                            this._log(`AskAway/Telegram: Thread reply for ${taskId} from ${user}: "${answer.substring(0, 80)}"`);
 
                             // Resolve choice by number if applicable
                             let resolvedAnswer = answer;
@@ -557,7 +582,7 @@ export class TelegramService {
                 }
             }
         } catch (error) {
-            console.error('AskAway/Telegram: Poll error:', error);
+            this._err('AskAway/Telegram: Poll error', error);
         }
 
         // Advance backoff tick

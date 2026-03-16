@@ -403,7 +403,7 @@ export function activate(context: vscode.ExtensionContext) {
                     throw new Error('TelegramService import is not a constructor function');
                 }
 
-                telegramService = new TelegramService();
+                telegramService = new TelegramService(outputChannel);
                 telegramServiceInstance = telegramService;
                 provider.setTelegramService(telegramService);
                 context.subscriptions.push({ dispose: () => telegramService?.dispose() });
