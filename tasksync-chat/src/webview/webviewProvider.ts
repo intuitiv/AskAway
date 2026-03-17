@@ -449,9 +449,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         }
 
         this._updateCurrentSessionUI();
+        const resolvedMsgId = this._currentToolCallId;
         resolve({ value: response, queue: this._queueEnabled, attachments: [] });
         this._pendingRequests.delete(this._currentToolCallId);
         this._currentToolCallId = null;
+        // Also tell whichever service did NOT deliver this reply to stop polling
+        this._telegramService?.resolveTask?.(resolvedMsgId);
+        this._webexService?.resolveTask?.(resolvedMsgId);
     }
 
     public setRemoteBroadcastCallback(callback: ((message: ToWebviewMessage) => void) | null): void {
@@ -1872,9 +1876,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 });
 
                 this._updateCurrentSessionUI();
+                // Notify messaging services so stale tasks don't keep polling
+                const resolvedId = this._currentToolCallId;
                 resolve({ value, queue: this._queueEnabled && this._promptQueue.length > 0, attachments });
                 this._pendingRequests.delete(this._currentToolCallId);
                 this._currentToolCallId = null;
+                this._telegramService?.resolveTask?.(resolvedId);
+                this._webexService?.resolveTask?.(resolvedId);
             } else {
                 // No pending tool call - add message to queue for later use
                 if (value && value.trim()) {

@@ -280,7 +280,9 @@ export class TelegramService {
                 formattedText: text   // store rendered HTML body for footer edits
             });
 
-            // Reset backoff and start polling
+            // Always restart polling from scratch so new questions get fast retries
+            // even if a previous polling cycle was still running.
+            this.stopPolling();
             this._resetBackoff();
             this.startPolling();
         } catch (error) {
@@ -321,45 +323,68 @@ export class TelegramService {
     }
 
     /**
-     * Edit each active task's Telegram message to update the sync-time footer.
-     * Called after every poll cycle so the user can see exactly when the last
-     * check happened and when the next one is scheduled.
+     * Edit the most-recently-posted task's Telegram message to update the
+     * sync-time footer.  Only the task with the highest timestamp is updated
+     * so old resolved-but-stale tasks are not touched.
      */
     private async _updateMessageFooters(): Promise<void> {
         if (this._activeTasks.size === 0) { return; }
+
+        // Pick only the newest task to update (avoids spamming old messages)
+        let newestTask: TrackedTask | undefined;
+        for (const task of this._activeTasks.values()) {
+            if (!newestTask || task.timestamp > newestTask.timestamp) {
+                newestTask = task;
+            }
+        }
+        if (!newestTask) { return; }
+
         const nextDelaySec = this._getPollDelaySeconds();
         const lastSyncTime = this._formatTime(Date.now());
         const nextSyncTime = this._formatTime(Date.now() + nextDelaySec * 1000);
         const footer = `\n\n<i>🔄 Last sync: ${lastSyncTime} · Next sync: ${nextSyncTime}</i>`;
 
-        for (const task of this._activeTasks.values()) {
-            try {
-                const body: any = {
-                    chat_id: this._chatId,
-                    message_id: task.messageId,
-                    text: task.formattedText + footer,
-                    parse_mode: 'HTML'
+        try {
+            const body: any = {
+                chat_id: this._chatId,
+                message_id: newestTask.messageId,
+                text: newestTask.formattedText + footer,
+                parse_mode: 'HTML'
+            };
+            if (newestTask.choices && newestTask.choices.length > 0) {
+                body.reply_markup = {
+                    inline_keyboard: newestTask.choices.map(c => ([{
+                        text: c,
+                        callback_data: `askaway:${newestTask!.taskId}:${c.substring(0, 60)}`
+                    }]))
                 };
-                if (task.choices && task.choices.length > 0) {
-                    body.reply_markup = {
-                        inline_keyboard: task.choices.map(c => ([{
-                            text: c,
-                            callback_data: `askaway:${task.taskId}:${c.substring(0, 60)}`
-                        }]))
-                    };
-                }
-                await fetch(this._apiUrl('editMessageText'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-            } catch (e) {
-                // Non-critical — footer update failure should not break polling
             }
+            await fetch(this._apiUrl('editMessageText'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+        } catch (e) {
+            // Non-critical — footer update failure should not break polling
         }
     }
 
     // ── Polling for Replies (with backoff) ─────────────────────
+
+    /**
+     * Called by the webview provider whenever a task is resolved through any
+     * channel (VS Code UI, remote web UI, autopilot, timeout).
+     * Removes the task so polling stops for it and the footer stops updating.
+     */
+    public resolveTask(taskId: string): void {
+        if (this._activeTasks.has(taskId)) {
+            this._activeTasks.delete(taskId);
+            this._log(`AskAway/Telegram: Task ${taskId} resolved externally — removed from active set (${this._activeTasks.size} remaining)`);
+            if (this._activeTasks.size === 0) {
+                this.stopPolling();
+            }
+        }
+    }
 
     public startPolling() {
         if (this._pollingTimer) { return; }

@@ -149,6 +149,11 @@ export class WebexService {
         this._onResponseReceived = callback;
     }
 
+    /** No-op stub — keeps parity with TelegramService.resolveTask so callers can use optional chaining symmetrically. */
+    public resolveTask(_taskId: string): void {
+        // Webex polling is message-driven; no active-task map to clean up.
+    }
+
     private _headers(): Record<string, string> {
         return {
             'Authorization': `Bearer ${this._accessToken}`,
