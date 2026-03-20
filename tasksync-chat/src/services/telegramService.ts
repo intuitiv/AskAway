@@ -296,25 +296,134 @@ export class TelegramService {
     }
 
     /**
-     * Convert Markdown formatting to Telegram HTML.
-     * Handles **bold**, *italic*, _italic_, `code`, and plain text.
-     * HTML-escapes all content first so angle brackets in source are safe.
+     * Convert Markdown to Telegram-compatible HTML.
+     * Protects code blocks and tables from inline-formatting regexes by
+     * extracting them first, processing the remaining text, then restoring.
+     *
+     * Telegram HTML supports: <b>, <i>, <u>, <s>, <code>, <pre>,
+     * <a href>, <blockquote>.  No <table>/<h1> etc.
      */
     private _markdownToHtml(text: string): string {
-        // 1. Escape HTML-special chars in raw content first
-        let result = text
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-        // 2. Bold: **text** or __text__
-        result = result.replace(/\*\*([\s\S]+?)\*\*/g, '<b>$1</b>');
-        result = result.replace(/__([\s\S]+?)__/g, '<b>$1</b>');
-        // 3. Italic: *text* or _text_ (single markers, not double)
-        result = result.replace(/\*([^*\n]+?)\*/g, '<i>$1</i>');
-        result = result.replace(/_([^_\n]+?)_/g, '<i>$1</i>');
-        // 4. Inline code: `code`
-        result = result.replace(/`([^`]+?)`/g, '<code>$1</code>');
-        return result;
+        const preserved: string[] = [];
+        const hold = (html: string): string => {
+            const i = preserved.length;
+            preserved.push(html);
+            return `\x00P${i}\x00`;
+        };
+
+        let r = text;
+
+        // ── 1. Fenced code blocks ```lang\n…\n``` ──
+        r = r.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang: string, code: string) => {
+            const esc = this._escapeHtml(code.replace(/\n$/, ''));
+            const attr = lang ? ` class="language-${lang}"` : '';
+            return hold(`<pre><code${attr}>${esc}</code></pre>`);
+        });
+
+        // ── 2. Inline code `…` ──
+        r = r.replace(/`([^`\n]+?)`/g, (_m, code: string) =>
+            hold(`<code>${this._escapeHtml(code)}</code>`)
+        );
+
+        // ── 3. Markdown tables → box-drawing <pre> ──
+        r = r.replace(/(?:^\|.+\|[ \t]*$\n?)+/gm, (block) =>
+            hold(this._formatTable(block))
+        );
+
+        // ── 4. Escape remaining HTML chars ──
+        r = r.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        // ── 5. Headings (#…######) → bold ──
+        r = r.replace(/^#{1,6}\s+(.+)$/gm, '<b>$1</b>');
+
+        // ── 6. Bold **…** / __…__ ──
+        r = r.replace(/\*\*([\s\S]+?)\*\*/g, '<b>$1</b>');
+        r = r.replace(/__([\s\S]+?)__/g, '<b>$1</b>');
+
+        // ── 7. Italic *…* / _…_ (single markers) ──
+        r = r.replace(/(?<!\w)\*([^*\n]+?)\*(?!\w)/g, '<i>$1</i>');
+        r = r.replace(/(?<!\w)_([^_\n]+?)_(?!\w)/g, '<i>$1</i>');
+
+        // ── 8. Strikethrough ~~…~~ ──
+        r = r.replace(/~~(.+?)~~/g, '<s>$1</s>');
+
+        // ── 9. Links [text](url) — must run before image strip ──
+        r = r.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<a href="$2">🖼 $1</a>');
+        r = r.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+        // ── 10. Blockquotes (&gt; lines) ──
+        r = r.replace(/(?:^&gt;\s?(.*)$\n?)+/gm, (match) => {
+            const lines = match.split('\n')
+                .filter(l => l.startsWith('&gt;'))
+                .map(l => l.replace(/^&gt;\s?/, ''));
+            return `<blockquote>${lines.join('\n')}</blockquote>\n`;
+        });
+
+        // ── 11. Horizontal rules ──
+        r = r.replace(/^[-*_]{3,}\s*$/gm, '─────────────────────');
+
+        // ── 12. Bullet lists (- item, * item, + item) → • item ──
+        r = r.replace(/^[ \t]*[-*+]\s+(.+)$/gm, '  • $1');
+
+        // ── 13. Numbered lists (1. item) — keep as-is but ensure consistent indent ──
+        r = r.replace(/^[ \t]*(\d+)\.\s+(.+)$/gm, '  $1. $2');
+
+        // ── 14. Task lists ──
+        r = r.replace(/• \[ \]\s*/g, '☐ ');
+        r = r.replace(/• \[x\]\s*/gi, '☑ ');
+
+        // ── 15. Restore protected blocks ──
+        r = r.replace(/\x00P(\d+)\x00/g, (_, idx) => preserved[parseInt(idx)]);
+
+        return r;
+    }
+
+    /**
+     * Convert a markdown table block into a Unicode box-drawing table
+     * wrapped in <pre> for Telegram (which has no native HTML table support).
+     */
+    private _formatTable(block: string): string {
+        const rows = block.trim().split('\n').filter(r => r.trim());
+        if (rows.length < 2) { return `<pre>${this._escapeHtml(block)}</pre>`; }
+
+        const parsed: string[][] = [];
+        let hasSep = false;
+        for (const row of rows) {
+            // Split on | and drop the leading/trailing empty segments
+            const cells = row.split('|').map(c => c.trim());
+            // If starts/ends with |, first & last elements are empty strings
+            const trimmed = cells.length > 2 && cells[0] === '' && cells[cells.length - 1] === ''
+                ? cells.slice(1, -1)
+                : cells.filter(c => c !== '');
+            // Detect separator row (e.g. | --- | :---: |)
+            if (trimmed.every(c => /^[-:]+$/.test(c))) { hasSep = true; continue; }
+            parsed.push(trimmed);
+        }
+
+        if (!hasSep || parsed.length === 0) { return `<pre>${this._escapeHtml(block)}</pre>`; }
+
+        const numCols = Math.max(...parsed.map(r => r.length));
+        const widths: number[] = Array(numCols).fill(3);
+        for (let c = 0; c < numCols; c++) {
+            for (const row of parsed) {
+                if (row[c]) { widths[c] = Math.max(widths[c], row[c].length); }
+            }
+        }
+
+        const pad = (s: string, w: number) => s + ' '.repeat(Math.max(0, w - s.length));
+        const top = '┌' + widths.map(w => '─'.repeat(w + 2)).join('┬') + '┐';
+        const mid = '├' + widths.map(w => '─'.repeat(w + 2)).join('┼') + '┤';
+        const bot = '└' + widths.map(w => '─'.repeat(w + 2)).join('┴') + '┘';
+
+        const lines: string[] = [top];
+        parsed.forEach((row, i) => {
+            const cells = widths.map((w, c) => ` ${pad(row[c] || '', w)} `);
+            lines.push('│' + cells.join('│') + '│');
+            if (i === 0 && parsed.length > 1) { lines.push(mid); }
+        });
+        lines.push(bot);
+
+        return `<pre>${this._escapeHtml(lines.join('\n'))}</pre>`;
     }
 
     /** Format a timestamp as 12-hour clock string, e.g. "3:34 PM" */
@@ -629,8 +738,10 @@ export class TelegramService {
     /** Edit the original message to show it's been resolved */
     private async _markResolved(task: TrackedTask, answer: string, user: string): Promise<void> {
         try {
+            // Use _markdownToHtml for the question (may contain markdown from Copilot)
+            // Answer and user are plain text, so just escape HTML.
             const text = `✅ <b>Resolved</b>\n\n` +
-                `<b>Q:</b> ${this._escapeHtml(task.question)}\n` +
+                `<b>Q:</b> ${this._markdownToHtml(task.question)}\n` +
                 `<b>A:</b> ${this._escapeHtml(answer)}\n` +
                 `<b>By:</b> ${this._escapeHtml(user)}`;
 
@@ -646,7 +757,7 @@ export class TelegramService {
                 })
             });
         } catch (e) {
-            console.warn('AskAway/Telegram: Failed to update message:', e);
+            this._warn(`AskAway/Telegram: Failed to update resolved message: ${e}`);
         }
     }
 

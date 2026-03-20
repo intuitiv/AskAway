@@ -387,6 +387,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     }
 
                     resolver({ value: prompt, queue: true, attachments: [] });
+                    this._telegramService?.resolveTask?.(toolCallId);
+                    this._webexService?.resolveTask?.(toolCallId);
                     return;
                 }
             }
@@ -879,6 +881,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             resolve({ value: responseText, queue: this._queueEnabled && this._promptQueue.length > 0, attachments: [] });
             this._pendingRequests.delete(toolCallId);
             this._currentToolCallId = null;
+            this._telegramService?.resolveTask?.(toolCallId);
+            this._webexService?.resolveTask?.(toolCallId);
 
             if (isTermination) {
                 this._sessionTerminated = true;
@@ -1094,6 +1098,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 oldEntry.response = '[Superseded by new request]';
                 this._updateCurrentSessionUI();
             }
+            // Notify messaging services so the superseded task stops polling
+            this._telegramService?.resolveTask?.(oldToolCallId);
+            this._webexService?.resolveTask?.(oldToolCallId);
             console.warn(`[TaskSync] Previous request ${oldToolCallId} was superseded by new request`);
         }
     }
@@ -2324,8 +2331,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             this._updateQueueUI();
 
             resolve({ value: queuedPrompt.prompt, queue: this._queueEnabled && this._promptQueue.length > 0, attachments: queuedPrompt.attachments || [] });
-            this._pendingRequests.delete(this._currentToolCallId!);
+            const resolvedQueueId = this._currentToolCallId!;
+            this._pendingRequests.delete(resolvedQueueId);
             this._currentToolCallId = null;
+            this._telegramService?.resolveTask?.(resolvedQueueId);
+            this._webexService?.resolveTask?.(resolvedQueueId);
         } else {
             // No pending request - add to queue normally
             this._promptQueue.push(queuedPrompt);
