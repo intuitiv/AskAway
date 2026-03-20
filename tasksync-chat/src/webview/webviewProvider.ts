@@ -1311,14 +1311,17 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         // Post question to Telegram if configured
         if (this._telegramService && typeof this._telegramService.postQuestion === 'function') {
             if (this._telegramService.isConfigured()) {
-                console.log(`[AskAway] Telegram: sending question for toolCallId=${toolCallId}`);
                 this._telegramService.postQuestion(toolCallId, question, choices.length > 0 ? choices : undefined)
-                    .catch((err: any) => console.error('[AskAway] Telegram postQuestion error:', err));
+                    .catch((err: any) => {
+                        // Error already logged inside TelegramService via _err()
+                        console.error('[AskAway] Telegram postQuestion error:', err);
+                    });
             } else {
-                console.warn(`[AskAway] Telegram: SKIPPED — service not configured (check AskAway output channel for details)`);
+                // TelegramService logs the "not configured" detail in its own output channel
+                console.warn('[AskAway] Telegram: SKIPPED — not configured');
             }
         } else {
-            console.warn('[AskAway] Telegram: SKIPPED — service not available (deferred init may still be running or failed)');
+            console.warn('[AskAway] Telegram: SKIPPED — service unavailable (check deferred init in AskAway output)');
         }
 
         this._updateCurrentSessionUI();

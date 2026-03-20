@@ -52,6 +52,12 @@ export class TelegramService {
     // ── Bot info ──
     private _botId: number | undefined;
 
+    // ── Heartbeat ──
+    private _heartbeatTimer: NodeJS.Timeout | undefined;
+    private _heartbeatIntervalMs: number = 10 * 60 * 1000;  // 10 min default
+    private _lastHeartbeatMsgId: number | undefined;
+    private _lastStatusSentAt: number = 0;
+
     constructor(outputChannel?: vscode.OutputChannel) {
         this._out = outputChannel;
         this.reloadConfig();
@@ -211,6 +217,10 @@ export class TelegramService {
             this._log(`AskAway/Telegram: SKIPPED — not configured (enabled=${this._enabled}, token=${!!this._botToken}, chatId=${!!this._chatId})`);
             return;
         }
+
+        // Stop heartbeat — we have a new pending question now
+        this._stopHeartbeat();
+        this.resetHeartbeatMessage();
 
         try {
             // Format the message with HTML (more reliable than MarkdownV2)
@@ -492,6 +502,10 @@ export class TelegramService {
             if (this._activeTasks.size === 0) {
                 this.stopPolling();
             }
+            // Send "processing" confirmation and start heartbeat
+            this.resetHeartbeatMessage();
+            this.sendStatusUpdate('🟢 Processing your response...');
+            this._ensureHeartbeat();
         }
     }
 
@@ -784,10 +798,101 @@ export class TelegramService {
 
     public notifyCopilotActivity() {
         this._lastCopilotActivity = Date.now();
+        this._ensureHeartbeat();
     }
 
     public notifyCopilotStopped() {
         this._lastCopilotActivity = 0;
+        this._stopHeartbeat();
+    }
+
+    // ── Heartbeat: periodic "still working" notifications ─────
+
+    /**
+     * Send a lightweight status message to Telegram.
+     * Reuses (edits) the same message to avoid spamming the chat.
+     */
+    public async sendStatusUpdate(status: string): Promise<void> {
+        if (!this.isConfigured()) { return; }
+        // Throttle: don't send more than once per 30 seconds
+        if (Date.now() - this._lastStatusSentAt < 30_000) { return; }
+        this._lastStatusSentAt = Date.now();
+
+        const text = `<i>${this._escapeHtml(status)}</i>`;
+        try {
+            if (this._lastHeartbeatMsgId) {
+                // Edit existing status message
+                await fetch(this._apiUrl('editMessageText'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: this._chatId,
+                        message_id: this._lastHeartbeatMsgId,
+                        text,
+                        parse_mode: 'HTML'
+                    })
+                });
+            } else {
+                // Send new status message
+                const resp = await fetch(this._apiUrl('sendMessage'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: this._chatId,
+                        text,
+                        parse_mode: 'HTML',
+                        disable_notification: true
+                    })
+                });
+                if (resp.ok) {
+                    const data = await resp.json() as any;
+                    this._lastHeartbeatMsgId = data.result?.message_id;
+                }
+            }
+        } catch {
+            // Non-critical
+        }
+    }
+
+    /** Start the heartbeat timer if not already running and no active ask_user */
+    private _ensureHeartbeat(): void {
+        if (this._heartbeatTimer) { return; }
+        if (this._activeTasks.size > 0) { return; }   // ask_user is pending, no heartbeat needed
+        if (!this.isConfigured()) { return; }
+
+        this._heartbeatTimer = setInterval(async () => {
+            // Only send heartbeat when Copilot is active AND no ask_user is pending
+            if (this._activeTasks.size > 0) {
+                this._stopHeartbeat();
+                return;
+            }
+            if (this._lastCopilotActivity === 0) {
+                this._stopHeartbeat();
+                return;
+            }
+            const elapsed = Date.now() - this._lastCopilotActivity;
+            if (elapsed > this._heartbeatIntervalMs * 3) {
+                // Copilot hasn't done anything in 3x the interval — likely idle
+                this._stopHeartbeat();
+                return;
+            }
+
+            const elapsedMin = Math.round(elapsed / 60_000);
+            const now = this._formatTime(Date.now());
+            await this.sendStatusUpdate(`🟢 Copilot is working... (${elapsedMin}m active, updated ${now})`);
+        }, this._heartbeatIntervalMs);
+    }
+
+    private _stopHeartbeat(): void {
+        if (this._heartbeatTimer) {
+            clearInterval(this._heartbeatTimer);
+            this._heartbeatTimer = undefined;
+        }
+    }
+
+    /** Reset the heartbeat message so the next status sends a new message */
+    public resetHeartbeatMessage(): void {
+        this._lastHeartbeatMsgId = undefined;
     }
 
     // ── Get Chat ID helper ─────────────────────────────────────
@@ -841,6 +946,7 @@ export class TelegramService {
 
     public dispose() {
         this.stopPolling();
+        this._stopHeartbeat();
         this._activeTasks.clear();
     }
 }

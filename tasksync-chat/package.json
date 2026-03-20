@@ -4,7 +4,7 @@
   "displayName": "AskAway",
   "description": "Answer your AI agent's questions from anywhere — Webex, Telegram, mobile, or web. Queue prompts, respond remotely, and never block your coding workflow.",
   "icon": "media/askaway-logo.png",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "engines": {
     "vscode": "^1.90.0"
   },
