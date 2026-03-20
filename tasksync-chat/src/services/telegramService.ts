@@ -43,6 +43,11 @@ export class TelegramService {
     private _lastCopilotActivity: number = 0;
     private _copilotIdleThresholdMs: number = 0;
 
+    // ── Conversation state tracking ──
+    private _lastToolCallStarted: number = 0;   // When ask_user was called (waiting for user)
+    private _lastToolCallReturned: number = 0;  // When user responded (Copilot processing)
+    private _conversationActive: boolean = false;
+
     // ── Polling configuration ──
     private _steadyPollIntervalSeconds: number = 60;
 
@@ -57,6 +62,9 @@ export class TelegramService {
     private _heartbeatIntervalMs: number = 10 * 60 * 1000;  // 10 min default
     private _lastHeartbeatMsgId: number | undefined;
     private _lastStatusSentAt: number = 0;
+
+    // ── Pre-resolved set (handles race between async postQuestion and resolveTask) ──
+    private _preResolved: Set<string> = new Set();
 
     constructor(outputChannel?: vscode.OutputChannel) {
         this._out = outputChannel;
@@ -222,10 +230,23 @@ export class TelegramService {
         this._stopHeartbeat();
         this.resetHeartbeatMessage();
 
+        // Clear any stale tasks from previous conversations
+        if (this._activeTasks.size > 0) {
+            this._log(`AskAway/Telegram: Clearing ${this._activeTasks.size} stale task(s) before new question`);
+            this._activeTasks.clear();
+        }
+
         try {
             // Format the message with HTML (more reliable than MarkdownV2)
             const fileChanges = this._consumeFileChanges();
-            let text = `🔔 <b>AskAway — Question</b>\n\n${this._markdownToHtml(question)}`;
+            let questionHtml: string;
+            try {
+                questionHtml = this._markdownToHtml(question);
+            } catch (e) {
+                this._warn(`AskAway/Telegram: _markdownToHtml failed, using plain text: ${e}`);
+                questionHtml = this._escapeHtml(question);
+            }
+            let text = `🔔 <b>AskAway — Question</b>\n\n${questionHtml}`;
 
             if (choices && choices.length > 0) {
                 text += '\n\n<b>Options:</b>\n';
@@ -246,6 +267,11 @@ export class TelegramService {
                 if (fileChanges.length > 10) {
                     text += `<i>... and ${fileChanges.length - 10} more</i>\n`;
                 }
+            }
+
+            // Telegram max message length is 4096 chars — truncate if needed
+            if (text.length > 4000) {
+                text = text.substring(0, 3990) + '\n…(truncated)';
             }
 
             // Build request body
@@ -274,6 +300,37 @@ export class TelegramService {
             if (!response.ok) {
                 const errorText = await response.text();
                 this._err(`AskAway/Telegram: SEND FAILED ${response.status}: ${errorText}`);
+                // Fallback: try plain text without HTML parse_mode
+                const plainBody: any = {
+                    chat_id: this._chatId,
+                    text: `🔔 AskAway — Question\n\n${question.substring(0, 3900)}`
+                };
+                if (choices && choices.length > 0) {
+                    plainBody.reply_markup = body.reply_markup;
+                }
+                const fallbackResp = await fetch(this._apiUrl('sendMessage'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(plainBody)
+                });
+                if (!fallbackResp.ok) {
+                    this._err(`AskAway/Telegram: FALLBACK SEND ALSO FAILED ${fallbackResp.status}`);
+                    return;
+                }
+                const fallbackResult = await fallbackResp.json() as any;
+                const fallbackMsgId = fallbackResult.result?.message_id;
+                this._log(`AskAway/Telegram: ✅ Fallback plain-text message sent — taskId=${taskId}, msgId=${fallbackMsgId}`);
+                this._activeTasks.set(taskId, {
+                    taskId,
+                    messageId: fallbackMsgId,
+                    question,
+                    choices,
+                    timestamp: Date.now(),
+                    formattedText: plainBody.text
+                });
+                this.stopPolling();
+                this._resetBackoff();
+                this.startPolling();
                 return;
             }
 
@@ -289,6 +346,17 @@ export class TelegramService {
                 timestamp: Date.now(),
                 formattedText: text   // store rendered HTML body for footer edits
             });
+
+            // Race-condition guard: if resolveTask was already called for this
+            // taskId while we were awaiting the API, clean up immediately.
+            if (this._preResolved.has(taskId)) {
+                this._preResolved.delete(taskId);
+                const task = this._activeTasks.get(taskId)!;
+                this._activeTasks.delete(taskId);
+                this._markResolvedExternal(task);
+                this._log(`AskAway/Telegram: Task ${taskId} was pre-resolved — cleaned up immediately after send`);
+                return;
+            }
 
             // Always restart polling from scratch so new questions get fast retries
             // even if a previous polling cycle was still running.
@@ -496,16 +564,76 @@ export class TelegramService {
      * Removes the task so polling stops for it and the footer stops updating.
      */
     public resolveTask(taskId: string): void {
-        if (this._activeTasks.has(taskId)) {
-            this._activeTasks.delete(taskId);
-            this._log(`AskAway/Telegram: Task ${taskId} resolved externally — removed from active set (${this._activeTasks.size} remaining)`);
-            if (this._activeTasks.size === 0) {
-                this.stopPolling();
+        const task = this._activeTasks.get(taskId);
+
+        if (task) {
+            // Edit the Telegram message to show it's been answered
+            this._markResolvedExternal(task);
+        }
+
+        // Clear ALL active tasks — only one ask_user is pending at a time,
+        // so any remaining entries are stale from previous conversations.
+        const staleCount = this._activeTasks.size;
+        if (staleCount > 0) {
+            this._activeTasks.clear();
+            this._log(`AskAway/Telegram: Cleared all ${staleCount} active task(s) (resolved ${taskId})`);
+            this.stopPolling();
+        }
+
+        // Also mark as pre-resolved in case postQuestion is still in flight
+        this._preResolved.add(taskId);
+
+        // Send "processing" confirmation and start heartbeat
+        this.resetHeartbeatMessage();
+        this.sendStatusUpdate('🟢 Processing your response...');
+        this._ensureHeartbeat();
+    }
+
+    /** Edit the Telegram message to show it was answered externally (via VS Code UI) */
+    private async _markResolvedExternal(task: TrackedTask): Promise<void> {
+        // Truncate question if too long (Telegram 4096 char limit)
+        const maxQ = 3500;
+        let qText: string;
+        try {
+            qText = this._markdownToHtml(task.question);
+        } catch {
+            qText = this._escapeHtml(task.question);
+        }
+        if (qText.length > maxQ) {
+            qText = qText.substring(0, maxQ) + '…';
+        }
+
+        const text = `✅ <b>Answered via VS Code</b>\n\n<b>Q:</b> ${qText}`;
+
+        try {
+            const resp = await fetch(this._apiUrl('editMessageText'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: this._chatId,
+                    message_id: task.messageId,
+                    text: text,
+                    parse_mode: 'HTML',
+                    reply_markup: { inline_keyboard: [] }
+                })
+            });
+            if (!resp.ok) {
+                const errBody = await resp.text();
+                this._warn(`AskAway/Telegram: editMessageText failed ${resp.status}: ${errBody}`);
+                // Fallback: try without HTML parse_mode
+                await fetch(this._apiUrl('editMessageText'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: this._chatId,
+                        message_id: task.messageId,
+                        text: `✅ Answered via VS Code\n\nQ: ${task.question.substring(0, maxQ)}`,
+                        reply_markup: { inline_keyboard: [] }
+                    })
+                });
             }
-            // Send "processing" confirmation and start heartbeat
-            this.resetHeartbeatMessage();
-            this.sendStatusUpdate('🟢 Processing your response...');
-            this._ensureHeartbeat();
+        } catch (e) {
+            this._warn(`AskAway/Telegram: Failed to mark message as resolved: ${e}`);
         }
     }
 
@@ -751,15 +879,22 @@ export class TelegramService {
 
     /** Edit the original message to show it's been resolved */
     private async _markResolved(task: TrackedTask, answer: string, user: string): Promise<void> {
+        const maxQ = 3000;
+        let qText: string;
         try {
-            // Use _markdownToHtml for the question (may contain markdown from Copilot)
-            // Answer and user are plain text, so just escape HTML.
-            const text = `✅ <b>Resolved</b>\n\n` +
-                `<b>Q:</b> ${this._markdownToHtml(task.question)}\n` +
-                `<b>A:</b> ${this._escapeHtml(answer)}\n` +
-                `<b>By:</b> ${this._escapeHtml(user)}`;
+            qText = this._markdownToHtml(task.question);
+        } catch {
+            qText = this._escapeHtml(task.question);
+        }
+        if (qText.length > maxQ) { qText = qText.substring(0, maxQ) + '…'; }
 
-            await fetch(this._apiUrl('editMessageText'), {
+        const text = `✅ <b>Resolved</b>\n\n` +
+            `<b>Q:</b> ${qText}\n` +
+            `<b>A:</b> ${this._escapeHtml(answer)}\n` +
+            `<b>By:</b> ${this._escapeHtml(user)}`;
+
+        try {
+            const resp = await fetch(this._apiUrl('editMessageText'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -767,9 +902,24 @@ export class TelegramService {
                     message_id: task.messageId,
                     text: text,
                     parse_mode: 'HTML',
-                    reply_markup: { inline_keyboard: [] }  // remove buttons
+                    reply_markup: { inline_keyboard: [] }
                 })
             });
+            if (!resp.ok) {
+                const errBody = await resp.text();
+                this._warn(`AskAway/Telegram: _markResolved editMessageText failed ${resp.status}: ${errBody}`);
+                // Fallback: plain text without HTML parse_mode
+                await fetch(this._apiUrl('editMessageText'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: this._chatId,
+                        message_id: task.messageId,
+                        text: `✅ Resolved\n\nQ: ${task.question.substring(0, maxQ)}\nA: ${answer}\nBy: ${user}`,
+                        reply_markup: { inline_keyboard: [] }
+                    })
+                });
+            }
         } catch (e) {
             this._warn(`AskAway/Telegram: Failed to update resolved message: ${e}`);
         }
@@ -798,12 +948,76 @@ export class TelegramService {
 
     public notifyCopilotActivity() {
         this._lastCopilotActivity = Date.now();
+        this._conversationActive = true;
         this._ensureHeartbeat();
     }
 
     public notifyCopilotStopped() {
         this._lastCopilotActivity = 0;
         this._stopHeartbeat();
+    }
+
+    /** Called when ask_user is invoked (Copilot is now waiting for input) */
+    public notifyToolCallStarted() {
+        this._lastToolCallStarted = Date.now();
+        this._conversationActive = true;
+    }
+
+    /** Called when ask_user returns (user responded, Copilot processing) */
+    public notifyToolCallReturned() {
+        this._lastToolCallReturned = Date.now();
+        this._conversationActive = true;
+    }
+
+    /** Called when the session is explicitly ended */
+    public notifySessionEnded() {
+        this._conversationActive = false;
+        this._lastToolCallStarted = 0;
+        this._lastToolCallReturned = 0;
+        this._stopHeartbeat();
+    }
+
+    /**
+     * Build a human-readable status string for the /status command.
+     */
+    public getConversationStatus(): string {
+        const now = Date.now();
+        const lines: string[] = [];
+
+        if (this._activeTasks.size > 0) {
+            const oldest = [...this._activeTasks.values()].reduce((a, b) => a.timestamp < b.timestamp ? a : b);
+            const waitMin = Math.round((now - oldest.timestamp) / 60_000);
+            lines.push(`⏳ <b>Waiting for your response</b> (${waitMin}m)`);
+            lines.push(`   ${this._activeTasks.size} pending question${this._activeTasks.size > 1 ? 's' : ''}`);
+            if (this._pollingTimer) {
+                const nextDelay = this._getPollDelaySeconds();
+                lines.push(`   Next poll in ~${nextDelay}s`);
+            }
+        } else if (this._conversationActive && this._lastToolCallReturned > 0) {
+            const workMin = Math.round((now - this._lastToolCallReturned) / 60_000);
+            lines.push(`🟢 <b>Copilot is working</b> (${workMin}m since last response)`);
+        } else if (this._conversationActive && this._lastCopilotActivity > 0) {
+            const actMin = Math.round((now - this._lastCopilotActivity) / 60_000);
+            if (actMin > 15) {
+                lines.push(`⏸ <b>Session may have ended</b> (no activity for ${actMin}m)`);
+            } else {
+                lines.push(`🟢 <b>Copilot is active</b> (last activity ${actMin}m ago)`);
+            }
+        } else {
+            lines.push('⚫ <b>No active session</b>');
+        }
+
+        if (this._lastCopilotActivity > 0) {
+            lines.push(`\nLast file change: ${this._formatTime(this._lastCopilotActivity)}`);
+        }
+        if (this._lastToolCallStarted > 0) {
+            lines.push(`Last ask_user: ${this._formatTime(this._lastToolCallStarted)}`);
+        }
+        if (this._lastToolCallReturned > 0) {
+            lines.push(`Last response: ${this._formatTime(this._lastToolCallReturned)}`);
+        }
+
+        return lines.join('\n');
     }
 
     // ── Heartbeat: periodic "still working" notifications ─────

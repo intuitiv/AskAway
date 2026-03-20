@@ -9,11 +9,7 @@ async function main() {
         outfile: 'dist/extension.js',
         external: [
             'vscode',
-            // Socket.io and its dependencies must be external
-            // They don't bundle correctly with esbuild
-            'socket.io',
-            'engine.io',
-            'ws',
+            // ws native optional deps — not needed at runtime
             'bufferutil',
             'utf-8-validate'
         ],
