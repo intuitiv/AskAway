@@ -141,7 +141,20 @@ type FromWebviewMessage =
     | { type: 'planReviewReject'; taskId: string; feedback: string }
     | { type: 'planToggleAutoAdvance'; enabled: boolean }
     | { type: 'planStartExecution' }
-    | { type: 'planPauseExecution' };
+    | { type: 'planPauseExecution' }
+    | { type: 'openPlanBoard' }
+    | { type: 'updateSendWithCtrlEnterSetting'; enabled: boolean }
+    | { type: 'updateResponseTimeout'; value: number }
+    | { type: 'updateSessionWarningHours'; value: number }
+    | { type: 'updateMaxConsecutiveAutoResponses'; value: number }
+    | { type: 'updateHumanDelaySetting'; enabled: boolean }
+    | { type: 'updateHumanDelayMin'; value: number }
+    | { type: 'updateHumanDelayMax'; value: number }
+    | { type: 'addAutopilotPrompt'; prompt: string }
+    | { type: 'editAutopilotPrompt'; index: number; prompt: string }
+    | { type: 'removeAutopilotPrompt'; index: number }
+    | { type: 'reorderAutopilotPrompts'; fromIndex: number; toIndex: number }
+    | { type: 'copyToClipboard'; text: string };
 
 
 export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -395,7 +408,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             // No pending request — push to queue for next ask_user call
             this._promptQueue.push({ id: Date.now().toString(), prompt });
             this._queueEnabled = true;
-            this._broadcast({ type: 'queueUpdate', queue: this._promptQueue.map(p => ({ id: p.id, prompt: p.prompt })), mode: 'queue' });
+            this._updateQueueUI();
         });
     }
 
