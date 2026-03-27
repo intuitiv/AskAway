@@ -1226,6 +1226,32 @@ button#send-btn .codicon {
     font-size: 12px;
 }
 
+/* Mic Button - voice mode trigger */
+button#mic-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: none;
+    background: none;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    padding: 0;
+}
+
+button#mic-btn:hover {
+    color: var(--vscode-foreground);
+    background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+button#mic-btn .codicon {
+    font-size: 13px;
+}
+
 .actions-bar {
     display: flex;
     justify-content: space-between;
@@ -2281,6 +2307,105 @@ button#send-btn:disabled {
 
 
 
+/* ========== Autopilot Prompts List ========== */
+.autopilot-prompts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+    min-height: 24px;
+}
+
+.empty-prompts-hint {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    padding: 8px;
+    text-align: center;
+    font-style: italic;
+}
+
+.autopilot-prompt-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    transition: border-color 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+    cursor: grab;
+}
+
+.autopilot-prompt-item:hover {
+    border-color: var(--vscode-focusBorder);
+}
+
+.autopilot-prompt-item.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+.autopilot-prompt-item.drag-over-top {
+    border-top: 2px solid var(--vscode-focusBorder);
+}
+
+.autopilot-prompt-item.drag-over-bottom {
+    border-bottom: 2px solid var(--vscode-focusBorder);
+}
+
+.autopilot-prompt-drag-handle {
+    color: var(--vscode-descriptionForeground);
+    cursor: grab;
+    flex-shrink: 0;
+}
+
+.autopilot-prompt-number {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--vscode-descriptionForeground);
+    flex-shrink: 0;
+    margin-right: -2px;
+}
+
+.autopilot-prompt-text {
+    font-size: 12px;
+    color: var(--vscode-foreground);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.autopilot-prompt-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.autopilot-prompt-item:hover .autopilot-prompt-actions {
+    opacity: 1;
+}
+
+/* Add Autopilot Prompt Form */
+.add-autopilot-prompt-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 10px;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+
+.add-autopilot-prompt-form.hidden {
+    display: none;
+}
+
+/* ========== End Autopilot Prompts List ========== */
+
 /* Add Prompt Form */
 .add-prompt-form {
     display: flex;
@@ -2331,6 +2456,52 @@ button#send-btn:disabled {
     resize: vertical;
     min-height: 60px;
     max-height: 150px;
+}
+
+/* Select dropdown styling */
+.form-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23888' d='M4.5 5.5L8 9l3.5-3.5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 12px;
+    padding-right: 28px;
+    cursor: pointer;
+    width: 100%;
+}
+
+.form-select:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+/* Number input styling */
+.form-input[type="number"] {
+    width: 100%;
+}
+
+/* Small inline inputs for human-like delay settings */
+.human-delay-range {
+    display: flex;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 0;
+}
+
+.form-label-inline {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+}
+
+.form-input-small {
+    width: 60px !important;
+    min-width: 60px;
+    padding: 4px 8px;
+    font-size: 12px;
 }
 
 .form-actions {
@@ -2483,4 +2654,815 @@ button#send-btn:disabled {
     font-size: 11px;
     opacity: 0.7;
     line-height: 1.4;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Voice Mode Overlay
+   ══════════════════════════════════════════════════════════ */
+
+.voice-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--vscode-editor-background);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: voiceFadeIn 0.25s ease-out;
+}
+
+.voice-overlay.hidden {
+    display: none;
+}
+
+@keyframes voiceFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.voice-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    padding: 24px 16px;
+    max-width: 92%;
+    text-align: center;
+    width: 100%;
+}
+
+.voice-question {
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+    max-width: 300px;
+    line-height: 1.5;
+    font-style: italic;
+    word-wrap: break-word;
+    opacity: 0.85;
+}
+
+.voice-waveform {
+    width: 280px;
+    height: 80px;
+    border-radius: 10px;
+    display: block;
+}
+
+/* Voice status indicator */
+.voice-status {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    letter-spacing: 0.3px;
+}
+
+.voice-status::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.voice-status-speaking::before {
+    background: var(--vscode-charts-blue, #3794ff);
+    animation: voicePulse 1.2s infinite;
+}
+
+.voice-status-listening::before {
+    background: var(--vscode-charts-green, #89d185);
+    animation: voicePulse 1s infinite;
+}
+
+.voice-status-typing::before {
+    background: var(--vscode-charts-yellow, #cca700);
+    animation: none;
+}
+
+@keyframes voicePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.45; transform: scale(0.75); }
+}
+
+.voice-transcript {
+    font-size: 13px;
+    color: var(--vscode-editor-foreground);
+    min-height: 18px;
+    max-width: 300px;
+    word-wrap: break-word;
+    line-height: 1.45;
+    opacity: 0.9;
+}
+
+.voice-controls {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+}
+
+.voice-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+
+.voice-btn:hover {
+    transform: scale(1.08);
+}
+
+.voice-btn:active {
+    transform: scale(0.95);
+}
+
+.voice-send {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.voice-send:hover {
+    background: var(--vscode-button-hoverBackground);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.voice-cancel {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.voice-cancel:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* Text fallback (when mic not available) */
+.voice-text-fallback {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    width: 100%;
+    max-width: 300px;
+}
+
+.voice-text-fallback.hidden {
+    display: none;
+}
+
+.voice-text-fallback textarea {
+    flex: 1;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, var(--vscode-focusBorder));
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    resize: none;
+    font-family: inherit;
+    line-height: 1.4;
+}
+
+.voice-text-fallback textarea:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+/* Record button — big prominent mic circle */
+.voice-record-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 2px solid var(--vscode-button-background);
+    background: transparent;
+    color: var(--vscode-button-background);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    transition: all 0.2s ease;
+}
+
+.voice-record-btn:hover {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    transform: scale(1.05);
+}
+
+.voice-record-btn.hidden {
+    display: none;
+}
+
+.voice-record-btn.recording {
+    background: var(--vscode-errorForeground, #f44);
+    border-color: var(--vscode-errorForeground, #f44);
+    color: #fff;
+    animation: recordPulse 1.2s infinite;
+}
+
+.voice-record-btn.recording:hover {
+    background: var(--vscode-errorForeground, #f44);
+    opacity: 0.85;
+}
+
+@keyframes recordPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(244, 68, 68, 0.4); }
+    50%      { box-shadow: 0 0 0 10px rgba(244, 68, 68, 0); }
+}
+
+/* Voice input area (text + buttons) */
+.voice-input-area {
+    width: 100%;
+    max-width: 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.voice-input-area.hidden {
+    display: none;
+}
+
+.voice-input-area textarea {
+    width: 100%;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, var(--vscode-focusBorder));
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    resize: none;
+    font-family: inherit;
+    line-height: 1.4;
+    box-sizing: border-box;
+}
+
+.voice-input-area textarea:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.voice-input-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+/* Status: ready state */
+.voice-status-ready::before {
+    background: var(--vscode-descriptionForeground);
+    animation: none;
+    opacity: 0.5;
+}
+
+/* Skip button — interrupt TTS */
+.voice-skip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 14px;
+    border-radius: 16px;
+    border: 1px solid var(--vscode-button-secondaryBackground);
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s ease;
+}
+
+.voice-skip-btn:hover {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.voice-skip-btn.hidden {
+    display: none;
+}
+
+.voice-skip-btn .codicon {
+    font-size: 12px;
+}
+
+/* ══════════════════════════════════════════
+   Plan Mode — Trello-style Task Board
+   ══════════════════════════════════════════ */
+
+.plan-board {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    border-top: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-sideBar-background);
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.plan-board.hidden {
+    display: none;
+}
+
+/* Header */
+.plan-board-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.plan-board-title-area {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--vscode-foreground);
+}
+
+.plan-board-title-area .codicon {
+    font-size: 16px;
+    color: var(--vscode-textLink-foreground);
+}
+
+.plan-board-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.plan-auto-advance-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+}
+
+.plan-auto-advance-label input[type="checkbox"] {
+    accent-color: var(--vscode-textLink-foreground);
+}
+
+/* Buttons */
+.plan-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.plan-btn-start {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.plan-btn-start:hover {
+    background: var(--vscode-button-hoverBackground);
+}
+
+.plan-btn-pause {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.plan-btn-pause:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.plan-btn-cancel {
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+}
+
+.plan-btn-cancel:hover {
+    background: var(--vscode-button-secondaryBackground);
+}
+
+.plan-btn-add {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.plan-btn-add:hover {
+    background: var(--vscode-button-hoverBackground);
+}
+
+.plan-btn-split {
+    background: transparent;
+    color: var(--vscode-textLink-foreground);
+    border: 1px solid var(--vscode-textLink-foreground);
+}
+
+.plan-btn-split:hover {
+    background: var(--vscode-textLink-foreground);
+    color: var(--vscode-editor-background);
+}
+
+.plan-btn-new-task {
+    width: 100%;
+    padding: 6px 12px;
+    background: transparent;
+    color: var(--vscode-textLink-foreground);
+    border: 1px dashed var(--vscode-panel-border);
+    border-radius: 6px;
+    font-size: 12px;
+    justify-content: center;
+}
+
+.plan-btn-new-task:hover {
+    background: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-textLink-foreground);
+}
+
+/* Progress bar */
+.plan-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.plan-progress-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--vscode-progressBar-background, var(--vscode-panel-border));
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.plan-progress-fill {
+    height: 100%;
+    background: var(--vscode-textLink-foreground);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.plan-progress-text {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+}
+
+/* Columns (Trello-style) */
+.plan-columns {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    min-height: 100px;
+}
+
+.plan-column {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--vscode-editor-background);
+    border-radius: 6px;
+    padding: 6px;
+}
+
+.plan-column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.plan-column[data-status="pending"] .plan-column-header {
+    color: var(--vscode-descriptionForeground);
+}
+
+.plan-column[data-status="in-progress"] .plan-column-header {
+    color: var(--vscode-charts-yellow, #e2c541);
+}
+
+.plan-column[data-status="completed"] .plan-column-header {
+    color: var(--vscode-charts-green, #89d185);
+}
+
+.plan-column-count {
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    min-width: 16px;
+    text-align: center;
+}
+
+.plan-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 40px;
+}
+
+/* Task Cards */
+.plan-card {
+    background: var(--vscode-sideBar-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    padding: 8px;
+    cursor: grab;
+    transition: all 0.15s ease;
+    position: relative;
+}
+
+.plan-card:hover {
+    border-color: var(--vscode-textLink-foreground);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.plan-card.active {
+    border-color: var(--vscode-charts-yellow, #e2c541);
+    border-width: 2px;
+    padding: 7px;
+}
+
+.plan-card.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+.plan-card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    margin-bottom: 4px;
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+.plan-card-desc {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+}
+
+.plan-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 6px;
+    gap: 4px;
+}
+
+.plan-card-badges {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.plan-card-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.plan-card-badge-review {
+    background: var(--vscode-editorInfo-background, rgba(0, 120, 212, 0.15));
+    color: var(--vscode-textLink-foreground);
+}
+
+.plan-card-badge-subtasks {
+    background: var(--vscode-editor-background);
+    color: var(--vscode-descriptionForeground);
+}
+
+.plan-card-badge-blocked {
+    background: var(--vscode-editorWarning-background, rgba(255, 200, 0, 0.15));
+    color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.plan-card-badge-review-needed {
+    background: var(--vscode-editorInfo-background, rgba(0, 120, 212, 0.15));
+    color: var(--vscode-textLink-foreground);
+}
+
+.plan-card-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.plan-card:hover .plan-card-actions {
+    opacity: 1;
+}
+
+.plan-card-action {
+    background: transparent;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+}
+
+.plan-card-action:hover {
+    background: var(--vscode-list-hoverBackground);
+    color: var(--vscode-foreground);
+}
+
+.plan-card-action .codicon {
+    font-size: 12px;
+}
+
+/* Review overlay on card */
+.plan-card-review-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--vscode-editor-background);
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 10;
+}
+
+.plan-card-review-overlay .plan-review-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+}
+
+.plan-card-review-overlay .plan-review-note {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    max-height: 60px;
+    overflow-y: auto;
+}
+
+.plan-card-review-overlay textarea {
+    width: 100%;
+    min-height: 30px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 11px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+.plan-card-review-actions {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+}
+
+/* Add task form */
+.plan-add-task-form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+}
+
+.plan-add-task-form.hidden {
+    display: none;
+}
+
+.plan-task-title-input,
+.plan-task-desc-input {
+    width: 100%;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.plan-task-title-input:focus,
+.plan-task-desc-input:focus {
+    border-color: var(--vscode-focusBorder);
+    outline: none;
+}
+
+.plan-task-desc-input {
+    resize: vertical;
+    min-height: 40px;
+}
+
+.plan-add-task-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.plan-review-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+}
+
+.plan-add-task-actions {
+    display: flex;
+    gap: 4px;
+}
+
+/* Welcome card for Plan */
+.welcome-card-plan {
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.welcome-card-plan:hover {
+    border-color: var(--vscode-textLink-foreground);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.welcome-card-plan.selected {
+    border-color: var(--vscode-textLink-foreground);
+    background: var(--vscode-textLink-foreground);
+    color: var(--vscode-editor-background);
+}
+
+.welcome-card-plan.selected .welcome-card-desc {
+    color: var(--vscode-editor-background);
+    opacity: 0.85;
+}
+
+/* Plan empty state */
+.plan-card-list:empty::after {
+    content: 'No tasks';
+    display: block;
+    text-align: center;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    padding: 12px 0;
+    opacity: 0.6;
+}
+
+/* Drag-over highlight */
+.plan-card-list.drag-over {
+    background: var(--vscode-list-hoverBackground);
+    border-radius: 4px;
+}
+
+/* Status-specific card styles */
+.plan-card[data-status="need-review"] {
+    border-color: var(--vscode-textLink-foreground);
+    border-style: dashed;
+}
+
+.plan-card[data-status="blocked"] {
+    border-color: var(--vscode-editorWarning-foreground, #cca700);
+    border-style: dashed;
+}
+
+/* Pulse animation for active task */
+@keyframes planPulse {
+    0%, 100% { border-color: var(--vscode-charts-yellow, #e2c541); }
+    50% { border-color: transparent; }
+}
+
+.plan-card.active {
+    animation: planPulse 2s ease-in-out infinite;
 }

@@ -4,7 +4,7 @@
   "displayName": "AskAway",
   "description": "Answer your AI agent's questions from anywhere — Webex, Telegram, mobile, or web. Queue prompts, respond remotely, and never block your coding workflow.",
   "icon": "media/askaway-logo.png",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -63,7 +63,12 @@
             },
             "taskStatus": {
               "type": "string",
-              "enum": ["completed", "in-progress", "blocked", "need-review"],
+              "enum": [
+                "completed",
+                "in-progress",
+                "blocked",
+                "need-review"
+              ],
               "description": "When working on a Planning Board task, report your assessment of the task status. Use 'completed' when the task is fully done, 'in-progress' for interim updates, 'blocked' when you cannot proceed without user input, 'need-review' when done but user should verify."
             }
           },
@@ -164,8 +169,46 @@
           "type": "string",
           "default": "60",
           "scope": "window",
-          "enum": ["0", "5", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100", "110", "120", "150", "180", "210", "240"],
-          "enumDescriptions": ["Disabled (no auto-response)", "5 minutes", "10 minutes", "20 minutes", "30 minutes", "40 minutes", "50 minutes", "60 minutes", "70 minutes", "80 minutes", "90 minutes (1.5 hours)", "100 minutes", "110 minutes", "120 minutes (2 hours)", "150 minutes (2.5 hours)", "180 minutes (3 hours)", "210 minutes (3.5 hours)", "240 minutes (4 hours)"],
+          "enum": [
+            "0",
+            "5",
+            "10",
+            "20",
+            "30",
+            "40",
+            "50",
+            "60",
+            "70",
+            "80",
+            "90",
+            "100",
+            "110",
+            "120",
+            "150",
+            "180",
+            "210",
+            "240"
+          ],
+          "enumDescriptions": [
+            "Disabled (no auto-response)",
+            "5 minutes",
+            "10 minutes",
+            "20 minutes",
+            "30 minutes",
+            "40 minutes",
+            "50 minutes",
+            "60 minutes",
+            "70 minutes",
+            "80 minutes",
+            "90 minutes (1.5 hours)",
+            "100 minutes",
+            "110 minutes",
+            "120 minutes (2 hours)",
+            "150 minutes (2.5 hours)",
+            "180 minutes (3 hours)",
+            "210 minutes (3.5 hours)",
+            "240 minutes (4 hours)"
+          ],
           "description": "Auto-respond to pending tool calls if user doesn't respond within this time. When Autopilot is enabled, the Autopilot text is sent. When disabled, a session termination message is sent."
         },
         "askaway.sessionWarningHours": {

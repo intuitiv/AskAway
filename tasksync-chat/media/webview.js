@@ -11,6 +11,7 @@
     // State
     let promptQueue = [];
     let queueEnabled = true; // Default to true (Queue mode ON by default)
+    let planEnabled = false; // Plan mode
     let dropdownOpen = false;
     let currentAttachments = previousState.attachments || []; // Restore attachments
     let selectedCard = 'queue';
@@ -18,17 +19,37 @@
     let persistedHistory = []; // Past sessions history (shown in modal)
     let pendingToolCall = null;
     let isProcessingResponse = false; // True when AI is processing user's response
+
+    // Plan board state
+    let currentPlan = null;
+    let planExecuting = false;
+    let proposedSplit = null; // { taskId, subtasks } for pending split review
     let isApprovalQuestion = false; // True when current pending question is an approval-type question
     let currentChoices = []; // Parsed choices from multi-choice questions
 
     // Settings state
     let soundEnabled = true;
     let interactiveApprovalEnabled = true;
+    let sendWithCtrlEnter = false;
     let webexEnabled = false;
     let telegramEnabled = false;
     let autopilotEnabled = false;
     let autopilotText = '';
+    let autopilotPrompts = [];
+    let responseTimeout = 60;
+    let sessionWarningHours = 2;
+    let maxConsecutiveAutoResponses = 5;
+    // Keep timeout options aligned with select values to avoid invalid UI state.
+    var RESPONSE_TIMEOUT_ALLOWED_VALUES = new Set([0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 210, 240]);
+    var RESPONSE_TIMEOUT_DEFAULT = 60;
+    // Human-like delay: random jitter simulates natural reading/typing time
+    let humanLikeDelayEnabled = true;
+    let humanLikeDelayMin = 2;  // minimum seconds
+    let humanLikeDelayMax = 6;  // maximum seconds
     let autopilotTextDebounceTimer = null;
+    let lastContextMenuTarget = null; // Tracks where right-click was triggered for copy fallback behavior
+    let lastContextMenuTimestamp = 0; // Ensures stale right-click targets are not reused for copy
+    var CONTEXT_MENU_COPY_MAX_AGE_MS = 30000;
 
     // Tracks local edits to prevent stale settings overwriting user input mid-typing.
     let autopilotTextEditVersion = 0;
@@ -48,6 +69,17 @@
 
     // Edit mode state
     let editingPromptId = null;
+
+    // ── Voice Mode State ──
+    let voiceMode = false;
+    let voiceTaskId = null;
+    let voiceRecognition = null;   // SpeechRecognition instance
+    let voiceAudioContext = null;  // AudioContext for waveform
+    let voiceAnalyser = null;      // AnalyserNode for waveform data
+    let voiceStream = null;        // MediaStream from mic
+    let voiceAnimationFrame = null;
+    let voiceTranscript = '';      // Accumulated transcript
+    let voiceInterimTranscript = ''; // Current interim result
     let editingOriginalPrompt = null;
     let savedInputValue = ''; // Save input value when entering edit mode
 
@@ -74,7 +106,10 @@
     let slashDropdown, slashList, slashEmpty;
     // Settings modal elements
     let settingsModal, settingsModalOverlay, settingsModalClose;
-    let soundToggle, interactiveApprovalToggle, webexToggle, telegramToggle, autopilotEditBtn, autopilotToggle, autopilotTextInput, promptsList, addPromptBtn, addPromptForm;
+    let soundToggle, interactiveApprovalToggle, sendShortcutToggle, webexToggle, telegramToggle, autopilotEditBtn, autopilotToggle, autopilotTextInput, promptsList, addPromptBtn, addPromptForm;
+    let autopilotPromptsList, autopilotAddBtn, addAutopilotPromptForm, autopilotPromptInput, saveAutopilotPromptBtn, cancelAutopilotPromptBtn;
+    let responseTimeoutSelect, sessionWarningHoursSelect, maxAutoResponsesInput;
+    let humanDelayToggle, humanDelayRangeContainer, humanDelayMinInput, humanDelayMaxInput;
 
     function init() {
         try {
@@ -85,12 +120,14 @@
             createApprovalModal();
             createSettingsModal();
             bindEventListeners();
+            initVoiceControls();
             unlockAudioOnInteraction(); // Enable audio after first user interaction
             console.log('[TaskSync Webview] Event listeners bound, pendingMessage element:', !!pendingMessage);
             renderQueue();
             updateModeUI();
             updateQueueVisibility();
             initCardSelection();
+            initPlanBoard();
 
             // Restore persisted input value (when user switches sidebar tabs and comes back)
             if (chatInput && persistedInputValue) {
@@ -365,21 +402,130 @@
             '</div>';
         modalContent.appendChild(approvalSection);
 
-        // Autopilot section
+        // Send shortcut section - switch between Enter and Ctrl/Cmd+Enter send
+        var sendShortcutSection = document.createElement('div');
+        sendShortcutSection.className = 'settings-section';
+        sendShortcutSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title"><span class="codicon codicon-keyboard"></span> Ctrl/Cmd+Enter to Send</div>' +
+            '<div class="toggle-switch" id="send-shortcut-toggle" role="switch" aria-checked="false" aria-label="Use Ctrl/Cmd+Enter to send messages" tabindex="0"></div>' +
+            '</div>';
+        modalContent.appendChild(sendShortcutSection);
+
+        // Autopilot section with cycling prompts list
         var autopilotSection = document.createElement('div');
         autopilotSection.className = 'settings-section';
         autopilotSection.innerHTML = '<div class="settings-section-header">' +
             '<div class="settings-section-title">' +
-            '<span class="codicon codicon-rocket"></span> Autopilot Prompt' +
-            '<span class="settings-info-icon" title="When enabled, the AI automatically receives your configured text as a response instead of waiting for manual input.\n\nHow it works:\n• The agent calls ask_user → Autopilot instantly replies with your text\n• The agent continues working without waiting for you\n• Disable Autopilot at any time to regain manual control\n\nQueue Priority:\n• Queued prompts are ALWAYS sent first before Autopilot triggers\n• Autopilot only activates when the queue is empty\n• This lets you steer the agent with queued instructions while Autopilot handles routine questions" > ' +
+            '<span class="codicon codicon-rocket"></span> Autopilot Prompts' +
+            '<span class="settings-info-icon" title="Prompts cycle in order (1→2→3→1...) with human-like delay.\n\nHow it works:\n• The agent calls ask_user → Autopilot sends the next prompt in sequence\n• Add multiple prompts to alternate between different instructions\n• Drag to reorder, edit or delete individual prompts\n\nQueue Priority:\n• Queued prompts ALWAYS take priority over Autopilot\n• Autopilot only activates when the queue is empty">' +
             '<span class="codicon codicon-info"></span></span>' +
             '</div>' +
-            '<button class="add-prompt-btn-inline" id="autopilot-edit-btn" title="Edit Autopilot prompt" aria-label="Edit Autopilot prompt"><span class="codicon codicon-edit"></span></button>' +
+            '<button class="add-prompt-btn-inline" id="autopilot-add-btn" title="Add Autopilot prompt" aria-label="Add Autopilot prompt"><span class="codicon codicon-add"></span></button>' +
             '</div>' +
-            '<div class="form-row hidden">' +
-            '<textarea class="form-input form-textarea" id="autopilot-text" placeholder="Enter Autopilot response text..." maxlength="2000"></textarea>' +
+            '<div class="autopilot-prompts-list" id="autopilot-prompts-list"></div>' +
+            '<div class="add-autopilot-prompt-form hidden" id="add-autopilot-prompt-form">' +
+            '<div class="form-row">' +
+            '<textarea class="form-input form-textarea" id="autopilot-prompt-input" placeholder="Enter Autopilot prompt text..." maxlength="2000"></textarea>' +
+            '</div>' +
+            '<div class="form-actions">' +
+            '<button class="form-btn form-btn-cancel" id="cancel-autopilot-prompt-btn">Cancel</button>' +
+            '<button class="form-btn form-btn-save" id="save-autopilot-prompt-btn">Save</button>' +
+            '</div>' +
             '</div>';
         modalContent.appendChild(autopilotSection);
+
+        // Response Timeout section - dropdown for timeout minutes
+        var timeoutSection = document.createElement('div');
+        timeoutSection.className = 'settings-section';
+        timeoutSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title">' +
+            '<span class="codicon codicon-clock"></span> Response Timeout' +
+            '<span class="settings-info-icon" title="If no response is received within this time, it will automatically send the session termination message.">' +
+            '<span class="codicon codicon-info"></span></span>' +
+            '</div>' +
+            '</div>' +
+            '<div class="form-row">' +
+            '<select class="form-input form-select" id="response-timeout-select">' +
+            '<option value="0">Disabled</option>' +
+            '<option value="5">5 minutes</option>' +
+            '<option value="10">10 minutes</option>' +
+            '<option value="20">20 minutes</option>' +
+            '<option value="30">30 minutes</option>' +
+            '<option value="40">40 minutes</option>' +
+            '<option value="50">50 minutes</option>' +
+            '<option value="60">60 minutes (default)</option>' +
+            '<option value="70">70 minutes</option>' +
+            '<option value="80">80 minutes</option>' +
+            '<option value="90">90 minutes</option>' +
+            '<option value="100">100 minutes</option>' +
+            '<option value="110">110 minutes</option>' +
+            '<option value="120">120 minutes (2h)</option>' +
+            '<option value="150">150 minutes (2.5h)</option>' +
+            '<option value="180">180 minutes (3h)</option>' +
+            '<option value="210">210 minutes (3.5h)</option>' +
+            '<option value="240">240 minutes (4h)</option>' +
+            '</select>' +
+            '</div>';
+        modalContent.appendChild(timeoutSection);
+
+        // Session Warning section - warning threshold in hours
+        var sessionWarningSection = document.createElement('div');
+        sessionWarningSection.className = 'settings-section';
+        sessionWarningSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title">' +
+            '<span class="codicon codicon-watch"></span> Session Warning' +
+            '<span class="settings-info-icon" title="Show a one-time warning after this many hours in the same session. Set to 0 to disable.">' +
+            '<span class="codicon codicon-info"></span></span>' +
+            '</div>' +
+            '</div>' +
+            '<div class="form-row">' +
+            '<select class="form-input form-select" id="session-warning-hours-select">' +
+            '<option value="0">Disabled</option>' +
+            '<option value="1">1 hour</option>' +
+            '<option value="2">2 hours</option>' +
+            '<option value="3">3 hours</option>' +
+            '<option value="4">4 hours</option>' +
+            '<option value="5">5 hours</option>' +
+            '<option value="6">6 hours</option>' +
+            '<option value="7">7 hours</option>' +
+            '<option value="8">8 hours</option>' +
+            '</select>' +
+            '</div>';
+        modalContent.appendChild(sessionWarningSection);
+
+        // Max Consecutive Auto-Responses section - number input
+        var maxAutoSection = document.createElement('div');
+        maxAutoSection.className = 'settings-section';
+        maxAutoSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title">' +
+            '<span class="codicon codicon-stop-circle"></span> Max Auto-Responses' +
+            '<span class="settings-info-icon" title="Maximum consecutive auto-responses using Autopilot before pausing and requiring manual input. Prevents infinite loops.">' +
+            '<span class="codicon codicon-info"></span></span>' +
+            '</div>' +
+            '</div>' +
+            '<div class="form-row">' +
+            '<input type="number" class="form-input" id="max-auto-responses-input" min="1" max="50" value="5" />' +
+            '</div>';
+        modalContent.appendChild(maxAutoSection);
+
+        // Human-Like Delay section - toggle + min/max inputs
+        var humanDelaySection = document.createElement('div');
+        humanDelaySection.className = 'settings-section';
+        humanDelaySection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title">' +
+            '<span class="codicon codicon-pulse"></span> Human-Like Delay' +
+            '<span class="settings-info-icon" title="Add random delays (2-6s by default) before auto-responses. Simulates natural pacing for automated responses.">' +
+            '<span class="codicon codicon-info"></span></span>' +
+            '</div>' +
+            '<div class="toggle-switch active" id="human-delay-toggle" role="switch" aria-checked="true" aria-label="Toggle Human-Like Delay" tabindex="0"></div>' +
+            '</div>' +
+            '<div class="form-row human-delay-range" id="human-delay-range">' +
+            '<label class="form-label-inline">Min (s):</label>' +
+            '<input type="number" class="form-input form-input-small" id="human-delay-min-input" min="1" max="30" value="2" />' +
+            '<label class="form-label-inline">Max (s):</label>' +
+            '<input type="number" class="form-input form-input-small" id="human-delay-max-input" min="2" max="60" value="6" />' +
+            '</div>';
+        modalContent.appendChild(humanDelaySection);
 
         // Integrations header
         var integrationsHeader = document.createElement('div');
@@ -438,10 +584,22 @@
         // Cache inner elements
         soundToggle = document.getElementById('sound-toggle');
         interactiveApprovalToggle = document.getElementById('interactive-approval-toggle');
+        sendShortcutToggle = document.getElementById('send-shortcut-toggle');
         webexToggle = document.getElementById('webex-toggle');
         telegramToggle = document.getElementById('telegram-toggle');
-        autopilotEditBtn = document.getElementById('autopilot-edit-btn');
-        autopilotTextInput = document.getElementById('autopilot-text');
+        autopilotPromptsList = document.getElementById('autopilot-prompts-list');
+        autopilotAddBtn = document.getElementById('autopilot-add-btn');
+        addAutopilotPromptForm = document.getElementById('add-autopilot-prompt-form');
+        autopilotPromptInput = document.getElementById('autopilot-prompt-input');
+        saveAutopilotPromptBtn = document.getElementById('save-autopilot-prompt-btn');
+        cancelAutopilotPromptBtn = document.getElementById('cancel-autopilot-prompt-btn');
+        responseTimeoutSelect = document.getElementById('response-timeout-select');
+        sessionWarningHoursSelect = document.getElementById('session-warning-hours-select');
+        maxAutoResponsesInput = document.getElementById('max-auto-responses-input');
+        humanDelayToggle = document.getElementById('human-delay-toggle');
+        humanDelayRangeContainer = document.getElementById('human-delay-range');
+        humanDelayMinInput = document.getElementById('human-delay-min-input');
+        humanDelayMaxInput = document.getElementById('human-delay-max-input');
         promptsList = document.getElementById('prompts-list');
         addPromptBtn = document.getElementById('add-prompt-btn');
         addPromptForm = document.getElementById('add-prompt-form');
@@ -517,6 +675,15 @@
                 }
             });
         }
+        if (sendShortcutToggle) {
+            sendShortcutToggle.addEventListener('click', toggleSendWithCtrlEnterSetting);
+            sendShortcutToggle.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleSendWithCtrlEnterSetting();
+                }
+            });
+        }
         if (webexToggle) {
             webexToggle.addEventListener('click', toggleWebexSetting);
             webexToggle.addEventListener('keydown', function (e) {
@@ -535,9 +702,6 @@
                 }
             });
         }
-        if (autopilotEditBtn) {
-            autopilotEditBtn.addEventListener('click', toggleAutopilotTextEdit);
-        }
         if (autopilotToggle) {
             autopilotToggle.addEventListener('click', toggleAutopilotSetting);
             autopilotToggle.addEventListener('keydown', function (e) {
@@ -547,9 +711,50 @@
                 }
             });
         }
-        if (autopilotTextInput) {
-            autopilotTextInput.addEventListener('input', handleAutopilotTextInput);
-            autopilotTextInput.addEventListener('blur', flushAutopilotTextUpdate);
+        // Autopilot prompts list event listeners
+        if (autopilotAddBtn) {
+            autopilotAddBtn.addEventListener('click', showAddAutopilotPromptForm);
+        }
+        if (saveAutopilotPromptBtn) {
+            saveAutopilotPromptBtn.addEventListener('click', saveAutopilotPrompt);
+        }
+        if (cancelAutopilotPromptBtn) {
+            cancelAutopilotPromptBtn.addEventListener('click', hideAddAutopilotPromptForm);
+        }
+        if (autopilotPromptsList) {
+            autopilotPromptsList.addEventListener('click', handleAutopilotPromptsListClick);
+            // Drag and drop for reordering
+            autopilotPromptsList.addEventListener('dragstart', handleAutopilotDragStart);
+            autopilotPromptsList.addEventListener('dragover', handleAutopilotDragOver);
+            autopilotPromptsList.addEventListener('dragend', handleAutopilotDragEnd);
+            autopilotPromptsList.addEventListener('drop', handleAutopilotDrop);
+        }
+        if (responseTimeoutSelect) {
+            responseTimeoutSelect.addEventListener('change', handleResponseTimeoutChange);
+        }
+        if (sessionWarningHoursSelect) {
+            sessionWarningHoursSelect.addEventListener('change', handleSessionWarningHoursChange);
+        }
+        if (maxAutoResponsesInput) {
+            maxAutoResponsesInput.addEventListener('change', handleMaxAutoResponsesChange);
+            maxAutoResponsesInput.addEventListener('blur', handleMaxAutoResponsesChange);
+        }
+        if (humanDelayToggle) {
+            humanDelayToggle.addEventListener('click', toggleHumanDelaySetting);
+            humanDelayToggle.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleHumanDelaySetting();
+                }
+            });
+        }
+        if (humanDelayMinInput) {
+            humanDelayMinInput.addEventListener('change', handleHumanDelayMinChange);
+            humanDelayMinInput.addEventListener('blur', handleHumanDelayMinChange);
+        }
+        if (humanDelayMaxInput) {
+            humanDelayMaxInput.addEventListener('change', handleHumanDelayMaxChange);
+            humanDelayMaxInput.addEventListener('blur', handleHumanDelayMaxChange);
         }
         if (addPromptBtn) addPromptBtn.addEventListener('click', showAddPromptForm);
         // Add prompt form events (deferred - bind after modal created)
@@ -557,6 +762,10 @@
         var savePromptBtn = document.getElementById('save-prompt-btn');
         if (cancelPromptBtn) cancelPromptBtn.addEventListener('click', hideAddPromptForm);
         if (savePromptBtn) savePromptBtn.addEventListener('click', saveNewPrompt);
+
+        // Context menu and copy handling
+        document.addEventListener('contextmenu', handleContextMenu);
+        document.addEventListener('copy', handleCopy);
 
         window.addEventListener('message', handleExtensionMessage);
     }
@@ -595,6 +804,14 @@
                 selectCard('queue', true);
             });
         }
+        var cardPlan = document.getElementById('card-plan');
+        if (cardPlan) {
+            cardPlan.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                selectCard('plan', true);
+            });
+        }
         // Don't set default here - wait for updateQueue message from extension
         // which contains the persisted enabled state
         updateCardSelection();
@@ -603,20 +820,31 @@
     function selectCard(card, notify) {
         selectedCard = card;
         queueEnabled = card === 'queue';
+        planEnabled = card === 'plan';
         updateCardSelection();
         updateModeUI();
         updateQueueVisibility();
+        updatePlanBoardVisibility();
 
         // Only notify extension if user clicked (not on init from persisted state)
         if (notify) {
-            vscode.postMessage({ type: 'toggleQueue', enabled: queueEnabled });
+            if (planEnabled) {
+                vscode.postMessage({ type: 'planSetMode', enabled: true });
+                // Plan mode uses the queue to feed tasks to Copilot — keep it enabled
+                vscode.postMessage({ type: 'toggleQueue', enabled: true });
+            } else {
+                vscode.postMessage({ type: 'planSetMode', enabled: false });
+                vscode.postMessage({ type: 'toggleQueue', enabled: queueEnabled });
+            }
         }
     }
 
     function updateCardSelection() {
-        // card-vibe = Normal mode, card-spec = Queue mode
-        if (cardVibe) cardVibe.classList.toggle('selected', !queueEnabled);
-        if (cardSpec) cardSpec.classList.toggle('selected', queueEnabled);
+        // card-vibe = Normal mode, card-spec = Queue mode, card-plan = Plan mode
+        if (cardVibe) cardVibe.classList.toggle('selected', selectedCard === 'normal');
+        if (cardSpec) cardSpec.classList.toggle('selected', selectedCard === 'queue');
+        var cardPlan = document.getElementById('card-plan');
+        if (cardPlan) cardPlan.classList.toggle('selected', selectedCard === 'plan');
     }
 
     function autoResizeTextarea() {
@@ -697,7 +925,7 @@
         // Handle approval modal keyboard shortcuts when visible
         if (isApprovalQuestion && approvalModal && !approvalModal.classList.contains('hidden')) {
             // Enter sends "Continue" when approval modal is visible and input is empty
-            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
                 var inputText = chatInput ? chatInput.value.trim() : '';
                 if (!inputText) {
                     e.preventDefault();
@@ -721,7 +949,7 @@
                 cancelEditMode();
                 return;
             }
-            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
                 e.preventDefault();
                 confirmEditMode();
                 return;
@@ -747,7 +975,20 @@
 
         // Context dropdown navigation removed - context now uses # via file autocomplete
 
-        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) { e.preventDefault(); handleSend(); }
+        var isPlainEnter = e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey;
+        var isCtrlOrCmdEnter = e.key === 'Enter' && !e.shiftKey && (e.ctrlKey || e.metaKey);
+
+        if (!sendWithCtrlEnter && isPlainEnter) {
+            e.preventDefault();
+            handleSend();
+            return;
+        }
+
+        if (sendWithCtrlEnter && isCtrlOrCmdEnter) {
+            e.preventDefault();
+            handleSend();
+            return;
+        }
     }
 
     function handleSend() {
@@ -832,16 +1073,30 @@
 
     function setMode(mode, notify) {
         queueEnabled = mode === 'queue';
+        planEnabled = mode === 'plan';
+        selectedCard = mode;
         updateModeUI();
         updateQueueVisibility();
         updateCardSelection();
-        if (notify) vscode.postMessage({ type: 'toggleQueue', enabled: queueEnabled });
+        updatePlanBoardVisibility();
+        if (notify) {
+            if (planEnabled) {
+                vscode.postMessage({ type: 'planSetMode', enabled: true });
+                // Plan mode uses the queue to feed tasks to Copilot — keep it enabled
+                vscode.postMessage({ type: 'toggleQueue', enabled: true });
+            } else {
+                vscode.postMessage({ type: 'planSetMode', enabled: false });
+                vscode.postMessage({ type: 'toggleQueue', enabled: queueEnabled });
+            }
+        }
     }
 
     function updateModeUI() {
-        if (modeLabel) modeLabel.textContent = queueEnabled ? 'Queue' : 'Normal';
+        var label = planEnabled ? 'Plan (Experimental)' : (queueEnabled ? 'Queue' : 'Normal');
+        if (modeLabel) modeLabel.textContent = label;
         document.querySelectorAll('.mode-option[data-mode]').forEach(function (opt) {
-            opt.classList.toggle('selected', opt.getAttribute('data-mode') === (queueEnabled ? 'queue' : 'normal'));
+            var m = opt.getAttribute('data-mode');
+            opt.classList.toggle('selected', m === (planEnabled ? 'plan' : (queueEnabled ? 'queue' : 'normal')));
         });
     }
 
@@ -904,19 +1159,32 @@
             case 'updateSettings':
                 soundEnabled = message.soundEnabled !== false;
                 interactiveApprovalEnabled = message.interactiveApprovalEnabled !== false;
+                sendWithCtrlEnter = message.sendWithCtrlEnter === true;
                 webexEnabled = message.webexEnabled === true;
                 telegramEnabled = message.telegramEnabled === true;
                 autopilotEnabled = message.autopilotEnabled === true;
                 autopilotText = typeof message.autopilotText === 'string' ? message.autopilotText : '';
+                autopilotPrompts = Array.isArray(message.autopilotPrompts) ? message.autopilotPrompts : [];
                 reusablePrompts = message.reusablePrompts || [];
+                responseTimeout = normalizeResponseTimeout(message.responseTimeout);
+                sessionWarningHours = typeof message.sessionWarningHours === 'number' ? message.sessionWarningHours : 2;
+                maxConsecutiveAutoResponses = typeof message.maxConsecutiveAutoResponses === 'number' ? message.maxConsecutiveAutoResponses : 5;
+                humanLikeDelayEnabled = message.humanLikeDelayEnabled !== false;
+                humanLikeDelayMin = typeof message.humanLikeDelayMin === 'number' ? message.humanLikeDelayMin : 2;
+                humanLikeDelayMax = typeof message.humanLikeDelayMax === 'number' ? message.humanLikeDelayMax : 6;
                 updateSoundToggleUI();
                 updateInteractiveApprovalToggleUI();
+                updateSendWithCtrlEnterToggleUI();
                 updateWebexToggleUI();
                 updateWebexStatusUI(message.webexStatus);
                 updateTelegramToggleUI();
                 updateTelegramStatusUI(message.telegramStatus);
                 updateAutopilotToggleUI();
-                updateAutopilotTextUI();
+                renderAutopilotPromptsList();
+                updateResponseTimeoutUI();
+                updateSessionWarningHoursUI();
+                updateMaxAutoResponsesUI();
+                updateHumanDelayUI();
                 renderPromptsList();
                 break;
             case 'slashCommandResults':
@@ -941,8 +1209,57 @@
             case 'clear':
                 promptQueue = [];
                 currentSessionCalls = [];
+                pendingToolCall = null;
+                isProcessingResponse = false;
                 renderQueue();
                 renderCurrentSession();
+                if (pendingMessage) {
+                    pendingMessage.classList.add('hidden');
+                    pendingMessage.innerHTML = '';
+                }
+                updateWelcomeSectionVisibility();
+                break;
+            case 'updateSessionTimer':
+                // Timer is displayed in the view title bar by the extension host
+                // No webview UI to update
+                break;
+            case 'triggerSendFromShortcut':
+                handleSendFromShortcut();
+                break;
+            case 'voiceStart':
+                handleVoiceStart(message.taskId, message.question);
+                break;
+            case 'voiceSpeakingDone':
+                handleVoiceSpeakingDone(message.taskId);
+                break;
+            case 'voiceStop':
+                handleVoiceStop();
+                break;
+            // ── Plan Mode messages ──
+            case 'updatePlan':
+                currentPlan = message.plan;
+                if (currentPlan && currentPlan._proposedSplit) {
+                    proposedSplit = currentPlan._proposedSplit;
+                    delete currentPlan._proposedSplit;
+                }
+                renderPlanBoard();
+                break;
+            case 'planTaskStatusChanged':
+                if (currentPlan) {
+                    updatePlanTaskStatus(message.taskId, message.status, message.note);
+                }
+                break;
+            case 'planAutoAdvancing':
+                // Flash notification that we're auto-advancing
+                showPlanAutoAdvanceNotice(message.taskId, message.nextTaskId, message.nextTaskTitle);
+                break;
+            case 'planExecutionStarted':
+                planExecuting = true;
+                updatePlanExecutionUI();
+                break;
+            case 'planExecutionPaused':
+                planExecuting = false;
+                updatePlanExecutionUI();
                 break;
         }
     }
@@ -1849,64 +2166,445 @@
         }
     }
 
-    function toggleAutopilotTextEdit() {
-        var autopilotTextRow = autopilotTextInput ? autopilotTextInput.closest('.form-row') : null;
-        if (autopilotTextRow) {
-            var isHidden = autopilotTextRow.classList.toggle('hidden');
-            if (!isHidden && autopilotTextInput) {
-                autopilotTextInput.focus();
+    function toggleSendWithCtrlEnterSetting() {
+        sendWithCtrlEnter = !sendWithCtrlEnter;
+        updateSendWithCtrlEnterToggleUI();
+        vscode.postMessage({ type: 'updateSendWithCtrlEnterSetting', enabled: sendWithCtrlEnter });
+    }
+
+    function updateSendWithCtrlEnterToggleUI() {
+        if (!sendShortcutToggle) return;
+        sendShortcutToggle.classList.toggle('active', sendWithCtrlEnter);
+        sendShortcutToggle.setAttribute('aria-checked', sendWithCtrlEnter ? 'true' : 'false');
+    }
+
+    function normalizeResponseTimeout(value) {
+        if (!Number.isFinite(value)) {
+            return RESPONSE_TIMEOUT_DEFAULT;
+        }
+        if (!RESPONSE_TIMEOUT_ALLOWED_VALUES.has(value)) {
+            return RESPONSE_TIMEOUT_DEFAULT;
+        }
+        return value;
+    }
+
+    function handleResponseTimeoutChange() {
+        if (!responseTimeoutSelect) return;
+        var value = parseInt(responseTimeoutSelect.value, 10);
+        console.log('[AskAway] Response timeout changed to:', value);
+        if (!isNaN(value)) {
+            responseTimeout = value;
+            vscode.postMessage({ type: 'updateResponseTimeout', value: value });
+        }
+    }
+
+    function updateResponseTimeoutUI() {
+        if (!responseTimeoutSelect) return;
+        responseTimeoutSelect.value = String(responseTimeout);
+    }
+
+    function handleSessionWarningHoursChange() {
+        if (!sessionWarningHoursSelect) return;
+        var value = parseInt(sessionWarningHoursSelect.value, 10);
+        if (!isNaN(value) && value >= 0 && value <= 8) {
+            sessionWarningHours = value;
+            vscode.postMessage({ type: 'updateSessionWarningHours', value: value });
+        }
+        sessionWarningHoursSelect.value = String(sessionWarningHours);
+    }
+
+    function updateSessionWarningHoursUI() {
+        if (!sessionWarningHoursSelect) return;
+        sessionWarningHoursSelect.value = String(sessionWarningHours);
+    }
+
+    function handleMaxAutoResponsesChange() {
+        if (!maxAutoResponsesInput) return;
+        var value = parseInt(maxAutoResponsesInput.value, 10);
+        if (!isNaN(value) && value >= 1 && value <= 50) {
+            maxConsecutiveAutoResponses = value;
+            vscode.postMessage({ type: 'updateMaxConsecutiveAutoResponses', value: value });
+        } else {
+            // Reset to valid value
+            maxAutoResponsesInput.value = maxConsecutiveAutoResponses;
+        }
+    }
+
+    function updateMaxAutoResponsesUI() {
+        if (!maxAutoResponsesInput) return;
+        maxAutoResponsesInput.value = maxConsecutiveAutoResponses;
+    }
+
+    function toggleHumanDelaySetting() {
+        humanLikeDelayEnabled = !humanLikeDelayEnabled;
+        vscode.postMessage({ type: 'updateHumanDelaySetting', enabled: humanLikeDelayEnabled });
+        updateHumanDelayUI();
+    }
+
+    function handleHumanDelayMinChange() {
+        if (!humanDelayMinInput) return;
+        var value = parseInt(humanDelayMinInput.value, 10);
+        if (!isNaN(value) && value >= 1 && value <= 30) {
+            if (value > humanLikeDelayMax) {
+                value = humanLikeDelayMax;
             }
+            humanLikeDelayMin = value;
+            vscode.postMessage({ type: 'updateHumanDelayMin', value: value });
+        }
+        humanDelayMinInput.value = humanLikeDelayMin;
+    }
+
+    function handleHumanDelayMaxChange() {
+        if (!humanDelayMaxInput) return;
+        var value = parseInt(humanDelayMaxInput.value, 10);
+        if (!isNaN(value) && value >= 2 && value <= 60) {
+            if (value < humanLikeDelayMin) {
+                value = humanLikeDelayMin;
+            }
+            humanLikeDelayMax = value;
+            vscode.postMessage({ type: 'updateHumanDelayMax', value: value });
+        }
+        humanDelayMaxInput.value = humanLikeDelayMax;
+    }
+
+    function updateHumanDelayUI() {
+        if (humanDelayToggle) {
+            humanDelayToggle.classList.toggle('active', humanLikeDelayEnabled);
+            humanDelayToggle.setAttribute('aria-checked', humanLikeDelayEnabled ? 'true' : 'false');
+        }
+        if (humanDelayRangeContainer) {
+            humanDelayRangeContainer.style.display = humanLikeDelayEnabled ? 'flex' : 'none';
+        }
+        if (humanDelayMinInput) {
+            humanDelayMinInput.value = humanLikeDelayMin;
+        }
+        if (humanDelayMaxInput) {
+            humanDelayMaxInput.value = humanLikeDelayMax;
         }
     }
 
-    function handleAutopilotTextInput() {
-        if (!autopilotTextInput) return;
-        autopilotText = autopilotTextInput.value;
-        autopilotTextEditVersion++;
-        scheduleAutopilotTextUpdate();
-    }
+    // ========== Autopilot Prompts Array Functions ==========
 
-    function scheduleAutopilotTextUpdate() {
-        if (autopilotTextDebounceTimer) clearTimeout(autopilotTextDebounceTimer);
-        autopilotTextDebounceTimer = setTimeout(flushAutopilotTextUpdate, 400);
-    }
+    // Track which autopilot prompt is being edited (-1 = adding new, >= 0 = editing index)
+    var editingAutopilotPromptIndex = -1;
+    // Track drag state
+    var draggedAutopilotIndex = -1;
 
-    function flushAutopilotTextUpdate() {
-        if (autopilotTextDebounceTimer) {
-            clearTimeout(autopilotTextDebounceTimer);
-            autopilotTextDebounceTimer = null;
-        }
-        if (!autopilotTextInput) return;
-        autopilotText = autopilotTextInput.value;
-        autopilotTextLastSentVersion = autopilotTextEditVersion;
-        vscode.postMessage({ type: 'updateAutopilotText', text: autopilotText });
-    }
+    function renderAutopilotPromptsList() {
+        if (!autopilotPromptsList) return;
 
-    function updateAutopilotTextUI() {
-        if (!autopilotTextInput) return;
-
-        var isFocused = document.activeElement === autopilotTextInput;
-        var hasUnflushedEdits = autopilotTextEditVersion > autopilotTextLastSentVersion;
-
-        // While user is typing, do not apply incoming settings updates that could revert new characters.
-        if (isFocused && hasUnflushedEdits) {
+        if (autopilotPrompts.length === 0) {
+            autopilotPromptsList.innerHTML = '<div class="empty-prompts-hint">No prompts added. Add prompts to cycle through during Autopilot.</div>';
             return;
         }
 
-        if (autopilotTextInput.value !== autopilotText) {
-            var selectionStart = autopilotTextInput.selectionStart;
-            var selectionEnd = autopilotTextInput.selectionEnd;
+        autopilotPromptsList.innerHTML = autopilotPrompts.map(function (prompt, index) {
+            var truncated = prompt.length > 80 ? prompt.substring(0, 80) + '...' : prompt;
+            var tooltipText = prompt.length > 300 ? prompt.substring(0, 300) + '...' : prompt;
+            tooltipText = tooltipText.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return '<div class="autopilot-prompt-item" draggable="true" data-index="' + index + '" title="' + tooltipText + '">' +
+                '<span class="autopilot-prompt-drag-handle codicon codicon-grabber"></span>' +
+                '<span class="autopilot-prompt-number">' + (index + 1) + '.</span>' +
+                '<span class="autopilot-prompt-text">' + escapeHtml(truncated) + '</span>' +
+                '<div class="autopilot-prompt-actions">' +
+                '<button class="prompt-item-btn edit" data-index="' + index + '" title="Edit"><span class="codicon codicon-edit"></span></button>' +
+                '<button class="prompt-item-btn delete" data-index="' + index + '" title="Delete"><span class="codicon codicon-trash"></span></button>' +
+                '</div></div>';
+        }).join('');
+    }
 
-            autopilotTextInput.value = autopilotText;
+    function showAddAutopilotPromptForm() {
+        if (!addAutopilotPromptForm || !autopilotPromptInput) return;
+        editingAutopilotPromptIndex = -1;
+        autopilotPromptInput.value = '';
+        addAutopilotPromptForm.classList.remove('hidden');
+        addAutopilotPromptForm.removeAttribute('data-editing-index');
+        autopilotPromptInput.focus();
+    }
 
-            if (isFocused && selectionStart !== null && selectionEnd !== null) {
-                var maxPos = autopilotTextInput.value.length;
-                autopilotTextInput.setSelectionRange(
-                    Math.min(selectionStart, maxPos),
-                    Math.min(selectionEnd, maxPos)
-                );
+    function hideAddAutopilotPromptForm() {
+        if (!addAutopilotPromptForm || !autopilotPromptInput) return;
+        addAutopilotPromptForm.classList.add('hidden');
+        autopilotPromptInput.value = '';
+        editingAutopilotPromptIndex = -1;
+        addAutopilotPromptForm.removeAttribute('data-editing-index');
+    }
+
+    function saveAutopilotPrompt() {
+        if (!autopilotPromptInput) return;
+        var prompt = autopilotPromptInput.value.trim();
+        if (!prompt) return;
+
+        var editingIndex = addAutopilotPromptForm.getAttribute('data-editing-index');
+        if (editingIndex !== null) {
+            vscode.postMessage({ type: 'editAutopilotPrompt', index: parseInt(editingIndex, 10), prompt: prompt });
+        } else {
+            vscode.postMessage({ type: 'addAutopilotPrompt', prompt: prompt });
+        }
+        hideAddAutopilotPromptForm();
+    }
+
+    function handleAutopilotPromptsListClick(e) {
+        var target = e.target.closest('.prompt-item-btn');
+        if (!target) return;
+
+        var index = parseInt(target.getAttribute('data-index'), 10);
+        if (isNaN(index)) return;
+
+        if (target.classList.contains('edit')) {
+            editAutopilotPrompt(index);
+        } else if (target.classList.contains('delete')) {
+            deleteAutopilotPrompt(index);
+        }
+    }
+
+    function editAutopilotPrompt(index) {
+        if (index < 0 || index >= autopilotPrompts.length) return;
+        if (!addAutopilotPromptForm || !autopilotPromptInput) return;
+
+        var prompt = autopilotPrompts[index];
+        editingAutopilotPromptIndex = index;
+        autopilotPromptInput.value = prompt;
+        addAutopilotPromptForm.setAttribute('data-editing-index', index);
+        addAutopilotPromptForm.classList.remove('hidden');
+        autopilotPromptInput.focus();
+    }
+
+    function deleteAutopilotPrompt(index) {
+        if (index < 0 || index >= autopilotPrompts.length) return;
+        vscode.postMessage({ type: 'removeAutopilotPrompt', index: index });
+    }
+
+    function handleAutopilotDragStart(e) {
+        var item = e.target.closest('.autopilot-prompt-item');
+        if (!item) return;
+        draggedAutopilotIndex = parseInt(item.getAttribute('data-index'), 10);
+        item.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', draggedAutopilotIndex);
+    }
+
+    function handleAutopilotDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        var item = e.target.closest('.autopilot-prompt-item');
+        if (!item || !autopilotPromptsList) return;
+
+        autopilotPromptsList.querySelectorAll('.autopilot-prompt-item').forEach(function (el) {
+            el.classList.remove('drag-over-top', 'drag-over-bottom');
+        });
+
+        var rect = item.getBoundingClientRect();
+        var midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+            item.classList.add('drag-over-top');
+        } else {
+            item.classList.add('drag-over-bottom');
+        }
+    }
+
+    function handleAutopilotDragEnd(e) {
+        draggedAutopilotIndex = -1;
+        if (!autopilotPromptsList) return;
+        autopilotPromptsList.querySelectorAll('.autopilot-prompt-item').forEach(function (el) {
+            el.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom');
+        });
+    }
+
+    function handleAutopilotDrop(e) {
+        e.preventDefault();
+        var item = e.target.closest('.autopilot-prompt-item');
+        if (!item || draggedAutopilotIndex < 0) return;
+
+        var toIndex = parseInt(item.getAttribute('data-index'), 10);
+        if (isNaN(toIndex) || draggedAutopilotIndex === toIndex) {
+            handleAutopilotDragEnd(e);
+            return;
+        }
+
+        var rect = item.getBoundingClientRect();
+        var midY = rect.top + rect.height / 2;
+        var insertBelow = e.clientY >= midY;
+
+        var targetIndex = toIndex;
+        if (insertBelow && toIndex < autopilotPrompts.length - 1) {
+            targetIndex = toIndex + 1;
+        }
+
+        if (draggedAutopilotIndex < targetIndex) {
+            targetIndex--;
+        }
+
+        if (draggedAutopilotIndex !== targetIndex) {
+            vscode.postMessage({ type: 'reorderAutopilotPrompts', fromIndex: draggedAutopilotIndex, toIndex: targetIndex });
+        }
+
+        handleAutopilotDragEnd(e);
+    }
+
+    // ========== End Autopilot Prompts Functions ==========
+
+    /**
+     * Handle send action triggered by VS Code command/keybinding.
+     */
+    function handleSendFromShortcut() {
+        if (!chatInput || document.activeElement !== chatInput) {
+            return;
+        }
+
+        if (isApprovalQuestion && approvalModal && !approvalModal.classList.contains('hidden')) {
+            var inputText = chatInput.value.trim();
+            if (!inputText) {
+                handleApprovalContinue();
+                return;
             }
         }
+
+        if (editingPromptId) {
+            confirmEditMode();
+            return;
+        }
+
+        if (slashDropdownVisible && selectedSlashIndex >= 0) {
+            selectSlashItem(selectedSlashIndex);
+            return;
+        }
+
+        if (autocompleteVisible && selectedAutocompleteIndex >= 0) {
+            selectAutocompleteItem(selectedAutocompleteIndex);
+            return;
+        }
+
+        handleSend();
+    }
+
+    /**
+     * Capture latest right-click position for context-menu copy resolution.
+     */
+    function handleContextMenu(event) {
+        if (!event || !event.target || !event.target.closest) {
+            lastContextMenuTarget = null;
+            lastContextMenuTimestamp = 0;
+            return;
+        }
+
+        lastContextMenuTarget = event.target;
+        lastContextMenuTimestamp = Date.now();
+    }
+
+    /**
+     * Override Copy when nothing is selected and context-menu target points to a message.
+     */
+    function handleCopy(event) {
+        var selection = window.getSelection ? window.getSelection() : null;
+        if (selection && selection.toString().length > 0) {
+            return;
+        }
+
+        if (!lastContextMenuTarget || (Date.now() - lastContextMenuTimestamp) > CONTEXT_MENU_COPY_MAX_AGE_MS) {
+            return;
+        }
+
+        var copyText = resolveCopyTextFromTarget(lastContextMenuTarget);
+        if (!copyText) {
+            return;
+        }
+
+        if (event) {
+            event.preventDefault();
+        }
+
+        if (event && event.clipboardData) {
+            try {
+                event.clipboardData.setData('text/plain', copyText);
+                lastContextMenuTarget = null;
+                lastContextMenuTimestamp = 0;
+                return;
+            } catch (error) {
+                // Fall through to extension host clipboard API fallback.
+            }
+        }
+
+        vscode.postMessage({ type: 'copyToClipboard', text: copyText });
+        lastContextMenuTarget = null;
+        lastContextMenuTimestamp = 0;
+    }
+
+    /**
+     * Resolve copy payload from the exact message area that was right-clicked.
+     */
+    function resolveCopyTextFromTarget(target) {
+        if (!target || !target.closest) {
+            return '';
+        }
+
+        var pendingQuestion = target.closest('.pending-ai-question');
+        if (pendingQuestion) {
+            if (pendingToolCall && typeof pendingToolCall.prompt === 'string') {
+                return pendingToolCall.prompt;
+            }
+            return (pendingQuestion.textContent || '').trim();
+        }
+
+        var toolCallEntry = resolveToolCallEntryFromTarget(target);
+        if (!toolCallEntry) {
+            return '';
+        }
+
+        if (target.closest('.tool-call-ai-response')) {
+            return typeof toolCallEntry.prompt === 'string' ? toolCallEntry.prompt : '';
+        }
+
+        if (target.closest('.tool-call-user-response')) {
+            return typeof toolCallEntry.response === 'string' ? toolCallEntry.response : '';
+        }
+
+        if (target.closest('.chips-container')) {
+            return formatAttachmentsForCopy(toolCallEntry.attachments);
+        }
+
+        return formatToolCallEntryForCopy(toolCallEntry);
+    }
+
+    function resolveToolCallEntryFromTarget(target) {
+        var card = target.closest('.tool-call-card');
+        if (!card) {
+            return null;
+        }
+        return resolveToolCallEntryFromCardId(card.getAttribute('data-id'));
+    }
+
+    function resolveToolCallEntryFromCardId(cardId) {
+        if (!cardId) {
+            return null;
+        }
+        // Check current session first
+        for (var i = 0; i < currentSessionCalls.length; i++) {
+            if (currentSessionCalls[i].id === cardId) return currentSessionCalls[i];
+        }
+        // Check persisted history
+        for (var h = 0; h < persistedHistory.length; h++) {
+            var session = persistedHistory[h];
+            if (session && session.calls) {
+                for (var j = 0; j < session.calls.length; j++) {
+                    if (session.calls[j].id === cardId) return session.calls[j];
+                }
+            }
+        }
+        return null;
+    }
+
+    function formatAttachmentsForCopy(attachments) {
+        if (!attachments || attachments.length === 0) return '';
+        return attachments.map(function (a) { return a.name || a.id || ''; }).filter(Boolean).join(', ');
+    }
+
+    function formatToolCallEntryForCopy(entry) {
+        if (!entry) return '';
+        var parts = [];
+        if (entry.prompt) parts.push('Q: ' + entry.prompt);
+        if (entry.response) parts.push('A: ' + entry.response);
+        return parts.join('\n\n');
     }
 
     function showAddPromptForm() {
@@ -2504,6 +3202,569 @@
 
         return '<div class="chips-container" style="padding: 6px 0 0 0; border: none;">' + items + '</div>';
     }
+
+    // ══════════════════════════════════════════════════════════
+    // ═══  Voice Mode Functions  ═══════════════════════════════
+    // ══════════════════════════════════════════════════════════
+
+    var voiceRecording = false; // true while mic is actively recording
+
+    /**
+     * Entry point: extension sends voiceStart → show overlay with waveform animation
+     * TTS is handled by the extension host (macOS `say` command) — not in the webview.
+     */
+    async function handleVoiceStart(taskId, question) {
+        voiceMode = true;
+        voiceTaskId = taskId;
+        voiceTranscript = '';
+        voiceInterimTranscript = '';
+        voiceRecording = false;
+
+        showVoiceOverlay(question);
+
+        // Show speaking animation while extension host speaks via macOS
+        updateVoiceStatus('speaking', 'Speaking…');
+        startSpeakingAnimation();
+        // The extension host will send 'voiceSpeakingDone' when TTS finishes
+    }
+
+    /**
+     * Extension host finished speaking → show input area for user's response
+     */
+    function handleVoiceSpeakingDone(taskId) {
+        if (!voiceMode || voiceTaskId !== taskId) return;
+
+        stopVoiceAnimation();
+        updateVoiceStatus('listening', 'Your turn — speak (Fn+Fn) or type below');
+
+        // Hide skip button, show input area
+        var skipBtn = document.getElementById('voice-skip-btn');
+        if (skipBtn) skipBtn.classList.add('hidden');
+
+        showVoiceInputArea();
+
+        // Focus the text input immediately
+        var textInput = document.getElementById('voice-text-input');
+        if (textInput) {
+            textInput.focus();
+        }
+    }
+
+    /**
+     * Cleanup: stop everything and hide overlay
+     */
+    function handleVoiceStop() {
+        if (!voiceMode) return;
+        cleanupVoiceResources();
+        hideVoiceOverlay();
+        voiceMode = false;
+        voiceTaskId = null;
+        voiceRecording = false;
+    }
+
+    // ── Voice Overlay UI ──────────────────────────────────────
+
+    function showVoiceOverlay(question) {
+        var overlay = document.getElementById('voice-overlay');
+        var questionEl = document.getElementById('voice-question');
+        var transcriptEl = document.getElementById('voice-transcript');
+        var inputArea = document.getElementById('voice-input-area');
+        var recordBtn = document.getElementById('voice-record-btn');
+        var textInput = document.getElementById('voice-text-input');
+        var skipBtn = document.getElementById('voice-skip-btn');
+
+        if (questionEl) questionEl.textContent = question;
+        if (transcriptEl) transcriptEl.textContent = '';
+        if (inputArea) inputArea.classList.add('hidden');
+        if (recordBtn) recordBtn.classList.add('hidden');
+        if (textInput) textInput.value = '';
+        if (skipBtn) skipBtn.classList.remove('hidden'); // Show skip during speaking
+        if (overlay) overlay.classList.remove('hidden');
+    }
+
+    function hideVoiceOverlay() {
+        var overlay = document.getElementById('voice-overlay');
+        if (overlay) overlay.classList.add('hidden');
+    }
+
+    function showVoiceInputArea() {
+        var inputArea = document.getElementById('voice-input-area');
+        var textInput = document.getElementById('voice-text-input');
+
+        // Don't show record button — mic access doesn't work in VS Code webview
+        if (inputArea) inputArea.classList.remove('hidden');
+        if (textInput) textInput.focus();
+    }
+
+    function updateVoiceStatus(phase, text) {
+        var statusEl = document.getElementById('voice-status');
+        if (!statusEl) return;
+        statusEl.textContent = text || phase;
+        statusEl.className = 'voice-status voice-status-' + phase;
+    }
+
+    function updateTranscriptDisplay() {
+        var el = document.getElementById('voice-transcript');
+        if (!el) return;
+        var full = voiceTranscript + (voiceInterimTranscript ? ' ' + voiceInterimTranscript : '');
+        el.textContent = full.trim() || '';
+    }
+
+    function sendVoiceResponse(text) {
+        if (!voiceTaskId) return;
+        vscode.postMessage({
+            type: 'voiceResponse',
+            taskId: voiceTaskId,
+            transcription: text
+        });
+        handleVoiceStop();
+    }
+
+    function sendVoiceError(errorMsg) {
+        if (!voiceTaskId) return;
+        vscode.postMessage({
+            type: 'voiceError',
+            taskId: voiceTaskId,
+            error: errorMsg
+        });
+        handleVoiceStop();
+    }
+
+    // ── Record Button Logic ───────────────────────────────────
+
+    async function toggleRecording() {
+        if (voiceRecording) {
+            stopRecording();
+        } else {
+            await startRecording();
+        }
+    }
+
+    async function startRecording() {
+        var recordBtn = document.getElementById('voice-record-btn');
+
+        // Try SpeechRecognition first (works in some environments)
+        var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            try {
+                voiceRecognition = new SpeechRecognition();
+                voiceRecognition.continuous = true;
+                voiceRecognition.interimResults = true;
+                voiceRecognition.lang = 'en-US';
+
+                voiceRecognition.onresult = function(event) {
+                    var interim = '';
+                    var finalText = '';
+                    for (var i = event.resultIndex; i < event.results.length; i++) {
+                        var transcript = event.results[i][0].transcript;
+                        if (event.results[i].isFinal) {
+                            finalText += transcript;
+                        } else {
+                            interim += transcript;
+                        }
+                    }
+                    if (finalText) {
+                        voiceTranscript += (voiceTranscript ? ' ' : '') + finalText.trim();
+                    }
+                    voiceInterimTranscript = interim;
+                    updateTranscriptDisplay();
+                    // Also populate the text input with transcript
+                    var textInput = document.getElementById('voice-text-input');
+                    if (textInput) {
+                        textInput.value = (voiceTranscript + ' ' + voiceInterimTranscript).trim();
+                    }
+                };
+
+                voiceRecognition.onerror = function(event) {
+                    console.warn('[Voice] STT error:', event.error);
+                    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                        stopRecording();
+                        updateVoiceStatus('typing', 'Mic access denied. Type your response or use dictation (Fn Fn)');
+                    }
+                };
+
+                voiceRecognition.onend = function() {
+                    if (voiceRecording) {
+                        // Recognition ended but we're still "recording" — try to restart
+                        try { voiceRecognition.start(); } catch (e) { stopRecording(); }
+                    }
+                };
+
+                voiceRecognition.start();
+                voiceRecording = true;
+                if (recordBtn) recordBtn.classList.add('recording');
+                updateVoiceStatus('listening', 'Listening… tap mic to stop');
+
+                // Try to get mic waveform (even if STT handles the transcription separately)
+                startMicWaveformAnimation();
+                return;
+            } catch (e) {
+                console.warn('[Voice] SpeechRecognition failed to start:', e);
+                voiceRecognition = null;
+            }
+        }
+
+        // Fallback: try getUserMedia for audio recording + waveform only
+        // (no transcription — user sees waveform and types/uses dictation)
+        try {
+            voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            voiceRecording = true;
+            if (recordBtn) recordBtn.classList.add('recording');
+            updateVoiceStatus('listening', 'Recording… (no auto-transcription — type what you said below)');
+            startMicWaveformAnimation();
+        } catch (e) {
+            console.warn('[Voice] getUserMedia failed:', e.message);
+            updateVoiceStatus('typing', 'Mic not available. Type your response or use dictation (Fn Fn)');
+        }
+    }
+
+    function stopRecording() {
+        voiceRecording = false;
+        var recordBtn = document.getElementById('voice-record-btn');
+        if (recordBtn) recordBtn.classList.remove('recording');
+
+        if (voiceRecognition) {
+            try { voiceRecognition.stop(); } catch (e) { /* ignore */ }
+            voiceRecognition = null;
+        }
+
+        stopVoiceAnimation();
+
+        if (voiceStream) {
+            voiceStream.getTracks().forEach(function(t) { t.stop(); });
+            voiceStream = null;
+        }
+        if (voiceAudioContext) {
+            try { voiceAudioContext.close(); } catch (e) { /* ignore */ }
+            voiceAudioContext = null;
+        }
+        voiceAnalyser = null;
+
+        // If we got some transcript, put it in the text input
+        var textInput = document.getElementById('voice-text-input');
+        if (textInput && voiceTranscript.trim()) {
+            textInput.value = voiceTranscript.trim();
+        }
+
+        updateVoiceStatus('ready', 'Review and send, or tap mic to record again');
+    }
+
+    // ── TTS (Text-to-Speech) ──────────────────────────────────
+
+    function speakText(text) {
+        return new Promise(function(resolve) {
+            if (!window.speechSynthesis) {
+                console.warn('[Voice] SpeechSynthesis not available');
+                resolve();
+                return;
+            }
+
+            // Cancel any ongoing speech
+            window.speechSynthesis.cancel();
+
+            var utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 1.05;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+
+            // Try to pick a good voice
+            var voices = window.speechSynthesis.getVoices();
+            if (voices.length > 0) {
+                var preferred = voices.find(function(v) {
+                    return v.lang.startsWith('en') && v.name.toLowerCase().includes('natural');
+                }) || voices.find(function(v) {
+                    return v.lang.startsWith('en') && !v.name.toLowerCase().includes('google');
+                }) || voices.find(function(v) {
+                    return v.lang.startsWith('en');
+                });
+                if (preferred) utterance.voice = preferred;
+            }
+
+            utterance.onend = function() { resolve(); };
+            utterance.onerror = function(e) {
+                console.warn('[Voice] TTS error:', e.error);
+                resolve();
+            };
+
+            window.speechSynthesis.speak(utterance);
+        });
+    }
+
+    // ── Waveform Animation ────────────────────────────────────
+
+    /**
+     * Synthetic "speaking" animation — smooth sine wave bars (no mic needed)
+     */
+    function startSpeakingAnimation() {
+        var canvas = document.getElementById('voice-waveform');
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        var width = canvas.width;
+        var height = canvas.height;
+        var phase = 0;
+
+        function draw() {
+            if (!voiceMode) return;
+            voiceAnimationFrame = requestAnimationFrame(draw);
+            ctx.clearRect(0, 0, width, height);
+
+            phase += 0.06;
+            var barCount = 32;
+            var gap = 3;
+            var barWidth = (width - (barCount - 1) * gap) / barCount;
+            var centerY = height / 2;
+
+            for (var i = 0; i < barCount; i++) {
+                var v1 = Math.sin(phase + i * 0.25) * 0.5 + 0.5;
+                var v2 = Math.sin(phase * 1.3 + i * 0.18) * 0.3 + 0.5;
+                var v3 = Math.sin(phase * 0.7 + i * 0.35) * 0.2 + 0.5;
+                var value = (v1 + v2 + v3) / 3;
+                var barHeight = Math.max(3, value * centerY * 0.75);
+
+                var alpha = 0.35 + value * 0.65;
+                ctx.fillStyle = 'hsla(210, 85%, 62%, ' + alpha + ')';
+                var x = i * (barWidth + gap);
+                var radius = barWidth / 2;
+                roundedRect(ctx, x, centerY - barHeight, barWidth, barHeight * 2, radius);
+            }
+        }
+        draw();
+    }
+
+    /**
+     * Real mic-driven waveform animation
+     */
+    async function startMicWaveformAnimation() {
+        var canvas = document.getElementById('voice-waveform');
+        if (!canvas) return;
+
+        try {
+            // If we already have a stream from recording, reuse it
+            if (!voiceStream) {
+                voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            }
+            voiceAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            var source = voiceAudioContext.createMediaStreamSource(voiceStream);
+            voiceAnalyser = voiceAudioContext.createAnalyser();
+            voiceAnalyser.fftSize = 128;
+            voiceAnalyser.smoothingTimeConstant = 0.75;
+            source.connect(voiceAnalyser);
+
+            stopVoiceAnimation();
+
+            var ctx = canvas.getContext('2d');
+            var width = canvas.width;
+            var height = canvas.height;
+            var bufferLength = voiceAnalyser.frequencyBinCount;
+            var dataArray = new Uint8Array(bufferLength);
+
+            function draw() {
+                if (!voiceMode || !voiceAnalyser) return;
+                voiceAnimationFrame = requestAnimationFrame(draw);
+
+                voiceAnalyser.getByteFrequencyData(dataArray);
+                ctx.clearRect(0, 0, width, height);
+
+                var barCount = 32;
+                var gap = 3;
+                var barWidth = (width - (barCount - 1) * gap) / barCount;
+                var centerY = height / 2;
+
+                for (var i = 0; i < barCount; i++) {
+                    var dataIndex = Math.floor(i * bufferLength / barCount);
+                    var value = dataArray[dataIndex] / 255;
+                    var barHeight = Math.max(3, value * centerY * 0.85);
+
+                    var hue = 210 + value * 40;
+                    var alpha = 0.4 + value * 0.6;
+                    ctx.fillStyle = 'hsla(' + hue + ', 85%, 60%, ' + alpha + ')';
+
+                    var x = i * (barWidth + gap);
+                    var radius = barWidth / 2;
+                    roundedRect(ctx, x, centerY - barHeight, barWidth, barHeight * 2, radius);
+                }
+            }
+            draw();
+        } catch (err) {
+            console.log('[Voice] Mic waveform not available:', err.message);
+            // Show a small idle animation instead
+            startSpeakingAnimation();
+        }
+    }
+
+    /**
+     * Helper: draw a rounded rectangle (used for waveform bars)
+     */
+    function roundedRect(ctx, x, y, w, h, r) {
+        if (h < 0) { y += h; h = -h; }
+        r = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    function stopVoiceAnimation() {
+        if (voiceAnimationFrame) {
+            cancelAnimationFrame(voiceAnimationFrame);
+            voiceAnimationFrame = null;
+        }
+    }
+
+    function cleanupVoiceResources() {
+        if (voiceRecognition) {
+            try { voiceRecognition.abort(); } catch (e) { /* ignore */ }
+            voiceRecognition = null;
+        }
+        stopVoiceAnimation();
+
+        if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+
+        if (voiceStream) {
+            voiceStream.getTracks().forEach(function(t) { t.stop(); });
+            voiceStream = null;
+        }
+        if (voiceAudioContext) {
+            try { voiceAudioContext.close(); } catch (e) { /* ignore */ }
+            voiceAudioContext = null;
+        }
+        voiceAnalyser = null;
+        voiceTranscript = '';
+        voiceInterimTranscript = '';
+        voiceRecording = false;
+
+        var canvas = document.getElementById('voice-waveform');
+        if (canvas) {
+            var ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    }
+
+    /**
+     * Wire up voice overlay button events — called from init()
+     */
+    function initVoiceControls() {
+        var sendBtn = document.getElementById('voice-send-btn');
+        var cancelBtn = document.getElementById('voice-cancel-btn');
+        var recordBtn = document.getElementById('voice-record-btn');
+        var micBtn = document.getElementById('mic-btn');
+        var textInput = document.getElementById('voice-text-input');
+        var skipBtn = document.getElementById('voice-skip-btn');
+
+        if (sendBtn) {
+            sendBtn.addEventListener('click', function() {
+                var input = document.getElementById('voice-text-input');
+                var text = (input && input.value.trim()) || voiceTranscript.trim();
+                if (text) {
+                    sendVoiceResponse(text);
+                }
+            });
+        }
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function() {
+                sendVoiceError('User cancelled voice input');
+            });
+        }
+        if (recordBtn) {
+            recordBtn.addEventListener('click', function() {
+                toggleRecording();
+            });
+        }
+        if (micBtn) {
+            micBtn.addEventListener('click', function() {
+                vscode.postMessage({ type: 'micButtonClicked' });
+            });
+        }
+        if (skipBtn) {
+            skipBtn.addEventListener('click', function() {
+                // Interrupt TTS and skip to input
+                vscode.postMessage({ type: 'voiceInterrupt' });
+            });
+        }
+        if (textInput) {
+            textInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    var text = textInput.value.trim();
+                    if (text) {
+                        sendVoiceResponse(text);
+                    }
+                }
+            });
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // ── Plan Board Functions (sidebar: just Open Board button) ──
+    // ══════════════════════════════════════════════════════════
+
+    function updatePlanBoardVisibility() {
+        var board = document.getElementById('plan-board');
+        if (!board) return;
+        board.classList.toggle('hidden', !planEnabled);
+    }
+
+    function renderPlanBoard() {
+        // No-op in sidebar — board is rendered in editor tab
+    }
+
+    function updatePlanTaskStatus(taskId, status, note) {
+        // Handled by PlanEditorProvider in editor tab
+    }
+
+    function findPlanTaskById(tasks, id) {
+        for (var i = 0; i < tasks.length; i++) {
+            if (tasks[i].id === id) return tasks[i];
+            if (tasks[i].subtasks && tasks[i].subtasks.length > 0) {
+                var found = findPlanTaskById(tasks[i].subtasks, id);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    function updatePlanExecutionUI() {
+        // Handled by PlanEditorProvider in editor tab
+    }
+
+    function showPlanAutoAdvanceNotice(fromTaskId, nextTaskId, nextTaskTitle) {
+        console.log('[AskAway Plan] Auto-advancing from', fromTaskId, 'to', nextTaskId, ':', nextTaskTitle);
+    }
+
+    function editPlanTask(task) {
+        // Handled by PlanEditorProvider in editor tab
+    }
+
+    function showReviewRejectDialog(task) {
+        // Handled by PlanEditorProvider in editor tab
+    }
+
+    function showSplitPreview(taskId, subtasks) {
+        // Handled by PlanEditorProvider in editor tab
+        proposedSplit = null;
+    }
+
+    function initPlanBoard() {
+        // Wire "Open Board" button to open the editor tab via VS Code command
+        var openBoardBtn = document.getElementById('plan-open-board-btn');
+        if (openBoardBtn) {
+            openBoardBtn.addEventListener('click', function() {
+                vscode.postMessage({ type: 'openPlanBoard' });
+            });
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
 
     // Expose message handler for remote server (Socket.io bridge)
     window.dispatchVSCodeMessage = function(message) {
