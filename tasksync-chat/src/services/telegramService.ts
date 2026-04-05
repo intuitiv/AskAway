@@ -218,8 +218,9 @@ export class TelegramService {
     /**
      * Post a question to Telegram as a formatted message.
      * If choices are provided, includes inline keyboard buttons.
+     * Accepts either plain strings or ParsedChoice-shaped objects {label, value}.
      */
-    public async postQuestion(taskId: string, question: string, choices?: string[]): Promise<void> {
+    public async postQuestion(taskId: string, question: string, choices?: Array<string | { label: string; value: string; shortLabel?: string }>): Promise<void> {
         this._log(`AskAway/Telegram: postQuestion called — taskId=${taskId}, enabled=${this._enabled}, hasToken=${!!this._botToken}, hasChatId=${!!this._chatId}`);
         if (!this.isConfigured()) {
             this._log(`AskAway/Telegram: SKIPPED — not configured (enabled=${this._enabled}, token=${!!this._botToken}, chatId=${!!this._chatId})`);
@@ -251,7 +252,8 @@ export class TelegramService {
             if (choices && choices.length > 0) {
                 text += '\n\n<b>Options:</b>\n';
                 choices.forEach((c, i) => {
-                    text += `${i + 1}. ${this._escapeHtml(c)}\n`;
+                    const label = typeof c === 'string' ? c : c.label;
+                    text += `${i + 1}. ${this._escapeHtml(label)}\n`;
                 });
                 text += '\n<i>Reply with the option number or your answer.</i>';
             } else {
@@ -284,10 +286,14 @@ export class TelegramService {
             // Add inline keyboard for choices
             if (choices && choices.length > 0) {
                 body.reply_markup = {
-                    inline_keyboard: choices.map(c => ([{
-                        text: c,
-                        callback_data: `askaway:${taskId}:${c.substring(0, 60)}`
-                    }]))
+                    inline_keyboard: choices.map(c => {
+                        const label = typeof c === 'string' ? c : c.label;
+                        const value = typeof c === 'string' ? c : c.value;
+                        return [{
+                            text: label,
+                            callback_data: `askaway:${taskId}:${value.substring(0, 60)}`
+                        }];
+                    })
                 };
             }
 
