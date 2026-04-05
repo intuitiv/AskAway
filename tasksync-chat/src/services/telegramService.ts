@@ -3,11 +3,14 @@ import { CONFIG_NAMESPACE } from '../constants/branding';
 
 // ── Interfaces ─────────────────────────────────────────────────
 
+// ── Shared choice type (accepts plain strings or ParsedChoice-shaped objects) ──
+type TelegramChoice = string | { label: string; value: string; shortLabel?: string };
+
 interface TrackedTask {
     taskId: string;
     messageId: number;   // Telegram message_id of the posted question
     question: string;
-    choices?: string[];
+    choices?: TelegramChoice[];
     timestamp: number;
     /** Rendered HTML body (without footer) — used when editing for sync-time updates */
     formattedText: string;
@@ -220,7 +223,7 @@ export class TelegramService {
      * If choices are provided, includes inline keyboard buttons.
      * Accepts either plain strings or ParsedChoice-shaped objects {label, value}.
      */
-    public async postQuestion(taskId: string, question: string, choices?: Array<string | { label: string; value: string; shortLabel?: string }>): Promise<void> {
+    public async postQuestion(taskId: string, question: string, choices?: TelegramChoice[]): Promise<void> {
         this._log(`AskAway/Telegram: postQuestion called — taskId=${taskId}, enabled=${this._enabled}, hasToken=${!!this._botToken}, hasChatId=${!!this._chatId}`);
         if (!this.isConfigured()) {
             this._log(`AskAway/Telegram: SKIPPED — not configured (enabled=${this._enabled}, token=${!!this._botToken}, chatId=${!!this._chatId})`);
@@ -546,10 +549,12 @@ export class TelegramService {
             };
             if (newestTask.choices && newestTask.choices.length > 0) {
                 body.reply_markup = {
-                    inline_keyboard: newestTask.choices.map(c => ([{
-                        text: c,
-                        callback_data: `askaway:${newestTask!.taskId}:${c.substring(0, 60)}`
-                    }]))
+                    inline_keyboard: newestTask.choices.map(c => ([
+                        {
+                            text: typeof c === 'string' ? c : c.label,
+                            callback_data: `askaway:${newestTask!.taskId}:${(typeof c === 'string' ? c : c.value).substring(0, 60)}`
+                        }
+                    ]))
                 };
             }
             await fetch(this._apiUrl('editMessageText'), {
@@ -817,7 +822,8 @@ export class TelegramService {
                             if (onlyTask.choices && onlyTask.choices.length > 0) {
                                 const num = parseInt(answer, 10);
                                 if (num >= 1 && num <= onlyTask.choices.length) {
-                                    resolvedAnswer = onlyTask.choices[num - 1];
+                                    const c = onlyTask.choices[num - 1];
+                                    resolvedAnswer = typeof c === 'string' ? c : c.value;
                                 }
                             }
 
@@ -848,7 +854,8 @@ export class TelegramService {
                             if (task.choices && task.choices.length > 0) {
                                 const num = parseInt(answer, 10);
                                 if (num >= 1 && num <= task.choices.length) {
-                                    resolvedAnswer = task.choices[num - 1];
+                                    const c = task.choices[num - 1];
+                                    resolvedAnswer = typeof c === 'string' ? c : c.value;
                                 }
                             }
 
