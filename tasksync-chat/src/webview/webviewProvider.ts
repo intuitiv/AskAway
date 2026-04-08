@@ -163,6 +163,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _view?: vscode.WebviewView;
     private _pendingRequests: Map<string, (result: UserResponseResult) => void> = new Map();
 
+    // ── Concurrent ask_user queue (prevents one conversation from cancelling another) ──
+    /** Callbacks waiting to become the active pending request when the current one resolves */
+    private _waitingRequests: Array<() => void> = [];
+    /** Number of ask_user calls currently waiting behind the active one (for UI indicator) */
+    private _concurrentWaitingCount: number = 0;
+
     // Prompt queue state
     private _promptQueue: QueuedPrompt[] = [];
     private _queueEnabled: boolean = true; // Default to queue mode
@@ -385,6 +391,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 if (resolver) {
                     this._pendingRequests.delete(toolCallId);
                     this._currentToolCallId = null;
+                    this._signalNextWaiter();
 
                     // Update the session entry
                     const entry = this._currentSessionCallsMap.get(toolCallId);
@@ -468,6 +475,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         resolve({ value: response, queue: this._queueEnabled, attachments: [] });
         this._pendingRequests.delete(this._currentToolCallId);
         this._currentToolCallId = null;
+        this._signalNextWaiter();
         // Also tell whichever service did NOT deliver this reply to stop polling
         this._telegramService?.resolveTask?.(resolvedMsgId);
         this._webexService?.resolveTask?.(resolvedMsgId);
@@ -894,6 +902,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             resolve({ value: responseText, queue: this._queueEnabled && this._promptQueue.length > 0, attachments: [] });
             this._pendingRequests.delete(toolCallId);
             this._currentToolCallId = null;
+            this._signalNextWaiter();
             this._telegramService?.resolveTask?.(toolCallId);
             this._webexService?.resolveTask?.(toolCallId);
 
@@ -1118,6 +1127,15 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         }
     }
 
+    /**
+     * Signal the next queued waitForUserResponse call that it can proceed.
+     * Called every time the active request resolves (any path).
+     */
+    private _signalNextWaiter(): void {
+        const next = this._waitingRequests.shift();
+        if (next) { next(); }
+    }
+
     public async waitForUserResponse(question: string): Promise<UserResponseResult> {
         // Auto-start new session if previous session was terminated
         if (this._sessionTerminated) {
@@ -1181,6 +1199,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     this._currentSessionCallsMap.set(entry.id, entry);
                     this._updateCurrentSessionUI();
                     this._currentToolCallId = null;
+                    this._signalNextWaiter();
 
                     return {
                         value: effectiveText,
@@ -1209,9 +1228,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             }
         }
 
-        // Race condition prevention: If there's already a pending request, cancel it
-        // This prevents orphaned promises when waitForUserResponse is called multiple times
-        this._cancelSupersededPendingRequest();
+        // Concurrent ask_user: if another request is already active, queue this one
+        // and wait for it to complete — instead of cancelling the first conversation.
+        if (this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId)) {
+            this._concurrentWaitingCount++;
+            await new Promise<void>(resolve => this._waitingRequests.push(resolve));
+            this._concurrentWaitingCount--;
+        }
 
         const toolCallId = `tc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         this._currentToolCallId = toolCallId;
@@ -1245,6 +1268,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     this._currentSessionCallsMap.set(entry.id, entry); // Maintain O(1) lookup map
                     this._updateCurrentSessionUI();
                     this._currentToolCallId = null;
+                    this._signalNextWaiter();
 
                     return {
                         value: queuedPrompt.prompt,
@@ -1904,6 +1928,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 resolve({ value, queue: this._queueEnabled && this._promptQueue.length > 0, attachments });
                 this._pendingRequests.delete(this._currentToolCallId);
                 this._currentToolCallId = null;
+                this._signalNextWaiter();
                 this._telegramService?.resolveTask?.(resolvedId);
                 this._webexService?.resolveTask?.(resolvedId);
             } else {
@@ -2350,6 +2375,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             const resolvedQueueId = this._currentToolCallId!;
             this._pendingRequests.delete(resolvedQueueId);
             this._currentToolCallId = null;
+            this._signalNextWaiter();
             this._telegramService?.resolveTask?.(resolvedQueueId);
             this._webexService?.resolveTask?.(resolvedQueueId);
         } else {

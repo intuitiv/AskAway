@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskSync — Plan Board Simulator</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d1117; --surface: #161b22; --surface2: #21262d; --surface3: #30363d;
+  --border: #30363d; --text: #e6edf3; --text-muted: #8b949e; --text-dim: #484f58;
+  --accent: #58a6ff; --accent-dim: #1f6feb; --green: #3fb950; --green-dim: #238636;
+  --yellow: #d29922; --yellow-dim: #9e6a03; --red: #f85149; --red-dim: #da3633;
+  --purple: #bc8cff; --orange: #f0883e;
+  --radius: 8px; --radius-sm: 4px;
+  --shadow: 0 2px 8px rgba(0,0,0,.3);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px; color: var(--text); background: var(--bg);
+}
+body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Header */
+.header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+.header h1 { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.header .stats { margin-left: auto; display: flex; gap: 10px; font-size: 11px; color: var(--text-muted); }
+.header .stats .stat { display: flex; align-items: center; gap: 3px; }
+.header .stats .dot { width: 7px; height: 7px; border-radius: 50%; }
+.header .controls { display: flex; gap: 6px; }
+.btn { padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface2); color: var(--text-muted); cursor: pointer; font-size: 11px; white-space: nowrap; }
+.btn:hover { color: var(--text); border-color: var(--text-muted); }
+.btn.green { border-color: var(--green-dim); color: var(--green); }
+.btn.yellow { border-color: var(--yellow-dim); color: var(--yellow); }
+.btn.red { border-color: var(--red-dim); color: var(--red); }
+
+/* Main: top 65% + bottom 35% */
+.main-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.top-area { flex: 65; display: flex; min-height: 0; border-bottom: 1px solid var(--border); }
+.bottom-area { flex: 35; display: flex; flex-direction: column; min-height: 0; }
+
+/* Left panel */
+.left-panel { flex: 0 0 50%; display: flex; flex-direction: column; border-right: 1px solid var(--border); min-height: 0; }
+
+/* Feature pills */
+.feature-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; flex-shrink: 0; }
+.fpill { padding: 4px 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-muted); cursor: pointer; font-size: 12px; transition: all 0.15s; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.fpill:hover { border-color: var(--accent); color: var(--text); }
+.fpill.active { border-color: var(--accent); background: var(--accent-dim); color: var(--text); font-weight: 500; }
+.fpill .fs { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.fpill .fs.backlog { background: var(--text-dim); }
+.fpill .fs.act { background: var(--accent); }
+.fpill .fs.rev { background: var(--yellow); }
+.fpill .fs.dn { background: var(--green); }
+.fpill .fs.sh { background: var(--orange); }
+.add-f { padding: 4px 10px; border-radius: 14px; border: 1px dashed var(--border); background: none; color: var(--text-dim); cursor: pointer; font-size: 12px; }
+.add-f:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Kanban */
+.kanban { flex: 1; display: flex; min-height: 0; }
+.column { flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--border); min-width: 0; }
+.column:last-child { border-right: none; }
+.col-hd { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); background: var(--surface); flex-shrink: 0; }
+.col-hd .c { background: var(--surface3); border-radius: 10px; padding: 1px 6px; font-size: 10px; }
+.col-bd { flex: 1; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 5px; min-height: 0; }
+.col-bd.dov { background: rgba(88,166,255,0.06); }
+
+/* Cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; cursor: grab; transition: border-color 0.15s, box-shadow 0.15s, opacity 0.15s; position: relative; }
+.card:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+.card.dragging { opacity: 0.4; }
+.card.act { border-left: 3px solid var(--accent); }
+.card .tp { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.card .tp.feature { color: var(--accent); } .card .tp.bug { color: var(--red); }
+.card .tp.task { color: var(--yellow); } .card .tp.spike { color: var(--purple); }
+.card .ti { font-size: 12px; font-weight: 500; line-height: 1.3; margin: 2px 0; }
+.card .de { font-size: 10px; color: var(--text-muted); line-height: 1.3; max-height: 32px; overflow: hidden; }
+.card .mt { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 9px; color: var(--text-dim); flex-wrap: wrap; }
+.card .rv { background: var(--yellow-dim); color: var(--yellow); padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; }
+.card .bl { background: var(--red-dim); color: var(--red); padding: 1px 5px; border-radius: 3px; font-size: 9px; }
+.card .ca { position: absolute; top: 4px; right: 4px; display: none; gap: 2px; }
+.card:hover .ca { display: flex; }
+.card .ca button { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 1px 3px; border-radius: 3px; font-size: 11px; }
+.card .ca button:hover { background: var(--surface3); color: var(--text); }
+.add-t { background: none; border: 1px dashed var(--border); border-radius: var(--radius); padding: 6px; color: var(--text-dim); cursor: pointer; font-size: 11px; text-align: center; }
+.add-t:hover { border-color: var(--accent); color: var(--accent); }
+.nof { display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-dim); font-size: 13px; }
+
+/* Right panel */
+.right-panel { flex: 0 0 50%; display: flex; min-height: 0; }
+.cpan { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.cpan + .cpan { border-left: 1px solid var(--border); }
+.chd { padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.chd h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.chd .ind { width: 7px; height: 7px; border-radius: 50%; }
+.chd .ind.idle { background: var(--text-dim); }
+.chd .ind.wait { background: var(--yellow); animation: pulse 1.5s infinite; }
+.chd .ind.work { background: var(--green); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.35} }
+.cms { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.m { max-width: 92%; padding: 7px 10px; border-radius: var(--radius); font-size: 12px; line-height: 1.4; word-wrap: break-word; }
+.m.sys { align-self: center; background: var(--surface2); color: var(--text-muted); font-size: 10px; max-width: 100%; text-align: center; padding: 4px 8px; border-radius: 4px; }
+.m.ext { align-self: flex-start; background: var(--surface2); border: 1px solid var(--border); }
+.m.ext .lb { color: var(--accent); font-size: 9px; font-weight: 700; text-transform: uppercase; margin-bottom: 2px; }
+.m.usr { align-self: flex-end; background: var(--accent-dim); border: 1px solid var(--accent); }
+.m.usr .lb { color: var(--green); font-size: 9px; font-weight: 700; text-transform: uppercase; margin-bottom: 2px; }
+.m .bd { white-space: pre-wrap; }
+.m .t { font-size: 9px; color: var(--text-dim); margin-top: 3px; }
+.m .cb { height: 3px; border-radius: 2px; margin-top: 4px; background: var(--surface3); overflow: hidden; }
+.m .cb .f { height: 100%; border-radius: 2px; }
+.ch .f { background: var(--green); } .cm .f { background: var(--yellow); } .cl .f { background: var(--red); }
+
+/* Quick actions */
+.qa { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+.qa button { padding: 3px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 10px; }
+.qa button:hover { border-color: var(--accent); background: var(--accent-dim); }
+.qa button:disabled { opacity: 0.35; cursor: not-allowed; }
+.qa button.g { border-color: var(--green-dim); } .qa button.g:hover:not(:disabled) { background: var(--green-dim); }
+.qa button.y { border-color: var(--yellow-dim); } .qa button.y:hover:not(:disabled) { background: var(--yellow-dim); }
+.qa button.r { border-color: var(--red-dim); } .qa button.r:hover:not(:disabled) { background: var(--red-dim); }
+
+/* Chat input */
+.cin { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+.cin textarea { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; color: var(--text); font-family: inherit; font-size: 12px; resize: none; min-height: 32px; max-height: 60px; }
+.cin textarea:focus { outline: none; border-color: var(--accent); }
+.cin button { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--text); padding: 4px 12px; border-radius: var(--radius-sm); cursor: pointer; font-weight: 500; font-size: 11px; }
+.cin button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Typing indicator */
+.typ { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); align-self: flex-start; }
+.typ .d { width: 5px; height: 5px; border-radius: 50%; background: var(--text-muted); animation: dp 1.4s infinite ease-in-out; }
+.typ .d:nth-child(2) { animation-delay: 0.2s; }
+.typ .d:nth-child(3) { animation-delay: 0.4s; }
+.typ .tl { font-size: 10px; color: var(--text-muted); margin-left: 4px; }
+@keyframes dp { 0%,80%,100%{opacity:0.3;transform:scale(0.8)}40%{opacity:1;transform:scale(1.2)} }
+
+/* Engine Log */
+.elog { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+.elh { padding: 6px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+.elb { flex: 1; overflow-y: auto; padding: 6px 16px; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; line-height: 1.6; min-height: 0; }
+.le { color: var(--text-muted); } .le .t { color: var(--text-dim); }
+.le.action { color: var(--accent); } .le.decision { color: var(--green); }
+.le.route { color: var(--yellow); } .le.error { color: var(--red); }
+
+/* Modal */
+.mo { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 100; display: none; align-items: center; justify-content: center; }
+.mo.vis { display: flex; }
+.md { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; width: 400px; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,.5); }
+.md h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.md label { display: block; font-size: 11px; font-weight: 500; color: var(--text-muted); margin-bottom: 3px; margin-top: 8px; }
+.md input, .md textarea, .md select { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; color: var(--text); font-family: inherit; font-size: 12px; }
+.md input:focus, .md textarea:focus, .md select:focus { outline: none; border-color: var(--accent); }
+.md textarea { min-height: 70px; resize: vertical; }
+.md .ma { display: flex; gap: 6px; margin-top: 14px; justify-content: flex-end; }
+.md .ma button { padding: 6px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 12px; }
+.md .ma button.pri { background: var(--accent-dim); border-color: var(--accent); }
+.md .ma button.dan { background: var(--red-dim); border-color: var(--red); }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>📋 TaskSync Plan Board</h1>
+  <div class="stats" id="stats"></div>
+  <div class="controls">
+    <button class="btn green" onclick="E.start()" id="btn-go">▶ Start</button>
+    <button class="btn yellow" onclick="E.pause()" id="btn-ps" style="display:none">⏸ Pause</button>
+    <button class="btn red" onclick="E.reset()">↺ Reset</button>
+    <button class="btn" onclick="loadSample()">📦 Sample</button>
+  </div>
+</div>
+<div class="main-wrap">
+  <div class="top-area">
+    <div class="left-panel">
+      <div class="feature-bar" id="fbar"><button class="add-f" onclick="openFM()">+ Feature</button></div>
+      <div class="kanban" id="kanban">
+        <div class="nof" id="nof">Select or add a feature</div>
+        <div class="column" data-c="todo" style="display:none">
+          <div class="col-hd">📋 Todo <span class="c" id="c-todo">0</span></div>
+          <div class="col-bd" id="b-todo"></div>
+          <div style="padding:6px"><button class="add-t" onclick="openTM('todo')">+ Task</button></div>
+        </div>
+        <div class="column" data-c="in-progress" style="display:none">
+          <div class="col-hd">⚡ In Progress <span class="c" id="c-ip">0</span></div>
+          <div class="col-bd" id="b-ip"></div>
+        </div>
+        <div class="column" data-c="done" style="display:none">
+          <div class="col-hd">✅ Done <span class="c" id="c-dn">0</span></div>
+          <div class="col-bd" id="b-dn"></div>
+        </div>
+      </div>
+    </div>
+    <div class="right-panel">
+      <div class="cpan" id="cpp">
+        <div class="chd"><span class="ind idle" id="ci"></span><h2 style="color:var(--purple)">🤖 Copilot</h2><span style="margin-left:auto;font-size:10px;color:var(--text-dim)" id="cs">Idle</span></div>
+        <div class="cms" id="cm"></div>
+        <div class="qa">
+          <button class="g" onclick="C.act('complete',0.95)" disabled id="q1">✅ Done 95%</button>
+          <button class="g" onclick="C.act('complete',0.75)" disabled id="q2">✅ Done 75%</button>
+          <button class="y" onclick="C.act('question',0.3)" disabled id="q3">❓ Question</button>
+          <button class="y" onclick="C.act('confirm',0.6)" disabled id="q4">🔍 Confirm</button>
+          <button class="r" onclick="C.act('blocked',0.1)" disabled id="q5">🚫 Blocked</button>
+          <button onclick="C.act('progress',0.5)" disabled id="q6">📝 Progress</button>
+        </div>
+        <div class="cin"><textarea id="ci-in" placeholder="Copilot response..." rows="1"></textarea><button onclick="C.send()" id="ci-btn" disabled>Send</button></div>
+      </div>
+      <div class="cpan" id="hpp">
+        <div class="chd"><span class="ind idle" id="hi"></span><h2 style="color:var(--green)">👤 Human</h2><span style="margin-left:auto;font-size:10px;color:var(--text-dim)" id="hs">Idle</span></div>
+        <div class="cms" id="hm"></div>
+        <div class="qa">
+          <button class="g" onclick="H.act('approve')" disabled id="h1">✅ Approve</button>
+          <button class="r" onclick="H.act('reject')" disabled id="h2">❌ Reject</button>
+          <button onclick="H.act('feedback')" disabled id="h3">💬 Feedback</button>
+        </div>
+        <div class="cin"><textarea id="hi-in" placeholder="Your response..." rows="1"></textarea><button onclick="H.send()" id="hi-btn" disabled>Send</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="bottom-area">
+    <div class="elog"><div class="elh">⚙️ Engine Log</div><div class="elb" id="elb"></div></div>
+  </div>
+</div>
+
+<!-- Task Modal -->
+<div class="mo" id="tmo"><div class="md">
+  <h3 id="tmt">Add Task</h3>
+  <label>Title</label><input id="tmn" placeholder="e.g., Setup database">
+  <label>Type</label><select id="tmtp"><option value="feature">Feature</option><option value="bug">Bug</option><option value="task">Task</option><option value="spike">Spike</option></select>
+  <label>Description</label><textarea id="tmd" placeholder="Instructions..."></textarea>
+  <label>Blocked by (IDs, comma-sep)</label><input id="tmdp" placeholder="e.g., task_1, task_3">
+  <label style="margin-top:8px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="tmr"> Requires review</label>
+  <div class="ma"><button onclick="clM('tmo')">Cancel</button><button class="dan" id="tmdl" onclick="dT()" style="display:none">Delete</button><button class="pri" onclick="sT()">Save</button></div>
+</div></div>
+
+<!-- Feature Modal -->
+<div class="mo" id="fmo"><div class="md">
+  <h3 id="fmt">Add Feature</h3>
+  <label>Name</label><input id="fmn" placeholder="e.g., User Auth">
+  <label>Description</label><textarea id="fmd" placeholder="Feature description..."></textarea>
+  <div class="ma"><button onclick="clM('fmo')">Cancel</button><button class="dan" id="fmdl" onclick="dF()" style="display:none">Delete</button><button class="pri" onclick="sF()">Save</button></div>
+</div></div>
+
+<script>
+// ═══════════════════════════════════════════
+//  Helpers
+// ═══════════════════════════════════════════
+let _n=1;
+const gid=()=>'task_'+(_n++);
+const fid=()=>'f_'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
+const ts=()=>new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});
+const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML;};
+const pct=v=>(v*100).toFixed(0)+'%';
+const sl=ms=>new Promise(r=>setTimeout(r,ms));
+const COLS=['todo','in-progress','done'];
+const TH=0.7; // confidence threshold
+
+function mkt(ti,de,tp,st,rv,dp){return{id:gid(),title:ti,description:de||'',type:tp||'feature',status:st||'todo',requiresReview:!!rv,blockedBy:dp||[],order:Date.now(),completionNote:'',feedbackLog:[]};}
+
+// ═══════════════════════════════════════════
+//  Store
+// ═══════════════════════════════════════════
+const S={
+  fs:[],af:null, // features, activeFeatureId
+  addF(n,d){const f={id:fid(),name:n,description:d||'',status:'backlog',tasks:[],conv:[]};this.fs.push(f);this.sv();return f;},
+  gF(id){return this.fs.find(f=>f.id===id)||null;},
+  aF(){return this.af?this.gF(this.af):null;},
+  delF(id){this.fs=this.fs.filter(f=>f.id!==id);if(this.af===id)this.af=null;this.sv();},
+  addT(t){const f=this.aF();if(f)f.tasks.push(t);this.sv();},
+  gT(id){const f=this.aF();return f?f.tasks.find(t=>t.id===id)||null:null;},
+  mvT(id,s){const t=this.gT(id);if(t){t.status=s;t.updatedAt=Date.now();}this.sv();return t;},
+  upT(id,c){const t=this.gT(id);if(t)Object.assign(t,c,{updatedAt:Date.now()});this.sv();return t;},
+  delT(id){const f=this.aF();if(f)f.tasks=f.tasks.filter(t=>t.id!==id);this.sv();},
+  byC(c){const f=this.aF();return f?f.tasks.filter(t=>t.status===c).sort((a,b)=>a.order-b.order):[];},
+  nxt(){
+    const todos=this.byC('todo');
+    for(const t of todos){
+      if(!t.blockedBy||t.blockedBy.length===0)return t;
+      const f=this.aF();
+      if(f&&t.blockedBy.every(bid=>{const d=f.tasks.find(x=>x.id===bid);return d&&d.status==='done';}))return t;
+    }
+    return null;
+  },
+  cnt(){const c={todo:0,'in-progress':0,done:0};const f=this.aF();if(f)f.tasks.forEach(t=>c[t.status]=(c[t.status]||0)+1);return c;},
+  selF(id){
+    const prev=this.aF();
+    if(prev&&prev.id!==id){prev.conv=serChat();if(prev.status==='active')prev.status='shelved';}
+    this.af=id;
+    const f=this.gF(id);
+    if(f&&(f.status==='backlog'||f.status==='shelved'))f.status='active';
+    this.sv();
+  },
+  clr(){this.fs=[];this.af=null;_n=1;this.sv();},
+  sv(){try{localStorage.setItem('ts2',JSON.stringify({fs:this.fs,af:this.af,n:_n}));}catch{}},
+  ld(){try{const d=JSON.parse(localStorage.getItem('ts2'));if(d){this.fs=d.fs||[];this.af=d.af;_n=d.n||1;}}catch{}}
+};
+
+function serChat(){
+  return['cm','hm'].flatMap(p=>Array.from(document.getElementById(p).children).map(el=>({p,h:el.outerHTML})));
+}
+function resChat(conv){
+  conv.forEach(i=>{const c=document.getElementById(i.p);const w=document.createElement('div');w.innerHTML=i.h;if(w.firstChild)c.appendChild(w.firstChild);});
+  ['cm','hm'].forEach(p=>{const e=document.getElementById(p);e.scrollTop=e.scrollHeight;});
+}
+
+// ═══════════════════════════════════════════
+//  Engine
+// ═══════════════════════════════════════════
+const E={
+  on:false,tid:null,wf:null,busy:false,
+
+  start(){
+    if(this.on)return;this.on=true;L('action','▶ Engine started');upC();
+    // If there's already an in-progress task, resume it
+    const f=S.aF();
+    if(f){
+      const ip=f.tasks.find(t=>t.status==='in-progress');
+      if(ip){
+        this.tid=ip.id;this.wf='copilot';
+        anim('cm','ext',`🔄 Resuming "${ip.title}" — continue where you left off.`,null,700).then(()=>{upBtns();upI();});
+        rB();return;
+      }
+    }
+    this._go();
+  },
+  pause(){this.on=false;L('action','⏸ Paused');upC();upBtns();},
+  reset(){this.on=false;this.tid=null;this.wf=null;this.busy=false;S.clr();cc('cm');cc('hm');clL();L('action','↺ Reset');upC();upI();rAll();},
+
+  async hC(type,msg,conf){
+    if(!this.tid)return;const task=S.gT(this.tid);if(!task)return;
+    L('action',`Copilot: ${type} (${pct(conf)}) — "${msg.slice(0,50)}"`);
+
+    if(type==='progress'){am('cm','usr','📝 '+msg,conf);L('decision','Progress — continues');return;}
+
+    if(type==='question'||type==='blocked'){
+      this.wf='human';upBtns();upI();
+      L('route',`→ Human: needs input on "${task.title}"`);
+      await anim('hm','ext',`🤖 Copilot asks about "${task.title}":\n\n${msg}`,null,1000);
+      upBtns();upI();return;
+    }
+
+    if(type==='confirm'){
+      this.wf='human';upBtns();upI();rB();
+      L('route',`→ Human: confirm "${task.title}" (${pct(conf)})`);
+      await anim('hm','ext',`🔍 Review "${task.title}":\n\n${msg}\n\n📊 Confidence: ${pct(conf)}`,null,1000);
+      upBtns();upI();return;
+    }
+
+    if(type==='complete'){
+      S.upT(task.id,{completionNote:msg});
+      if(task.requiresReview||conf<TH){
+        this.wf='human';upBtns();upI();rB();
+        const why=task.requiresReview?'requires review':`low confidence (${pct(conf)})`;
+        L('route',`→ Human: "${task.title}" — ${why}`);
+        await anim('hm','ext',`${task.requiresReview?'✅':'⚠️'} "${task.title}" — ${why}:\n\n${msg}`,null,1200);
+        upBtns();upI();return;
+      }
+      L('decision',`Evaluating… ${pct(conf)} ≥ ${pct(TH)}`);
+      await anim('cm','sys',`⏳ Evaluating… confidence ${pct(conf)} ≥ threshold`,null,500);
+      S.mvT(task.id,'done');
+      await anim('cm','sys',`✅ "${task.title}" auto-completed`,null,400);
+      L('decision',`✅ Auto-completed "${task.title}"`);
+      this.tid=null;this.wf=null;rB();upBtns();upI();
+      this._chkF();
+      if(this.on){await sl(700);this._go();}
+    }
+  },
+
+  async hH(msg,action){
+    if(!this.tid)return;const task=S.gT(this.tid);if(!task)return;
+    L('action',`Human: ${action} — "${msg.slice(0,50)}"`);
+    if(msg&&msg.trim()){
+      task.feedbackLog=task.feedbackLog||[];
+      task.feedbackLog.push(`[${ts()}] ${msg}`);
+      S.upT(task.id,{description:task.description+'\n\n--- User Feedback ---\n'+msg});
+      L('decision','📝 Feedback → spec');
+    }
+    if(action==='approve'){
+      sHP(false);await anim('hm','sys','✅ Approved',null,400);
+      S.mvT(task.id,'done');L('decision',`✅ Approved "${task.title}"`);
+      await anim('cm','sys',`✅ "${task.title}" approved`,null,500);
+      this.tid=null;this.wf=null;rB();upBtns();upI();this._chkF();
+      if(this.on){await sl(700);this._go();}return;
+    }
+    if(action==='reject'){
+      S.mvT(task.id,'in-progress');this.wf='copilot';sHP(false);upI();rB();
+      L('route',`→ Copilot: rejected "${task.title}"`);
+      await anim('cm','ext',`❌ Rejected "${task.title}":\n\n${msg||'Please revise.'}`,null,1000);
+      upBtns();upI();return;
+    }
+    S.mvT(task.id,'in-progress');this.wf='copilot';sHP(false);upI();rB();
+    L('route',`→ Copilot: input for "${task.title}"`);
+    await anim('cm','ext',`💬 Human (re: "${task.title}"):\n\n${msg}\n\nContinue.`,null,900);
+    upBtns();upI();
+  },
+
+  async _go(){
+    if(!this.on||this.busy)return;this.busy=true;
+    // WIP=1
+    if(S.byC('in-progress').length>0){L('decision','WIP limit: wait');this.busy=false;upI();return;}
+    const nxt=S.nxt();
+    if(!nxt){
+      if(S.byC('todo').length===0&&S.byC('in-progress').length===0){this._chkF();}
+      this.busy=false;upI();return;
+    }
+    this.tid=nxt.id;S.mvT(nxt.id,'in-progress');this.wf='copilot';rB();
+    // Push task spec into the ongoing conversation (no clearing)
+    const fb=(nxt.feedbackLog?.length>0)?'\n\n📝 Feedback:\n'+nxt.feedbackLog.join('\n'):'';
+    const p=`📋 Task: ${nxt.title}\nType: ${nxt.type}\nReview: ${nxt.requiresReview?'Yes':'No'}\n\n${nxt.description}${fb}`;
+    await anim('cm','ext',p,null,900);
+    L('action',`→ Assigned "${nxt.title}" to Copilot`);
+    upBtns();upI();this.busy=false;
+  },
+
+  _chkF(){
+    const f=S.aF();if(!f)return;const c=S.cnt();
+    if(c.todo===0&&c['in-progress']===0&&f.tasks.length>0){
+      f.status='review';L('decision',`🏁 Feature "${f.name}" → REVIEW`);rFB();
+      anim('hm','ext',`🏁 Feature "${f.name}" complete!\n\n${c.done} tasks done. Review/demo and approve.`,null,1000).then(()=>{upBtns();upI();});
+    }
+  }
+};
+
+// ═══════════════════════════════════════════
+//  Copilot & Human Sim
+// ═══════════════════════════════════════════
+const C={
+  act(type,conf){
+    const t=S.gT(E.tid);if(!t)return;
+    const ms={complete:`Finished "${t.title}". Code tested.`,question:`Need clarification on "${t.title}": approach?`,confirm:`Progress on "${t.title}" — verify direction?`,blocked:`Stuck on "${t.title}". Need info.`,progress:`Working "${t.title}" — ${pct(conf)}`};
+    am('cm','usr',ms[type]||ms.progress,conf);E.hC(type,ms[type],conf);
+  },
+  send(){
+    const el=document.getElementById('ci-in');const txt=el.value.trim();if(!txt)return;el.value='';
+    let conf=0.5,type='progress';const m=txt.match(/\[(\d+(?:\.\d+)?)\%?\]/);
+    if(m){conf=parseFloat(m[1]);if(conf>1)conf/=100;}
+    if(/complete|done|finish/i.test(txt))type='complete';
+    else if(/\?|question|ask|need/i.test(txt))type='question';
+    else if(/confirm|verify|review/i.test(txt))type='confirm';
+    else if(/block|stuck|cannot/i.test(txt))type='blocked';
+    am('cm','usr',txt,conf);E.hC(type,txt,conf);
+  }
+};
+const H={
+  act(a){
+    const el=document.getElementById('hi-in');const txt=el.value.trim();el.value='';
+    if(a==='approve'){am('hm','usr',txt||'✅ Approved');E.hH(txt||'','approve');}
+    else if(a==='reject'){am('hm','usr',txt||'❌ Rejected');E.hH(txt||'Needs changes','reject');}
+    else{if(!txt)return;am('hm','usr',txt);E.hH(txt,'feedback');}
+  },
+  send(){const el=document.getElementById('hi-in');const txt=el.value.trim();if(!txt)return;el.value='';am('hm','usr',txt);E.hH(txt,'feedback');}
+};
+
+// ═══════════════════════════════════════════
+//  UI
+// ═══════════════════════════════════════════
+function rAll(){rFB();rB();upS();upI();upC();}
+
+function rFB(){
+  const bar=document.getElementById('fbar');bar.innerHTML='';
+  S.fs.forEach(f=>{
+    const b=document.createElement('button');
+    b.className='fpill'+(f.id===S.af?' active':'');
+    const sc=f.status==='active'||f.status==='shelved'?(f.id===S.af?'act':'sh'):f.status==='done'?'dn':f.status==='review'?'rev':'backlog';
+    const dc=f.tasks.filter(t=>t.status==='done').length;
+    b.innerHTML=`<span class="fs ${sc}"></span>${esc(f.name)} <span style="font-size:10px;color:var(--text-dim)">${dc}/${f.tasks.length}</span>`;
+    b.onclick=()=>swF(f.id);
+    b.ondblclick=()=>openEFM(f.id);
+    bar.appendChild(b);
+  });
+  const a=document.createElement('button');a.className='add-f';a.textContent='+ Feature';a.onclick=()=>openFM();
+  bar.appendChild(a);
+}
+
+function swF(id){
+  if(id===S.af)return;
+  if(E.on)E.pause();
+  E.tid=null;E.wf=null;E.busy=false;sCP(false);sHP(false);
+  // selF saves current feature's conv via serChat() internally
+  S.selF(id);
+  cc('cm');cc('hm');
+  const f=S.gF(id);
+  // Restore feature's conversation history
+  if(f&&f.conv&&f.conv.length){
+    resChat(f.conv);
+    // Resume in-progress task if any
+    const ipTask=f.tasks.find(t=>t.status==='in-progress');
+    if(ipTask){E.tid=ipTask.id;E.wf='copilot';}
+    L('action',`→ Feature: "${f.name}" — conversation restored`);
+  } else {
+    am('cm','sys',`Feature: ${f.name}`);
+    L('action',`→ Feature: "${f.name}"`);
+  }
+  rAll();
+  upBtns();
+}
+
+function rB(){
+  const f=S.aF();const nof=document.getElementById('nof');const cols=document.querySelectorAll('.kanban .column');
+  if(!f){nof.style.display='flex';cols.forEach(c=>c.style.display='none');upS();return;}
+  nof.style.display='none';cols.forEach(c=>c.style.display='flex');
+  const map={todo:'b-todo','in-progress':'b-ip',done:'b-dn'};
+  const cmap={todo:'c-todo','in-progress':'c-ip',done:'c-dn'};
+  COLS.forEach(col=>{
+    const bd=document.getElementById(map[col]);
+    const cn=document.getElementById(cmap[col]);
+    const tasks=S.byC(col);cn.textContent=tasks.length;bd.innerHTML='';
+    tasks.forEach(task=>{
+      const d=document.createElement('div');
+      d.className='card'+(task.id===E.tid?' act':'');d.draggable=true;d.dataset.tid=task.id;
+      const isB=task.blockedBy&&task.blockedBy.length>0&&!task.blockedBy.every(bid=>{const dp=f.tasks.find(x=>x.id===bid);return dp&&dp.status==='done';});
+      d.innerHTML=`<div class="ca"><button onclick="openETM('${task.id}')">✏️</button></div>
+        <div class="tp ${task.type}">${task.type}</div>
+        <div class="ti">${esc(task.title)}</div>
+        <div class="de">${esc((task.description||'').split('\n')[0])}</div>
+        <div class="mt">${task.requiresReview?'<span class="rv">Review</span>':''}${isB?'<span class="bl">🔗 Blocked</span>':''}${task.feedbackLog?.length>0?'<span>💬'+task.feedbackLog.length+'</span>':''}<span>#${task.id.replace('task_','')}</span></div>`;
+      d.addEventListener('dragstart',e=>{d.classList.add('dragging');e.dataTransfer.setData('text/plain',task.id);});
+      d.addEventListener('dragend',()=>d.classList.remove('dragging'));
+      bd.appendChild(d);
+    });
+    // Drop
+    bd.ondragover=e=>{e.preventDefault();bd.classList.add('dov');};
+    bd.ondragleave=()=>bd.classList.remove('dov');
+    bd.ondrop=e=>{e.preventDefault();bd.classList.remove('dov');const tid=e.dataTransfer.getData('text/plain');if(!tid)return;if(col==='in-progress'&&E.on){L('error','Cannot drag to IP');return;}S.mvT(tid,col);L('action',`Moved → ${col}`);rB();};
+  });
+  upS();rFB();
+}
+
+function upS(){
+  const c=S.cnt();const tot=(c.todo||0)+(c['in-progress']||0)+(c.done||0);const dn=c.done||0;
+  const p=tot>0?Math.round(dn/tot*100):0;const f=S.aF();
+  document.getElementById('stats').innerHTML=`${f?`<span class="stat" style="font-weight:500">${esc(f.name)}</span>`:''}
+    <span class="stat"><span class="dot" style="background:var(--accent)"></span>${c.todo||0}</span>
+    <span class="stat"><span class="dot" style="background:var(--yellow)"></span>${c['in-progress']||0}</span>
+    <span class="stat"><span class="dot" style="background:var(--green)"></span>${dn}</span>
+    <span class="stat" style="font-weight:600">${p}%</span>`;
+}
+
+// Chat
+function am(p,type,txt,conf){
+  const el=document.getElementById(p);const d=document.createElement('div');
+  d.className='m '+(type==='sys'?'sys':type==='ext'?'ext':'usr');
+  let h='';
+  if(type==='ext')h+='<div class="lb">↓ Extension</div>';
+  else if(type==='usr')h+=`<div class="lb">↑ ${p==='cm'?'Copilot':'Human'}</div>`;
+  h+=`<div class="bd">${esc(txt)}</div>`;
+  if(conf!=null){const v=pct(conf);const cl=conf>=0.7?'ch':conf>=0.4?'cm':'cl';h+=`<div class="cb ${cl}"><div class="f" style="width:${v}"></div></div>`;}
+  h+=`<div class="t">${ts()}</div>`;d.innerHTML=h;el.appendChild(d);el.scrollTop=el.scrollHeight;
+}
+function anim(p,type,txt,conf,delay){
+  delay=delay||800;
+  const el=document.getElementById(p);
+  const t=document.createElement('div');t.className='typ';t.id=p+'_typ';
+  const lb=type==='ext'?'Extension routing…':p==='cm'?'Copilot thinking…':'Human typing…';
+  t.innerHTML=`<span class="d"></span><span class="d"></span><span class="d"></span><span class="tl">${lb}</span>`;
+  el.appendChild(t);el.scrollTop=el.scrollHeight;
+  return new Promise(r=>setTimeout(()=>{const te=document.getElementById(p+'_typ');if(te)te.remove();am(p,type,txt,conf);r();},delay));
+}
+function cc(p){document.getElementById(p).innerHTML='';}
+
+function sCP(on){document.getElementById('ci-btn').disabled=!on;['q1','q2','q3','q4','q5','q6'].forEach(i=>document.getElementById(i).disabled=!on);}
+function upBtns(){const hasTask=!!E.tid;sCP(hasTask&&E.wf!=='human');sHP(E.wf==='human');}
+function sHP(on){document.getElementById('hi-btn').disabled=!on;['h1','h2','h3'].forEach(i=>document.getElementById(i).disabled=!on);}
+
+function upI(){
+  const ci=document.getElementById('ci'),hi=document.getElementById('hi');
+  const cs=document.getElementById('cs'),hs=document.getElementById('hs');
+  if(!E.on){ci.className='ind idle';hi.className='ind idle';cs.textContent='Idle';hs.textContent='Idle';}
+  else if(E.wf==='copilot'){ci.className='ind wait';hi.className='ind idle';cs.textContent='Working…';hs.textContent='Idle';}
+  else if(E.wf==='human'){ci.className='ind idle';hi.className='ind wait';cs.textContent='Waiting';hs.textContent='Your turn';}
+  else{ci.className='ind work';hi.className='ind idle';cs.textContent='Ready';hs.textContent='Idle';}
+}
+function upC(){document.getElementById('btn-go').style.display=E.on?'none':'';document.getElementById('btn-ps').style.display=E.on?'':'none';}
+
+// Log
+function L(type,msg){const b=document.getElementById('elb');const d=document.createElement('div');d.className='le '+type;d.innerHTML=`<span class="t">[${ts()}]</span> ${esc(msg)}`;b.appendChild(d);b.scrollTop=b.scrollHeight;}
+function clL(){document.getElementById('elb').innerHTML='';}
+
+// Modals
+let _tm='add',_tc='todo',_te=null,_fm='add',_fe=null;
+function openTM(c){_tm='add';_tc=c;_te=null;document.getElementById('tmt').textContent='Add Task';document.getElementById('tmn').value='';document.getElementById('tmtp').value='feature';document.getElementById('tmd').value='';document.getElementById('tmdp').value='';document.getElementById('tmr').checked=false;document.getElementById('tmdl').style.display='none';document.getElementById('tmo').classList.add('vis');document.getElementById('tmn').focus();}
+function openETM(id){const t=S.gT(id);if(!t)return;_tm='edit';_te=id;document.getElementById('tmt').textContent='Edit Task';document.getElementById('tmn').value=t.title;document.getElementById('tmtp').value=t.type;document.getElementById('tmd').value=t.description;document.getElementById('tmdp').value=(t.blockedBy||[]).join(', ');document.getElementById('tmr').checked=t.requiresReview;document.getElementById('tmdl').style.display='';document.getElementById('tmo').classList.add('vis');}
+function sT(){const ti=document.getElementById('tmn').value.trim();if(!ti)return;const tp=document.getElementById('tmtp').value;const de=document.getElementById('tmd').value.trim();const dp=(document.getElementById('tmdp').value||'').split(',').map(s=>s.trim()).filter(Boolean);const rv=document.getElementById('tmr').checked;if(_tm==='add'){S.addT(mkt(ti,de,tp,_tc,rv,dp));L('action',`Added: "${ti}"`);}else{S.upT(_te,{title:ti,type:tp,description:de,blockedBy:dp,requiresReview:rv});L('action',`Updated: "${ti}"`);}clM('tmo');rB();}
+function dT(){if(!_te||_te===E.tid)return;S.delT(_te);L('action','Deleted task');clM('tmo');rB();}
+function openFM(){_fm='add';_fe=null;document.getElementById('fmt').textContent='Add Feature';document.getElementById('fmn').value='';document.getElementById('fmd').value='';document.getElementById('fmdl').style.display='none';document.getElementById('fmo').classList.add('vis');document.getElementById('fmn').focus();}
+function openEFM(id){const f=S.gF(id);if(!f)return;_fm='edit';_fe=id;document.getElementById('fmt').textContent='Edit Feature';document.getElementById('fmn').value=f.name;document.getElementById('fmd').value=f.description;document.getElementById('fmdl').style.display='';document.getElementById('fmo').classList.add('vis');}
+function sF(){const n=document.getElementById('fmn').value.trim();if(!n)return;const d=document.getElementById('fmd').value.trim();if(_fm==='add'){const f=S.addF(n,d);S.selF(f.id);cc('cm');cc('hm');am('cm','sys','Feature: '+n);L('action',`Added feature: "${n}"`);}else{const f=S.gF(_fe);if(f){f.name=n;f.description=d;S.sv();}L('action',`Updated: "${n}"`);}clM('fmo');rAll();}
+function dF(){if(!_fe)return;S.delF(_fe);L('action','Deleted feature');clM('fmo');cc('cm');cc('hm');rAll();}
+function clM(id){document.getElementById(id).classList.remove('vis');}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){clM('tmo');clM('fmo');}
+  if(e.key==='Enter'&&!e.shiftKey){
+    if(document.activeElement===document.getElementById('ci-in')){e.preventDefault();C.send();}
+    else if(document.activeElement===document.getElementById('hi-in')){e.preventDefault();H.send();}
+  }
+});
+
+// ═══════════════════════════════════════════
+//  Sample
+// ═══════════════════════════════════════════
+function loadSample(){
+  E.reset();
+  const f1=S.addF('User Authentication','Login, registration, JWT tokens');
+  S.selF(f1.id);
+  [mkt('Setup DB schema','PostgreSQL users table.\nFields: id, email, password_hash, name, role, created_at','task','todo',false,[]),
+   mkt('Registration API','POST /api/auth/register\nValidation: email, password min 8 chars\nHash bcrypt cost 12','feature','todo',true,[]),
+   mkt('Login & JWT','POST /api/auth/login\nAccess: 15min, Refresh: 7d\nRate limit: 5/min/IP','feature','todo',false,[]),
+   mkt('Fix CORS','Whitelist origins from env. Handle preflight.','bug','todo',false,[])
+  ].forEach(t=>S.addT(t));
+
+  const f2=S.addF('User Dashboard','Profile, activity feed, settings');
+  S.selF(f2.id);
+  [mkt('Profile page','Show name, email, avatar. Edit name/avatar.','feature','todo',true,[]),
+   mkt('Activity feed','Last 50 actions. Paginated. WebSocket updates.','feature','todo',false,[]),
+   mkt('Settings page','Password change, notifications, theme.','feature','todo',true,[])
+  ].forEach(t=>S.addT(t));
+
+  const f3=S.addF('API Rate Limiting','Redis-backed rate limiting');
+  S.selF(f3.id);
+  [mkt('Redis limiter','Sliding window. Per-IP + per-user. Redis shared state.','feature','todo',true,[]),
+   mkt('Rate limit headers','X-RateLimit-Limit, Remaining, Reset headers.','task','todo',false,[])
+  ].forEach(t=>S.addT(t));
+
+  S.selF(f1.id);cc('cm');cc('hm');
+  am('cm','sys','Sample loaded. Click ▶ Start.');
+  L('action',`📦 3 features, ${S.fs.reduce((s,f)=>s+f.tasks.length,0)} tasks`);
+  rAll();
+}
+
+// Init
+S.ld();
+if(S.fs.length===0)loadSample();
+else{rAll();L('action',`Restored ${S.fs.length} features`);}
+</script>
+</body>
+</html>

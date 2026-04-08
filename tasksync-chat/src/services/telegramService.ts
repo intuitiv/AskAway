@@ -69,6 +69,12 @@ export class TelegramService {
     // ── Pre-resolved set (handles race between async postQuestion and resolveTask) ──
     private _preResolved: Set<string> = new Set();
 
+    // ── Forum Topics (Telegram groups with "Topics" enabled) ──
+    /** null = not yet checked, false = regular chat, true = forum group */
+    private _isForum: boolean | null = null;
+    /** workspace name → Telegram thread/topic ID */
+    private _topicIds: Map<string, number> = new Map();
+
     constructor(outputChannel?: vscode.OutputChannel) {
         this._out = outputChannel;
         this.reloadConfig();
@@ -216,6 +222,76 @@ export class TelegramService {
         }
     }
 
+    // ── Forum Topics ───────────────────────────────────────────
+
+    /** Get current workspace name (first folder name, or "AskAway" fallback) */
+    private _workspaceName(): string {
+        return vscode.workspace.workspaceFolders?.[0]?.name ?? 'AskAway';
+    }
+
+    /**
+     * Check once whether the configured chat is a Telegram Forum group.
+     * Caches the result so it only calls `getChat` on the first message.
+     */
+    private async _detectForum(): Promise<boolean> {
+        if (this._isForum !== null) { return this._isForum; }
+        try {
+            const resp = await fetch(this._apiUrl('getChat'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: this._chatId })
+            });
+            if (resp.ok) {
+                const data = await resp.json() as any;
+                this._isForum = data.result?.is_forum === true;
+                this._log(`AskAway/Telegram: Chat type detected — is_forum=${this._isForum}`);
+            } else {
+                this._isForum = false;
+            }
+        } catch {
+            this._isForum = false;
+        }
+        return this._isForum;
+    }
+
+    /**
+     * Get (or create) a Telegram Forum Topic ID for the given workspace name.
+     * Returns undefined for non-forum chats (silently degrades).
+     */
+    private async _getTopicId(workspaceName: string): Promise<number | undefined> {
+        const isForum = await this._detectForum();
+        if (!isForum) { return undefined; }
+
+        if (this._topicIds.has(workspaceName)) {
+            return this._topicIds.get(workspaceName);
+        }
+
+        try {
+            const resp = await fetch(this._apiUrl('createForumTopic'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: this._chatId, name: workspaceName, icon_color: 0x6FB9F0 })
+            });
+            if (resp.ok) {
+                const data = await resp.json() as any;
+                const topicId: number = data.result?.message_thread_id;
+                if (topicId) {
+                    this._topicIds.set(workspaceName, topicId);
+                    this._log(`AskAway/Telegram: Created forum topic "${workspaceName}" — thread_id=${topicId}`);
+                    return topicId;
+                }
+            } else {
+                // May already exist — Telegram doesn't return existing topic ID on re-create.
+                // User needs to set it manually for now; log a warning.
+                const err = await resp.text();
+                this._warn(`AskAway/Telegram: createForumTopic failed (${resp.status}): ${err}. Messages will go to General topic.`);
+            }
+        } catch (e) {
+            this._warn(`AskAway/Telegram: createForumTopic error: ${e}`);
+        }
+        return undefined;
+    }
+
     // ── Post Question ──────────────────────────────────────────
 
     /**
@@ -240,6 +316,10 @@ export class TelegramService {
             this._activeTasks.clear();
         }
 
+        // Resolve workspace name and optional forum thread ID before building message
+        const workspaceName = this._workspaceName();
+        const topicId = await this._getTopicId(workspaceName);
+
         try {
             // Format the message with HTML (more reliable than MarkdownV2)
             const fileChanges = this._consumeFileChanges();
@@ -250,7 +330,8 @@ export class TelegramService {
                 this._warn(`AskAway/Telegram: _markdownToHtml failed, using plain text: ${e}`);
                 questionHtml = this._escapeHtml(question);
             }
-            let text = `🔔 <b>AskAway — Question</b>\n\n${questionHtml}`;
+            // Show workspace name in header so user knows which project is asking
+            let text = `🔔 <b>AskAway · ${this._escapeHtml(workspaceName)}</b>\n\n${questionHtml}`;
 
             if (choices && choices.length > 0) {
                 text += '\n\n<b>Options:</b>\n';
@@ -285,6 +366,8 @@ export class TelegramService {
                 text: text,
                 parse_mode: 'HTML'
             };
+            // Forum topic routing — posts to workspace-specific thread if chat supports it
+            if (topicId) { body.message_thread_id = topicId; }
 
             // Add inline keyboard for choices
             if (choices && choices.length > 0) {
@@ -312,8 +395,9 @@ export class TelegramService {
                 // Fallback: try plain text without HTML parse_mode
                 const plainBody: any = {
                     chat_id: this._chatId,
-                    text: `🔔 AskAway — Question\n\n${question.substring(0, 3900)}`
+                    text: `🔔 AskAway · ${workspaceName}\n\n${question.substring(0, 3900)}`
                 };
+                if (topicId) { plainBody.message_thread_id = topicId; }
                 if (choices && choices.length > 0) {
                     plainBody.reply_markup = body.reply_markup;
                 }
@@ -1060,16 +1144,20 @@ export class TelegramService {
                     })
                 });
             } else {
-                // Send new status message
+                // Send new status message — route to workspace topic if forum
+                const wsName = this._workspaceName();
+                const threadId = this._topicIds.get(wsName);
+                const newMsgBody: any = {
+                    chat_id: this._chatId,
+                    text,
+                    parse_mode: 'HTML',
+                    disable_notification: true
+                };
+                if (threadId) { newMsgBody.message_thread_id = threadId; }
                 const resp = await fetch(this._apiUrl('sendMessage'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: this._chatId,
-                        text,
-                        parse_mode: 'HTML',
-                        disable_notification: true
-                    })
+                    body: JSON.stringify(newMsgBody)
                 });
                 if (resp.ok) {
                     const data = await resp.json() as any;

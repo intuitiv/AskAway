@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskSync — Plan Board Simulator</title>
+<style>
+/* ── Reset & Base ──────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d1117; --surface: #161b22; --surface2: #21262d; --surface3: #30363d;
+  --border: #30363d; --text: #e6edf3; --text-muted: #8b949e; --text-dim: #484f58;
+  --accent: #58a6ff; --accent-dim: #1f6feb; --green: #3fb950; --green-dim: #238636;
+  --yellow: #d29922; --yellow-dim: #9e6a03; --red: #f85149; --red-dim: #da3633;
+  --purple: #bc8cff; --orange: #f0883e;
+  --radius: 8px; --radius-sm: 4px;
+  --shadow: 0 2px 8px rgba(0,0,0,.3);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px; color: var(--text); background: var(--bg);
+}
+body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── Header ────────────────────────────────────────── */
+.header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.header h1 { font-size: 16px; font-weight: 600; }
+.header .stats { margin-left: auto; display: flex; gap: 12px; font-size: 12px; color: var(--text-muted); }
+.header .stats .stat { display: flex; align-items: center; gap: 4px; }
+.header .stats .dot { width: 8px; height: 8px; border-radius: 50%; }
+.header .controls { display: flex; gap: 8px; }
+
+/* ── Layout ────────────────────────────────────────── */
+.main { flex: 1; display: flex; overflow: hidden; }
+
+/* Left: Board + Log */
+.left-column { flex: 0 0 50%; display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+.board-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.board-panel .panel-header { padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; gap: 8px; }
+.board-panel .panel-header h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+
+/* Kanban columns */
+.kanban { flex: 1; display: flex; gap: 0; overflow-x: auto; }
+.column { flex: 1; min-width: 180px; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+.column:last-child { border-right: none; }
+.column-header { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); background: var(--surface); }
+.column-header .count { background: var(--surface3); border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 500; }
+.column-body { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.column-body.drag-over { background: rgba(88,166,255,0.06); }
+
+/* Task cards */
+.task-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; cursor: grab; transition: border-color 0.15s, box-shadow 0.15s, opacity 0.15s; position: relative; }
+.task-card:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+.task-card.dragging { opacity: 0.4; }
+.task-card.active { border-left: 3px solid var(--accent); }
+.task-card .card-type { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.task-card .card-type.feature { color: var(--accent); }
+.task-card .card-type.bug { color: var(--red); }
+.task-card .card-type.task { color: var(--yellow); }
+.task-card .card-type.spike { color: var(--purple); }
+.task-card .card-title { font-size: 13px; font-weight: 500; line-height: 1.3; margin-bottom: 4px; }
+.task-card .card-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; max-height: 40px; overflow: hidden; text-overflow: ellipsis; }
+.task-card .card-meta { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 10px; color: var(--text-dim); }
+.task-card .review-badge { background: var(--yellow-dim); color: var(--yellow); padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+.task-card .card-actions { position: absolute; top: 6px; right: 6px; display: none; gap: 2px; }
+.task-card:hover .card-actions { display: flex; }
+.task-card .card-actions button { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 2px 4px; border-radius: 3px; font-size: 12px; }
+.task-card .card-actions button:hover { background: var(--surface3); color: var(--text); }
+
+/* Add task */
+.add-task-btn { background: none; border: 1px dashed var(--border); border-radius: var(--radius); padding: 8px; color: var(--text-muted); cursor: pointer; font-size: 12px; text-align: center; transition: border-color 0.15s, color 0.15s; }
+.add-task-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Right panels */
+.sim-panels { flex: 0 0 50%; display: flex; min-height: 0; }
+
+/* Typing indicator */
+.typing-indicator { display: inline-flex; align-items: center; gap: 4px; padding: 8px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); align-self: flex-start; }
+.typing-indicator .dot-pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: dotPulse 1.4s infinite ease-in-out; }
+.typing-indicator .dot-pulse:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator .dot-pulse:nth-child(3) { animation-delay: 0.4s; }
+.typing-indicator .label { font-size: 11px; color: var(--text-muted); margin-left: 4px; }
+@keyframes dotPulse { 0%,80%,100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1.2); } }
+
+/* Card move animation */
+.task-card.card-entering { animation: cardEnter 0.4s ease-out; }
+@keyframes cardEnter { from { opacity: 0; transform: translateY(-10px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.task-card.card-flash { animation: cardFlash 0.6s ease-out; }
+@keyframes cardFlash { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: none; } }
+
+/* Chat panel shared */
+.chat-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.chat-panel + .chat-panel { border-left: 1px solid var(--border); }
+.chat-panel .panel-header { padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; gap: 8px; }
+.chat-panel .panel-header h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.chat-panel .panel-header .indicator { width: 8px; height: 8px; border-radius: 50%; }
+.chat-panel .panel-header .indicator.active { background: var(--green); }
+.chat-panel .panel-header .indicator.idle { background: var(--text-dim); }
+.chat-panel .panel-header .indicator.waiting { background: var(--yellow); animation: pulse 1.5s infinite; }
+
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* Chat messages */
+.chat-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.chat-msg { max-width: 90%; padding: 8px 12px; border-radius: var(--radius); font-size: 13px; line-height: 1.4; word-wrap: break-word; }
+.chat-msg.system { align-self: center; background: var(--surface2); color: var(--text-muted); font-size: 11px; max-width: 100%; text-align: center; border-radius: 4px; padding: 6px 10px; }
+.chat-msg.from-ext { align-self: flex-start; background: var(--surface2); border: 1px solid var(--border); }
+.chat-msg.from-ext .msg-label { color: var(--accent); font-size: 10px; font-weight: 600; text-transform: uppercase; margin-bottom: 3px; }
+.chat-msg.from-user { align-self: flex-end; background: var(--accent-dim); border: 1px solid var(--accent); }
+.chat-msg.from-user .msg-label { color: var(--green); font-size: 10px; font-weight: 600; text-transform: uppercase; margin-bottom: 3px; }
+.chat-msg .msg-content { white-space: pre-wrap; }
+.chat-msg .msg-time { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+.chat-msg .confidence-bar { height: 4px; border-radius: 2px; margin-top: 6px; background: var(--surface3); overflow: hidden; }
+.chat-msg .confidence-bar .fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+
+/* Quick action buttons in copilot chat */
+.quick-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--border); background: var(--surface); }
+.quick-actions button { padding: 5px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 11px; transition: all 0.15s; }
+.quick-actions button:hover { border-color: var(--accent); background: var(--accent-dim); }
+.quick-actions button.green { border-color: var(--green-dim); }
+.quick-actions button.green:hover { background: var(--green-dim); }
+.quick-actions button.yellow { border-color: var(--yellow-dim); }
+.quick-actions button.yellow:hover { background: var(--yellow-dim); }
+.quick-actions button.red { border-color: var(--red-dim); }
+.quick-actions button.red:hover { background: var(--red-dim); }
+
+/* Chat input */
+.chat-input { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface); }
+.chat-input textarea { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; color: var(--text); font-family: inherit; font-size: 13px; resize: none; min-height: 36px; max-height: 80px; }
+.chat-input textarea:focus { outline: none; border-color: var(--accent); }
+.chat-input button { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--text); padding: 6px 14px; border-radius: var(--radius-sm); cursor: pointer; font-weight: 500; font-size: 12px; white-space: nowrap; }
+.chat-input button:hover { background: var(--accent); }
+.chat-input button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Engine log strip — under the board */
+.engine-log { flex: 0 0 auto; max-height: 160px; overflow-y: auto; border-top: 1px solid var(--border); background: var(--bg); }
+.engine-log .log-header { padding: 6px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); border-bottom: 1px solid var(--border); background: var(--surface); cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.engine-log .log-body { padding: 4px 16px; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; line-height: 1.5; }
+.engine-log .log-entry { color: var(--text-muted); }
+.engine-log .log-entry .ts { color: var(--text-dim); }
+.engine-log .log-entry.action { color: var(--accent); }
+.engine-log .log-entry.decision { color: var(--green); }
+.engine-log .log-entry.route { color: var(--yellow); }
+.engine-log .log-entry.error { color: var(--red); }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: none; align-items: center; justify-content: center; }
+.modal-overlay.visible { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; width: 420px; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,.5); }
+.modal h3 { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+.modal label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; margin-top: 10px; }
+.modal input, .modal textarea, .modal select { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; color: var(--text); font-family: inherit; font-size: 13px; }
+.modal input:focus, .modal textarea:focus, .modal select:focus { outline: none; border-color: var(--accent); }
+.modal textarea { min-height: 80px; resize: vertical; }
+.modal .modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+.modal .modal-actions button { padding: 7px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 13px; }
+.modal .modal-actions button.primary { background: var(--accent-dim); border-color: var(--accent); }
+.modal .modal-actions button.primary:hover { background: var(--accent); }
+.modal .modal-actions button.danger { background: var(--red-dim); border-color: var(--red); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* Confidence colors */
+.confidence-high .fill { background: var(--green); }
+.confidence-mid .fill { background: var(--yellow); }
+.confidence-low .fill { background: var(--red); }
+</style>
+</head>
+<body>
+<!-- ── Header ──────────────────────────────────────── -->
+<div class="header">
+  <h1>📋 TaskSync — Plan Board</h1>
+  <div class="stats" id="stats"></div>
+  <div class="controls">
+    <button onclick="engine.start()" id="btn-start" style="padding:5px 12px;border-radius:4px;border:1px solid var(--green-dim);background:var(--surface2);color:var(--green);cursor:pointer;font-size:12px;">▶ Start</button>
+    <button onclick="engine.pause()" id="btn-pause" style="padding:5px 12px;border-radius:4px;border:1px solid var(--yellow-dim);background:var(--surface2);color:var(--yellow);cursor:pointer;font-size:12px;display:none;">⏸ Pause</button>
+    <button onclick="engine.reset()" style="padding:5px 12px;border-radius:4px;border:1px solid var(--red-dim);background:var(--surface2);color:var(--red);cursor:pointer;font-size:12px;">↺ Reset</button>
+    <button onclick="loadSampleProject()" style="padding:5px 12px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text-muted);cursor:pointer;font-size:12px;">📦 Sample</button>
+  </div>
+</div>
+
+<!-- ── Main Layout ─────────────────────────────────── -->
+<div class="main">
+  <!-- Left: Board + Engine Log -->
+  <div class="left-column">
+  <div class="board-panel">
+    <div class="panel-header">
+      <h2>📋 Board</h2>
+      <span style="margin-left:auto;font-size:11px;color:var(--text-dim)" id="board-mode">IDLE</span>
+    </div>
+    <div class="kanban" id="kanban">
+      <div class="column" data-status="backlog">
+        <div class="column-header">📥 Backlog <span class="count" id="count-backlog">0</span></div>
+        <div class="column-body" id="col-backlog"></div>
+        <div style="padding:8px"><button class="add-task-btn" onclick="openTaskModal('backlog')">+ Add Task</button></div>
+      </div>
+      <div class="column" data-status="todo">
+        <div class="column-header">📋 Todo <span class="count" id="count-todo">0</span></div>
+        <div class="column-body" id="col-todo"></div>
+        <div style="padding:8px"><button class="add-task-btn" onclick="openTaskModal('todo')">+ Add Task</button></div>
+      </div>
+      <div class="column" data-status="in-progress">
+        <div class="column-header">⚡ In Progress <span class="count" id="count-in-progress">0</span></div>
+        <div class="column-body" id="col-in-progress"></div>
+      </div>
+      <div class="column" data-status="review">
+        <div class="column-header">👀 Review <span class="count" id="count-review">0</span></div>
+        <div class="column-body" id="col-review"></div>
+      </div>
+      <div class="column" data-status="done">
+        <div class="column-header">✅ Done <span class="count" id="count-done">0</span></div>
+        <div class="column-body" id="col-done"></div>
+      </div>
+    </div>
+  </div>
+  <!-- Engine Log (below board) -->
+  <div class="engine-log" id="engine-log">
+    <div class="log-header" onclick="document.getElementById('log-body').style.display = document.getElementById('log-body').style.display === 'none' ? 'block' : 'none'">
+      ⚙️ Engine Log <span style="margin-left:auto;font-size:10px">▼</span>
+    </div>
+    <div class="log-body" id="log-body"></div>
+  </div>
+  </div>
+
+  <!-- Right: Simulation Panels -->
+  <div class="sim-panels">
+      <!-- Copilot Simulator -->
+      <div class="chat-panel" id="copilot-panel">
+        <div class="panel-header">
+          <span class="indicator idle" id="copilot-indicator"></span>
+          <h2 style="color:var(--purple)">🤖 Copilot Simulator</h2>
+          <span style="margin-left:auto;font-size:11px;color:var(--text-dim)" id="copilot-status">Idle</span>
+        </div>
+        <div class="chat-messages" id="copilot-messages"></div>
+        <div class="quick-actions" id="copilot-actions">
+          <button class="green" onclick="copilotSim.respond('complete', 0.95)" disabled id="qa-complete">✅ Complete (95%)</button>
+          <button class="green" onclick="copilotSim.respond('complete', 0.75)" disabled id="qa-complete-mid">✅ Complete (75%)</button>
+          <button class="yellow" onclick="copilotSim.respond('question', 0.3)" disabled id="qa-question">❓ Question</button>
+          <button class="yellow" onclick="copilotSim.respond('confirm', 0.6)" disabled id="qa-confirm">🔍 Confirm</button>
+          <button class="red" onclick="copilotSim.respond('blocked', 0.1)" disabled id="qa-blocked">🚫 Blocked</button>
+          <button onclick="copilotSim.respond('progress', 0.5)" disabled id="qa-progress">📝 Progress</button>
+        </div>
+        <div class="chat-input">
+          <textarea id="copilot-input" placeholder="Type custom Copilot response..." rows="1"></textarea>
+          <button onclick="copilotSim.sendCustom()" id="copilot-send" disabled>Send</button>
+        </div>
+      </div>
+
+      <!-- Human Simulator -->
+      <div class="chat-panel" id="human-panel" style="border-left: 1px solid var(--border)">
+        <div class="panel-header">
+          <span class="indicator idle" id="human-indicator"></span>
+          <h2 style="color:var(--green)">👤 Human Simulator</h2>
+          <span style="margin-left:auto;font-size:11px;color:var(--text-dim)" id="human-status">Idle</span>
+        </div>
+        <div class="chat-messages" id="human-messages"></div>
+        <div class="quick-actions" id="human-actions">
+          <button class="green" onclick="humanSim.respond('approve')" disabled id="ha-approve">✅ Approve</button>
+          <button class="red" onclick="humanSim.respond('reject')" disabled id="ha-reject">❌ Reject</button>
+          <button onclick="humanSim.respond('feedback')" disabled id="ha-feedback">💬 Add Feedback</button>
+        </div>
+        <div class="chat-input">
+          <textarea id="human-input" placeholder="Type your response..." rows="1"></textarea>
+          <button onclick="humanSim.sendCustom()" id="human-send" disabled>Send</button>
+        </div>
+      </div>
+  </div>
+</div>
+
+<!-- ── Task Modal ──────────────────────────────────── -->
+<div class="modal-overlay" id="task-modal-overlay">
+  <div class="modal">
+    <h3 id="modal-title">Add Task</h3>
+    <label for="modal-task-title">Title</label>
+    <input type="text" id="modal-task-title" placeholder="e.g., Setup user authentication">
+    <label for="modal-task-type">Type</label>
+    <select id="modal-task-type">
+      <option value="feature">Feature</option>
+      <option value="bug">Bug</option>
+      <option value="task">Task</option>
+      <option value="spike">Spike</option>
+    </select>
+    <label for="modal-task-desc">Description / Spec</label>
+    <textarea id="modal-task-desc" placeholder="Detailed instructions for Copilot..."></textarea>
+    <label style="margin-top:10px;display:flex;align-items:center;gap:6px;cursor:pointer">
+      <input type="checkbox" id="modal-task-review"> Requires human review before marking done
+    </label>
+    <div class="modal-actions">
+      <button onclick="closeTaskModal()">Cancel</button>
+      <button class="danger" id="modal-delete-btn" onclick="deleteTaskFromModal()" style="display:none">Delete</button>
+      <button class="primary" onclick="saveTask()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  CORE DATA MODEL
+// ═══════════════════════════════════════════════════════════
+
+const STATUSES = ['backlog', 'todo', 'in-progress', 'review', 'done'];
+const CONFIDENCE_THRESHOLD = 0.7; // Below this → route to human
+
+let nextId = 1;
+function genId() { return 'task_' + (nextId++); }
+function now() { return Date.now(); }
+
+function createTask(title, desc, type, status, requiresReview) {
+  return {
+    id: genId(), title, description: desc, type: type || 'feature',
+    status: status || 'todo', requiresReview: !!requiresReview,
+    order: now(), createdAt: now(), updatedAt: now(),
+    completionNote: '', feedbackLog: [] // accumulated human feedback
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PLAN STORE — Single source of truth
+// ═══════════════════════════════════════════════════════════
+
+const store = {
+  tasks: [],
+  listeners: [],
+
+  subscribe(fn) { this.listeners.push(fn); },
+  emit(event, data) { this.listeners.forEach(fn => fn(event, data)); },
+
+  addTask(task) {
+    this.tasks.push(task);
+    this.emit('task-added', task);
+    this._persist();
+  },
+
+  updateTask(id, changes) {
+    const task = this.tasks.find(t => t.id === id);
+    if (!task) return null;
+    Object.assign(task, changes, { updatedAt: now() });
+    this.emit('task-updated', task);
+    this._persist();
+    return task;
+  },
+
+  deleteTask(id) {
+    const idx = this.tasks.findIndex(t => t.id === id);
+    if (idx === -1) return;
+    const task = this.tasks.splice(idx, 1)[0];
+    this.emit('task-deleted', task);
+    this._persist();
+  },
+
+  moveTask(id, newStatus) {
+    return this.updateTask(id, { status: newStatus });
+  },
+
+  getByStatus(status) {
+    return this.tasks.filter(t => t.status === status).sort((a, b) => a.order - b.order);
+  },
+
+  getById(id) { return this.tasks.find(t => t.id === id) || null; },
+
+  getNextTodo() {
+    // First unblocked todo by order
+    return this.getByStatus('todo').sort((a, b) => a.order - b.order)[0] || null;
+  },
+
+  counts() {
+    const c = {};
+    STATUSES.forEach(s => c[s] = 0);
+    this.tasks.forEach(t => c[t.status] = (c[t.status] || 0) + 1);
+    return c;
+  },
+
+  clear() {
+    this.tasks = [];
+    nextId = 1;
+    this.emit('store-reset', null);
+    this._persist();
+  },
+
+  _persist() {
+    try { localStorage.setItem('tasksync-plan', JSON.stringify(this.tasks)); } catch {}
+  },
+
+  _restore() {
+    try {
+      const raw = localStorage.getItem('tasksync-plan');
+      if (raw) {
+        this.tasks = JSON.parse(raw);
+        nextId = this.tasks.reduce((max, t) => {
+          const num = parseInt(t.id.replace('task_', ''), 10);
+          return isNaN(num) ? max : Math.max(max, num + 1);
+        }, 1);
+      }
+    } catch {}
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+//  ENGINE — The Smart Router
+// ═══════════════════════════════════════════════════════════
+//
+//  How humans interact with coding agents:
+//  1. Draft tasks at a high level (architect mode)
+//  2. Let agent work autonomously when confidence is high
+//  3. Intervene only when agent is unsure or task is risky
+//  4. Provide constraints and corrections incrementally
+//  5. Review critical outputs before moving on
+//  6. Add new tasks / reprioritize as understanding evolves
+//
+//  The engine models this by being a ROUTER:
+//  - It feeds tasks to Copilot one at a time
+//  - It decides whether Copilot's response needs human input
+//  - It accumulates feedback into the task spec
+//  - It auto-advances when safe, pauses when uncertain
+
+const engine = {
+  running: false,
+  activeTaskId: null,
+  waitingFor: null, // 'copilot' | 'human' | null
+
+  start() {
+    if (this.running) return;
+    this.running = true;
+    engineLog('action', '▶ Engine started');
+    updateControls();
+    this._advance();
+  },
+
+  pause() {
+    this.running = false;
+    engineLog('action', '⏸ Engine paused');
+    updateControls();
+  },
+
+  reset() {
+    this.running = false;
+    this.activeTaskId = null;
+    this.waitingFor = null;
+    store.clear();
+    clearChat('copilot');
+    clearChat('human');
+    clearEngineLog();
+    engineLog('action', '↺ Engine reset');
+    updateControls();
+    renderBoard();
+  },
+
+  // Called when Copilot responds
+  async handleCopilotResponse(type, message, confidence) {
+    if (!this.activeTaskId) return;
+    const task = store.getById(this.activeTaskId);
+    if (!task) return;
+
+    engineLog('action', `Copilot responded: ${type} (confidence: ${(confidence * 100).toFixed(0)}%) — "${message.substring(0, 60)}"`);
+
+    if (type === 'progress') {
+      // Just a status update, keep working
+      addChatMsg('copilot', 'from-user', `📝 ${message}`, confidence);
+      engineLog('decision', `Progress update — Copilot continues working on "${task.title}"`);
+      return;
+    }
+
+    if (type === 'question' || type === 'blocked') {
+      // Copilot needs human input
+      store.moveTask(task.id, 'in-progress'); // stays in progress but blocked on human
+      this.waitingFor = 'human';
+      enableCopilotInput(false);
+      updateIndicators();
+      engineLog('route', `→ Routing to Human: Copilot needs input on "${task.title}"`);
+      await addChatMsgAnimated('human', 'from-ext', `🤖 Copilot asks about "${task.title}":\n\n${message}`, null, 'question', 1200);
+      enableHumanInput(true);
+      updateIndicators();
+      return;
+    }
+
+    if (type === 'confirm') {
+      // Copilot wants validation
+      store.moveTask(task.id, 'review');
+      this.waitingFor = 'human';
+      enableCopilotInput(false);
+      updateIndicators();
+      renderBoard();
+      engineLog('route', `→ Routing to Human: Copilot wants confirmation on "${task.title}" (confidence: ${(confidence * 100).toFixed(0)}%)`);
+      await addChatMsgAnimated('human', 'from-ext', `🔍 Copilot wants your review on "${task.title}":\n\n${message}\n\n📊 Confidence: ${(confidence * 100).toFixed(0)}%`, null, 'review', 1200);
+      enableHumanInput(true);
+      updateIndicators();
+      return;
+    }
+
+    if (type === 'complete') {
+      // Copilot says task is done
+      store.updateTask(task.id, { completionNote: message });
+
+      // Decision tree:
+      // 1. Task requires review → always ask human
+      // 2. Confidence < threshold → ask human to validate
+      // 3. Otherwise → auto-complete and advance
+      if (task.requiresReview) {
+        store.moveTask(task.id, 'review');
+        this.waitingFor = 'human';
+        enableCopilotInput(false);
+        updateIndicators();
+        renderBoard();
+        engineLog('route', `→ Routing to Human: Task "${task.title}" requires review (confidence: ${(confidence * 100).toFixed(0)}%)`);
+        await addChatMsgAnimated('human', 'from-ext', `✅ Copilot completed "${task.title}" — needs your review:\n\n${message}\n\n📊 Confidence: ${(confidence * 100).toFixed(0)}%\n\n⚠️ This task requires review before proceeding.`, null, 'review', 1200);
+        enableHumanInput(true);
+        updateIndicators();
+        return;
+      }
+
+      if (confidence < CONFIDENCE_THRESHOLD) {
+        store.moveTask(task.id, 'review');
+        this.waitingFor = 'human';
+        enableCopilotInput(false);
+        updateIndicators();
+        renderBoard();
+        engineLog('route', `→ Routing to Human: Low confidence (${(confidence * 100).toFixed(0)}%) on "${task.title}" — asking for validation`);
+        await addChatMsgAnimated('human', 'from-ext', `⚠️ Copilot says "${task.title}" is complete but confidence is low (${(confidence * 100).toFixed(0)}%):\n\n${message}\n\nPlease verify.`, null, 'review', 1200);
+        enableHumanInput(true);
+        updateIndicators();
+        return;
+      }
+
+      // Auto-complete — high confidence, no review needed
+      engineLog('decision', `✅ Auto-completing "${task.title}" — high confidence (${(confidence * 100).toFixed(0)}%), no review required`);
+      await addChatMsgAnimated('copilot', 'system', `⏳ Engine evaluating... confidence ${(confidence * 100).toFixed(0)}% ≥ ${CONFIDENCE_THRESHOLD * 100}%, no review needed`, null, null, 600);
+      store.moveTask(task.id, 'done');
+      await addChatMsgAnimated('copilot', 'system', `✅ Task "${task.title}" auto-completed`, null, null, 400);
+      this.activeTaskId = null;
+      this.waitingFor = null;
+      renderBoard();
+      updateIndicators();
+
+      // Auto-advance to next task
+      if (this.running) {
+        await new Promise(r => setTimeout(r, 800));
+        this._advance();
+      }
+    }
+  },
+
+  // Called when Human responds
+  async handleHumanResponse(message, action) {
+    if (!this.activeTaskId) return;
+    const task = store.getById(this.activeTaskId);
+    if (!task) return;
+
+    engineLog('action', `Human responded: ${action} — "${message.substring(0, 60)}"`);
+
+    // Accumulate feedback into task spec
+    if (message && message.trim()) {
+      const entry = `[${new Date().toLocaleTimeString()}] ${message}`;
+      task.feedbackLog = task.feedbackLog || [];
+      task.feedbackLog.push(entry);
+      // Append to description for Copilot context
+      store.updateTask(task.id, {
+        description: task.description + '\n\n--- User Feedback ---\n' + message
+      });
+      engineLog('decision', `📝 Feedback appended to "${task.title}" spec`);
+    }
+
+    if (action === 'approve') {
+      // Human approved → complete and advance
+      enableHumanInput(false);
+      await addChatMsgAnimated('human', 'system', `✅ Approved. Moving to next task.`, null, null, 500);
+      store.moveTask(task.id, 'done');
+      engineLog('decision', `✅ Human approved "${task.title}" → DONE`);
+      await addChatMsgAnimated('copilot', 'system', `✅ Task "${task.title}" approved by human`, null, null, 600);
+      this.activeTaskId = null;
+      this.waitingFor = null;
+      renderBoard();
+      updateIndicators();
+
+      if (this.running) {
+        await new Promise(r => setTimeout(r, 800));
+        this._advance();
+      }
+      return;
+    }
+
+    if (action === 'reject') {
+      // Human rejected → back to in-progress with feedback
+      store.moveTask(task.id, 'in-progress');
+      this.waitingFor = 'copilot';
+      enableHumanInput(false);
+      updateIndicators();
+      renderBoard();
+      const feedback = message || 'Rejected — please revise.';
+      engineLog('route', `→ Routing to Copilot: Human rejected "${task.title}" with feedback`);
+      await addChatMsgAnimated('copilot', 'from-ext', `❌ Human rejected your work on "${task.title}":\n\n${feedback}\n\n📋 Updated spec:\n${task.description.substring(0, 300)}${task.description.length > 300 ? '...' : ''}`, null, null, 1000);
+      enableCopilotInput(true);
+      updateIndicators();
+      return;
+    }
+
+    // Generic feedback (question response, constraints, etc.)
+    store.moveTask(task.id, 'in-progress');
+    this.waitingFor = 'copilot';
+    enableHumanInput(false);
+    updateIndicators();
+    renderBoard();
+    engineLog('route', `→ Routing to Copilot: Human provided input for "${task.title}"`);
+    await addChatMsgAnimated('copilot', 'from-ext', `💬 Human says (re: "${task.title}"):\n\n${message}\n\nContinue working with this context.`, null, null, 1000);
+    enableCopilotInput(true);
+    updateIndicators();
+  },
+
+  async _advance() {
+    if (!this.running) return;
+
+    const next = store.getNextTodo();
+    if (!next) {
+      const inProgressCount = store.getByStatus('in-progress').length;
+      const reviewCount = store.getByStatus('review').length;
+      if (inProgressCount === 0 && reviewCount === 0) {
+        engineLog('decision', '🎉 All tasks complete! Engine paused.');
+        this.running = false;
+        updateControls();
+      } else {
+        engineLog('decision', 'No todo tasks — waiting for in-progress/review tasks to resolve.');
+      }
+      updateIndicators();
+      return;
+    }
+
+    // Pick the task → move to in-progress → send to Copilot
+    this.activeTaskId = next.id;
+    store.moveTask(next.id, 'in-progress');
+    this.waitingFor = 'copilot';
+    renderBoard();
+
+    const feedbackContext = (next.feedbackLog && next.feedbackLog.length > 0)
+      ? '\n\n📝 Previous feedback:\n' + next.feedbackLog.join('\n')
+      : '';
+
+    const prompt = `📋 Task: ${next.title}\nType: ${next.type}\nReview required: ${next.requiresReview ? 'Yes' : 'No'}\n\n${next.description}${feedbackContext}`;
+
+    engineLog('action', `→ Assigning "${next.title}" to Copilot...`);
+    await addChatMsgAnimated('copilot', 'from-ext', prompt, null, null, 1000);
+    enableCopilotInput(true);
+    enableHumanInput(false);
+    updateIndicators();
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+//  COPILOT SIMULATOR
+// ═══════════════════════════════════════════════════════════
+
+const copilotSim = {
+  respond(type, confidence) {
+    const task = store.getById(engine.activeTaskId);
+    if (!task) return;
+
+    const messages = {
+      'complete': `I've finished implementing "${task.title}". All code is written and tested.`,
+      'question': `I need clarification on "${task.title}": What approach should I use for this?`,
+      'confirm': `I've made progress on "${task.title}". Here's what I've done so far — can you verify this is correct?`,
+      'blocked': `I'm stuck on "${task.title}". I don't have enough information to proceed.`,
+      'progress': `Working on "${task.title}" — making good progress. Currently at about ${(confidence * 100).toFixed(0)}% done.`
+    };
+
+    const msg = messages[type] || `Response for "${task.title}"`;
+    addChatMsg('copilot', 'from-user', msg, confidence);
+    engine.handleCopilotResponse(type, msg, confidence);
+  },
+
+  sendCustom() {
+    const input = document.getElementById('copilot-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+
+    // Parse: look for confidence in brackets like [0.8] or [80%]
+    let confidence = 0.5;
+    let type = 'progress';
+    const confMatch = text.match(/\[(\d+(?:\.\d+)?)\%?\]/);
+    if (confMatch) {
+      confidence = parseFloat(confMatch[1]);
+      if (confidence > 1) confidence /= 100;
+    }
+
+    // Detect type from keywords
+    const lower = text.toLowerCase();
+    if (lower.includes('complete') || lower.includes('done') || lower.includes('finished')) type = 'complete';
+    else if (lower.includes('question') || lower.includes('?') || lower.includes('ask')) type = 'question';
+    else if (lower.includes('confirm') || lower.includes('verify') || lower.includes('review')) type = 'confirm';
+    else if (lower.includes('blocked') || lower.includes('stuck') || lower.includes('cannot')) type = 'blocked';
+
+    addChatMsg('copilot', 'from-user', text, confidence);
+    engine.handleCopilotResponse(type, text, confidence);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+//  HUMAN SIMULATOR
+// ═══════════════════════════════════════════════════════════
+
+const humanSim = {
+  respond(action) {
+    const input = document.getElementById('human-input');
+    const text = input.value.trim();
+
+    if (action === 'approve') {
+      addChatMsg('human', 'from-user', text || '✅ Approved');
+      engine.handleHumanResponse(text || '', 'approve');
+    } else if (action === 'reject') {
+      addChatMsg('human', 'from-user', text || '❌ Rejected — needs changes');
+      engine.handleHumanResponse(text || 'Needs changes', 'reject');
+    } else {
+      if (!text) return;
+      addChatMsg('human', 'from-user', text);
+      engine.handleHumanResponse(text, 'feedback');
+    }
+    input.value = '';
+  },
+
+  sendCustom() {
+    const input = document.getElementById('human-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    addChatMsg('human', 'from-user', text);
+    engine.handleHumanResponse(text, 'feedback');
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+//  UI RENDERING
+// ═══════════════════════════════════════════════════════════
+
+// ── Board Rendering ──
+
+function renderBoard() {
+  STATUSES.forEach(status => {
+    const col = document.getElementById('col-' + status);
+    const count = document.getElementById('count-' + status);
+    const tasks = store.getByStatus(status);
+    count.textContent = tasks.length;
+
+    col.innerHTML = '';
+    tasks.forEach(task => {
+      const card = document.createElement('div');
+      card.className = 'task-card' + (task.id === engine.activeTaskId ? ' active' : '');
+      card.draggable = true;
+      card.dataset.taskId = task.id;
+
+      card.innerHTML = `
+        <div class="card-actions">
+          <button onclick="openEditModal('${task.id}')" title="Edit">✏️</button>
+        </div>
+        <div class="card-type ${task.type}">${task.type}</div>
+        <div class="card-title">${escHtml(task.title)}</div>
+        <div class="card-desc">${escHtml(task.description.split('\n')[0])}</div>
+        <div class="card-meta">
+          ${task.requiresReview ? '<span class="review-badge">Review</span>' : ''}
+          ${task.feedbackLog && task.feedbackLog.length > 0 ? '<span>💬' + task.feedbackLog.length + '</span>' : ''}
+          <span>#${task.id.replace('task_', '')}</span>
+        </div>
+      `;
+
+      // Drag handlers
+      card.addEventListener('dragstart', (e) => {
+        card.classList.add('dragging');
+        e.dataTransfer.setData('text/plain', task.id);
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+
+      col.appendChild(card);
+    });
+  });
+
+  updateStats();
+}
+
+// Drag-drop on columns
+STATUSES.forEach(status => {
+  const col = document.getElementById('col-' + status);
+  col.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; col.classList.add('drag-over'); });
+  col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
+  col.addEventListener('drop', (e) => {
+    e.preventDefault();
+    col.classList.remove('drag-over');
+    const taskId = e.dataTransfer.getData('text/plain');
+    if (!taskId) return;
+    const task = store.getById(taskId);
+    if (!task) return;
+
+    // Prevent dragging active tasks or moving to in-progress manually
+    if (status === 'in-progress' && engine.running) {
+      engineLog('error', `Cannot manually move to In Progress while engine is running`);
+      return;
+    }
+
+    store.moveTask(taskId, status);
+    engineLog('action', `Manually moved "${task.title}" → ${status}`);
+    renderBoard();
+  });
+});
+
+function updateStats() {
+  const c = store.counts();
+  const total = store.tasks.length;
+  const done = c['done'] || 0;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  document.getElementById('stats').innerHTML = `
+    <span class="stat"><span class="dot" style="background:var(--text-dim)"></span> ${c['backlog'] || 0} Backlog</span>
+    <span class="stat"><span class="dot" style="background:var(--accent)"></span> ${c['todo'] || 0} Todo</span>
+    <span class="stat"><span class="dot" style="background:var(--yellow)"></span> ${c['in-progress'] || 0} Active</span>
+    <span class="stat"><span class="dot" style="background:var(--orange)"></span> ${c['review'] || 0} Review</span>
+    <span class="stat"><span class="dot" style="background:var(--green)"></span> ${done} Done</span>
+    <span class="stat" style="font-weight:600;color:var(--text)">${pct}%</span>
+  `;
+}
+
+// ── Chat Rendering ──
+
+// Show a typing indicator, then reveal the real message after a delay
+function showTyping(panel, label) {
+  const container = document.getElementById(panel + '-messages');
+  const div = document.createElement('div');
+  div.className = 'typing-indicator';
+  div.id = panel + '-typing';
+  div.innerHTML = `<span class="dot-pulse"></span><span class="dot-pulse"></span><span class="dot-pulse"></span><span class="label">${escHtml(label)}</span>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function hideTyping(panel) {
+  const el = document.getElementById(panel + '-typing');
+  if (el) el.remove();
+}
+
+// Animated message: show typing, then message after delay
+function addChatMsgAnimated(panel, type, content, confidence, tag, delay) {
+  delay = delay || 800;
+  const label = type === 'from-ext' ? 'Extension thinking...'
+    : panel === 'copilot' ? 'Copilot typing...' : 'Human typing...';
+  if (type !== 'system') showTyping(panel, label);
+  return new Promise(resolve => {
+    setTimeout(() => {
+      hideTyping(panel);
+      addChatMsg(panel, type, content, confidence, tag);
+      resolve();
+    }, delay);
+  });
+}
+
+function addChatMsg(panel, type, content, confidence, tag) {
+  const container = document.getElementById(panel + '-messages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + type;
+
+  let html = '';
+  if (type === 'from-ext') html += '<div class="msg-label">↓ Extension</div>';
+  else if (type === 'from-user') html += `<div class="msg-label">↑ ${panel === 'copilot' ? 'Copilot' : 'Human'}</div>`;
+  html += `<div class="msg-content">${escHtml(content)}</div>`;
+
+  if (confidence !== null && confidence !== undefined) {
+    const pct = (confidence * 100).toFixed(0);
+    const cls = confidence >= 0.7 ? 'confidence-high' : confidence >= 0.4 ? 'confidence-mid' : 'confidence-low';
+    html += `<div class="confidence-bar ${cls}"><div class="fill" style="width:${pct}%"></div></div>`;
+    html += `<div class="msg-time">Confidence: ${pct}%</div>`;
+  }
+
+  html += `<div class="msg-time">${new Date().toLocaleTimeString()}</div>`;
+  div.innerHTML = html;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function clearChat(panel) {
+  document.getElementById(panel + '-messages').innerHTML = '';
+}
+
+// ── Input State ──
+
+function enableCopilotInput(enabled) {
+  document.getElementById('copilot-send').disabled = !enabled;
+  ['qa-complete', 'qa-complete-mid', 'qa-question', 'qa-confirm', 'qa-blocked', 'qa-progress'].forEach(id => {
+    document.getElementById(id).disabled = !enabled;
+  });
+}
+
+function enableHumanInput(enabled) {
+  document.getElementById('human-send').disabled = !enabled;
+  ['ha-approve', 'ha-reject', 'ha-feedback'].forEach(id => {
+    document.getElementById(id).disabled = !enabled;
+  });
+}
+
+function updateIndicators() {
+  const ci = document.getElementById('copilot-indicator');
+  const hi = document.getElementById('human-indicator');
+  const cs = document.getElementById('copilot-status');
+  const hs = document.getElementById('human-status');
+  const bm = document.getElementById('board-mode');
+
+  if (!engine.running) {
+    ci.className = 'indicator idle'; hi.className = 'indicator idle';
+    cs.textContent = 'Idle'; hs.textContent = 'Idle'; bm.textContent = 'IDLE';
+  } else if (engine.waitingFor === 'copilot') {
+    ci.className = 'indicator waiting'; hi.className = 'indicator idle';
+    cs.textContent = 'Working...'; hs.textContent = 'Idle'; bm.textContent = 'COPILOT WORKING';
+  } else if (engine.waitingFor === 'human') {
+    ci.className = 'indicator idle'; hi.className = 'indicator waiting';
+    cs.textContent = 'Waiting'; hs.textContent = 'Your turn'; bm.textContent = 'WAITING FOR HUMAN';
+  } else {
+    ci.className = 'indicator active'; hi.className = 'indicator idle';
+    cs.textContent = 'Ready'; hs.textContent = 'Idle'; bm.textContent = 'RUNNING';
+  }
+}
+
+function updateControls() {
+  document.getElementById('btn-start').style.display = engine.running ? 'none' : '';
+  document.getElementById('btn-pause').style.display = engine.running ? '' : 'none';
+}
+
+// ── Engine Log ──
+
+function engineLog(type, msg) {
+  const body = document.getElementById('log-body');
+  const div = document.createElement('div');
+  div.className = 'log-entry ' + type;
+  div.innerHTML = `<span class="ts">[${new Date().toLocaleTimeString()}]</span> ${escHtml(msg)}`;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+}
+
+function clearEngineLog() {
+  document.getElementById('log-body').innerHTML = '';
+}
+
+// ── Task Modal ──
+
+let modalMode = 'add'; // 'add' | 'edit'
+let modalTargetStatus = 'todo';
+let modalEditId = null;
+
+function openTaskModal(status) {
+  modalMode = 'add';
+  modalTargetStatus = status;
+  modalEditId = null;
+  document.getElementById('modal-title').textContent = 'Add Task';
+  document.getElementById('modal-task-title').value = '';
+  document.getElementById('modal-task-type').value = 'feature';
+  document.getElementById('modal-task-desc').value = '';
+  document.getElementById('modal-task-review').checked = false;
+  document.getElementById('modal-delete-btn').style.display = 'none';
+  document.getElementById('task-modal-overlay').classList.add('visible');
+  document.getElementById('modal-task-title').focus();
+}
+
+function openEditModal(taskId) {
+  const task = store.getById(taskId);
+  if (!task) return;
+  modalMode = 'edit';
+  modalEditId = taskId;
+  document.getElementById('modal-title').textContent = 'Edit Task';
+  document.getElementById('modal-task-title').value = task.title;
+  document.getElementById('modal-task-type').value = task.type;
+  document.getElementById('modal-task-desc').value = task.description;
+  document.getElementById('modal-task-review').checked = task.requiresReview;
+  document.getElementById('modal-delete-btn').style.display = '';
+  document.getElementById('task-modal-overlay').classList.add('visible');
+  document.getElementById('modal-task-title').focus();
+}
+
+function closeTaskModal() {
+  document.getElementById('task-modal-overlay').classList.remove('visible');
+}
+
+function saveTask() {
+  const title = document.getElementById('modal-task-title').value.trim();
+  const type = document.getElementById('modal-task-type').value;
+  const desc = document.getElementById('modal-task-desc').value.trim();
+  const review = document.getElementById('modal-task-review').checked;
+
+  if (!title) { document.getElementById('modal-task-title').focus(); return; }
+
+  if (modalMode === 'add') {
+    const task = createTask(title, desc, type, modalTargetStatus, review);
+    store.addTask(task);
+    engineLog('action', `Added task: "${title}" → ${modalTargetStatus}`);
+  } else {
+    store.updateTask(modalEditId, { title, type, description: desc, requiresReview: review });
+    engineLog('action', `Updated task: "${title}"`);
+  }
+
+  closeTaskModal();
+  renderBoard();
+}
+
+function deleteTaskFromModal() {
+  if (!modalEditId) return;
+  const task = store.getById(modalEditId);
+  if (task && task.id === engine.activeTaskId) {
+    engineLog('error', `Cannot delete active task "${task.title}"`);
+    return;
+  }
+  store.deleteTask(modalEditId);
+  engineLog('action', `Deleted task: "${task?.title}"`);
+  closeTaskModal();
+  renderBoard();
+}
+
+// ── Keyboard shortcuts ──
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeTaskModal();
+
+  // Enter to send in focused chat input
+  if (e.key === 'Enter' && !e.shiftKey) {
+    if (document.activeElement === document.getElementById('copilot-input')) {
+      e.preventDefault();
+      copilotSim.sendCustom();
+    } else if (document.activeElement === document.getElementById('human-input')) {
+      e.preventDefault();
+      humanSim.sendCustom();
+    }
+  }
+});
+
+// ── Utility ──
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SAMPLE PROJECT
+// ═══════════════════════════════════════════════════════════
+
+function loadSampleProject() {
+  store.clear();
+  clearChat('copilot');
+  clearChat('human');
+  clearEngineLog();
+  engine.running = false;
+  engine.activeTaskId = null;
+  engine.waitingFor = null;
+
+  const tasks = [
+    createTask('Setup project scaffolding', 'Initialize the project with package.json, TypeScript config, ESLint, and folder structure.\n\nRequirements:\n- Node.js project with TypeScript\n- ESLint + Prettier\n- src/, test/, dist/ folders\n- Basic README.md', 'task', 'todo', false),
+    createTask('Design database schema', 'Design PostgreSQL schema for the user management system.\n\nTables needed:\n- users (id, email, password_hash, name, role, created_at, updated_at)\n- sessions (id, user_id, token, expires_at)\n- audit_log (id, user_id, action, details, timestamp)\n\nInclude indexes and constraints.', 'feature', 'todo', true),
+    createTask('Implement user registration API', 'POST /api/auth/register endpoint.\n\nAccepts: { email, password, name }\nValidation: email format, password strength (min 8 chars, 1 number, 1 special)\nReturns: { user: { id, email, name }, token }\n\nHash passwords with bcrypt (cost factor 12).\nSend welcome email via queue (don\'t block response).', 'feature', 'todo', true),
+    createTask('Implement login & JWT tokens', 'POST /api/auth/login endpoint.\n\nAccepts: { email, password }\nReturns: { accessToken, refreshToken, expiresIn }\n\nAccess token: 15min expiry\nRefresh token: 7 day expiry, stored in DB\nRate limit: 5 attempts per minute per IP', 'feature', 'todo', false),
+    createTask('Fix CORS configuration', 'Current CORS setup allows all origins. Need to:\n- Whitelist specific origins from environment config\n- Handle preflight correctly\n- Allow credentials for cookie-based auth fallback', 'bug', 'todo', false),
+    createTask('Add request logging middleware', 'Log all API requests with:\n- Method, URL, status code, response time\n- Request ID (UUID) for tracing\n- User ID if authenticated\n- Sanitize sensitive fields (password, token)\n\nOutput as JSON for structured logging.', 'task', 'backlog', false),
+    createTask('Research OAuth2 providers', 'Investigate adding Google and GitHub OAuth2 login.\n\nEvaluate:\n- passport.js vs custom implementation\n- Token exchange flow\n- Profile data mapping\n- Account linking (existing email match)', 'spike', 'backlog', false),
+  ];
+
+  tasks.forEach(t => store.addTask(t));
+  engineLog('action', `📦 Loaded sample project: User Auth System (${tasks.length} tasks)`);
+  renderBoard();
+  updateControls();
+  updateIndicators();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+
+store.subscribe((event, data) => {
+  // Re-render on any change
+  renderBoard();
+});
+
+// Restore from localStorage or load sample
+store._restore();
+if (store.tasks.length === 0) {
+  loadSampleProject();
+} else {
+  renderBoard();
+  engineLog('action', `Restored ${store.tasks.length} tasks from previous session`);
+}
+updateControls();
+updateIndicators();
+
+</script>
+</body>
+</html>

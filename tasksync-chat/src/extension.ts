@@ -227,8 +227,14 @@ export function activate(context: vscode.ExtensionContext) {
         const remotePort = vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<number>('remotePort', 3000);
         context.subscriptions.push(
             vscode.commands.registerCommand('askaway.startRemote', async () => {
-                await ensureRemoteServer(context, provider);
-                await startRemoteServer(remotePort);
+                try {
+                    await ensureRemoteServer(context, provider);
+                    await startRemoteServer(remotePort);
+                } catch (err: any) {
+                    const msg = err?.message ?? String(err);
+                    vscode.window.showErrorMessage(`AskAway Remote Server failed to start: ${msg}`);
+                    outputChannel.appendLine(`[AskAway] Remote server start error: ${msg}\n${err?.stack ?? ''}`);
+                }
             }),
             vscode.commands.registerCommand('askaway.stopRemote', () => {
                 if (remoteServer) {
@@ -245,8 +251,14 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             }),
             vscode.commands.registerCommand('askaway.toggleRemoteStart', async () => {
-                await ensureRemoteServer(context, provider);
-                await startRemoteServer(remotePort);
+                try {
+                    await ensureRemoteServer(context, provider);
+                    await startRemoteServer(remotePort);
+                } catch (err: any) {
+                    const msg = err?.message ?? String(err);
+                    vscode.window.showErrorMessage(`AskAway Remote Server failed to start: ${msg}`);
+                    outputChannel.appendLine(`[AskAway] Remote server start error: ${msg}\n${err?.stack ?? ''}`);
+                }
             }),
             vscode.commands.registerCommand('askaway.toggleRemoteStop', async () => {
                 if (!remoteServer) return;
