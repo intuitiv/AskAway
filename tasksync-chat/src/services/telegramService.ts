@@ -72,22 +72,14 @@ export class TelegramService {
     // ── Forum Topics (Telegram groups with "Topics" enabled) ──
     /** null = not yet checked, false = regular chat, true = forum group */
     private _isForum: boolean | null = null;
-    /** workspace name → Telegram thread/topic ID */
+    /** workspace name → Telegram thread/topic ID (in-memory cache, loaded from Telegram on first use) */
     private _topicIds: Map<string, number> = new Map();
-    /** workspace name → last used timestamp (for TTL) */
-    private _topicLastUsed: Map<string, number> = new Map();
-    /** VS Code extension context for globalState persistence */
-    private _extContext: vscode.ExtensionContext | undefined;
+    /** Whether we have already fetched existing topics from Telegram for this session */
+    private _forumTopicsLoaded: boolean = false;
 
     constructor(outputChannel?: vscode.OutputChannel) {
         this._out = outputChannel;
         this.reloadConfig();
-    }
-
-    /** Call once after construction to enable topic persistence across restarts */
-    setExtensionContext(ctx: vscode.ExtensionContext): void {
-        this._extContext = ctx;
-        this._loadTopicCache();
     }
 
     private _log(msg: string): void {
@@ -241,37 +233,35 @@ export class TelegramService {
             ?? 'AskAway';
     }
 
-    /** Load persisted topic IDs from globalState, discarding entries older than 7 days */
-    private _loadTopicCache(): void {
-        if (!this._extContext) { return; }
-        type CacheEntry = { threadId: number; lastUsed: number };
-        const cache = this._extContext.globalState.get<Record<string, CacheEntry>>('askaway.telegramTopics', {});
-        const ttlMs = 7 * 24 * 60 * 60 * 1000;
-        const now = Date.now();
-        for (const [name, entry] of Object.entries(cache)) {
-            if (now - entry.lastUsed < ttlMs) {
-                this._topicIds.set(name, entry.threadId);
-                this._topicLastUsed.set(name, entry.lastUsed);
+    /**
+     * Fetch all existing forum topics from Telegram once per session and
+     * populate _topicIds. This lets us reuse existing topics across restarts
+     * without needing local storage.
+     */
+    private async _ensureForumTopicsLoaded(): Promise<void> {
+        if (this._forumTopicsLoaded) { return; }
+        this._forumTopicsLoaded = true; // set before await to prevent concurrent fetches
+        try {
+            const resp = await fetch(this._apiUrl('getForumTopics'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: this._chatId, limit: 100 })
+            });
+            if (resp.ok) {
+                const data = await resp.json() as any;
+                const topics: Array<{ message_thread_id: number; name: string }> = data.result?.topics ?? [];
+                for (const t of topics) {
+                    if (t.name && t.message_thread_id) {
+                        this._topicIds.set(t.name, t.message_thread_id);
+                    }
+                }
+                this._log(`AskAway/Telegram: Loaded ${topics.length} existing forum topic(s) from Telegram`);
+            } else {
+                this._warn(`AskAway/Telegram: getForumTopics failed (${resp.status}) — will create topics as needed`);
             }
+        } catch (e) {
+            this._warn(`AskAway/Telegram: getForumTopics error: ${e}`);
         }
-        const retained = this._topicIds.size;
-        const dropped = Object.keys(cache).length - retained;
-        this._log(`AskAway/Telegram: Loaded ${retained} topic(s) from cache${dropped > 0 ? `, dropped ${dropped} expired` : ''}`);
-        if (dropped > 0) {
-            // Persist the cleaned-up cache
-            void this._saveTopicCache();
-        }
-    }
-
-    /** Save current topic IDs to globalState */
-    private async _saveTopicCache(): Promise<void> {
-        if (!this._extContext) { return; }
-        type CacheEntry = { threadId: number; lastUsed: number };
-        const cache: Record<string, CacheEntry> = {};
-        for (const [name, threadId] of this._topicIds) {
-            cache[name] = { threadId, lastUsed: this._topicLastUsed.get(name) ?? Date.now() };
-        }
-        await this._extContext.globalState.update('askaway.telegramTopics', cache);
     }
 
     /**
@@ -307,10 +297,10 @@ export class TelegramService {
         const isForum = await this._detectForum();
         if (!isForum) { return undefined; }
 
+        // Load existing topics from Telegram on first use (avoids duplicate topic creation)
+        await this._ensureForumTopicsLoaded();
+
         if (this._topicIds.has(workspaceName)) {
-            // Refresh TTL on use
-            this._topicLastUsed.set(workspaceName, Date.now());
-            void this._saveTopicCache();
             return this._topicIds.get(workspaceName);
         }
 
@@ -325,8 +315,6 @@ export class TelegramService {
                 const topicId: number = data.result?.message_thread_id;
                 if (topicId) {
                     this._topicIds.set(workspaceName, topicId);
-                    this._topicLastUsed.set(workspaceName, Date.now());
-                    void this._saveTopicCache();
                     this._log(`AskAway/Telegram: Created forum topic "${workspaceName}" — thread_id=${topicId}`);
                     return topicId;
                 }
