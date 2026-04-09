@@ -824,6 +824,19 @@ export class TelegramService {
 
             if (!resp.ok) {
                 this._err(`AskAway/Telegram: Poll HTTP error ${resp.status} ${resp.statusText}`);
+                if (resp.status === 409) {
+                    // 409 Conflict = another instance is polling the same bot token.
+                    // Back off significantly to let the other instance win, then retry.
+                    this._warn('AskAway/Telegram: 409 Conflict — another polling instance detected. Backing off 60s before retrying.');
+                    this.stopPolling();
+                    setTimeout(() => {
+                        if (this._activeTasks.size > 0 && this._enabled) {
+                            this._pollTickIndex = 0;
+                            this.startPolling();
+                        }
+                    }, 60_000);
+                    return;
+                }
                 if (resp.status === 401) {
                     this._err('AskAway/Telegram: Bot token is invalid or expired.');
                     vscode.window.showErrorMessage(
