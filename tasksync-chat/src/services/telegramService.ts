@@ -74,10 +74,20 @@ export class TelegramService {
     private _isForum: boolean | null = null;
     /** workspace name → Telegram thread/topic ID */
     private _topicIds: Map<string, number> = new Map();
+    /** workspace name → last used timestamp (for TTL) */
+    private _topicLastUsed: Map<string, number> = new Map();
+    /** VS Code extension context for globalState persistence */
+    private _extContext: vscode.ExtensionContext | undefined;
 
     constructor(outputChannel?: vscode.OutputChannel) {
         this._out = outputChannel;
         this.reloadConfig();
+    }
+
+    /** Call once after construction to enable topic persistence across restarts */
+    setExtensionContext(ctx: vscode.ExtensionContext): void {
+        this._extContext = ctx;
+        this._loadTopicCache();
     }
 
     private _log(msg: string): void {
@@ -224,9 +234,44 @@ export class TelegramService {
 
     // ── Forum Topics ───────────────────────────────────────────
 
-    /** Get current workspace name (first folder name, or "AskAway" fallback) */
+    /** Get current workspace name: workspace file name → first folder name → fallback */
     private _workspaceName(): string {
-        return vscode.workspace.workspaceFolders?.[0]?.name ?? 'AskAway';
+        return vscode.workspace.name
+            ?? vscode.workspace.workspaceFolders?.[0]?.name
+            ?? 'AskAway';
+    }
+
+    /** Load persisted topic IDs from globalState, discarding entries older than 7 days */
+    private _loadTopicCache(): void {
+        if (!this._extContext) { return; }
+        type CacheEntry = { threadId: number; lastUsed: number };
+        const cache = this._extContext.globalState.get<Record<string, CacheEntry>>('askaway.telegramTopics', {});
+        const ttlMs = 7 * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        for (const [name, entry] of Object.entries(cache)) {
+            if (now - entry.lastUsed < ttlMs) {
+                this._topicIds.set(name, entry.threadId);
+                this._topicLastUsed.set(name, entry.lastUsed);
+            }
+        }
+        const retained = this._topicIds.size;
+        const dropped = Object.keys(cache).length - retained;
+        this._log(`AskAway/Telegram: Loaded ${retained} topic(s) from cache${dropped > 0 ? `, dropped ${dropped} expired` : ''}`);
+        if (dropped > 0) {
+            // Persist the cleaned-up cache
+            void this._saveTopicCache();
+        }
+    }
+
+    /** Save current topic IDs to globalState */
+    private async _saveTopicCache(): Promise<void> {
+        if (!this._extContext) { return; }
+        type CacheEntry = { threadId: number; lastUsed: number };
+        const cache: Record<string, CacheEntry> = {};
+        for (const [name, threadId] of this._topicIds) {
+            cache[name] = { threadId, lastUsed: this._topicLastUsed.get(name) ?? Date.now() };
+        }
+        await this._extContext.globalState.update('askaway.telegramTopics', cache);
     }
 
     /**
@@ -263,6 +308,9 @@ export class TelegramService {
         if (!isForum) { return undefined; }
 
         if (this._topicIds.has(workspaceName)) {
+            // Refresh TTL on use
+            this._topicLastUsed.set(workspaceName, Date.now());
+            void this._saveTopicCache();
             return this._topicIds.get(workspaceName);
         }
 
@@ -277,6 +325,8 @@ export class TelegramService {
                 const topicId: number = data.result?.message_thread_id;
                 if (topicId) {
                     this._topicIds.set(workspaceName, topicId);
+                    this._topicLastUsed.set(workspaceName, Date.now());
+                    void this._saveTopicCache();
                     this._log(`AskAway/Telegram: Created forum topic "${workspaceName}" — thread_id=${topicId}`);
                     return topicId;
                 }
