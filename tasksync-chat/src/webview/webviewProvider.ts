@@ -48,6 +48,7 @@ export interface ToolCallEntry {
     prompt: string;
     response: string;
     timestamp: number;
+    askedAt?: number;
     isFromQueue: boolean;
     status: 'pending' | 'completed' | 'cancelled';
     attachments?: AttachmentInfo[];
@@ -1287,6 +1288,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             prompt: question,
             response: '',
             timestamp: Date.now(),
+            askedAt: Date.now(),
             isFromQueue: false,
             status: 'pending'
         };
@@ -1410,6 +1412,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             prompt: `🎤 ${question}`,
             response: '',
             timestamp: Date.now(),
+            askedAt: Date.now(),
             isFromQueue: false,
             status: 'pending'
         };

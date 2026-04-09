@@ -328,6 +328,16 @@ body {
     flex-shrink: 1;
 }
 
+.tool-call-timestamp {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-left: 6px;
+    opacity: 0.8;
+}
+
 .tool-call-remove {
     display: flex;
     align-items: center;

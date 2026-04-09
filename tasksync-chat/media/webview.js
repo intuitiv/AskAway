@@ -1365,6 +1365,7 @@
             var firstSentence = tc.prompt.split(/[.!?]/)[0];
             var truncatedTitle = firstSentence.length > 120 ? firstSentence.substring(0, 120) + '...' : firstSentence;
             var queueBadge = tc.isFromQueue ? '<span class="tool-call-badge queue">Queue</span>' : '';
+            var tsHtml = formatCallTimestamp(tc.askedAt, tc.timestamp);
 
             // Build card HTML - NO X button for current session cards
             var isLatest = index === sortedCalls.length - 1;
@@ -1374,6 +1375,7 @@
                 '<div class="tool-call-icon"><span class="codicon codicon-copilot"></span></div>' +
                 '<div class="tool-call-header-wrapper">' +
                 '<span class="tool-call-title">' + escapeHtml(truncatedTitle) + queueBadge + '</span>' +
+                (tsHtml ? '<span class="tool-call-timestamp">' + tsHtml + '</span>' : '') +
                 '</div>' +
                 '</div>' +
                 '<div class="tool-call-body">' +
@@ -1416,6 +1418,7 @@
             var firstSentence = tc.prompt.split(/[.!?]/)[0];
             var truncatedTitle = firstSentence.length > 80 ? firstSentence.substring(0, 80) + '...' : firstSentence;
             var queueBadge = tc.isFromQueue ? '<span class="tool-call-badge queue">Queue</span>' : '';
+            var tsHtml = formatCallTimestamp(tc.askedAt, tc.timestamp);
 
             return '<div class="tool-call-card history-card" data-id="' + escapeHtml(tc.id) + '">' +
                 '<div class="tool-call-header">' +
@@ -1423,6 +1426,7 @@
                 '<div class="tool-call-icon"><span class="codicon codicon-copilot"></span></div>' +
                 '<div class="tool-call-header-wrapper">' +
                 '<span class="tool-call-title">' + escapeHtml(truncatedTitle) + queueBadge + '</span>' +
+                (tsHtml ? '<span class="tool-call-timestamp">' + tsHtml + '</span>' : '') +
                 '</div>' +
                 '<button class="tool-call-remove" data-id="' + escapeHtml(tc.id) + '" title="Remove"><span class="codicon codicon-close"></span></button>' +
                 '</div>' +
@@ -3183,6 +3187,23 @@
         var div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    /** Format ask/reply timestamps for tool call cards.
+     *  askedAt: when the question was shown (ms epoch)
+     *  answeredAt: when the user replied (ms epoch, = tc.timestamp)
+     *  Returns e.g. "14:32 → 14:35" or just "14:32" if no answer yet.
+     */
+    function formatCallTimestamp(askedAt, answeredAt) {
+        var t = askedAt || answeredAt;
+        if (!t) { return ''; }
+        function fmt(ms) {
+            var d = new Date(ms);
+            return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+        }
+        var asked = fmt(t);
+        if (!answeredAt || !askedAt || answeredAt === askedAt) { return asked; }
+        return asked + ' → ' + fmt(answeredAt);
     }
 
     function renderAttachmentsHtml(attachments) {
