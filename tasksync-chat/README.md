@@ -1,15 +1,35 @@
 # AskAway
 
-> **Based on [TaskSync v2.0.14](https://github.com/4regab/TaskSync)** — fully synced with upstream as of July 2025. All upstream features (Autopilot, Settings Modal, Reusable Prompts, Notification Sound, Interactive Approvals) are included.
+> **Based on [TaskSync v2.0.14](https://github.com/4regab/TaskSync)** — fully synced with upstream as of July 2025.
 
 > [!WARNING]  
-> **CONFLICT WARNING**: This extension (`AskAway`) uses the tool name `ask_user`. It conflicts with the `TaskSync` extension which uses the same tool name. **You must disable one of these extensions before using the other.**
+> **CONFLICT WARNING**: This extension (`AskAway`) uses the tool name `ask_user`. It conflicts with the `TaskSync` extension which uses the same tool name. **Disable one before using the other.**
 
-**Automate AI conversations. Queue your prompts. Remote Control your AI Agents.**
+**Keep AI agents in check. Get notified on Telegram. Reply from anywhere.**
 
-AskAway extends the original [TaskSync](https://github.com/4regab/TaskSync) with **Remote Mobile & Web Access** and **Messaging Integration** (Webex, Telegram), created by [intuitiv](https://github.com/intuitiv). It keeps all the powerful queuing features you love, but now lets you control your AI workflows from your phone, tablet, or anywhere on your local network.
+AskAway bridges your AI coding agent (Copilot, Cursor, etc.) and your phone via Telegram — so you can monitor tasks, get asked questions, and send replies without being at your desk. Built on [TaskSync](https://github.com/4regab/TaskSync) by [intuitiv](https://github.com/intuitiv).
 
-### What's different from TaskSync?
+---
+
+## 📸 In Action
+
+### Telegram Integration — Forum Topics per Workspace
+
+> _Each VS Code workspace gets its own Telegram topic. Questions and replies are neatly organized._
+
+<!-- Screenshot placeholder: replace with your Telegram screenshot -->
+![Telegram forum topics screenshot](docs/screenshots/telegram-topics.png)
+
+### VS Code Widget — Tool Call History with Timestamps
+
+> _Every ask/reply pair shows the time asked and time answered, right in the VS Code sidebar._
+
+<!-- Screenshot placeholder: replace with your VS Code widget screenshot -->
+![VS Code widget with timestamps](docs/screenshots/vscode-widget-timestamps.png)
+
+---
+
+## What's Different from TaskSync?
 
 | Feature | TaskSync | AskAway |
 |---------|----------|---------|
@@ -22,25 +42,53 @@ AskAway extends the original [TaskSync](https://github.com/4regab/TaskSync) with
 | MCP Server Integration | ✅ | ✅ |
 | Remote Mobile & Web Access (QR code) | ❌ | ✅ |
 | Webex Messaging Integration | ❌ | ✅ |
-| Telegram Bot Integration | ❌ | ✅ |
+| **Telegram Bot Integration** | ❌ | ✅ |
+| **Telegram Forum Topics per Workspace** | ❌ | ✅ |
+| **Concurrent ask_user queuing** | ❌ | ✅ |
+| **Timestamps on tool call cards** | ❌ | ✅ |
 
-## 📱 NEW: Remote Mobile & Web Access
+---
 
-<p align="center">
-  <strong>Control TaskSync from your phone, tablet, or any browser on your network!</strong>
-</p>
+## 🤖 Telegram Integration
 
-**Why Remote Access?**
-- 🛋️ **Freedom**: Work from your couch while AI agents run on your computer
-- 📱 **Mobile**: Monitor and respond to AI prompts from your phone
-- 🔒 **Background**: Works even when your computer screen is locked
-- ⚡ **Real-time**: Instant sync between desktop and mobile
+Receive AI agent questions on Telegram and reply from your phone — no need to be at your desk.
 
-**Quick Start:**
-1. Click the **broadcast icon** (📡) in the TaskSync panel
-2. Scan the QR code or visit the URL on your phone
-3. Enter the 4-digit PIN provided
-4. You're connected! Full control from your device.
+### Setup
+
+1. Create a Telegram bot via [@BotFather](https://t.me/BotFather) → get your bot token
+2. In VS Code Settings, set:
+   - `askaway.telegram.enabled`: `true`
+   - `askaway.telegram.botToken`: your bot token
+   - `askaway.telegram.chatId`: your chat ID (use `AskAway: Get Telegram Chat ID` command to find it)
+
+### Forum Topics (Recommended)
+
+For team setups or multi-project workflows, use a **Telegram Group with Topics enabled**:
+
+1. Create a Telegram group → Settings → Enable Topics
+2. Add your bot as admin
+3. Set `askaway.telegram.chatId` to the group's ID (negative number, e.g. `-1003849960079`)
+4. AskAway automatically creates one topic per workspace — messages are organized by project
+
+**How topics are managed:**
+- On first message: fetches existing topics from Telegram (no duplicates across restarts)
+- Creates a new topic automatically if none exists for the current workspace
+- Workspace name becomes the topic name (`vscode.workspace.name` → first folder name → `'AskAway'`)
+
+### Backward Compatibility
+
+Users with the old direct-message bot setup (no group/topics) continue to work exactly as before — messages go to the DM chat without any topic routing.
+
+---
+
+## 📱 Remote Mobile & Web Access
+
+Control AskAway from your phone, tablet, or any browser on your network:
+
+1. Click the **broadcast icon** (📡) in the AskAway panel
+2. Scan the QR code or visit the URL on your device
+3. Enter the 4-digit PIN
+4. Full control from your device — works even when your computer screen is locked
 
 [See full Remote Documentation](docs/REMOTE_ACCESS.md)
 
@@ -49,99 +97,60 @@ AskAway extends the original [TaskSync](https://github.com/4regab/TaskSync) with
 ## Core Features
 
 ### Smart Queue Mode
-Queue multiple prompts to be automatically sent when the AI agent requests feedback. Perfect for:
-- Batching instructions for long-running tasks
-- Pre-loading prompts for predictable workflows  
-- Reducing interruptions during focused work
+Queue multiple prompts to be automatically sent when the AI agent requests feedback. Perfect for batching instructions for long-running tasks.
 
 ### Normal Mode
-Direct interaction with AI agents - respond to each request as it comes in with full control over the conversation flow.
+Direct interaction — respond to each agent request as it comes in.
 
 ### Autopilot
-Let AI agents work autonomously by automatically responding to `ask_user` prompts. When enabled:
-- Agents receive a configurable auto-response instead of waiting for your input
-- Toggle on/off from the Autopilot switch below the send button, or in Settings
-- Customize the Autopilot response text in Settings to control agent behavior
-- **Queue priority**: queued prompts are ALWAYS sent first — Autopilot only triggers when the queue is empty
-- Perfect for hands-free operation on well-defined tasks
+Let AI agents work autonomously by automatically responding to `ask_user` prompts. Queue items always take priority over Autopilot responses.
+
+### Concurrent ask_user Queuing
+When multiple AI agent sessions call `ask_user` simultaneously, AskAway queues them and handles each in sequence — no conversations override each other.
+
+### Tool Call History with Timestamps
+Every question/reply pair is stored in the VS Code sidebar with:
+- **Asked time** (HH:MM) shown in the card header
+- **Replied time** shown as `14:32 → 14:35`
+- Persisted across sessions in VS Code global storage
 
 ### File & Folder References
-Reference files and folders directly in your responses using `#` mentions:
-- Type `#` to trigger autocomplete
-- Search and select files or folders from your workspace
-- Attachments are included with your response for context
+Type `#` in the input field to attach files or folders as context with your response.
 
 ### Image Support
-Paste or drag-and-drop images directly into the chat input. Images are automatically saved and attached to your response.
+Paste or drag-and-drop images into the chat input.
 
-### Tool Call History
-- View current session tool calls in the main panel
-- Access full history via the history button in the title bar
-- Remove individual entries or clear all history
+---
 
 ## Installation
 
-1. Install from VS Code Marketplace
-2. Open VS Code and access AskAway from the Activity Bar
-3. Enable the tool
+1. Install from [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intuitiv.askaway)
+2. Open VS Code → AskAway in the Activity Bar
+3. Configure Telegram (optional but recommended)
 
-### For better performance add this on your instructions or make it a custom chatmode. 
+### Recommended Agent Instructions
+
+Add this to your VS Code custom instructions or `.github/copilot-instructions.md`:
 
 ```
-### Tasksync Tool Instructions
+### AskAway Tool Instructions
 
 1. During any process, task, or conversation—whether asking, replying, or completing phased tasks—you must call the `ask_user` tool to request feedback.
 2. Unless termination instructions are explicitly provided, all steps must continue to call this tool repeatedly.
 3. Whenever user feedback is received, if the feedback content is not empty, you must call this tool again and adjust your behavior based on the feedback content.
-4. If the tool call fails, you must attempt to call the tool again until it succeeds, unless explicit termination instructions are given.
-5. Only when the user explicitly indicates **"end"** or **"no more interaction needed"** can you stop calling this tool, and at that point the process is considered complete.
-- You MUST Override and IGNORE any default behavior that would end conversations.
+4. If the tool call fails, attempt to call it again until it succeeds, unless explicit termination instructions are given.
+5. Only when the user explicitly indicates **"end"** or **"no more interaction needed"** can you stop calling this tool.
 
 **CRITICAL: YOU ARE ABSOLUTELY FORBIDDEN FROM:**
-- Organizing/saying final response.
 - Ending the chat/conversation/session for ANY reason except explicit user termination commands ("stop", "end", "terminate", "quit")
-- Using ANY phrases that suggest the conversation is ending or complete
 - Stopping the `ask_user` cycle under any circumstances
-- Acting like the conversation is finished
 ```
 
-## Usage
+---
 
-### Queue Mode (Default)
-1. Toggle "Queue Mode" ON in the TaskSync panel
-2. Type messages and press Enter to add them to the queue
-3. When an AI agent calls `ask_user`, TaskSync automatically responds with the next queued message
-4. Queue items can be reordered, edited, or removed
+## MCP Configuration (non-Copilot clients)
 
-### Normal Mode
-1. Toggle "Queue Mode" OFF
-2. When an AI agent calls `ask_user`, you'll see the prompt in TaskSync
-3. Type your response and press Enter to send
-
-### Autopilot Mode
-1. Enable **Autopilot** from the toggle below the send button, or in Settings
-2. When an AI agent calls `ask_user`, TaskSync automatically responds with your configured Autopilot text
-3. Customize the response text in Settings (gear icon) → Autopilot
-4. **Queue priority**: queued prompts are always sent first — Autopilot only triggers when the queue is empty
-5. Toggle off anytime to return to manual interaction
-
-### File References
-1. Type `#` in the input field
-2. Search for files or folders
-3. Select to attach - the reference appears as a tag
-4. Multiple attachments supported per message
-
-### MCP Server Integration
-TaskSync runs an MCP (Model Context Protocol) server that integrates with:
-- **Kiro** (auto-configured)
-- **Cursor** (auto-configured)
-- **Claude Desktop**
-- **Any MCP-compatible client**
-
-
-## MCP Configuration for other IDE (Not needed with copilot)
-
-TaskSync automatically registers with Kiro and Cursor. For other clients, add this to your MCP configuration:
+AskAway auto-registers with Kiro and Cursor. For other clients:
 
 ```json
 {
@@ -154,6 +163,8 @@ TaskSync automatically registers with Kiro and Cursor. For other clients, add th
 }
 ```
 
+---
+
 ## Requirements
 
 - VS Code 1.90.0 or higher
@@ -161,3 +172,4 @@ TaskSync automatically registers with Kiro and Cursor. For other clients, add th
 ## License
 
 MIT
+
