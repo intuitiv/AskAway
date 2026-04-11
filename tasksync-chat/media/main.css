@@ -323,6 +323,7 @@ body {
     font-weight: 400;
     color: var(--vscode-foreground);
     overflow: hidden;
+    flex: 1;
     text-overflow: ellipsis;
     white-space: nowrap;
     flex-shrink: 1;

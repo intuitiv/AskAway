@@ -9,6 +9,8 @@ type TelegramChoice = string | { label: string; value: string; shortLabel?: stri
 interface TrackedTask {
     taskId: string;
     messageId: number;   // Telegram message_id of the posted question
+    /** Forum topic thread ID (message_thread_id) — undefined for non-forum chats */
+    topicId?: number;
     question: string;
     choices?: TelegramChoice[];
     timestamp: number;
@@ -454,6 +456,7 @@ export class TelegramService {
                 this._activeTasks.set(taskId, {
                     taskId,
                     messageId: fallbackMsgId,
+                    topicId,
                     question,
                     choices,
                     timestamp: Date.now(),
@@ -472,6 +475,7 @@ export class TelegramService {
             this._activeTasks.set(taskId, {
                 taskId,
                 messageId,
+                topicId,
                 question,
                 choices,
                 timestamp: Date.now(),
@@ -937,6 +941,20 @@ export class TelegramService {
 
                     // Skip messages from the bot itself
                     if (this._botId && msg.from?.id === this._botId) { continue; }
+
+                    // Forum topic routing: if this window's active task is bound to a specific
+                    // topic, only accept messages from that same thread. This prevents the
+                    // TaskSync window from consuming replies intended for the StockAnalysis
+                    // window (both share the same bot token and call getUpdates).
+                    const msgThreadId: number | undefined = msg.message_thread_id;
+                    if (msgThreadId !== undefined) {
+                        // Message is inside a forum topic — find the owning task
+                        const owningTask = [...this._activeTasks.values()].find(t => t.topicId === msgThreadId);
+                        if (!owningTask) {
+                            // No task in this window owns that topic — skip, let the right window consume it
+                            continue;
+                        }
+                    }
 
                     // Check if this is a reply to one of our messages
                     const replyToMsgId = msg.reply_to_message?.message_id;
