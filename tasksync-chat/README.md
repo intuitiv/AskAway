@@ -17,14 +17,12 @@ AskAway bridges your AI coding agent (Copilot, Cursor, etc.) and your phone via 
 
 > _Each VS Code workspace gets its own Telegram topic. Questions and replies are neatly organized._
 
-<!-- Screenshot placeholder: replace with your Telegram screenshot -->
 ![Telegram forum topics screenshot](docs/screenshots/telegram-topics.png)
 
 ### VS Code Widget — Tool Call History with Timestamps
 
 > _Every ask/reply pair shows the time asked and time answered, right in the VS Code sidebar._
 
-<!-- Screenshot placeholder: replace with your VS Code widget screenshot -->
 ![VS Code widget with timestamps](docs/screenshots/vscode-widget-timestamps.png)
 
 ---
@@ -49,35 +47,51 @@ AskAway bridges your AI coding agent (Copilot, Cursor, etc.) and your phone via 
 
 ---
 
-## 🤖 Telegram Integration
+## 🤖 Telegram Setup (5 minutes)
 
-Receive AI agent questions on Telegram and reply from your phone — no need to be at your desk.
+Receive AI agent questions on your phone and reply from anywhere. Here's everything in one place:
 
-### Setup
+### Step 1 — Create a Bot
 
-1. Create a Telegram bot via [@BotFather](https://t.me/BotFather) → get your bot token
-2. In VS Code Settings, set:
-   - `askaway.telegram.enabled`: `true`
-   - `askaway.telegram.botToken`: your bot token
-   - `askaway.telegram.chatId`: your chat ID (use `AskAway: Get Telegram Chat ID` command to find it)
+1. Open Telegram → search for **[@BotFather](https://t.me/BotFather)**
+2. Send `/newbot` → choose a name (e.g. "My AskAway Bot") → choose a username ending in `bot`
+3. BotFather sends you a **token** like `1234567890:ABCDefGhIJKlmNOPqrSTUvwxYZ` — copy it
 
-### Forum Topics (Recommended)
+### Step 2 — Create a Group with Topics
 
-For team setups or multi-project workflows, use a **Telegram Group with Topics enabled**:
+> _Skip this if you just want 1:1 DM notifications — just message the bot and use its DM chat ID._
 
-1. Create a Telegram group → Settings → Enable Topics
-2. Add your bot as admin
-3. Set `askaway.telegram.chatId` to the group's ID (negative number, e.g. `-1003849960079`)
-4. AskAway automatically creates one topic per workspace — messages are organized by project
+1. Create a new Telegram group (any name, e.g. "AI Workspace")
+2. Open the group → **Edit** → **Topics** → enable it
+3. Add your bot to the group and **make it admin** (needs "Manage Topics" + "Post Messages" permissions)
 
-**How topics are managed:**
-- On first message: fetches existing topics from Telegram (no duplicates across restarts)
-- Creates a new topic automatically if none exists for the current workspace
-- Workspace name becomes the topic name (`vscode.workspace.name` → first folder name → `'AskAway'`)
+### Step 3 — Get Your Chat ID
+
+**For DM (1:1):**
+1. Send any message to your bot
+2. Open: `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
+3. Find `"chat": {"id": 123456789}` — that number is your chat ID
+
+**For a group:**
+1. Send any message in the group
+2. Open the same `getUpdates` URL
+3. Find `"chat": {"id": -1001234567890}` — the **negative number** is the group chat ID
+
+### Step 4 — Configure AskAway
+
+In VS Code Settings (`Cmd+,`), search for `askaway`:
+
+| Setting | Value |
+|---------|-------|
+| `askaway.telegram.enabled` | `true` |
+| `askaway.telegram.botToken` | your bot token from Step 1 |
+| `askaway.telegram.chatId` | your chat/group ID from Step 3 |
+
+AskAway automatically creates one Telegram topic per VS Code workspace — no extra configuration needed.
 
 ### Backward Compatibility
 
-Users with the old direct-message bot setup (no group/topics) continue to work exactly as before — messages go to the DM chat without any topic routing.
+DM bot setup (no group/topics) works exactly as before — messages go directly to the DM chat.
 
 ---
 
