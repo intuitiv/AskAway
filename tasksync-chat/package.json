@@ -2,7 +2,7 @@
   "name": "askaway",
   "publisher": "intuitiv",
   "displayName": "AskAway",
-  "description": "Answer your AI agent's questions from anywhere — Webex, Telegram, mobile, or web. Queue prompts, respond remotely, and never block your coding workflow.",
+  "description": "Never miss an AI agent question again — get Telegram notifications and reply from your phone. Queue prompts, respond remotely, and keep your coding workflow moving.",
   "icon": "media/askaway-logo.png",
   "version": "1.0.19",
   "engines": {
@@ -15,16 +15,27 @@
   ],
   "keywords": [
     "askaway",
-    "mcp",
-    "ai",
-    "chat",
+    "telegram",
+    "ai agent",
     "copilot",
     "agent",
+    "mcp",
     "model-context-protocol",
     "remote",
     "mobile",
-    "tasksync"
+    "notification",
+    "productivity",
+    "queue",
+    "ask_user",
+    "tasksync",
+    "webex",
+    "vibe coding",
+    "automation"
   ],
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/intuitiv/AskAway.git"
