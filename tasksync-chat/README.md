@@ -17,13 +17,13 @@ AskAway bridges your AI coding agent (Copilot, Cursor, etc.) and your phone via 
 
 > _Each VS Code workspace gets its own Telegram topic. Questions and replies are neatly organized._
 
-![Telegram forum topics screenshot](docs/screenshots/telegram-topics.png)
+![Telegram forum topics screenshot](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/telegram-topics.png)
 
 ### VS Code Widget — Tool Call History with Timestamps
 
 > _Every ask/reply pair shows the time asked and time answered, right in the VS Code sidebar._
 
-![VS Code widget with timestamps](docs/screenshots/vscode-widget-timestamps.png)
+![VS Code widget with timestamps](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/vscode-widget-timestamps.png)
 
 ---
 
