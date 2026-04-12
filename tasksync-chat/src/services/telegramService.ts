@@ -948,18 +948,51 @@ export class TelegramService {
                     // window (both share the same bot token and call getUpdates).
                     const msgThreadId: number | undefined = msg.message_thread_id;
                     if (msgThreadId !== undefined) {
-                        // Message is inside a forum topic — find the owning task
-                        const owningTask = [...this._activeTasks.values()].find(t => t.topicId === msgThreadId);
-                        if (!owningTask) {
-                            // No task in this window owns that topic — skip, let the right window consume it
-                            continue;
+                        // Check if any task in this window owns this topic
+                        const taskWithTopic = [...this._activeTasks.values()].find(t => t.topicId !== undefined);
+                        if (taskWithTopic) {
+                            // This window has topic-aware tasks — only accept messages from our topic
+                            const owningTask = [...this._activeTasks.values()].find(t => t.topicId === msgThreadId);
+                            if (!owningTask) {
+                                // No task in this window owns that topic — skip it
+                                this._log(`AskAway/Telegram: Skipping message from thread ${msgThreadId} — not owned by this window`);
+                                continue;
+                            }
                         }
+                        // If no tasks have topicId set (fallback: topic detection failed), accept all
                     }
 
                     // Check if this is a reply to one of our messages
                     const replyToMsgId = msg.reply_to_message?.message_id;
 
-                    // Fallback: if there is exactly one active task, accept plain chat
+                    // Fallback A: topic-aware match — user typed in the topic without tapping Reply.
+                    // If the message is in a topic thread AND a task owns that topic, accept it directly.
+                    if (!replyToMsgId && msgThreadId !== undefined) {
+                        const topicTask = [...this._activeTasks.values()].find(t => t.topicId === msgThreadId);
+                        if (topicTask) {
+                            const answer = msg.text.trim();
+                            const user = msg.from?.username || msg.from?.first_name || 'unknown';
+                            if (answer) {
+                                this._log(`AskAway/Telegram: Topic-message fallback matched task ${topicTask.taskId} (thread ${msgThreadId}) from ${user}: "${answer.substring(0, 80)}"`);
+                                let resolvedAnswer = answer;
+                                if (topicTask.choices && topicTask.choices.length > 0) {
+                                    const num = parseInt(answer, 10);
+                                    if (num >= 1 && num <= topicTask.choices.length) {
+                                        const c = topicTask.choices[num - 1];
+                                        resolvedAnswer = typeof c === 'string' ? c : c.value;
+                                    }
+                                }
+                                if (this._onResponseReceived) {
+                                    this._onResponseReceived(topicTask.taskId, resolvedAnswer, `${user} (via Telegram)`);
+                                }
+                                await this._markResolved(topicTask, resolvedAnswer, user);
+                                this._activeTasks.delete(topicTask.taskId);
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Fallback B: if there is exactly one active task, accept plain chat
                     // messages even when Telegram doesn't include reply_to_message.
                     if (!replyToMsgId && this._activeTasks.size === 1) {
                         const onlyTask = this._activeTasks.values().next().value as TrackedTask | undefined;
