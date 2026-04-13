@@ -1361,8 +1361,8 @@
         var sortedCalls = completedCalls.slice().reverse();
 
         var cardsHtml = sortedCalls.map(function (tc, index) {
-            // Get first sentence for title - strip markdown for plain-text display
-            var firstSentence = stripMarkdown(tc.prompt.split(/[.!?]/)[0]);
+            // Get first sentence for title - render inline markdown (bold/italic/code)
+            var firstSentence = tc.prompt.split(/[.!?\n]/)[0];
             var truncatedTitle = firstSentence.length > 120 ? firstSentence.substring(0, 120) + '...' : firstSentence;
             var queueBadge = tc.isFromQueue ? '<span class="tool-call-badge queue">Queue</span>' : '';
             var tsHtml = formatCallTimestamp(tc.askedAt, tc.timestamp);
@@ -1381,7 +1381,7 @@
                 '<div class="tool-call-body">' +
                 '<div class="tool-call-ai-response">' + formatMarkdown(tc.prompt) + '</div>' +
                 '<div class="tool-call-user-section">' +
-                '<div class="tool-call-user-response">' + formatMarkdown(tc.response) + '</div>' +
+                '<div class="tool-call-user-response">' + escapeHtml(tc.response).replace(/\n/g, '<br>') + '</div>' +
                 (tc.attachments ? renderAttachmentsHtml(tc.attachments) : '') +
                 '</div>' +
                 '</div></div>';
@@ -1415,7 +1415,7 @@
 
         // Helper to render tool call card
         function renderToolCallCard(tc) {
-            var firstSentence = stripMarkdown(tc.prompt.split(/[.!?]/)[0]);
+            var firstSentence = tc.prompt.split(/[.!?\n]/)[0];
             var truncatedTitle = firstSentence.length > 80 ? firstSentence.substring(0, 80) + '...' : firstSentence;
             var queueBadge = tc.isFromQueue ? '<span class="tool-call-badge queue">Queue</span>' : '';
             var tsHtml = formatCallTimestamp(tc.askedAt, tc.timestamp);
@@ -1433,7 +1433,7 @@
                 '<div class="tool-call-body">' +
                 '<div class="tool-call-ai-response">' + formatMarkdown(tc.prompt) + '</div>' +
                 '<div class="tool-call-user-section">' +
-                '<div class="tool-call-user-response">' + formatMarkdown(tc.response) + '</div>' +
+                '<div class="tool-call-user-response">' + escapeHtml(tc.response).replace(/\n/g, '<br>') + '</div>' +
                 (tc.attachments ? renderAttachmentsHtml(tc.attachments) : '') +
                 '</div>' +
                 '</div></div>';
