@@ -1361,8 +1361,8 @@
         var sortedCalls = completedCalls.slice().reverse();
 
         var cardsHtml = sortedCalls.map(function (tc, index) {
-            // Get first sentence for title - let CSS handle truncation with ellipsis
-            var firstSentence = tc.prompt.split(/[.!?]/)[0];
+            // Get first sentence for title - strip markdown for plain-text display
+            var firstSentence = stripMarkdown(tc.prompt.split(/[.!?]/)[0]);
             var truncatedTitle = firstSentence.length > 120 ? firstSentence.substring(0, 120) + '...' : firstSentence;
             var queueBadge = tc.isFromQueue ? '<span class="tool-call-badge queue">Queue</span>' : '';
             var tsHtml = formatCallTimestamp(tc.askedAt, tc.timestamp);
@@ -1381,7 +1381,7 @@
                 '<div class="tool-call-body">' +
                 '<div class="tool-call-ai-response">' + formatMarkdown(tc.prompt) + '</div>' +
                 '<div class="tool-call-user-section">' +
-                '<div class="tool-call-user-response">' + escapeHtml(tc.response) + '</div>' +
+                '<div class="tool-call-user-response">' + formatMarkdown(tc.response) + '</div>' +
                 (tc.attachments ? renderAttachmentsHtml(tc.attachments) : '') +
                 '</div>' +
                 '</div></div>';
@@ -1415,7 +1415,7 @@
 
         // Helper to render tool call card
         function renderToolCallCard(tc) {
-            var firstSentence = tc.prompt.split(/[.!?]/)[0];
+            var firstSentence = stripMarkdown(tc.prompt.split(/[.!?]/)[0]);
             var truncatedTitle = firstSentence.length > 80 ? firstSentence.substring(0, 80) + '...' : firstSentence;
             var queueBadge = tc.isFromQueue ? '<span class="tool-call-badge queue">Queue</span>' : '';
             var tsHtml = formatCallTimestamp(tc.askedAt, tc.timestamp);
@@ -1433,7 +1433,7 @@
                 '<div class="tool-call-body">' +
                 '<div class="tool-call-ai-response">' + formatMarkdown(tc.prompt) + '</div>' +
                 '<div class="tool-call-user-section">' +
-                '<div class="tool-call-user-response">' + escapeHtml(tc.response) + '</div>' +
+                '<div class="tool-call-user-response">' + formatMarkdown(tc.response) + '</div>' +
                 (tc.attachments ? renderAttachmentsHtml(tc.attachments) : '') +
                 '</div>' +
                 '</div></div>';
@@ -3187,6 +3187,18 @@
         var div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    /** Strip markdown syntax for use in plain-text contexts (e.g. card titles). */
+    function stripMarkdown(text) {
+        if (!text) { return ''; }
+        return text
+            .replace(/\*\*(.+?)\*\*/g, '$1')   // bold
+            .replace(/\*(.+?)\*/g, '$1')         // italic
+            .replace(/^#{1,6}\s+/gm, '')          // headings
+            .replace(/`(.+?)`/g, '$1')            // inline code
+            .replace(/\[(.+?)\]\(.+?\)/g, '$1')  // links
+            .trim();
     }
 
     /** Format ask/reply timestamps for tool call cards.
