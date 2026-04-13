@@ -74,14 +74,21 @@ export class TelegramService {
     // ── Forum Topics (Telegram groups with "Topics" enabled) ──
     /** null = not yet checked, false = regular chat, true = forum group */
     private _isForum: boolean | null = null;
-    /** workspace name → Telegram thread/topic ID (in-memory cache, loaded from Telegram on first use) */
+    /** workspace name → Telegram thread/topic ID (in-memory cache, persisted via globalState) */
     private _topicIds: Map<string, number> = new Map();
-    /** Whether we have already fetched existing topics from Telegram for this session */
+    /** Whether we have already loaded persisted topics for this session */
     private _forumTopicsLoaded: boolean = false;
+    /** VS Code extension context — used to persist topic IDs across restarts */
+    private _extContext: vscode.ExtensionContext | undefined;
 
     constructor(outputChannel?: vscode.OutputChannel) {
         this._out = outputChannel;
         this.reloadConfig();
+    }
+
+    /** Call once after construction to enable topic-ID persistence across restarts. */
+    public setExtensionContext(ctx: vscode.ExtensionContext): void {
+        this._extContext = ctx;
     }
 
     private _log(msg: string): void {
@@ -240,30 +247,15 @@ export class TelegramService {
      * populate _topicIds. This lets us reuse existing topics across restarts
      * without needing local storage.
      */
-    private async _ensureForumTopicsLoaded(): Promise<void> {
+    private _ensureForumTopicsLoaded(): void {
         if (this._forumTopicsLoaded) { return; }
-        this._forumTopicsLoaded = true; // set before await to prevent concurrent fetches
-        try {
-            const resp = await fetch(this._apiUrl('getForumTopics'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: this._chatId, limit: 100 })
-            });
-            if (resp.ok) {
-                const data = await resp.json() as any;
-                const topics: Array<{ message_thread_id: number; name: string }> = data.result?.topics ?? [];
-                for (const t of topics) {
-                    if (t.name && t.message_thread_id) {
-                        this._topicIds.set(t.name, t.message_thread_id);
-                    }
-                }
-                this._log(`AskAway/Telegram: Loaded ${topics.length} existing forum topic(s) from Telegram`);
-            } else {
-                this._warn(`AskAway/Telegram: getForumTopics failed (${resp.status}) — will create topics as needed`);
-            }
-        } catch (e) {
-            this._warn(`AskAway/Telegram: getForumTopics error: ${e}`);
+        this._forumTopicsLoaded = true;
+        if (!this._extContext) { return; }
+        const saved = this._extContext.globalState.get<Record<string, number>>('askaway.topicIds', {});
+        for (const [name, id] of Object.entries(saved)) {
+            this._topicIds.set(name, id);
         }
+        this._log(`AskAway/Telegram: Loaded ${Object.keys(saved).length} persisted topic(s) from globalState`);
     }
 
     /**
@@ -299,8 +291,8 @@ export class TelegramService {
         const isForum = await this._detectForum();
         if (!isForum) { return undefined; }
 
-        // Load existing topics from Telegram on first use (avoids duplicate topic creation)
-        await this._ensureForumTopicsLoaded();
+        // Load persisted topics on first use (avoids duplicate topic creation across restarts)
+        this._ensureForumTopicsLoaded();
 
         if (this._topicIds.has(workspaceName)) {
             return this._topicIds.get(workspaceName);
@@ -317,6 +309,12 @@ export class TelegramService {
                 const topicId: number = data.result?.message_thread_id;
                 if (topicId) {
                     this._topicIds.set(workspaceName, topicId);
+                    // Persist so the same topic is reused on next restart
+                    if (this._extContext) {
+                        const saved = this._extContext.globalState.get<Record<string, number>>('askaway.topicIds', {});
+                        saved[workspaceName] = topicId;
+                        void this._extContext.globalState.update('askaway.topicIds', saved);
+                    }
                     this._log(`AskAway/Telegram: Created forum topic "${workspaceName}" — thread_id=${topicId}`);
                     return topicId;
                 }

@@ -4,7 +4,7 @@
   "displayName": "AskAway",
   "description": "Never miss an AI agent question again — get Telegram notifications and reply from your phone. Queue prompts, respond remotely, and keep your coding workflow moving.",
   "icon": "media/askaway-logo.png",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "engines": {
     "vscode": "^1.90.0"
   },

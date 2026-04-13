@@ -417,6 +417,7 @@ export function activate(context: vscode.ExtensionContext) {
 
                 telegramService = new TelegramService(outputChannel);
                 telegramServiceInstance = telegramService;
+                telegramService.setExtensionContext(context);
                 provider.setTelegramService(telegramService);
                 context.subscriptions.push({ dispose: () => telegramService?.dispose() });
 
