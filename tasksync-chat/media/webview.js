@@ -1374,7 +1374,7 @@
                 '<div class="tool-call-chevron"><span class="codicon codicon-chevron-down"></span></div>' +
                 '<div class="tool-call-icon"><span class="codicon codicon-copilot"></span></div>' +
                 '<div class="tool-call-header-wrapper">' +
-                '<span class="tool-call-title">' + escapeHtml(truncatedTitle) + queueBadge + '</span>' +
+                '<span class="tool-call-title">' + inlineMarkdown(truncatedTitle) + queueBadge + '</span>' +
                 (tsHtml ? '<span class="tool-call-timestamp">' + tsHtml + '</span>' : '') +
                 '</div>' +
                 '</div>' +
@@ -1425,7 +1425,7 @@
                 '<div class="tool-call-chevron"><span class="codicon codicon-chevron-down"></span></div>' +
                 '<div class="tool-call-icon"><span class="codicon codicon-copilot"></span></div>' +
                 '<div class="tool-call-header-wrapper">' +
-                '<span class="tool-call-title">' + escapeHtml(truncatedTitle) + queueBadge + '</span>' +
+                '<span class="tool-call-title">' + inlineMarkdown(truncatedTitle) + queueBadge + '</span>' +
                 (tsHtml ? '<span class="tool-call-timestamp">' + tsHtml + '</span>' : '') +
                 '</div>' +
                 '<button class="tool-call-remove" data-id="' + escapeHtml(tc.id) + '" title="Remove"><span class="codicon codicon-close"></span></button>' +
@@ -3199,6 +3199,16 @@
             .replace(/`(.+?)`/g, '$1')            // inline code
             .replace(/\[(.+?)\]\(.+?\)/g, '$1')  // links
             .trim();
+    }
+
+    /** Render only inline markdown (bold, italic, code) — safe for use inside <span> elements. */
+    function inlineMarkdown(text) {
+        if (!text) { return ''; }
+        var html = escapeHtml(text);
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+        html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+        return html;
     }
 
     /** Format ask/reply timestamps for tool call cards.
