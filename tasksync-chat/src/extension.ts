@@ -90,6 +90,7 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - Compile/build after TypeScript changes.
 - Deploy AskAway locally by copying the built bundle to \`~/.vscode/extensions/intuitiv.askaway-1.0.35/dist/extension.js\` when requested or when validating installed behavior.
 - Group two or more approved tasks into a cycle when that gives the agent useful independent work during Gradle runs, delegated research, or other waiting periods. A cycle is a work batch, not a day, sprint, or deadline.
+- Tasks remain the smallest execution and evidence unit. \`/implement T014\` runs one task; \`/implement CY-002\` runs the unchecked tasks tagged \`[CY-002]\`, sharing scheduling, verification, and one commit without merging task status.
 - Review and demo each item clearly, but batch repeated setup, shared verification, and one git commit for the cycle. Example: while task A's Gradle test runs, analyze task B or collect task C's evidence instead of polling.
 - Only overlap independent work. Never let two workers edit the same ownership area, and never invent busywork just to avoid waiting.
 - Start a known Gradle build early enough to overlap it with independent work from another approved task. Never poll while useful analysis or editing remains.

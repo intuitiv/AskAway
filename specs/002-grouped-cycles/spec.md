@@ -14,12 +14,33 @@ approved item moves forward instead of the agent polling or inventing busywork.
 ## Goals
 
 - Keep a small queue of approved work available to the agent.
+- Keep tasks as the smallest unit of work and group them by assigning a cycle ID.
 - Overlap independent analysis, Gradle runs, and future subprocess-backed subagents.
 - Group tasks that share setup, context, or verification.
 - Keep each item understandable and reviewable inside the batch.
 - Run expensive verification at the best boundary instead of repeating it mechanically per task.
 - Produce one commit per completed cycle, with the commit log as the durable record.
 - Allow a command such as `/implement CY-002` to execute an approved batch.
+
+## Task Membership
+
+Tasks remain in the feature's `tasks.md`; a cycle does not copy or replace them. A task joins a
+cycle through a tag:
+
+```markdown
+- [ ] T014 [CY-002] Add the failing resolution-mode tests
+- [ ] T015 [CY-002] Implement the shared resolution fix
+- [ ] T021 [CY-002] Update the benchmark evidence
+```
+
+The two execution forms are:
+
+- `/implement T014` — execute and verify only the resolution-mode test task.
+- `/implement CY-002` — execute the unchecked tasks tagged `[CY-002]` as one approved work batch.
+
+Cycle execution does not merge the tasks into one opaque job. Each task keeps its own status,
+evidence, and implementation-log row. The cycle controls scheduling: it decides which independent
+item can progress while another waits, and it provides the shared verification and commit boundary.
 
 ## Execution Rules
 
@@ -41,7 +62,7 @@ approved item moves forward instead of the agent polling or inventing busywork.
 
 ## Open Decisions
 
-1. Store cycles as files, derive them from task metadata, or both?
+1. Where should optional cycle-level metadata such as title, intent, and shared verification live?
 2. How many items should a cycle normally hold before coordination costs exceed the saved waiting
    time?
 3. Should a failed item halt `/implement CY-002`, or should independent items continue?
