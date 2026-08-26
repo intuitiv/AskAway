@@ -610,6 +610,16 @@
           "default": "",
           "description": "Webex Room/Space ID where AskAway posts questions. Get this from the Webex API (GET /rooms)."
         },
+        "askaway.webex.notifyOnTurnEnd": {
+          "type": "boolean",
+          "default": false,
+          "description": "Post the agent's 'Response Handoff' section to the Webex room when a turn ends."
+        },
+        "askaway.telegram.notifyOnTurnEnd": {
+          "type": "boolean",
+          "default": false,
+          "description": "Post the agent's 'Response Handoff' section to Telegram when a turn ends."
+        },
         "askaway.webex.clientId": {
           "type": "string",
           "default": "",

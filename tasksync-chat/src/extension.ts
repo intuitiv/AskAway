@@ -53,8 +53,6 @@ user-invocable: true
 
 You are the main AskAway Build Agent. Your job is to orchestrate implementation work with strong token discipline, accurate observability, and safe delegation.
 
-**At the end of conversation update AGENT_AUDIT.md with summary of work done, so that i can review in future. Template is timestamp  followed by summary.**
-
 ## Core Role
 - Act as the primary build/orchestration agent for AskAway work.
 - Plan briefly, execute decisively, verify changes, and report concise proof.
@@ -91,6 +89,9 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - Keep edits narrow and consistent with existing code style.
 - Compile/build after TypeScript changes.
 - Deploy AskAway locally by copying the built bundle to \`~/.vscode/extensions/intuitiv.askaway-1.0.35/dist/extension.js\` when requested or when validating installed behavior.
+- Group two or more related tasks into a soft daily cycle when they share setup, review, or verification. A cycle may spill into the next day or accept more work; it is a batching boundary, not a deadline.
+- Review and demo each task clearly, but batch repeated setup, one final verification pass, and one git commit for the cycle. Example: while task A's Gradle test runs, analyze task B instead of waiting.
+- Start a known Gradle build early enough to overlap it with independent work from another approved task. Never poll while useful analysis or editing remains.
 - **Gradle builds/tests → use the \`gradle\` tool, never the terminal.**
   - \`action:start\` with \`tasks\`, \`arguments\`, \`projectDir\`, \`env\` (e.g. \`{"JAVA_HOME":"/path/to/jdk"}\`) → returns \`{buildId}\` immediately.
   - Poll \`action:status\` for live state (\`RUNNING/SUCCESS/FAILED\`). On FAILED the response includes \`failedTasks\`, \`whatWentWrong\`, \`exception[]\`, \`errors[]\`, \`testFailures[]\`, \`exitCode\`.
@@ -110,17 +111,37 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - Do NOT read entire files to locate a symbol when \`code_nav\` (definition/references/document_symbols) or \`rg_search\` can locate it in one call.
 
 ## Turn Budget
-- A per-turn budget banner (\`Turn budget: N AIU · last turn …\`) reports the soft AIU limit and the previous turn's spend. It is advisory and never blocks.
+- The banner (\`Budget: X spent so far in N AIU\`) is a RUNNING TOTAL for this session against a soft cap. It is advisory and never blocks.
+- It is injected at prompt submit, so it counts everything up to the end of the previous turn and does not move while you work. Earlier copies in the conversation are older, smaller totals — the LAST one is current.
+- Call the \`turn_budget\` tool for live spend when a turn runs long. That is the only source of in-turn spend; the banner cannot tell you.
+- As X approaches N, tighten up; past N, do the minimum that completes the task and stop exploring.
 - Work within it: prefer targeted searches (\`rg_search\`/\`code_nav\`) over broad scans and full-file reads, batch independent tool calls in one step, avoid re-reading large files, delegate heavy exploration to a cheaper sub-agent, and finalize as soon as the task is done.
-- Call the \`turn_budget\` tool to check live in-turn spend when a turn runs long.
 
 ## Communication
-- BE CRISP. Default to the shortest correct answer (1–3 sentences). Lead with the result first; add detail only when asked or essential.
-- No preamble, no restating the question, no filler, no narrating what you are about to do. Never pad the final response.
-- Prefer a tight summary + concrete proof (numbers, file:line) over prose. Use short bullets, not paragraphs. Cut every sentence that does not add information.
+- Write the way you would explain it to a colleague sitting next to you: normal sentences, natural language, a real explanation. Do NOT write in clipped fragments or telegraphic notes.
+- The goal is that the user understands it on ONE read. Short is good only when it is also clear — never compress to the point where the reader has to decode it.
+- Lead with the answer, then explain the reasoning in plain prose. Do not turn an explanation into a grid of bullets; bullets are for lists of comparable things, sentences are for reasoning.
+- Explain with simple words and one small example when it helps. Keep technical names only where they carry meaning.
+- Never make the user decode identifiers. Say "the artifact-ordering task (T001)" rather than bare "T001", and name what a file or setting actually does before referring to it by path or key.
+- Skip preamble, restating the question, filler, and narrating what you are about to do.
+- Keep the Response Handoff genuinely short and skimmable. It is the part the user relies on most; it must never become a wall of prose.
 - Be honest about boundaries: you cannot rewrite GitHub Copilot's closed system prompt. You can guide behavior through this custom agent, tool descriptions, tool results, and worker prompts.
 - Explain credit math plainly when asked.
 - When user says today is RTK work, prioritize RTK setup, RTK command routing, RTK observability, and proof of savings.
+
+## Delegation
+- Before doing work, separate decisions that need the main agent's context from outputs derivable from files, diffs, logs, or test results.
+- Delegate read-only exploration and mechanical artifact work to a cheaper subagent. Keep architecture choices, reviewer-facing tradeoffs, and final integration in the main agent.
+- Prefer the cheapest capable configured model. Use small fast models such as Sol, Tera, or Luna for searches, summaries, task-file updates, diff analysis, and log parsing; use a stronger model only when the task needs cross-cutting design judgment.
+- Give each child one explicit deliverable and a hard four-minute instruction. Run children in parallel only when their work is independent.
+- During a Gradle run, use the time for another approved task or a delegated artifact job. Do not invent busywork merely to avoid waiting.
+
+## Conclude
+Every final response ends with a \`## Response Handoff\` containing exactly four short lines:
+- \`Status:\` where the active spec or current work stands.
+- \`Impact:\` what changed or what was learned that affects the next response.
+- \`Summary:\` the result in plain words.
+- \`Next:\` exactly one question.
 `;
 
 const RTK_GATE_COMMAND = '$HOME/.askaway/hooks/rtk-gate.sh';
@@ -210,19 +231,16 @@ try {
     let nano = 0;
     for (const f of files) {
         let data; try { data = fs.readFileSync(f, 'utf8'); } catch (e) { continue; }
-        for (const l of data.split('\\n')) { if (l.indexOf('llm_request') === -1) { continue; } let p; try { p = JSON.parse(l); } catch (e) { continue; } const ts = typeof p.ts === 'number' ? p.ts : 0; if (ts < lastSubmit) { continue; } nano += (p.attrs && typeof p.attrs.copilotUsageNanoAiu === 'number') ? p.attrs.copilotUsageNanoAiu : 0; }
+        for (const l of data.split('\\n')) { if (l.indexOf('llm_request') === -1) { continue; } let p; try { p = JSON.parse(l); } catch (e) { continue; } nano += (p.attrs && typeof p.attrs.copilotUsageNanoAiu === 'number') ? p.attrs.copilotUsageNanoAiu : 0; }
     }
-    // At UserPromptSubmit the NEW turn's user_message is not yet in the log, so the newest
-    // user_message ts is the PREVIOUS turn's — and \`nano\` below is the previous turn's total.
-    // The current turn is genuinely fresh (0 spent) at this instant, so present it that way
-    // and expose the previous turn as context. Live in-turn spend comes from the turn_budget tool.
+    // Cumulative spend for the WHOLE session, not the last turn: a running total against the cap is
+    // what the agent can act on, and it makes every banner copy in the conversation consistent
+    // (each one was true when written, and they increase monotonically).
     // One line of NUMBERS only. The how-to guidance is static and lives in the cached
     // AskAway Build agent instructions (## Turn Budget), so it costs ~0 per turn here.
-    const prevSpent = nano / 1e9;
-    const pctPrev = Math.round(prevSpent / limit * 100);
-    const ctx = lastSubmit === 0
-        ? 'Turn budget: ' + limit + ' AIU'
-        : 'Turn budget: ' + limit + ' AIU · last turn ' + prevSpent.toFixed(0) + ' (' + pctPrev + '%' + (pctPrev >= 100 ? ', OVER — be frugal' : '') + ')';
+    const spent = nano / 1e9;
+    const ctx = 'Budget: ' + spent.toFixed(0) + ' spent so far in ' + limit + ' AIU'
+        + (spent >= limit ? ' — OVER, be frugal' : '');
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: ctx } }));
 } catch (e) {}
 process.exit(0);
@@ -253,14 +271,27 @@ exit 0
 const CACHE_TIMER_INJECT_SCRIPT = `// AskAway prompt-cache activity timer. Stamps ~/.askaway/cache-activity-ts on each
 // model-activity hook event; on the Stop event it also stamps ~/.askaway/turn-complete-ts
 // so the webview can play the "turn complete" sound. No stdout.
+//
+// A sub-agent runs on its OWN prompt cache, so its tool calls must not reset the MAIN
+// agent's clock — otherwise a long delegation hides the fact that the parent cache went
+// cold. runSubagent blocks its caller, so while ~/.askaway/subagent-inflight.json has a
+// pending entry every non-runSubagent tool call belongs to a child: those stamp the
+// separate subagent-cache-activity-ts instead.
 const fs = require('fs'), path = require('path'), os = require('os');
 try {
-    let ev = '';
-    try { const p = JSON.parse(fs.readFileSync(0, 'utf8')); ev = p.hook_event_name || p.hookEventName || ''; } catch (e) {}
+    let ev = '', tool = '';
+    try {
+        const p = JSON.parse(fs.readFileSync(0, 'utf8'));
+        ev = p.hook_event_name || p.hookEventName || '';
+        tool = p.tool_name || p.toolName || '';
+    } catch (e) {}
     const cfg = path.join(os.homedir(), '.askaway');
     try { fs.mkdirSync(cfg, { recursive: true }); } catch (e) {}
+    let inflight = 0;
+    try { inflight = (JSON.parse(fs.readFileSync(path.join(cfg, 'subagent-inflight.json'), 'utf8')).pending || []).length; } catch (e) {}
     const now = String(Date.now());
-    fs.writeFileSync(path.join(cfg, 'cache-activity-ts'), now, 'utf8');
+    const isChild = inflight > 0 && ev === 'PostToolUse' && tool !== 'runSubagent';
+    fs.writeFileSync(path.join(cfg, isChild ? 'subagent-cache-activity-ts' : 'cache-activity-ts'), now, 'utf8');
     if (ev === 'Stop') { fs.writeFileSync(path.join(cfg, 'turn-complete-ts'), now, 'utf8'); }
 } catch (e) {}
 process.exit(0);
@@ -1302,6 +1333,26 @@ export function activate(context: vscode.ExtensionContext) {
                         outputChannel.show(true);
                     }
                 });
+            }
+
+            // Turn-end handoff → Webex/Telegram. Registered after BOTH services so neither one's
+            // failure can take it down; the debug-logs dir is a sibling of our own workspaceStorage
+            // folder, which keeps this scoped to THIS workspace.
+            try {
+                const storagePath = context.storageUri?.fsPath;
+                if (storagePath) {
+                    const { HandoffNotifier } = await import('./services/handoffNotifier');
+                    const debugLogsDir = path.join(path.dirname(storagePath), 'GitHub.copilot-chat', 'debug-logs');
+                    const notifier = new HandoffNotifier([
+                        { name: 'Webex', setting: 'webex.notifyOnTurnEnd', get: () => webexService },
+                        { name: 'Telegram', setting: 'telegram.notifyOnTurnEnd', get: () => telegramService }
+                    ], debugLogsDir, logRuntime);
+                    notifier.start();
+                    context.subscriptions.push(notifier);
+                    logRuntime('Handoff notifier watching turn-complete stamp', { debugLogsDir });
+                }
+            } catch (err) {
+                logRuntime('Handoff notifier init failed', formatError(err));
             }
 
             // File change tracker for Webex/Telegram

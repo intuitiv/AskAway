@@ -11,6 +11,7 @@ import { ContextManager, ContextReferenceType, ContextReference } from '../conte
 import { Plan, PlanTask, PlanTaskStatus, createPlan, createTask, findTaskById, getNextPendingTask, countByStatus } from '../plan/planTypes';
 import { PlanEditorProvider } from '../plan/planEditorProvider';
 import { getUserMemoryDir, summarizeAndStoreMemory, listMemories } from '../memory/memoryStore';
+import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
 
 // Exact token counting via the o200k_base BPE (GPT-4o / GPT-5 family, which Copilot uses).
 // Lazily loaded on first use to avoid paying the encoding-table init cost at activation.
@@ -384,6 +385,7 @@ const execFileAsync = promisify(execFile);
 const GLOBAL_FOLD_VERSION = 4;
 // Message types
 type ToWebviewMessage =
+    | { type: 'specsData'; data: SpecScanResult }
     | { type: 'updateQueue'; queue: QueuedPrompt[]; enabled: boolean }
     | { type: 'updateWorkerQueue'; tasks: Array<{ id: string; role: 'command' | 'subagent'; task: string; status: 'pending' | 'running' | 'done'; createdAt: number }> }
     | { type: 'availableModels'; models: Array<{ id: string; name: string; vendor: string; family: string; maxInputTokens: number }> }
@@ -443,6 +445,9 @@ type ToWebviewMessage =
     | { type: 'clear' };
 
 type FromWebviewMessage =
+    | { type: 'requestSpecs' }
+    | { type: 'openSpecFile'; dir: string; file: string }
+    | { type: 'runSpecCommand'; command: string }
     | { type: 'submit'; value: string; attachments: AttachmentInfo[] }
     | { type: 'addQueuePrompt'; prompt: string; id: string; attachments?: AttachmentInfo[] }
     | { type: 'removeQueuePrompt'; promptId: string }
@@ -610,7 +615,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _turnSpanToSubagent = new Map<string, string>();
     /** subagentId → label learned from child_session_ref (used to label the finalize summary). */
     private _turnSubagentLabelById = new Map<string, string>();
-    /** Epoch ms of the newest llm_request ever observed (any session) — for the cache-age clock. */
+    /** Epoch ms of the newest llm_request observed in the PARENT session — for the cache-age clock.
+     *  Sub-agent (child) sessions are excluded: they have their own cache. */
     private _newestRequestTs = 0;
     /** True once the turn's first (initiating) request has been seen — used to pin it on top. */
     private _turnFirstReqSeen = false;
@@ -2295,8 +2301,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     if (!billableOrIdentified) {
                         continue;
                     }
-                    // Track the newest request time (any session) for the live prompt-cache age clock.
-                    if (ts > this._newestRequestTs) { this._newestRequestTs = ts; }
+                    // Track the newest request time for the live prompt-cache age clock. Child
+                    // sub-agent sessions run on their OWN prompt cache, so their requests must not
+                    // reset the parent's clock — otherwise a long delegation hides the fact that the
+                    // main agent's cache went cold while it was blocked.
+                    if (!isChildLog && ts > this._newestRequestTs) { this._newestRequestTs = ts; }
 
                     // NOTE: we deliberately do NOT skip `summarize*` (compaction) or retry calls —
                     // they consume real credits (copilotUsageNanoAiu), so counting them keeps
@@ -3225,18 +3234,33 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             }
         }
         const joined = texts.join('\n');
-        // User memory blocks (+ the `## <file>` headers name the contributing memory files).
+        // Memory blocks. Copilot injects THREE scopes, each in its own tag — counting only
+        // <userMemory> left session/repo memory silently folded into "Conversation".
+        // The `## <file>.md` headers inside a block name the contributing memory files;
+        // inner sub-sections are also `##`, so match only headers that are a bare `.md` filename.
+        const MEMORY_SCOPES: { tag: string; label: string }[] = [
+            { tag: 'userMemory', label: 'User memory' },
+            { tag: 'sessionMemory', label: 'Session memory' },
+            { tag: 'repoMemory', label: 'Repo memory' },
+        ];
         let memoryTokens = 0;
         const memoryFiles = new Set<string>();
+        const memoryByScope: { label: string; tokens: number; files: number }[] = [];
         let m: RegExpExecArray | null;
-        const memRe = /<userMemory>([\s\S]*?)<\/userMemory>/g;
-        while ((m = memRe.exec(joined)) !== null) {
-            memoryTokens += countTokens(m[1]);
-            // User memory injects one `## <file>.md` header per contributing memory file; inner
-            // sub-sections are also `##`, so match only headers that are a bare `.md` filename.
-            const hdrRe = /^##\s+([^\s#][^\n]*?\.md)\s*$/gm;
-            let h: RegExpExecArray | null;
-            while ((h = hdrRe.exec(m[1])) !== null) { memoryFiles.add(h[1].trim()); }
+        for (const scope of MEMORY_SCOPES) {
+            const memRe = new RegExp(`<${scope.tag}>([\\s\\S]*?)</${scope.tag}>`, 'g');
+            let scopeTokens = 0;
+            const scopeFiles = new Set<string>();
+            while ((m = memRe.exec(joined)) !== null) {
+                scopeTokens += countTokens(m[1]);
+                const hdrRe = /^##\s+([^\s#][^\n]*?\.md)\s*$/gm;
+                let h: RegExpExecArray | null;
+                while ((h = hdrRe.exec(m[1])) !== null) { scopeFiles.add(h[1].trim()); memoryFiles.add(h[1].trim()); }
+            }
+            if (scopeTokens > 0) {
+                memoryTokens += scopeTokens;
+                memoryByScope.push({ label: scope.label, tokens: scopeTokens, files: scopeFiles.size });
+            }
         }
         // Attached files (deduped by path, tokens summed across occurrences).
         const fileTokens = new Map<string, number>();
@@ -3259,7 +3283,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const items: RequestContributor[] = [];
         if (systemTokens > 0) { items.push({ label: 'System prompt', kind: 'system', tokens: systemTokens }); }
         if (toolsTokens > 0) { items.push({ label: 'Tool definitions', kind: 'tools', tokens: toolsTokens }); }
-        if (memoryTokens > 0) { items.push({ label: `User memory (${memoryFiles.size} file${memoryFiles.size === 1 ? '' : 's'})`, kind: 'memory', tokens: memoryTokens, count: memoryFiles.size }); }
+        if (memoryTokens > 0) {
+            for (const s of memoryByScope) {
+                const suffix = s.files > 0 ? ` (${s.files} file${s.files === 1 ? '' : 's'})` : '';
+                items.push({ label: `${s.label}${suffix}`, kind: 'memory', tokens: s.tokens, count: s.files });
+            }
+        }
         for (const [p, t] of Array.from(fileTokens.entries())) {
             items.push({ label: p.split('/').pop() || p, kind: 'attachment', tokens: t, path: p });
         }
@@ -3635,6 +3664,60 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         }
         byTool.sort((a, b) => b.calls - a.calls);
         return { totalCalls, totalOutputTokens, byTool };
+    }
+
+    /** Spec Kit overview: rescan `specs/` and push to the webview. Auto-detected — no sentinel file. */
+    private _refreshSpecs(): void {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) {
+            this._broadcast({ type: 'specsData', data: { enabled: false, specsRoot: '', activeSlug: '', specs: [] } });
+            return;
+        }
+        this._ensureSpecsWatcher();
+        this._broadcast({ type: 'specsData', data: scanSpecs(root) });
+    }
+
+    private _specsWatcher: vscode.FileSystemWatcher | undefined;
+    private _specsRefreshTimer: NodeJS.Timeout | undefined;
+
+    private _ensureSpecsWatcher(): void {
+        if (this._specsWatcher) { return; }
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        if (!folder) { return; }
+        const watcher = vscode.workspace.createFileSystemWatcher(
+            new vscode.RelativePattern(folder, '{specs/**/*.md,.specify/feature.json}')
+        );
+        const schedule = () => {
+            if (this._specsRefreshTimer) { clearTimeout(this._specsRefreshTimer); }
+            this._specsRefreshTimer = setTimeout(() => this._refreshSpecs(), 400);
+        };
+        watcher.onDidChange(schedule, null, this._disposables);
+        watcher.onDidCreate(schedule, null, this._disposables);
+        watcher.onDidDelete(schedule, null, this._disposables);
+        this._specsWatcher = watcher;
+        this._disposables.push(watcher);
+    }
+
+    /** Open a Spec Kit artifact, refusing any path that escapes the workspace `specs/` tree. */
+    private async _openSpecFile(dir: string, file: string): Promise<void> {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) { return; }
+        const specsRoot = path.resolve(root, 'specs');
+        const target = path.resolve(dir, path.basename(file || 'spec.md'));
+        if (target !== specsRoot && !target.startsWith(specsRoot + path.sep)) { return; }
+        if (!fs.existsSync(target)) { return; }
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(target));
+        await vscode.window.showTextDocument(doc, { preview: true });
+    }
+
+    /** Put a Spec Kit slash command into the VS Code chat input, unsent, so the user can add context first. */
+    private async _sendSpecCommandToChat(command: string): Promise<void> {
+        const text = (command || '').trim();
+        if (!/^\/[a-z][a-z0-9.-]{0,31}(?: [A-Za-z0-9._-]{1,64})?$/.test(text)) { return; }
+        await vscode.commands.executeCommand('workbench.action.chat.open', {
+            query: text + ' ',
+            isPartialQuery: true
+        });
     }
 
     /** RTK compression is enabled when the sentinel file exists AND the rtk binary is installed.
@@ -4427,6 +4510,15 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      */
     private _handleWebviewMessage(message: FromWebviewMessage): void {
         switch (message.type) {
+            case 'requestSpecs':
+                this._refreshSpecs();
+                break;
+            case 'openSpecFile':
+                this._openSpecFile(message.dir, message.file);
+                break;
+            case 'runSpecCommand':
+                this._sendSpecCommandToChat(message.command);
+                break;
             case 'submit':
                 this._handleSubmit(message.value, message.attachments || []);
                 break;
@@ -6253,6 +6345,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         <!-- Tab Bar -->
         <div class="widget-tabs" id="widget-tabs">
             <button class="widget-tab active" data-tab="chat" title="Main chat">Chat</button>
+            <button class="widget-tab hidden" data-tab="specs" id="tab-specs" title="Spec Kit features: progress, next task, active feature">Specs</button>
             <button class="widget-tab" data-tab="observability" title="Observability metrics, RTK/Gradle savings, requests and memories">Metrics</button>
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
         </div>
@@ -6525,6 +6618,22 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         <div class="tab-panel" id="panel-observability">
             <div class="settings-tab-shell" id="observability-tab-shell"></div>
         </div><!-- End panel-observability -->
+
+        <!-- Specs Panel (Spec Kit overview) -->
+        <div class="tab-panel" id="panel-specs">
+            <div class="specs-shell">
+                <div class="specs-header">
+                    <div class="specs-active" id="specs-active-chip"></div>
+                    <label class="specs-toggle" title="Show specs whose tasks are all complete">
+                        <input type="checkbox" id="specs-show-done"> Completed
+                    </label>
+                    <button class="specs-refresh-btn" id="specs-refresh-btn" title="Rescan specs/">
+                        <span class="codicon codicon-refresh"></span>
+                    </button>
+                </div>
+                <div class="specs-list" id="specs-list"></div>
+            </div>
+        </div><!-- End panel-specs -->
 
         <!-- Settings Panel -->
         <div class="tab-panel" id="panel-settings">

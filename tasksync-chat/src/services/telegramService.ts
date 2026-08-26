@@ -1942,6 +1942,36 @@ export class TelegramService {
      * Send a lightweight status message to Telegram.
      * Reuses (edits) the same message to avoid spamming the chat.
      */
+    /** Post a one-off markdown message (turn-end handoff). Unlike the heartbeat this is never throttled or edited in place. */
+    public async postText(markdown: string, fallback: string): Promise<boolean> {
+        if (!this.isConfigured()) { return false; }
+        let html: string;
+        try {
+            html = this._markdownToHtml(markdown);
+        } catch {
+            html = this._escapeHtml(fallback);
+        }
+        const workspaceName = this._workspaceName();
+        const threadId = await this._getTopicId(workspaceName);
+        const body: Record<string, unknown> = {
+            chat_id: this._chatId,
+            text: `📋 <b>AskAway · ${this._escapeHtml(workspaceName)}</b>\n\n${html}`.slice(0, 4000),
+            parse_mode: 'HTML',
+            disable_web_page_preview: true
+        };
+        if (threadId) { body.message_thread_id = threadId; }
+        try {
+            const resp = await fetch(this._apiUrl('sendMessage'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            return resp.ok;
+        } catch {
+            return false;
+        }
+    }
+
     public async sendStatusUpdate(status: string): Promise<void> {
         if (!this.isConfigured()) { return; }
         // Throttle: don't send more than once per 30 seconds

@@ -208,6 +208,7 @@
             bindEventListeners();
             initVoiceControls();
             initWorkerTabs();
+            initSpecsTab();
             unlockAudioOnInteraction(); // Enable audio after first user interaction
             console.log('[TaskSync Webview] Event listeners bound, pendingMessage element:', !!pendingMessage);
             renderQueue();
@@ -1454,6 +1455,9 @@
         var message = event.data;
         console.log('[TaskSync Webview] Received message:', message.type, message);
         switch (message.type) {
+            case 'specsData':
+                applySpecsData(message.data);
+                break;
             case 'updateQueue':
                 promptQueue = message.queue || [];
                 queueEnabled = message.enabled !== false;
@@ -1683,6 +1687,7 @@
                                 label: typeof s.label === 'string' ? s.label : 'sub-agent',
                                 done: !!s.done,
                                 durMs: Number(s.durMs) || 0,
+                                startedTs: Number(s.startedTs) || 0,
                                 outputTokens: Number(s.outputTokens) || 0,
                                 status: typeof s.status === 'string' ? s.status : 'running'
                             };
@@ -3186,12 +3191,20 @@
                     var done = !!(sum && sum.done);
                     var gid = 'sa:' + item.id;
                     var gOpenAttr = openIds[gid] ? ' open' : '';
-                    var gDurMs = done ? Number(sum.durMs) || 0 : Math.max(0, (grp.maxTs - grp.minTs));
+                    // While running, the debug-log event span (maxTs-minTs) is ~0 until the child has
+                    // logged at least two events, which is why this used to read 0.0s for most of the
+                    // run. Wall time from the first observed activity is the honest live number.
+                    var gDurMs = done
+                        ? Number(sum.durMs) || 0
+                        : Math.max(0, (grp.maxTs - grp.minTs), (sum && sum.startedTs) ? (Date.now() - sum.startedTs) : 0);
+                    var gCold = !done && gDurMs >= 240000;
                     var gOut = done ? (Number(sum.outputTokens) || grp.outTok) : grp.outTok;
                     var statusBad = sum && sum.status && sum.status !== 'ok' && sum.status !== 'success';
                     var stateBadge = done
                         ? (statusBad ? '<span class="obs-kind-tag obs-tag-retry" title="Sub-agent ended with an error">failed</span>' : '<span class="obs-sub-tag" title="Sub-agent completed">done</span>')
-                        : '<span class="obs-kind-tag obs-tag-subagent obs-sa-running" title="Sub-agent still running \u2014 totals update live">running\u2026</span>';
+                        : (gCold
+                            ? '<span class="obs-kind-tag obs-tag-retry obs-sa-running" title="Past the ~5m prompt-cache window \u2014 this sub-agent is now being re-billed at full price">running\u2026 cache cold</span>'
+                            : '<span class="obs-kind-tag obs-tag-subagent obs-sa-running" title="Sub-agent still running \u2014 totals update live">running\u2026</span>');
                     var nestedRows = '';
                     grp.items.sort(function (a, b) { return (Number(a.ev.ts) || 0) - (Number(b.ev.ts) || 0); });
                     for (var gi = 0; gi < grp.items.length; gi++) { nestedRows += buildAnyRow(grp.items[gi].ev, grp.items[gi].k); }
@@ -3208,7 +3221,7 @@
                         '<span class="obs-tl-metric" title="nested LLM requests / tool calls">' + grp.reqCount + ' req \u00b7 ' + grp.toolCount + ' tools</span>' +
                         '<span class="obs-tl-metric" title="credits (AIU)">' + aiu(grp.nano) + ' AIU</span>' +
                         '<span class="obs-tl-metric" title="output tokens">\u2191' + tok(gOut) + '</span>' +
-                        '<span class="obs-tl-time" title="total wall time">' + sec(gDurMs) + 's</span>' +
+                        '<span class="obs-tl-time' + (gCold ? ' obs-cache-risk' : '') + '" title="total wall time">' + sec(gDurMs) + 's</span>' +
                         '</summary>' +
                         '<div class="obs-tl-body obs-tl-subagent-body">' +
                         '<table class="observability-table obs-timeline-table obs-subagent-nested"><tbody>' + nestedRows + '</tbody></table>' +
@@ -5052,6 +5065,188 @@
     // Track which tool groups within a panel are expanded: { command: Set<groupName>, subagent: Set<groupName> }
     var workerGroupsExpanded = { command: new Set(), subagent: new Set() };
 
+    // ---- Spec Kit overview tab ----
+    var specsState = { enabled: false, activeSlug: '', specs: [] };
+    var specsShowDone = false;
+    var specsExpanded = {};
+
+    // "In progress" is reserved for the feature.json feature; a non-active spec with ticked tasks is "Started".
+    var SPEC_STAGE_LABEL = {
+        'needs-clarify': 'Needs clarify',
+        'specified': 'Specified',
+        'planned': 'Planned',
+        'tasks-ready': 'Tasks ready',
+        'in-progress': 'Started',
+        'done': 'Done'
+    };
+
+    /** Buttons follow the spec's real state: only the active feature can be planned/implemented. */
+    function specCommands(spec) {
+        var id = spec.id || spec.slug;
+        if (!spec.active) {
+            return [{ cmd: '/start ' + id, label: '/start ' + id, hint: 'Make ' + id + ' the active feature' }];
+        }
+        if (spec.clarifications > 0 && !spec.hasTasks) {
+            return [{ cmd: '/check', label: '/check', hint: spec.clarifications + ' open [NEEDS CLARIFICATION] — resolve before planning' }];
+        }
+        if (!spec.hasPlan) {
+            return [{ cmd: '/plan', label: '/plan', hint: 'No plan.md yet' }];
+        }
+        if (!spec.hasTasks || spec.total === 0) {
+            return [{ cmd: '/tasks', label: '/tasks', hint: 'Plan exists, no tasks.md yet' }];
+        }
+        if (spec.done >= spec.total) {
+            return [
+                { cmd: '/handoff', label: '/handoff', hint: 'All tasks done — close the session' },
+                { cmd: '/check', label: '/check', hint: 'Verify code matches the spec' }
+            ];
+        }
+        var out = [];
+        if (spec.nextTaskId) {
+            out.push({ cmd: '/implement ' + spec.nextTaskId, label: '/implement ' + spec.nextTaskId, hint: spec.nextTaskText || 'Next unticked task' });
+        }
+        out.push({ cmd: '/continue ' + id, label: '/continue ' + id, hint: 'Resume this feature from where it stopped' });
+        return out;
+    }
+
+    function initSpecsTab() {
+        var refreshBtn = document.getElementById('specs-refresh-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', function() { vscode.postMessage({ type: 'requestSpecs' }); });
+        }
+        var showDone = document.getElementById('specs-show-done');
+        if (showDone) {
+            showDone.addEventListener('change', function() {
+                specsShowDone = showDone.checked;
+                renderSpecs();
+            });
+        }
+        var list = document.getElementById('specs-list');
+        if (list) list.addEventListener('click', onSpecsListClick);
+        vscode.postMessage({ type: 'requestSpecs' });
+    }
+
+    function applySpecsData(data) {
+        specsState = data || { enabled: false, activeSlug: '', specs: [] };
+        var tabBtn = document.getElementById('tab-specs');
+        if (tabBtn) tabBtn.classList.toggle('hidden', !specsState.enabled);
+        if (!specsState.enabled && currentTab === 'specs') switchTab('chat');
+        renderSpecs();
+    }
+
+    function specAgo(ms) {
+        if (!ms) return '';
+        var days = Math.floor((Date.now() - ms) / 86400000);
+        if (days <= 0) return 'today';
+        if (days === 1) return 'yesterday';
+        return days + 'd ago';
+    }
+
+    function renderSpecs() {
+        var list = document.getElementById('specs-list');
+        if (!list) return;
+
+        var all = specsState.specs || [];
+        var doneCount = all.filter(function(s) { return s.stage === 'done'; }).length;
+
+        var chip = document.getElementById('specs-active-chip');
+        if (chip) {
+            var act = all.filter(function(s) { return s.active; })[0];
+            chip.innerHTML = act
+                ? '<span class="codicon codicon-target"></span> <strong>' + escapeHtml(act.id || act.slug) + '</strong> ' +
+                  escapeHtml(act.title)
+                : '<span class="specs-muted">No active feature</span>';
+            chip.title = act ? act.slug : '';
+        }
+
+        var toggle = document.getElementById('specs-show-done');
+        if (toggle) {
+            toggle.checked = specsShowDone;
+            var lbl = toggle.parentElement;
+            if (lbl) lbl.classList.toggle('hidden', doneCount === 0);
+        }
+
+        // The active feature is never hidden by the Completed filter — it is what /continue would act on.
+        var specs = specsShowDone ? all : all.filter(function(s) { return s.stage !== 'done' || s.active; });
+        if (!specs.length) {
+            list.innerHTML = '<div class="specs-empty">' +
+                (all.length ? 'All specs are complete.' : 'No specs found under specs/.') + '</div>';
+            return;
+        }
+
+        list.innerHTML = specs.map(function(spec) {
+            var expanded = !!specsExpanded[spec.slug];
+            var pct = spec.total ? spec.percent : 0;
+
+            var next = spec.nextTaskId || spec.nextTaskText
+                ? '<div class="spec-next" title="' + escapeHtml(spec.nextTaskText) + '"><span class="spec-next-id">' +
+                  escapeHtml(spec.nextTaskId || 'next') + '</span>' + escapeHtml(spec.nextTaskText) + '</div>'
+                : '<div class="spec-next specs-muted">' + (spec.hasTasks ? 'All tasks done' : 'No tasks yet') + '</div>';
+
+            var facts = [];
+            if (spec.total) facts.push(spec.done + '/' + spec.total + ' tasks');
+            if (spec.clarifications) facts.push(spec.clarifications + ' clarify');
+            if (spec.sessions) facts.push(spec.sessions + ' sessions');
+            if (spec.lastActivity) facts.push(specAgo(spec.lastActivity));
+
+            var body = expanded
+                ? '<div class="spec-body">' +
+                  (facts.length ? '<div class="spec-meta">' + escapeHtml(facts.join(' · ')) + '</div>' : '') +
+                  (spec.phases.length
+                      ? '<div class="spec-phases">' + spec.phases.map(function(p) {
+                            return '<div class="spec-phase"><span>' + escapeHtml(p.name) + '</span><span>' +
+                                   p.done + '/' + p.total + '</span></div>';
+                        }).join('') + '</div>'
+                      : '') +
+                  '<div class="spec-actions">' +
+                  specCommands(spec).map(function(c) {
+                      return '<button class="spec-action" data-act="cmd" data-cmd="' + escapeHtml(c.cmd) +
+                             '" title="' + escapeHtml(c.hint) + '">' + escapeHtml(c.label) + '</button>';
+                  }).join('') +
+                  '<button class="spec-action spec-open" data-act="open" data-file="spec.md" title="Open in the editor">Open spec.md</button>' +
+                  (spec.hasPlan ? '<button class="spec-action spec-open" data-act="open" data-file="plan.md" title="Open in the editor">Open plan.md</button>' : '') +
+                  (spec.hasTasks ? '<button class="spec-action spec-open" data-act="open" data-file="tasks.md" title="Open in the editor">Open tasks.md</button>' : '') +
+                  '</div></div>'
+                : '';
+
+            return '' +
+                '<div class="spec-card' + (spec.active ? ' spec-card-active' : '') + (expanded ? ' expanded' : '') + '"' +
+                    ' data-slug="' + escapeHtml(spec.slug) + '" data-dir="' + escapeHtml(spec.dir) + '"' +
+                    ' data-id="' + escapeHtml(spec.id) + '" data-next="' + escapeHtml(spec.nextTaskId) + '">' +
+                '  <div class="spec-card-head" data-act="toggle">' +
+                '    <span class="codicon codicon-chevron-right spec-chevron"></span>' +
+                '    <span class="spec-id">' + escapeHtml(spec.id) + '</span>' +
+                '    <span class="spec-title">' + escapeHtml(spec.title) + '</span>' +
+                (spec.clarifications ? '<span class="spec-dot" title="' + spec.clarifications + ' open [NEEDS CLARIFICATION]">!</span>' : '') +
+                (spec.active ? '<span class="spec-badge spec-badge-active" title="Active feature in .specify/feature.json">Active</span>' : '') +
+                '    <span class="spec-badge spec-stage-' + spec.stage + '">' + (SPEC_STAGE_LABEL[spec.stage] || spec.stage) + '</span>' +
+                '    <span class="spec-pct">' + pct + '%</span>' +
+                '  </div>' +
+                '  <div class="spec-bar"><div class="spec-bar-fill" style="width:' + pct + '%"></div></div>' +
+                next +
+                body +
+                '</div>';
+        }).join('');
+    }
+
+    function onSpecsListClick(e) {
+        var btn = e.target.closest('[data-act]');
+        var card = e.target.closest('.spec-card');
+        if (!btn || !card) return;
+        var act = btn.getAttribute('data-act');
+        var dir = card.getAttribute('data-dir');
+
+        if (act === 'toggle') {
+            var slug = card.getAttribute('data-slug');
+            specsExpanded[slug] = !specsExpanded[slug];
+            renderSpecs();
+        } else if (act === 'cmd') {
+            vscode.postMessage({ type: 'runSpecCommand', command: btn.getAttribute('data-cmd') });
+        } else if (act === 'open') {
+            vscode.postMessage({ type: 'openSpecFile', dir: dir, file: btn.getAttribute('data-file') });
+        }
+    }
+
     function initWorkerTabs() {
         // Tab switching
         var tabs = document.querySelectorAll('.widget-tab');
@@ -5125,6 +5320,8 @@
             vscode.postMessage({ type: 'openSettingsModal' });
         } else if (tab === 'observability') {
             updateObservabilityUI();
+        } else if (tab === 'specs') {
+            vscode.postMessage({ type: 'requestSpecs' });
         }
     }
 

@@ -352,6 +352,28 @@ export class WebexService {
         return body;
     }
 
+    // ── Post plain message ────────────────────────────────────
+
+    /** Post a plain markdown message (no card, no reply tracking). Used for turn-end handoffs. */
+    public async postText(markdown: string, fallback: string): Promise<boolean> {
+        if (!this.isConfigured() || !markdown.trim()) { return false; }
+        try {
+            const resp = await fetch(`${WEBEX_API}/messages`, {
+                method: 'POST',
+                headers: this._headers(),
+                body: JSON.stringify({ roomId: this._roomId, markdown, text: fallback })
+            });
+            if (!resp.ok) {
+                this.logger?.appendLine(`AskAway/Webex: postText failed ${resp.status} ${await resp.text()}`);
+                return false;
+            }
+            return true;
+        } catch (err) {
+            this.logger?.appendLine(`AskAway/Webex: postText error ${err instanceof Error ? err.message : String(err)}`);
+            return false;
+        }
+    }
+
     // ── Post Adaptive Card ────────────────────────────────────
 
     public async postAdaptiveCard(taskId: string, question: string, choices?: string[]): Promise<void> {
