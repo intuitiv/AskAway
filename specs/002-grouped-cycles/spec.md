@@ -94,10 +94,18 @@ Creating the example above makes these two edits only:
 
 ## Execution Rules
 
+- `/implement CY-NNN` resolves every unchecked tagged task across all specs, loads the exact cycle
+  outcome and shared verification, and pitches the whole batch once before making changes.
+- The orchestrator builds a schedule from task dependencies, touched files, and verification. It
+  invokes `speckit.implement` separately for each ready task; no child receives the whole cycle.
 - Start long-running verification early when another approved item can progress independently.
 - Never edit the same ownership area concurrently from two workers.
 - Do not invent work merely to keep a Gradle build or subagent company.
 - A waiting or failed item remains visible; completing another item never hides it.
+- A failed item blocks its dependents but does not stop tasks proven independent. The final cycle
+  result lists completed, failed, blocked, and skipped items explicitly.
+- Every task is verified, demonstrated, checked off, and logged separately. The cycle adds one
+  shared verification and one commit; it never collapses task evidence into a single result.
 - A cycle may pause, accept another related item, or continue in another conversation.
 - Work requiring a reviewer decision still stops at that decision.
 - Handoff records state only. It does not finish code, tests, task logs, or documentation.
@@ -141,5 +149,4 @@ Tasks without a cycle remain visible and continue to use `/implement T014` norma
 
 1. How many items should a cycle normally hold before coordination costs exceed the saved waiting
   time? Start with a recommendation of two to five, not a hard limit.
-2. Should a failed item halt `/implement CY-002`, or should independent items continue?
-3. What progress can a subprocess-backed subagent expose without requiring frequent polling?
+2. What progress can a subprocess-backed subagent expose without requiring frequent polling?
