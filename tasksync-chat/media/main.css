@@ -4943,6 +4943,8 @@ button#send-btn:disabled {
 }
 
 .specs-active {
+    flex: 1;
+    min-width: 0;
     font-size: 11px;
     color: var(--vscode-foreground);
     overflow: hidden;
@@ -4971,15 +4973,20 @@ button#send-btn:disabled {
 }
 
 .specs-toggle {
-    display: flex;
-    align-items: center;
-    gap: 4px;
+    border: 1px solid var(--vscode-button-border, var(--vscode-widget-border));
+    border-radius: 3px;
+    background: var(--vscode-button-secondaryBackground);
+    padding: 3px 7px;
     font-size: 10px;
-    color: var(--vscode-descriptionForeground);
+    color: var(--vscode-button-secondaryForeground);
     cursor: pointer;
     white-space: nowrap;
 }
-.specs-toggle input { margin: 0; cursor: pointer; }
+.specs-toggle:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.specs-toggle[aria-pressed="true"] {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
 
 .specs-list {
     flex: 1;

@@ -5116,8 +5116,8 @@
         }
         var showDone = document.getElementById('specs-show-done');
         if (showDone) {
-            showDone.addEventListener('change', function() {
-                specsShowDone = showDone.checked;
+            showDone.addEventListener('click', function() {
+                specsShowDone = !specsShowDone;
                 renderSpecs();
             });
         }
@@ -5170,9 +5170,12 @@
 
         var toggle = document.getElementById('specs-show-done');
         if (toggle) {
-            toggle.checked = specsShowDone;
-            var lbl = toggle.parentElement;
-            if (lbl) lbl.classList.toggle('hidden', doneCount === 0);
+            toggle.setAttribute('aria-pressed', specsShowDone ? 'true' : 'false');
+            toggle.textContent = specsShowDone ? 'Hide completed' : 'Show completed';
+            toggle.title = specsShowDone
+                ? 'Hide specs whose tasks are all complete'
+                : 'Include specs whose tasks are all complete';
+            toggle.classList.toggle('hidden', doneCount === 0);
         }
 
         // The active feature is never hidden by the Completed filter — it is what /continue would act on.

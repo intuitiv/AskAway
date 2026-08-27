@@ -6624,9 +6624,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <div class="specs-shell">
                 <div class="specs-header">
                     <div class="specs-active" id="specs-active-chip"></div>
-                    <label class="specs-toggle" title="Show specs whose tasks are all complete">
-                        <input type="checkbox" id="specs-show-done"> Completed
-                    </label>
+                    <button class="specs-toggle" id="specs-show-done" type="button" aria-pressed="false"
+                        title="Include specs whose tasks are all complete">Show completed</button>
                     <button class="specs-refresh-btn" id="specs-refresh-btn" title="Rescan specs/">
                         <span class="codicon codicon-refresh"></span>
                     </button>
