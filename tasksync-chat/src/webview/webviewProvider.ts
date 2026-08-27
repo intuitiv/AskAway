@@ -3685,7 +3685,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const folder = vscode.workspace.workspaceFolders?.[0];
         if (!folder) { return; }
         const watcher = vscode.workspace.createFileSystemWatcher(
-            new vscode.RelativePattern(folder, '{specs/**/*.md,.specify/feature.json}')
+            new vscode.RelativePattern(folder, '{specs/**/*.md,.specify/*.md,.specify/feature.json}')
         );
         const schedule = () => {
             if (this._specsRefreshTimer) { clearTimeout(this._specsRefreshTimer); }

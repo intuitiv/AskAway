@@ -16,6 +16,28 @@ export interface SpecPhase {
     done: number;
 }
 
+export interface SpecCycleTask {
+    id: string;
+    text: string;
+    done: boolean;
+    specId: string;
+    specSlug: string;
+}
+
+export interface SpecCycleSummary {
+    id: string;
+    title: string;
+    description: string;
+    verification: string;
+    total: number;
+    done: number;
+    state: 'ready' | 'running' | 'complete';
+    nextTaskId: string;
+    nextTaskText: string;
+    specCount: number;
+    tasks: SpecCycleTask[];
+}
+
 export interface SpecSummary {
     id: string;
     slug: string;
@@ -29,6 +51,7 @@ export interface SpecSummary {
     nextTaskText: string;
     clarifications: number;
     phases: SpecPhase[];
+    cycles: SpecCycleSummary[];
     active: boolean;
     hasPlan: boolean;
     hasTasks: boolean;
@@ -88,8 +111,10 @@ function countClarifications(...texts: string[]): number {
 }
 
 function stripTaskTags(text: string): string {
-    return text.replace(/\[(P|US\d+|[A-Z]{1,4}\d*)\]/g, '').replace(/\s{2,}/g, ' ').trim();
+    return text.replace(/\[(P|US\d+|CY-\d+|[A-Z]{1,4}\d*)\]/gi, '').replace(/\s{2,}/g, ' ').trim();
 }
+
+interface ParsedTask { id: string; text: string; done: boolean; cycleId: string; }
 
 interface TaskParse {
     total: number;
@@ -97,6 +122,7 @@ interface TaskParse {
     phases: SpecPhase[];
     nextId: string;
     nextText: string;
+    tasks: ParsedTask[];
 }
 
 function parseTasks(text: string): TaskParse {
@@ -106,6 +132,7 @@ function parseTasks(text: string): TaskParse {
     let done = 0;
     let nextId = '';
     let nextText = '';
+    const tasks: ParsedTask[] = [];
 
     for (const raw of text.split(/\r?\n/)) {
         const heading = PHASE_HEADING.exec(raw);
@@ -117,6 +144,14 @@ function parseTasks(text: string): TaskParse {
         const task = TASK_LINE.exec(raw);
         if (!task) { continue; }
         const isDone = task[1].toLowerCase() === 'x';
+        const rawText = task[3] || '';
+        const cycleMatch = /\[CY-(\d+)\]/i.exec(rawText);
+        tasks.push({
+            id: task[2] || '',
+            text: stripTaskTags(rawText),
+            done: isDone,
+            cycleId: cycleMatch ? `CY-${cycleMatch[1].padStart(3, '0')}` : ''
+        });
         total++;
         if (current) { current.total++; }
         if (isDone) {
@@ -124,11 +159,25 @@ function parseTasks(text: string): TaskParse {
             if (current) { current.done++; }
         } else if (!nextId && !nextText) {
             nextId = task[2] || '';
-            nextText = stripTaskTags(task[3] || '');
+            nextText = stripTaskTags(rawText);
         }
     }
 
-    return { total, done, phases: phases.filter(p => p.total > 0), nextId, nextText };
+    return { total, done, phases: phases.filter(p => p.total > 0), nextId, nextText, tasks };
+}
+
+interface CycleMetadata { title: string; description: string; verification: string; }
+
+function parseCycleMetadata(text: string): Map<string, CycleMetadata> {
+    const result = new Map<string, CycleMetadata>();
+    for (const line of text.split(/\r?\n/)) {
+        if (!line.trim().startsWith('|')) { continue; }
+        const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
+        if (cells.length < 3 || !/^CY-\d+$/i.test(cells[0])) { continue; }
+        const id = `CY-${cells[0].slice(3).padStart(3, '0')}`;
+        result.set(id, { title: cells[1], description: cells[2], verification: cells[3] || '' });
+    }
+    return result;
 }
 
 function countLogRows(text: string): number {
@@ -178,6 +227,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
 
     const activeSlug = readActiveSlug(workspaceRoot);
     const specs: SpecSummary[] = [];
+    const tasksBySlug = new Map<string, ParsedTask[]>();
 
     for (const entry of entries) {
         if (!entry.isDirectory() || entry.name.startsWith('.')) { continue; }
@@ -188,6 +238,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
         if (!specText && !planText && !tasksText) { continue; }
 
         const parsed = parseTasks(tasksText);
+        tasksBySlug.set(entry.name, parsed.tasks);
         const clarifications = countClarifications(specText, planText);
         const hasPlan = planText.length > 0;
         const hasTasks = tasksText.length > 0;
@@ -205,12 +256,49 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
             nextTaskText: parsed.nextText,
             clarifications,
             phases: parsed.phases,
+            cycles: [],
             active: entry.name === activeSlug,
             hasPlan,
             hasTasks,
             lastActivity: newestMtime(dir),
             sessions: countLogRows(readTextFile(path.join(dir, 'implementation-log.md')))
         });
+    }
+
+    const metadata = parseCycleMetadata(readTextFile(path.join(workspaceRoot, '.specify', 'cycles.md')));
+    const cycles = new Map<string, SpecCycleTask[]>();
+    for (const spec of specs) {
+        for (const task of tasksBySlug.get(spec.slug) || []) {
+            if (!task.cycleId) { continue; }
+            const members = cycles.get(task.cycleId) || [];
+            members.push({ id: task.id, text: task.text, done: task.done, specId: spec.id, specSlug: spec.slug });
+            cycles.set(task.cycleId, members);
+        }
+    }
+    for (const spec of specs) {
+        const specCycleIds = new Set((tasksBySlug.get(spec.slug) || []).map(task => task.cycleId).filter(Boolean));
+        spec.cycles = [...specCycleIds].map(id => {
+            const tasks = cycles.get(id) || [];
+            const done = tasks.filter(task => task.done).length;
+            const next = tasks.find(task => !task.done);
+            const meta = metadata.get(id);
+            const state: SpecCycleSummary['state'] = done === tasks.length
+                ? 'complete'
+                : done > 0 ? 'running' : 'ready';
+            return {
+                id,
+                title: meta?.title || id,
+                description: meta?.description || '',
+                verification: meta?.verification || '',
+                total: tasks.length,
+                done,
+                state,
+                nextTaskId: next?.id || '',
+                nextTaskText: next?.text || '',
+                specCount: new Set(tasks.map(task => task.specSlug)).size,
+                tasks
+            };
+        }).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
     }
 
     specs.sort((a, b) => {

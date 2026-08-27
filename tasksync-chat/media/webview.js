@@ -5192,6 +5192,23 @@
             var body = expanded
                 ? '<div class="spec-body">' +
                   (facts.length ? '<div class="spec-meta">' + escapeHtml(facts.join(' · ')) + '</div>' : '') +
+                  (spec.cycles && spec.cycles.length
+                      ? '<div class="spec-cycles"><div class="spec-section-label">Cycles</div>' + spec.cycles.map(function(c) {
+                            var nextLabel = c.nextTaskId
+                                ? '<span class="spec-cycle-next">Next: ' + escapeHtml(c.nextTaskId) + ' ' + escapeHtml(c.nextTaskText) + '</span>'
+                                : '<span class="spec-cycle-next">All tasks complete</span>';
+                            return '<div class="spec-cycle" title="' + escapeHtml(c.description || c.title) + '">' +
+                                '<div class="spec-cycle-main"><span class="spec-cycle-id">' + escapeHtml(c.id) + '</span>' +
+                                '<span class="spec-cycle-title">' + escapeHtml(c.title) + '</span>' +
+                                (c.specCount > 1 ? '<span class="spec-cycle-count">' + c.specCount + ' specs</span>' : '') +
+                                '<span class="spec-cycle-progress">' + c.done + '/' + c.total + '</span>' +
+                                '<span class="spec-cycle-state">' + escapeHtml(c.state) + '</span>' +
+                                (c.state !== 'complete' ? '<button class="spec-action" data-act="cmd" data-cmd="/implement ' + escapeHtml(c.id) + '">Implement cycle</button>' : '') +
+                                '</div>' +
+                                (c.description ? '<div class="spec-cycle-description">' + escapeHtml(c.description) + '</div>' : '') +
+                                nextLabel + '</div>';
+                        }).join('') + '</div>'
+                      : '') +
                   (spec.phases.length
                       ? '<div class="spec-phases">' + spec.phases.map(function(p) {
                             return '<div class="spec-phase"><span>' + escapeHtml(p.name) + '</span><span>' +

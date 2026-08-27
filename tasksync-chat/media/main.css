@@ -5118,6 +5118,25 @@ button#send-btn:disabled {
     margin-top: 3px;
 }
 
+.spec-cycles { margin-top: 7px; }
+.spec-section-label {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 3px;
+}
+.spec-cycle { padding: 4px 0; border-top: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.2)); }
+.spec-cycle-main { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.spec-cycle-id { font: 10px var(--vscode-editor-font-family); color: var(--vscode-textLink-foreground); }
+.spec-cycle-title { font-size: 10px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spec-cycle-count, .spec-cycle-progress, .spec-cycle-state { font-size: 9px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+.spec-cycle-state { text-transform: capitalize; }
+.spec-cycle-main .spec-action { margin-left: auto; white-space: nowrap; }
+.spec-cycle-description, .spec-cycle-next { display: block; margin-top: 2px; font-size: 9px; color: var(--vscode-descriptionForeground); }
+.spec-cycle-description { white-space: normal; }
+.spec-cycle-next { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .spec-phases {
     margin-top: 5px;
 }
