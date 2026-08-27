@@ -837,6 +837,7 @@
             '<tbody id="observability-model-tbody"><tr><td colspan="6" class="obs-na">No data yet</td></tr></tbody>' +
             '</table>' +
             '<div class="observability-model-note">Average request cost by model and input context - workspace history. Each sample is one model request; one user turn can contain several requests.</div>' +
+            '<div class="obs-cost-legend"><span class="obs-cost-legend-bar"></span> Bar length = average AIU per request, using one shared scale across all models.</div>' +
             '<div class="obs-context-cost-chart" id="obs-context-cost-chart"><div class="obs-na">No data yet</div></div>' +
             '<div class="observability-model-note">Tool calls this month</div>' +
             '<table class="observability-table observability-model-table">' +
@@ -2904,7 +2905,7 @@
         var sec = function (ms) { return ((Number(ms) || 0) / 1000).toFixed(2); };
 
         var all = observabilityMetrics.overall || {};
-        var workspace = observabilityMetrics.workspace || {};
+        var turn = observabilityMetrics.lastRequest || {};
         var tc = observabilityMetrics.toolCalls || {};
 
         var hitPct = function (s) {
@@ -2913,7 +2914,7 @@
             return Math.round((Number(s.cachedTokens) || 0) / inp * 100) + '%';
         };
         var setCell = function (id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
-        setCell('common-spend', 'Spent: ' + aiu(workspace.nanoAiu) + ' AIU');
+        setCell('common-spend', 'This turn: ' + aiu(turn.nanoAiu) + ' AIU');
         var setHit = function (id, s) {
             var el = document.getElementById(id); if (!el) return;
             el.textContent = hitPct(s);
@@ -2956,8 +2957,12 @@
                 var switchAt = null;
                 for (var bi = 1; bi < buckets.length; bi++) {
                     var previous = buckets[bi - 1], current = buckets[bi];
-                    if (current.requestCount >= 3 && previous.requestCount >= 3 &&
-                        (current.avgCacheHitPct < 50 || current.avgNanoAiu > previous.avgNanoAiu * 1.75)) {
+                    var previousMidpoint = Math.max(1, (previous.minInputTokens + previous.maxInputTokens) / 2);
+                    var currentMidpoint = Math.max(1, (current.minInputTokens + current.maxInputTokens) / 2);
+                    var previousEfficiency = previous.avgNanoAiu / previousMidpoint;
+                    var currentEfficiency = current.avgNanoAiu / currentMidpoint;
+                    if (current.requestCount >= 3 && previous.requestCount >= 3 && current.minInputTokens >= 160000 &&
+                        (current.avgCacheHitPct < 50 || currentEfficiency > previousEfficiency * 1.5)) {
                         switchAt = current;
                         break;
                     }
