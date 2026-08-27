@@ -106,6 +106,15 @@ interface ModelBreakdown extends ScopeMetrics {
     model: string;
 }
 
+interface ContextCostBucket {
+    model: string;
+    minInputTokens: number;
+    maxInputTokens: number;
+    requestCount: number;
+    avgNanoAiu: number;
+    avgCacheHitPct: number;
+}
+
 interface ObservabilityMetrics {
     // Flat fields mirror the workspace cumulative scope (kept for backward compatibility).
     requestCount: number;
@@ -118,6 +127,7 @@ interface ObservabilityMetrics {
     workspace: ScopeMetrics;     // cumulative for this workspace
     overall: ScopeMetrics;       // current calendar month across all workspaces
     perModel: ModelBreakdown[];  // current calendar month across all workspaces (debug)
+    contextCostCurve: ContextCostBucket[]; // workspace lifetime, grouped by model + input size
     /** Current-month context-compaction (summarizeConversationHistory) request count + credits. */
     overallCompaction: { count: number; nanoAiu: number };
     turnRequests: TurnRequest[]; // individual requests of the current turn (newest last)
@@ -586,6 +596,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         workspace: { requestCount: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, nanoAiu: 0 },
         overall: { requestCount: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, nanoAiu: 0 },
         perModel: [],
+        contextCostCurve: [],
         overallCompaction: { count: 0, nanoAiu: 0 },
         turnRequests: [],
         turnEvents: [],
@@ -2009,6 +2020,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             workspace: this._emptyScope(),
             overall: this._emptyScope(),
             perModel: [],
+            contextCostCurve: [],
             overallCompaction: { count: 0, nanoAiu: 0 },
             turnRequests: [],
             turnEvents: [],
@@ -2056,6 +2068,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     lastRequest: this._deriveLastRequest(),
                     overall: overall.totals,
                     perModel: overall.perModel,
+                    contextCostCurve: this._buildContextCostCurve(ledger),
                     overallCompaction: overall.compaction,
                     turnRequests: [...this._turnRequests],
                     turnEvents: [...this._turnEvents],
@@ -2468,6 +2481,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 workspace: workspaceScope,
                 overall: overall.totals,
                 perModel: overall.perModel,
+                contextCostCurve: this._buildContextCostCurve(ledger),
                 overallCompaction: overall.compaction,
                 turnRequests: [...this._turnRequests],
                 turnEvents: [...this._turnEvents],
@@ -3851,6 +3865,31 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         }
 
         return candidates.sort();
+    }
+
+    private _buildContextCostCurve(ledger: ObservabilityLedger): ContextCostBucket[] {
+        const width = 80_000;
+        const buckets = new Map<string, { model: string; min: number; count: number; nano: number; hit: number }>();
+        for (const value of Object.values(ledger.seen)) {
+            if (!value || value === true || value.in <= 0) { continue; }
+            const min = Math.floor(value.in / width) * width;
+            const key = `${value.model}\u0000${min}`;
+            const bucket = buckets.get(key) || { model: value.model || 'unknown', min, count: 0, nano: 0, hit: 0 };
+            bucket.count++;
+            bucket.nano += value.nano;
+            bucket.hit += Math.min(100, Math.round((value.cached || 0) / value.in * 100));
+            buckets.set(key, bucket);
+        }
+        return [...buckets.values()]
+            .map(bucket => ({
+                model: bucket.model,
+                minInputTokens: bucket.min,
+                maxInputTokens: bucket.min + width,
+                requestCount: bucket.count,
+                avgNanoAiu: bucket.nano / bucket.count,
+                avgCacheHitPct: Math.round(bucket.hit / bucket.count)
+            }))
+            .sort((a, b) => a.model.localeCompare(b.model) || a.minInputTokens - b.minInputTokens);
     }
 
     /**
@@ -6349,6 +6388,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <button class="widget-tab" data-tab="observability" title="Observability metrics, RTK/Gradle savings, requests and memories">Metrics</button>
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
         </div>
+        <button class="conversation-health" type="button" data-tab="observability" title="Open Metrics for detailed cost and cache information">
+            <span id="common-spend">Spent: - AIU</span>
+            <span id="common-cache-age" class="health-cache">Cache: -</span>
+        </button>
 
         <!-- Chat Panel -->
         <div class="tab-panel active" id="panel-chat">

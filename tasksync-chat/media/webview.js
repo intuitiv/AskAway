@@ -61,6 +61,7 @@
         workspace: { requestCount: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, nanoAiu: 0 },
         overall: { requestCount: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, nanoAiu: 0 },
         perModel: [],
+        contextCostCurve: [],
         overallCompaction: { count: 0, nanoAiu: 0 },
         turnRequests: [],
         turnEvents: [],
@@ -835,6 +836,8 @@
             '<thead><tr><th>Model</th><th>Reqs</th><th>Credits</th><th>Input</th><th>Output</th><th>Cached</th></tr></thead>' +
             '<tbody id="observability-model-tbody"><tr><td colspan="6" class="obs-na">No data yet</td></tr></tbody>' +
             '</table>' +
+            '<div class="observability-model-note">Average request cost by model and input context - workspace history. Each sample is one model request; one user turn can contain several requests.</div>' +
+            '<div class="obs-context-cost-chart" id="obs-context-cost-chart"><div class="obs-na">No data yet</div></div>' +
             '<div class="observability-model-note">Tool calls this month</div>' +
             '<table class="observability-table observability-model-table">' +
             '<thead><tr><th>Tool</th><th>Calls</th><th>Out tok</th><th>avg s</th><th>min s</th><th>max s</th><th>err</th></tr></thead>' +
@@ -1586,6 +1589,16 @@
                             var sc = sanitizeScope(m);
                             sc.model = typeof m.model === 'string' ? m.model : 'unknown';
                             return sc;
+                        }) : [],
+                        contextCostCurve: Array.isArray(message.metrics.contextCostCurve) ? message.metrics.contextCostCurve.map(function (b) {
+                            return {
+                                model: typeof b.model === 'string' ? b.model : 'unknown',
+                                minInputTokens: Number(b.minInputTokens) || 0,
+                                maxInputTokens: Number(b.maxInputTokens) || 0,
+                                requestCount: Number(b.requestCount) || 0,
+                                avgNanoAiu: Number(b.avgNanoAiu) || 0,
+                                avgCacheHitPct: Number(b.avgCacheHitPct) || 0
+                            };
                         }) : [],
                         turnRequests: Array.isArray(message.metrics.turnRequests) ? message.metrics.turnRequests.map(function (r) {
                             return {
@@ -2840,9 +2853,13 @@
 
     function renderCacheAge() {
         var el = document.getElementById('obs-cache-age');
-        if (!el) { return; }
+        var common = document.getElementById('common-cache-age');
         var ts = Number(observabilityMetrics.lastRequestTs) || 0;
-        if (!ts) { el.textContent = 'Prompt cache age: \u2013'; el.className = 'obs-cache-age'; return; }
+        if (!ts) {
+            if (el) { el.textContent = 'Prompt cache age: \u2013'; el.className = 'obs-cache-age'; }
+            if (common) { common.textContent = 'Cache: \u2013'; common.className = 'health-cache'; }
+            return;
+        }
         var secs = Math.max(0, Math.floor((Date.now() - ts) / 1000));
         var capped = Math.min(secs, 300); // never display beyond the 5:00 cache TTL
         var mm = Math.floor(capped / 60), ss = capped % 60;
@@ -2851,8 +2868,14 @@
         if (secs < 285) { state = 'warm \u2014 a new message should hit cache'; cls = 'obs-cache-age obs-cache-warm'; }
         else if (secs < 300) { state = 'cooling \u2014 send within 15s to keep the cache hit'; cls = 'obs-cache-age obs-cache-cooling'; }
         else { state = 'likely COLD \u2014 next message may be a cache MISS (pricier)'; cls = 'obs-cache-age obs-cache-cold'; }
-        el.className = cls;
-        el.innerHTML = 'Prompt cache age: <b>' + clock + '</b> / 5:00 \u00b7 ' + state;
+        if (el) {
+            el.className = cls;
+            el.innerHTML = 'Prompt cache age: <b>' + clock + '</b> / 5:00 \u00b7 ' + state;
+        }
+        if (common) {
+            common.className = 'health-cache ' + (secs < 285 ? 'warm' : secs < 300 ? 'cooling' : 'cold');
+            common.textContent = 'Cache: ' + clock + (secs >= 300 ? ' cold' : ' warm');
+        }
         // Sound alert once per request-cycle when the cache is about to expire (~4:45), so the
         // user can hit Ping in time. Re-arms whenever a new request resets the clock (ts changes).
         if (soundEnabled && secs >= 285 && secs < 300) {
@@ -2878,13 +2901,10 @@
         var aiu = function (nano) { return formatObservabilityCompact((Number(nano) || 0) / 1000000000); };
         var num = formatObservabilityNumber;
         var tok = formatObservabilityCompact;
-
-        var aiu = function (nano) { return formatObservabilityCompact((Number(nano) || 0) / 1000000000); };
-        var num = formatObservabilityNumber;
-        var tok = formatObservabilityCompact;
         var sec = function (ms) { return ((Number(ms) || 0) / 1000).toFixed(2); };
 
         var all = observabilityMetrics.overall || {};
+        var workspace = observabilityMetrics.workspace || {};
         var tc = observabilityMetrics.toolCalls || {};
 
         var hitPct = function (s) {
@@ -2893,6 +2913,7 @@
             return Math.round((Number(s.cachedTokens) || 0) / inp * 100) + '%';
         };
         var setCell = function (id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+        setCell('common-spend', 'Spent: ' + aiu(workspace.nanoAiu) + ' AIU');
         var setHit = function (id, s) {
             var el = document.getElementById(id); if (!el) return;
             el.textContent = hitPct(s);
@@ -2921,6 +2942,39 @@
                     '<td>' + (r.errors ? num(r.errors) : '\u2013') + '</td></tr>';
             }
             tb.innerHTML = rows;
+        };
+        var renderContextCostCurve = function () {
+            var host = document.getElementById('obs-context-cost-chart');
+            if (!host) return;
+            var data = observabilityMetrics.contextCostCurve || [];
+            if (!data.length) { host.innerHTML = '<div class="obs-na">No workspace request history yet</div>'; return; }
+            var maxAiu = Math.max.apply(null, data.map(function (b) { return b.avgNanoAiu / 1000000000; }).concat([1]));
+            var models = {};
+            data.forEach(function (b) { (models[b.model] = models[b.model] || []).push(b); });
+            host.innerHTML = Object.keys(models).sort().map(function (model) {
+                var buckets = models[model].sort(function (a, b) { return a.minInputTokens - b.minInputTokens; });
+                var switchAt = null;
+                for (var bi = 1; bi < buckets.length; bi++) {
+                    var previous = buckets[bi - 1], current = buckets[bi];
+                    if (current.requestCount >= 3 && previous.requestCount >= 3 &&
+                        (current.avgCacheHitPct < 50 || current.avgNanoAiu > previous.avgNanoAiu * 1.75)) {
+                        switchAt = current;
+                        break;
+                    }
+                }
+                var recommendation = switchAt
+                    ? 'New conversation before ' + Math.round(switchAt.minInputTokens / 1000) + 'K input tokens'
+                    : 'More samples needed for a switch point';
+                return '<div class="obs-cost-model"><div class="obs-cost-model-head"><strong>' + escapeHtml(model) + '</strong><span>' + recommendation + '</span></div>' +
+                    buckets.map(function (b) {
+                        var avg = b.avgNanoAiu / 1000000000;
+                        var width = Math.max(2, Math.round(avg / maxAiu * 100));
+                        return '<div class="obs-cost-row"><span class="obs-cost-range">' + Math.round(b.minInputTokens / 1000) + '&ndash;' + Math.round(b.maxInputTokens / 1000) + 'K</span>' +
+                            '<span class="obs-cost-track"><i style="width:' + width + '%"></i></span>' +
+                            '<span class="obs-cost-value">' + avg.toFixed(1) + ' AIU</span>' +
+                            '<span class="obs-cost-samples">' + b.requestCount + ' req &middot; ' + b.avgCacheHitPct + '% cache</span></div>';
+                    }).join('') + '</div>';
+            }).join('');
         };
 
         // ── View toggle: turn ⇄ month ──
@@ -3304,6 +3358,7 @@
         setCell('obs-all-input', tok(all.inputTokens));
         setCell('obs-all-output', tok(all.outputTokens));
         setCell('obs-all-cached', tok(all.cachedTokens));
+        renderContextCostCurve();
         setHit('obs-all-hit', all);
         setCell('obs-all-miss', num(all.cacheMisses || 0));
         var comp = observabilityMetrics.overallCompaction || { count: 0, nanoAiu: 0 };
@@ -5307,6 +5362,8 @@
                 switchTab(tab.getAttribute('data-tab'));
             });
         });
+        var health = document.querySelector('.conversation-health');
+        if (health) health.addEventListener('click', function() { switchTab('observability'); });
 
         ['command', 'subagent'].forEach(function(role) {
             // Run/Autopilot button
