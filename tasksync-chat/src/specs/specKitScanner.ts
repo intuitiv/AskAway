@@ -66,7 +66,7 @@ export interface SpecSummary {
     hasPlan: boolean;
     hasTasks: boolean;
     lastActivity: number;
-    sessions: number;
+    implementationRecords: number;
 }
 
 export interface SpecScanResult {
@@ -296,7 +296,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
             hasPlan,
             hasTasks,
             lastActivity: newestMtime(dir),
-            sessions: countLogRows(readTextFile(path.join(dir, 'implementation-log.md')))
+            implementationRecords: countLogRows(readTextFile(path.join(dir, 'implementation-log.md')))
         });
     }
 

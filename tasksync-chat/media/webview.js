@@ -5142,6 +5142,15 @@
         return days + 'd ago';
     }
 
+    function formatSpecInline(text) {
+        var html = escapeHtml(text || '');
+        html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+        html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        return html;
+    }
+
     function renderSpecs() {
         var list = document.getElementById('specs-list');
         if (!list) return;
@@ -5180,19 +5189,19 @@
 
             var next = spec.nextTaskId || spec.nextTaskText
                 ? '<div class="spec-next" title="' + escapeHtml(spec.nextTaskText) + '"><span class="spec-next-id">' +
-                  escapeHtml(spec.nextTaskId || 'next') + '</span>' + escapeHtml(spec.nextTaskText) + '</div>'
+                                    escapeHtml(spec.nextTaskId || 'next') + '</span>' + formatSpecInline(spec.nextTaskText) + '</div>'
                 : '<div class="spec-next specs-muted">' + (spec.hasTasks ? 'All tasks done' : 'No tasks yet') + '</div>';
 
             var facts = [];
             if (spec.total) facts.push(spec.done + '/' + spec.total + ' tasks');
             if (spec.clarifications) facts.push(spec.clarifications + ' clarify');
-            if (spec.sessions) facts.push(spec.sessions + ' sessions');
+            if (spec.implementationRecords) facts.push('<span title="Completed task rows recorded in implementation-log.md">' + spec.implementationRecords + ' logged completions</span>');
             if (spec.lastActivity) facts.push(specAgo(spec.lastActivity));
 
             var body = expanded
                 ? '<div class="spec-body">' +
-                                    (spec.purpose ? '<div class="spec-purpose">' + escapeHtml(spec.purpose) + '</div>' : '') +
-                  (facts.length ? '<div class="spec-meta">' + escapeHtml(facts.join(' · ')) + '</div>' : '') +
+                  (spec.purpose ? '<div class="spec-purpose">' + formatSpecInline(spec.purpose) + '</div>' : '') +
+                  (facts.length ? '<div class="spec-meta">' + facts.join(' · ') + '</div>' : '') +
                   (spec.cycles && spec.cycles.length
                       ? '<div class="spec-cycles"><div class="spec-section-label">Cycles</div>' + spec.cycles.map(function(c) {
                             var nextLabel = c.nextTaskId
@@ -5200,13 +5209,13 @@
                                 : '<span class="spec-cycle-next">All tasks complete</span>';
                             return '<div class="spec-cycle" title="' + escapeHtml(c.description || c.title) + '">' +
                                 '<div class="spec-cycle-main"><span class="spec-cycle-id">' + escapeHtml(c.id) + '</span>' +
-                                '<span class="spec-cycle-title">' + escapeHtml(c.title) + '</span>' +
+                                '<span class="spec-cycle-title">' + formatSpecInline(c.title) + '</span>' +
                                 (c.specCount > 1 ? '<span class="spec-cycle-count">' + c.specCount + ' specs</span>' : '') +
                                 '<span class="spec-cycle-progress">' + c.done + '/' + c.total + '</span>' +
                                 '<span class="spec-cycle-state">' + escapeHtml(c.state) + '</span>' +
                                 (c.state !== 'complete' ? '<button class="spec-action" data-act="cmd" data-cmd="/implement ' + escapeHtml(c.id) + '">Implement cycle</button>' : '') +
                                 '</div>' +
-                                (c.description ? '<div class="spec-cycle-description">' + escapeHtml(c.description) + '</div>' : '') +
+                                (c.description ? '<div class="spec-cycle-description">' + formatSpecInline(c.description) + '</div>' : '') +
                                 nextLabel + '</div>';
                         }).join('') + '</div>'
                       : '') +
@@ -5215,7 +5224,7 @@
                       var completed = spec.tasks.filter(function(t) { return t.done; }).slice(-3).reverse();
                       var rows = pending.map(function(t) {
                           return '<div class="spec-work-row"><span class="codicon codicon-circle-large-outline"></span>' +
-                              '<span class="spec-work-text">' + escapeHtml(t.text || t.id) + '</span>' +
+                              '<span class="spec-work-text">' + formatSpecInline(t.text || t.id) + '</span>' +
                               (t.id ? '<span class="spec-work-id">' + escapeHtml(t.id) + '</span>' +
                                   '<button class="spec-task-run" data-act="cmd" data-cmd="/implement ' + escapeHtml(t.id) + '" title="Implement this task"><span class="codicon codicon-play"></span></button>' : '') +
                               '</div>';
@@ -5223,7 +5232,7 @@
                       if (!pending.length) {
                           rows = completed.map(function(t) {
                               return '<div class="spec-work-row done"><span class="codicon codicon-check"></span>' +
-                                  '<span class="spec-work-text">' + escapeHtml(t.text || t.id) + '</span>' +
+                                  '<span class="spec-work-text">' + formatSpecInline(t.text || t.id) + '</span>' +
                                   (t.id ? '<span class="spec-work-id">' + escapeHtml(t.id) + '</span>' : '') + '</div>';
                           }).join('');
                       }
@@ -5233,10 +5242,10 @@
                           (remaining > 0 ? '<div class="spec-work-more">+' + remaining + ' more in tasks.md</div>' : '') + '</div>';
                   })() : '') +
                   (spec.phases.length
-                      ? '<div class="spec-phases">' + spec.phases.map(function(p) {
-                            return '<div class="spec-phase"><span>' + escapeHtml(p.name) + '</span><span>' +
+                        ? '<div class="spec-phases"><div class="spec-section-label" title="Sections from tasks.md, with completed and total task counts">Task groups <span class="spec-section-hint">from tasks.md</span></div>' + spec.phases.map(function(p) {
+                            return '<div class="spec-phase"><span>' + formatSpecInline(p.name) + '</span><span>' +
                                    p.done + '/' + p.total + '</span></div>';
-                        }).join('') + '</div>'
+                    }).join('') + '</div>'
                       : '') +
                   '<div class="spec-actions">' +
                   specCommands(spec).map(function(c) {
@@ -5256,7 +5265,7 @@
                 '  <div class="spec-card-head" data-act="toggle">' +
                 '    <span class="codicon codicon-chevron-right spec-chevron"></span>' +
                 '    <span class="spec-id">' + escapeHtml(spec.id) + '</span>' +
-                '    <span class="spec-title">' + escapeHtml(spec.title) + '</span>' +
+                '    <span class="spec-title">' + formatSpecInline(spec.title) + '</span>' +
                 (spec.clarifications ? '<span class="spec-dot" title="' + spec.clarifications + ' open [NEEDS CLARIFICATION]">!</span>' : '') +
                 (spec.active ? '<span class="spec-badge spec-badge-active" title="Active feature in .specify/feature.json">Active</span>' : '') +
                 '    <span class="spec-badge spec-stage-' + spec.stage + '">' + (SPEC_STAGE_LABEL[spec.stage] || spec.stage) + '</span>' +

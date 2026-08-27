@@ -5157,6 +5157,7 @@ button#send-btn:disabled {
     color: var(--vscode-descriptionForeground);
     margin-bottom: 3px;
 }
+.spec-section-hint { font-weight: 400; text-transform: none; }
 .spec-cycle { padding: 4px 0; border-top: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.2)); }
 .spec-cycle-main { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .spec-cycle-id { font: 10px var(--vscode-editor-font-family); color: var(--vscode-textLink-foreground); }
