@@ -62,6 +62,9 @@
         overall: { requestCount: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, nanoAiu: 0 },
         perModel: [],
         contextCostCurve: [],
+        costAttribution: [],
+        attributionMode: 'spec',
+        activeAttribution: { key: 'ad-hoc', label: 'Ad hoc' },
         overallCompaction: { count: 0, nanoAiu: 0 },
         turnRequests: [],
         turnEvents: [],
@@ -839,6 +842,11 @@
             '<div class="observability-model-note">Average request cost by model and input context - workspace history. Each sample is one model request; one user turn can contain several requests.</div>' +
             '<div class="obs-cost-legend"><span class="obs-cost-legend-bar"></span> Bar length = average USD per request, using one shared scale across all models. $1 = 100 AIU.</div>' +
             '<div class="obs-context-cost-chart" id="obs-context-cost-chart"><div class="obs-na">No data yet</div></div>' +
+            '<div class="observability-model-note">Cost attribution - tracked prospectively from the turn when attribution was enabled</div>' +
+            '<table class="observability-table observability-model-table">' +
+            '<thead><tr><th>Spec / Task</th><th>Turns</th><th>Reqs</th><th>Cost</th><th>Input</th><th>Cache</th></tr></thead>' +
+            '<tbody id="obs-attribution-tbody"><tr><td colspan="6" class="obs-na">No attributed turns yet</td></tr></tbody>' +
+            '</table>' +
             '<div class="observability-model-note">Tool calls this month</div>' +
             '<table class="observability-table observability-model-table">' +
             '<thead><tr><th>Tool</th><th>Calls</th><th>Out tok</th><th>avg s</th><th>min s</th><th>max s</th><th>err</th></tr></thead>' +
@@ -1601,6 +1609,17 @@
                                 avgCacheHitPct: Number(b.avgCacheHitPct) || 0
                             };
                         }) : [],
+                        costAttribution: Array.isArray(message.metrics.costAttribution) ? message.metrics.costAttribution.map(function (a) {
+                            var sc = sanitizeScope(a);
+                            sc.key = typeof a.key === 'string' ? a.key : 'ad-hoc';
+                            sc.specSlug = typeof a.specSlug === 'string' ? a.specSlug : '';
+                            sc.taskId = typeof a.taskId === 'string' ? a.taskId : '';
+                            sc.cycleId = typeof a.cycleId === 'string' ? a.cycleId : '';
+                            sc.turnCount = Number(a.turnCount) || 0;
+                            return sc;
+                        }) : [],
+                        attributionMode: message.metrics.attributionMode === 'ad-hoc' ? 'ad-hoc' : 'spec',
+                        activeAttribution: message.metrics.activeAttribution || { key: 'ad-hoc', label: 'Ad hoc' },
                         turnRequests: Array.isArray(message.metrics.turnRequests) ? message.metrics.turnRequests.map(function (r) {
                             return {
                                 id: typeof r.id === 'string' ? r.id : '?????',
@@ -2915,6 +2934,11 @@
         };
         var setCell = function (id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
         setCell('common-spend', 'This turn: ' + dollars(turn.nanoAiu));
+        var attributionToggle = document.getElementById('cost-attribution-toggle');
+        if (attributionToggle) {
+            attributionToggle.textContent = observabilityMetrics.activeAttribution.label || 'Ad hoc';
+            attributionToggle.classList.toggle('ad-hoc', observabilityMetrics.attributionMode === 'ad-hoc');
+        }
         var setHit = function (id, s) {
             var el = document.getElementById(id); if (!el) return;
             el.textContent = hitPct(s);
@@ -2979,6 +3003,35 @@
                             '<span class="obs-cost-value">$' + avg.toFixed(2) + '</span>' +
                             '<span class="obs-cost-samples">' + b.requestCount + ' req &middot; ' + b.avgCacheHitPct + '% cache</span></div>';
                     }).join('') + '</div>';
+            }).join('');
+        };
+        var renderCostAttribution = function () {
+            var tbody = document.getElementById('obs-attribution-tbody');
+            if (!tbody) return;
+            var entries = observabilityMetrics.costAttribution || [];
+            if (!entries.length) { tbody.innerHTML = '<tr><td colspan="6" class="obs-na">No attributed turns yet. Tracking begins with the next user turn.</td></tr>'; return; }
+            var groups = {};
+            entries.forEach(function (entry) {
+                var key = entry.specSlug || 'ad-hoc';
+                var group = groups[key] || { key: key, turns: {}, requests: 0, nano: 0, input: 0, cached: 0, details: [] };
+                group.requests += entry.requestCount;
+                group.nano += entry.nanoAiu;
+                group.input += entry.inputTokens;
+                group.cached += entry.cachedTokens;
+                group.turns[(entry.taskId || entry.cycleId || '__general') + ':' + entry.turnCount] = true;
+                group.details.push(entry);
+                groups[key] = group;
+            });
+            tbody.innerHTML = Object.keys(groups).sort().map(function (key) {
+                var group = groups[key];
+                var turns = group.details.reduce(function (sum, d) { return sum + d.turnCount; }, 0);
+                var hit = group.input ? Math.round(group.cached / group.input * 100) + '%' : '&ndash;';
+                var label = key === 'ad-hoc' ? 'Ad hoc' : key;
+                var main = '<tr><td class="obs-scope"><strong>' + escapeHtml(label) + '</strong></td><td>' + turns + '</td><td>' + group.requests + '</td><td>' + formatDollars(group.nano) + '</td><td>' + tok(group.input) + '</td><td>' + hit + '</td></tr>';
+                var details = group.details.filter(function (d) { return d.taskId || d.cycleId; }).map(function (d) {
+                    return '<tr class="obs-attribution-detail"><td class="obs-scope">' + escapeHtml(d.taskId || d.cycleId) + '</td><td>' + d.turnCount + '</td><td>' + d.requestCount + '</td><td>' + formatDollars(d.nanoAiu) + '</td><td>' + tok(d.inputTokens) + '</td><td>' + (d.inputTokens ? Math.round(d.cachedTokens / d.inputTokens * 100) + '%' : '&ndash;') + '</td></tr>';
+                }).join('');
+                return main + details;
             }).join('');
         };
 
@@ -3362,6 +3415,7 @@
         setCell('obs-all-output', tok(all.outputTokens));
         setCell('obs-all-cached', tok(all.cachedTokens));
         renderContextCostCurve();
+        renderCostAttribution();
         setHit('obs-all-hit', all);
         setCell('obs-all-miss', num(all.cacheMisses || 0));
         var comp = observabilityMetrics.overallCompaction || { count: 0, nanoAiu: 0 };
@@ -5209,6 +5263,10 @@
         return html;
     }
 
+    function formatDollars(nanoAiu) {
+        return '$' + ((Number(nanoAiu) || 0) / 1000000000 / 100).toFixed(2);
+    }
+
     function renderSpecs() {
         var list = document.getElementById('specs-list');
         if (!list) return;
@@ -5258,6 +5316,10 @@
             if (spec.clarifications) facts.push(spec.clarifications + ' clarify');
             if (spec.implementationRecords) facts.push('<span title="Completed task rows recorded in implementation-log.md">' + spec.implementationRecords + ' logged completions</span>');
             if (spec.lastActivity) facts.push(specAgo(spec.lastActivity));
+            var attributed = (observabilityMetrics.costAttribution || []).filter(function(a) { return a.specSlug === spec.slug; });
+            var specNano = attributed.reduce(function(sum, a) { return sum + a.nanoAiu; }, 0);
+            var specTurns = attributed.reduce(function(sum, a) { return sum + a.turnCount; }, 0);
+            if (specNano) facts.push(formatDollars(specNano) + ' attributed · ' + specTurns + ' turns');
 
             var body = expanded
                 ? '<div class="spec-body">' +
@@ -5316,6 +5378,7 @@
                   '<button class="spec-action spec-open" data-act="open" data-file="spec.md" title="Open in the editor">Open spec.md</button>' +
                   (spec.hasPlan ? '<button class="spec-action spec-open" data-act="open" data-file="plan.md" title="Open in the editor">Open plan.md</button>' : '') +
                   (spec.hasTasks ? '<button class="spec-action spec-open" data-act="open" data-file="tasks.md" title="Open in the editor">Open tasks.md</button>' : '') +
+                  (specNano ? '<button class="spec-action" data-act="cmd" data-cmd="Review cost, delivered value, mistakes, and reusable learnings for spec ' + escapeHtml(spec.slug) + '. Measured attributed cost: ' + formatDollars(specNano) + ' across ' + specTurns + ' turns. Read its spec.md, tasks.md, implementation-log.md, and relevant git history. Separate valuable implementation effort from rework and dead ends; identify root causes, what not to repeat, and concrete knowledge worth saving to repository memory. Do not change product code.">Review cost &amp; learnings</button>' : '') +
                   '</div></div>'
                 : '';
 
@@ -5365,8 +5428,13 @@
                 switchTab(tab.getAttribute('data-tab'));
             });
         });
-        var health = document.querySelector('.conversation-health');
+        var health = document.querySelector('.health-metrics');
         if (health) health.addEventListener('click', function() { switchTab('observability'); });
+        var attribution = document.getElementById('cost-attribution-toggle');
+        if (attribution) attribution.addEventListener('click', function() {
+            var next = observabilityMetrics.attributionMode === 'ad-hoc' ? 'spec' : 'ad-hoc';
+            vscode.postMessage({ type: 'setCostAttributionMode', mode: next });
+        });
 
         ['command', 'subagent'].forEach(function(role) {
             // Run/Autopilot button

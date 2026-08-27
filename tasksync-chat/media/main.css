@@ -145,15 +145,13 @@ body {
     gap: 10px;
     width: 100%;
     padding: 3px 8px;
-    border: 0;
     border-bottom: 1px solid var(--vscode-panel-border);
     background: var(--vscode-sideBar-background);
-    color: var(--vscode-descriptionForeground);
-    font: 12px var(--vscode-editor-font-family);
-    font-weight: 600;
-    cursor: pointer;
 }
-.conversation-health:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
+.health-metrics, .health-attribution { border: 0; background: transparent; color: var(--vscode-descriptionForeground); font: 12px var(--vscode-editor-font-family); font-weight: 600; cursor: pointer; }
+.health-metrics { display: flex; justify-content: space-between; flex: 1; gap: 10px; padding: 0; }
+.health-attribution { font-size: 10px; color: var(--vscode-textLink-foreground); border-left: 1px solid var(--vscode-panel-border); padding-left: 8px; white-space: nowrap; }
+.health-metrics:hover, .health-attribution:hover { color: var(--vscode-foreground); }
 .health-cache.warm { color: var(--vscode-charts-green); }
 .health-cache.cooling { color: var(--vscode-charts-yellow); }
 .health-cache.cold { color: var(--vscode-charts-red); }
@@ -169,6 +167,7 @@ body {
 .obs-cost-track { height: 6px; background: var(--vscode-widget-border, rgba(128,128,128,0.22)); }
 .obs-cost-track i { display: block; height: 100%; background: var(--vscode-charts-blue); }
 .obs-cost-samples { color: var(--vscode-descriptionForeground); text-align: right; }
+.obs-attribution-detail td:first-child { padding-left: 18px; color: var(--vscode-descriptionForeground); }
 
 .tab-badge {
     display: inline-flex;

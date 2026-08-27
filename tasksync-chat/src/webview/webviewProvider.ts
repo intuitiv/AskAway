@@ -115,6 +115,14 @@ interface ContextCostBucket {
     avgCacheHitPct: number;
 }
 
+interface CostAttributionSummary extends ScopeMetrics {
+    key: string;
+    specSlug: string;
+    taskId: string;
+    cycleId: string;
+    turnCount: number;
+}
+
 interface ObservabilityMetrics {
     // Flat fields mirror the workspace cumulative scope (kept for backward compatibility).
     requestCount: number;
@@ -128,6 +136,9 @@ interface ObservabilityMetrics {
     overall: ScopeMetrics;       // current calendar month across all workspaces
     perModel: ModelBreakdown[];  // current calendar month across all workspaces (debug)
     contextCostCurve: ContextCostBucket[]; // workspace lifetime, grouped by model + input size
+    costAttribution: CostAttributionSummary[]; // prospective workspace lifetime by spec/task/ad hoc
+    attributionMode: 'spec' | 'ad-hoc';
+    activeAttribution: { key: string; label: string };
     /** Current-month context-compaction (summarizeConversationHistory) request count + credits. */
     overallCompaction: { count: number; nanoAiu: number };
     turnRequests: TurnRequest[]; // individual requests of the current turn (newest last)
@@ -314,6 +325,11 @@ interface SeenMeta {
     in: number;    // inputTokens
     out: number;   // outputTokens
     cached?: number; // cachedTokens (added v3; absent on older entries)
+    attributionKey?: string;
+    specSlug?: string;
+    taskId?: string;
+    cycleId?: string;
+    turnId?: string;
 }
 
 interface ObservabilityLedger {
@@ -458,6 +474,7 @@ type FromWebviewMessage =
     | { type: 'requestSpecs' }
     | { type: 'openSpecFile'; dir: string; file: string }
     | { type: 'runSpecCommand'; command: string }
+    | { type: 'setCostAttributionMode'; mode: 'spec' | 'ad-hoc' }
     | { type: 'submit'; value: string; attachments: AttachmentInfo[] }
     | { type: 'addQueuePrompt'; prompt: string; id: string; attachments?: AttachmentInfo[] }
     | { type: 'removeQueuePrompt'; promptId: string }
@@ -597,6 +614,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         overall: { requestCount: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, nanoAiu: 0 },
         perModel: [],
         contextCostCurve: [],
+        costAttribution: [],
+        attributionMode: 'spec',
+        activeAttribution: { key: 'ad-hoc', label: 'Ad hoc' },
         overallCompaction: { count: 0, nanoAiu: 0 },
         turnRequests: [],
         turnEvents: [],
@@ -649,6 +669,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _lastSubmitTs = Date.now();
     /** Highest user_message.ts seen in log files — prevents duplicate turn resets on re-scan. */
     private _logTurnStartTs: number = 0;
+    private _costAttributionMode: 'spec' | 'ad-hoc';
+    private _costAttributionStartedAt: number;
+    private _turnAttribution = { key: 'ad-hoc', specSlug: '', taskId: '', cycleId: '', turnId: '' };
     // Throttle the cross-workspace overall(month) computation (reads all month shards).
     private _overallLastComputedAt: number = 0;
     private _overallCache: { totals: ScopeMetrics; perModel: ModelBreakdown[]; compaction: { count: number; nanoAiu: number } } = {
@@ -800,6 +823,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         contextManager: ContextManager
     ) {
         this._contextManager = contextManager;
+        this._costAttributionMode = this._context.workspaceState.get<'spec' | 'ad-hoc'>('costAttributionMode', 'spec');
+        this._costAttributionStartedAt = this._context.workspaceState.get<number>('costAttributionStartedAt', Date.now());
+        if (!this._context.workspaceState.get<number>('costAttributionStartedAt')) {
+            void this._context.workspaceState.update('costAttributionStartedAt', this._costAttributionStartedAt);
+        }
         // Load both queue and history async to not block activation
         this._loadQueueFromDiskAsync().catch(err => {
             console.error('Failed to load queue:', err);
@@ -2021,6 +2049,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             overall: this._emptyScope(),
             perModel: [],
             contextCostCurve: [],
+            costAttribution: [],
+            attributionMode: this._costAttributionMode,
+            activeAttribution: this._activeAttributionLabel(),
             overallCompaction: { count: 0, nanoAiu: 0 },
             turnRequests: [],
             turnEvents: [],
@@ -2069,6 +2100,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     overall: overall.totals,
                     perModel: overall.perModel,
                     contextCostCurve: this._buildContextCostCurve(ledger),
+                    costAttribution: this._buildCostAttribution(ledger),
+                    attributionMode: this._costAttributionMode,
+                    activeAttribution: this._activeAttributionLabel(),
                     overallCompaction: overall.compaction,
                     turnRequests: [...this._turnRequests],
                     turnEvents: [...this._turnEvents],
@@ -2169,10 +2203,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     // resetting on those would wipe the parent turn's accumulated sub-agent credits.
                     if (!isChildLog && line.indexOf('"type":"user_message"') !== -1) {
                         try {
-                            const ts = (JSON.parse(line) as { ts?: number }).ts;
+                            const message = JSON.parse(line) as { ts?: number; attrs?: { content?: string } };
+                            const ts = message.ts;
                             if (typeof ts === 'number' && ts > this._logTurnStartTs) {
                                 this._logTurnStartTs = ts;
                                 this._resetTurnMetrics(ts);
+                                this._snapshotTurnAttribution(sessionId, ts, message.attrs?.content || '');
                             }
                         } catch { /* malformed — skip */ }
                         continue;
@@ -2378,7 +2414,15 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     if (ledger.seen[recordKey]) {
                         continue;
                     }
-                    ledger.seen[recordKey] = { ts, model, nano: nanoAiu, in: inputTokens, out: outputTokens, cached: cachedTokens };
+                    const attribution = ts >= this._costAttributionStartedAt ? this._turnAttribution : undefined;
+                    ledger.seen[recordKey] = {
+                        ts, model, nano: nanoAiu, in: inputTokens, out: outputTokens, cached: cachedTokens,
+                        attributionKey: attribution?.key,
+                        specSlug: attribution?.specSlug,
+                        taskId: attribution?.taskId,
+                        cycleId: attribution?.cycleId,
+                        turnId: attribution?.turnId
+                    };
 
                     // Workspace cumulative ledger.
                     ledger.requestCount += 1;
@@ -2482,6 +2526,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 overall: overall.totals,
                 perModel: overall.perModel,
                 contextCostCurve: this._buildContextCostCurve(ledger),
+                costAttribution: this._buildCostAttribution(ledger),
+                attributionMode: this._costAttributionMode,
+                activeAttribution: this._activeAttributionLabel(),
                 overallCompaction: overall.compaction,
                 turnRequests: [...this._turnRequests],
                 turnEvents: [...this._turnEvents],
@@ -3892,6 +3939,66 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             .sort((a, b) => a.model.localeCompare(b.model) || a.minInputTokens - b.minInputTokens);
     }
 
+    private _snapshotTurnAttribution(sessionId: string, ts: number, content: string): void {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const activeSlug = root ? scanSpecs(root).activeSlug : '';
+        const taskId = (/\/implement\s+(T\d+[a-zA-Z]*)\b/i.exec(content) || [])[1] || '';
+        const cycleId = (/\/implement\s+(CY-\d+)\b/i.exec(content) || [])[1]?.toUpperCase() || '';
+        const useSpec = this._costAttributionMode === 'spec' && !!activeSlug;
+        this._turnAttribution = {
+            key: useSpec ? activeSlug : 'ad-hoc',
+            specSlug: useSpec ? activeSlug : '',
+            taskId: useSpec ? taskId.toUpperCase() : '',
+            cycleId: useSpec ? cycleId : '',
+            turnId: `${sessionId}:${ts}`
+        };
+    }
+
+    private _buildCostAttribution(ledger: ObservabilityLedger): CostAttributionSummary[] {
+        const groups = new Map<string, CostAttributionSummary & { turns: Set<string> }>();
+        for (const value of Object.values(ledger.seen)) {
+            if (!value || value === true || !value.attributionKey) { continue; }
+            const detail = value.taskId || value.cycleId || '';
+            const groupKey = `${value.attributionKey}\u0000${detail}`;
+            const group = groups.get(groupKey) || {
+                key: value.attributionKey,
+                specSlug: value.specSlug || '',
+                taskId: value.taskId || '',
+                cycleId: value.cycleId || '',
+                turnCount: 0,
+                requestCount: 0,
+                inputTokens: 0,
+                outputTokens: 0,
+                cachedTokens: 0,
+                nanoAiu: 0,
+                cacheMisses: 0,
+                turns: new Set<string>()
+            };
+            group.requestCount++;
+            group.inputTokens += value.in;
+            group.outputTokens += value.out;
+            group.cachedTokens += value.cached || 0;
+            group.nanoAiu += value.nano;
+            if ((value.cached || 0) < value.in * 0.5) { group.cacheMisses = (group.cacheMisses || 0) + 1; }
+            if (value.turnId) { group.turns.add(value.turnId); }
+            groups.set(groupKey, group);
+        }
+        return [...groups.values()].map(group => {
+            const { turns, ...summary } = group;
+            summary.turnCount = turns.size;
+            return summary;
+        }).sort((a, b) => b.nanoAiu - a.nanoAiu);
+    }
+
+    private _activeAttributionLabel(): { key: string; label: string } {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const activeSlug = root ? scanSpecs(root).activeSlug : '';
+        if (this._costAttributionMode === 'spec' && activeSlug) {
+            return { key: activeSlug, label: `Spec ${(/^\d+/.exec(activeSlug) || [activeSlug])[0]}` };
+        }
+        return { key: 'ad-hoc', label: 'Ad hoc' };
+    }
+
     /**
      * Read webex enabled state from VS Code config
      */
@@ -4557,6 +4664,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'runSpecCommand':
                 this._sendSpecCommandToChat(message.command);
+                break;
+            case 'setCostAttributionMode':
+                this._costAttributionMode = message.mode;
+                void this._context.workspaceState.update('costAttributionMode', message.mode);
+                void this._broadcastObservabilityMetrics();
                 break;
             case 'submit':
                 this._handleSubmit(message.value, message.attachments || []);
@@ -6388,10 +6500,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <button class="widget-tab" data-tab="observability" title="Observability metrics, RTK/Gradle savings, requests and memories">Metrics</button>
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
         </div>
-        <button class="conversation-health" type="button" data-tab="observability" title="Open Metrics for detailed cost and cache information">
-            <strong id="common-spend">This turn: $0.00</strong>
-            <span id="common-cache-age" class="health-cache">Cache: -</span>
-        </button>
+        <div class="conversation-health" title="Conversation cost and cache health">
+            <button type="button" class="health-metrics" data-tab="observability" title="Open Metrics"><strong id="common-spend">This turn: $0.00</strong><span id="common-cache-age" class="health-cache">Cache: -</span></button>
+            <button type="button" class="health-attribution" id="cost-attribution-toggle" title="Toggle whether new turns are charged to the active spec or Ad hoc work">Ad hoc</button>
+        </div>
 
         <!-- Chat Panel -->
         <div class="tab-panel active" id="panel-chat">
