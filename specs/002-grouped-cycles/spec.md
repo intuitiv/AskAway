@@ -42,21 +42,31 @@ Cycle execution does not merge the tasks into one opaque job. Each task keeps it
 evidence, and implementation-log row. The cycle controls scheduling: it decides which independent
 item can progress while another waits, and it provides the shared verification and commit boundary.
 
-## Creating A Cycle
+## Creating Cycles Automatically
 
-Use `/cycle create` while a feature is active. The agent inspects the unchecked tasks and proposes a
-small group with a reason for grouping them. It does not change files until the reviewer approves
-the proposed membership.
+Cycles are generated as part of `/tasks`; the reviewer does not need to build them by hand. After
+Spec Kit produces the dependency-ordered tasks, the agent groups related tasks and writes the cycle
+tags and metadata in the same operation.
 
-Examples:
+Tasks belong together when at least one of these is true:
 
-- `/cycle create` — propose a useful group from the active feature's unchecked tasks.
-- `/cycle create T014 T015 T021` — propose a cycle containing those tasks.
+- one task produces the behavior or evidence another task consumes;
+- they touch the same feature boundary and can share setup or context;
+- they use the same narrow verification command or test fixture;
+- one can make useful progress while another waits for Gradle, an external service, or a subagent.
+
+Tasks do **not** belong together merely because they are adjacent in `tasks.md`. Do not group tasks
+that would make two workers edit the same ownership area concurrently. Keep a standalone task when
+no useful relationship exists; automatic grouping must not create artificial work.
+
+Prefer two to five tasks per cycle. Use more only when they form one indivisible verification batch.
+The next ID is the highest existing workspace cycle number plus one. A later `/tasks` run preserves
+existing tags and assigns IDs only to new or ungrouped tasks.
+
+Manual adjustment remains available for exceptions:
+
 - `/cycle add CY-002 T025` — add another approved task to an existing cycle.
 - `/cycle remove CY-002 T021` — remove an unstarted task without changing the task itself.
-
-The next ID is the highest existing cycle number plus one. IDs belong to the workspace, not to one
-feature, so a cycle may intentionally contain tasks from more than one spec.
 
 ## Storage
 
@@ -64,10 +74,15 @@ Task membership remains authoritative in each feature's `tasks.md` through `[CY-
 cycle-level metadata lives in `.specify/cycles.md`, one compact row per cycle:
 
 ```markdown
-| Cycle | Title | Intent | Shared verification |
+| Cycle | Title | Description | Shared verification |
 |---|---|---|---|
-| CY-002 | Resolution confidence | Test and fix the three resolution modes | ForgePipelineIntegrationTest |
+| CY-002 | Resolution modes | Adds failing coverage for all three modes, implements the shared resolver fix, and records passing integration-test evidence | ForgePipelineIntegrationTest |
 ```
+
+The description must say exactly what will exist when the cycle is complete. Use concrete verbs and
+name the behavior, artifact, or evidence. For example, "Improve resolution confidence" is too vague;
+"Adds failing coverage for all three modes, fixes the shared resolver, and records passing integration
+tests" is acceptable.
 
 The metadata file does not store task status or copy task text. That information is always derived
 from the tagged task lines, which prevents the cycle view and task list from disagreeing.
@@ -75,7 +90,7 @@ from the tagged task lines, which prevents the cycle view and task list from dis
 Creating the example above makes these two edits only:
 
 1. Add `[CY-002]` to the approved task lines in their existing `tasks.md` files.
-2. Add the optional title, intent, and shared-verification row to `.specify/cycles.md`.
+2. Add the title, exact outcome description, and shared-verification row to `.specify/cycles.md`.
 
 ## Execution Rules
 
@@ -116,8 +131,8 @@ The row shows:
   sending it.
 
 If a cycle spans specs, the same cycle row appears in each participating spec with a small
-`2 specs` label. Expanding the row shows all member tasks grouped by spec. A **Create cycle** action
-appears only on the active spec and places `/cycle create` in the chat input without sending it.
+`2 specs` label. Expanding the row shows its exact outcome description and all member tasks grouped
+by spec.
 
 Completed cycles are hidden with completed specs unless the existing **Completed** toggle is on.
 Tasks without a cycle remain visible and continue to use `/implement T014` normally.
