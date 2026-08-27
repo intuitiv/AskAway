@@ -6389,7 +6389,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
         </div>
         <button class="conversation-health" type="button" data-tab="observability" title="Open Metrics for detailed cost and cache information">
-            <strong id="common-spend">This turn: - AIU</strong>
+            <strong id="common-spend">This turn: $0.00</strong>
             <span id="common-cache-age" class="health-cache">Cache: -</span>
         </button>
 

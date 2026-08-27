@@ -813,7 +813,7 @@
             '</div>' +
             '<div class="observability-model-note">Timeline this turn \u2014 LLM requests in columns \u00b7 expand a tool row for input/output \u00b7 ask me to investigate any <b>ID</b></div>' +
             '<table class="observability-table observability-model-table obs-timeline-table">' +
-            '<thead><tr><th>ID</th><th>Model / Tool</th><th>Credits</th><th>Input</th><th>Output</th><th>Cached</th><th title="cached / input">Hit%</th></tr></thead>' +
+            '<thead><tr><th>ID</th><th>Model / Tool</th><th>Cost</th><th>Input</th><th>Output</th><th>Cached</th><th title="cached / input">Hit%</th></tr></thead>' +
             '<tbody id="obs-turn-event-tbody"><tr><td colspan="7" class="obs-na">No events yet</td></tr></tbody>' +
             '</table>' +
             '<div class="observability-model-note">Tool calls this turn</div>' +
@@ -824,20 +824,20 @@
             '</div>' +
             // ── This month: consolidated totals + per-model + this month's tool calls ──
             '<div id="obs-month-view" style="display:none">' +
-            '<div class="observability-scope-note">Credits in AIU \u2014 current calendar month across all AskAway workspaces.</div>' +
+            '<div class="observability-scope-note">Cost in USD \u2014 current calendar month across all AskAway workspaces. $1 = 100 AIU.</div>' +
             '<table class="observability-table">' +
-            '<thead><tr><th>Reqs</th><th>Credits</th><th>Input</th><th>Output</th><th>Cached</th><th title="cached / input">Hit%</th><th title="requests with <50% cache">Miss</th></tr></thead>' +
+            '<thead><tr><th>Reqs</th><th>Cost</th><th>Input</th><th>Output</th><th>Cached</th><th title="cached / input">Hit%</th><th title="requests with <50% cache">Miss</th></tr></thead>' +
             '<tbody><tr>' +
             '<td id="obs-all-reqs">0</td><td id="obs-all-credits">0</td><td id="obs-all-input">0</td><td id="obs-all-output">0</td><td id="obs-all-cached">0</td><td id="obs-all-hit">\u2013</td><td id="obs-all-miss">0</td>' +
             '</tr></tbody></table>' +
             '<div class="observability-scope-note" id="obs-all-compaction">Compaction: 0 requests</div>' +
             '<div class="observability-model-note">Per-model \u2014 this month</div>' +
             '<table class="observability-table observability-model-table">' +
-            '<thead><tr><th>Model</th><th>Reqs</th><th>Credits</th><th>Input</th><th>Output</th><th>Cached</th></tr></thead>' +
+            '<thead><tr><th>Model</th><th>Reqs</th><th>Cost</th><th>Input</th><th>Output</th><th>Cached</th></tr></thead>' +
             '<tbody id="observability-model-tbody"><tr><td colspan="6" class="obs-na">No data yet</td></tr></tbody>' +
             '</table>' +
             '<div class="observability-model-note">Average request cost by model and input context - workspace history. Each sample is one model request; one user turn can contain several requests.</div>' +
-            '<div class="obs-cost-legend"><span class="obs-cost-legend-bar"></span> Bar length = average AIU per request, using one shared scale across all models.</div>' +
+            '<div class="obs-cost-legend"><span class="obs-cost-legend-bar"></span> Bar length = average USD per request, using one shared scale across all models. $1 = 100 AIU.</div>' +
             '<div class="obs-context-cost-chart" id="obs-context-cost-chart"><div class="obs-na">No data yet</div></div>' +
             '<div class="observability-model-note">Tool calls this month</div>' +
             '<table class="observability-table observability-model-table">' +
@@ -2899,7 +2899,7 @@
         if (observabilityPendingAgents) observabilityPendingAgents.textContent = String(pendingAgents);
         if (observabilitySource) observabilitySource.textContent = observabilityMetrics.source || 'unavailable';
 
-        var aiu = function (nano) { return formatObservabilityCompact((Number(nano) || 0) / 1000000000); };
+        var dollars = function (nano) { return '$' + ((Number(nano) || 0) / 1000000000 / 100).toFixed(2); };
         var num = formatObservabilityNumber;
         var tok = formatObservabilityCompact;
         var sec = function (ms) { return ((Number(ms) || 0) / 1000).toFixed(2); };
@@ -2914,7 +2914,7 @@
             return Math.round((Number(s.cachedTokens) || 0) / inp * 100) + '%';
         };
         var setCell = function (id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
-        setCell('common-spend', 'This turn: ' + aiu(turn.nanoAiu) + ' AIU');
+        setCell('common-spend', 'This turn: ' + dollars(turn.nanoAiu));
         var setHit = function (id, s) {
             var el = document.getElementById(id); if (!el) return;
             el.textContent = hitPct(s);
@@ -2949,7 +2949,7 @@
             if (!host) return;
             var data = observabilityMetrics.contextCostCurve || [];
             if (!data.length) { host.innerHTML = '<div class="obs-na">No workspace request history yet</div>'; return; }
-            var maxAiu = Math.max.apply(null, data.map(function (b) { return b.avgNanoAiu / 1000000000; }).concat([1]));
+            var maxDollars = Math.max.apply(null, data.map(function (b) { return b.avgNanoAiu / 1000000000 / 100; }).concat([0.01]));
             var models = {};
             data.forEach(function (b) { (models[b.model] = models[b.model] || []).push(b); });
             host.innerHTML = Object.keys(models).sort().map(function (model) {
@@ -2972,11 +2972,11 @@
                     : 'More samples needed for a switch point';
                 return '<div class="obs-cost-model"><div class="obs-cost-model-head"><strong>' + escapeHtml(model) + '</strong><span>' + recommendation + '</span></div>' +
                     buckets.map(function (b) {
-                        var avg = b.avgNanoAiu / 1000000000;
-                        var width = Math.max(2, Math.round(avg / maxAiu * 100));
+                        var avg = b.avgNanoAiu / 1000000000 / 100;
+                        var width = Math.max(2, Math.round(avg / maxDollars * 100));
                         return '<div class="obs-cost-row"><span class="obs-cost-range">' + Math.round(b.minInputTokens / 1000) + '&ndash;' + Math.round(b.maxInputTokens / 1000) + 'K</span>' +
                             '<span class="obs-cost-track"><i style="width:' + width + '%"></i></span>' +
-                            '<span class="obs-cost-value">' + avg.toFixed(1) + ' AIU</span>' +
+                            '<span class="obs-cost-value">$' + avg.toFixed(2) + '</span>' +
                             '<span class="obs-cost-samples">' + b.requestCount + ' req &middot; ' + b.avgCacheHitPct + '% cache</span></div>';
                     }).join('') + '</div>';
             }).join('');
@@ -3187,7 +3187,7 @@
                     var html = '<tr class="' + reqRowCls + '" data-eid="' + reid + '">' +
                         '<td>' + caret + '<span class="obs-req-id">' + escapeHtml(String(ev.id || '?')) + '</span></td>' +
                         '<td class="obs-scope">' + subTag + kindTag + escapeHtml(String(ev.model || 'unknown')) + '</td>' +
-                        '<td' + credCls + '>' + aiu(ev.nanoAiu) + '</td>' +
+                        '<td' + credCls + '>' + dollars(ev.nanoAiu) + '</td>' +
                         '<td>' + tok(ev.inputTokens) + '</td>' +
                         '<td' + outCls + '>' + tok(ev.outputTokens) + '</td>' +
                         '<td>' + tok(ev.cachedTokens) + '</td>' +
@@ -3278,7 +3278,7 @@
                         '<span class="obs-tl-name"><span class="obs-req-id">' + escapeHtml(String(item.id)) + '</span> ' + escapeHtml(String(gLabel)) + ' ' + stateBadge + '</span>' +
                         modelBadge +
                         '<span class="obs-tl-metric" title="nested LLM requests / tool calls">' + grp.reqCount + ' req \u00b7 ' + grp.toolCount + ' tools</span>' +
-                        '<span class="obs-tl-metric" title="credits (AIU)">' + aiu(grp.nano) + ' AIU</span>' +
+                        '<span class="obs-tl-metric" title="Cost in USD ($1 = 100 AIU)">' + dollars(grp.nano) + '</span>' +
                         '<span class="obs-tl-metric" title="output tokens">\u2191' + tok(gOut) + '</span>' +
                         '<span class="obs-tl-time' + (gCold ? ' obs-cache-risk' : '') + '" title="total wall time">' + sec(gDurMs) + 's</span>' +
                         '</summary>' +
@@ -3316,8 +3316,6 @@
         if (turnSummary) {
             var lastScope = observabilityMetrics.lastRequest || {};
             var n = Number(lastScope.requestCount) || 0;
-            var usd = ((Number(lastScope.nanoAiu) || 0) / 1e9 / 100);
-            var usdStr = '<span style="color:#f14c4c">($' + usd.toFixed(2) + ')</span>';
             // Derive compaction / sub-agent counts from this turn's timeline events.
             var turnEvts = observabilityMetrics.turnEvents || [];
             var compactN = 0;
@@ -3330,7 +3328,7 @@
             if (compactN) { extra += ' \u00b7 <span class="obs-tag-compaction">' + compactN + ' compaction' + (compactN === 1 ? '' : 's') + '</span>'; }
             if (subagentN) { extra += ' \u00b7 <span class="obs-tag-subagent">' + subagentN + ' sub-agent' + (subagentN === 1 ? '' : 's') + '</span>'; }
             turnSummary.innerHTML = n
-                ? (n + ' request' + (n === 1 ? '' : 's') + ' \u00b7 ' + aiu(lastScope.nanoAiu) + ' AIU ' + usdStr + ' \u00b7 ' +
+                ? (n + ' request' + (n === 1 ? '' : 's') + ' \u00b7 ' + dollars(lastScope.nanoAiu) + ' \u00b7 ' +
                     tok(lastScope.inputTokens) + ' in / ' + tok(lastScope.outputTokens) + ' out \u00b7 ' + hitPct(lastScope) + ' cache hit' + extra)
                 : 'No requests yet this turn';
         }
@@ -3359,7 +3357,7 @@
 
         // ── This month: consolidated totals + per-model + tools ──
         setCell('obs-all-reqs', num(all.requestCount));
-        setCell('obs-all-credits', aiu(all.nanoAiu));
+        setCell('obs-all-credits', dollars(all.nanoAiu));
         setCell('obs-all-input', tok(all.inputTokens));
         setCell('obs-all-output', tok(all.outputTokens));
         setCell('obs-all-cached', tok(all.cachedTokens));
@@ -3371,7 +3369,7 @@
         if (compEl) {
             var cc = Number(comp.count) || 0;
             compEl.innerHTML = cc
-                ? 'Compaction: <span class="obs-tag-compaction">' + num(cc) + ' request' + (cc === 1 ? '' : 's') + '</span> \u00b7 ' + aiu(comp.nanoAiu) + ' AIU spent auto-summarizing context this month'
+                ? 'Compaction: <span class="obs-tag-compaction">' + num(cc) + ' request' + (cc === 1 ? '' : 's') + '</span> \u00b7 ' + dollars(comp.nanoAiu) + ' spent auto-summarizing context this month'
                 : 'Compaction: 0 requests this month';
         }
         renderToolTable('obs-month-tool-tbody', tc);
@@ -3392,7 +3390,7 @@
                     var m = models[i];
                     rows += '<tr><td class="obs-scope">' + escapeHtml(String(m.model || 'unknown')) + '</td>' +
                         '<td>' + num(m.requestCount) + '</td>' +
-                        '<td>' + aiu(m.nanoAiu) + '</td>' +
+                        '<td>' + dollars(m.nanoAiu) + '</td>' +
                         '<td>' + tok(m.inputTokens) + '</td>' +
                         '<td>' + tok(m.outputTokens) + '</td>' +
                         '<td>' + tok(m.cachedTokens) + '</td></tr>';
