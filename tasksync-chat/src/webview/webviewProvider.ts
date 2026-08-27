@@ -122,6 +122,7 @@ interface CostAttributionSummary extends ScopeMetrics {
     cycleId: string;
     turnCount: number;
     activeMs: number;
+    branches: string[];
 }
 
 interface ObservabilityMetrics {
@@ -334,6 +335,7 @@ interface SpecCostTurn extends ScopeMetrics {
     taskId: string;
     cycleId: string;
     activeMs: number;
+    branch?: string;
     updatedAt: number;
 }
 
@@ -685,7 +687,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _logTurnStartTs: number = 0;
     private _costAttributionMode: 'spec' | 'ad-hoc';
     private _costAttributionStartedAt: number;
-    private _turnAttribution = { key: 'ad-hoc', specSlug: '', taskId: '', cycleId: '', turnId: '' };
+    private _turnAttribution = { key: 'ad-hoc', specSlug: '', taskId: '', cycleId: '', turnId: '', branch: '' };
     private _specCostMap: SpecCostMap | undefined;
     // Throttle the cross-workspace overall(month) computation (reads all month shards).
     private _overallLastComputedAt: number = 0;
@@ -3963,8 +3965,27 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             specSlug: useSpec ? activeSlug : '',
             taskId: useSpec ? taskId.toUpperCase() : '',
             cycleId: useSpec ? cycleId : '',
-            turnId: `${sessionId}:${ts}`
+            turnId: `${sessionId}:${ts}`,
+            branch: root ? this._readGitBranch(root) : ''
         };
+    }
+
+    private _readGitBranch(root: string): string {
+        try {
+            let gitDir = path.join(root, '.git');
+            const stat = fs.statSync(gitDir);
+            if (stat.isFile()) {
+                const pointer = fs.readFileSync(gitDir, 'utf8').trim();
+                const match = /^gitdir:\s*(.+)$/i.exec(pointer);
+                if (!match) { return ''; }
+                gitDir = path.resolve(root, match[1]);
+            }
+            const head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim();
+            const ref = /^ref:\s+refs\/heads\/(.+)$/.exec(head);
+            return ref ? ref[1] : (head ? `detached:${head.slice(0, 7)}` : '');
+        } catch {
+            return '';
+        }
     }
 
     private _specCostMapPath(workspaceKey: string): string {
@@ -3999,6 +4020,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             taskId: this._turnAttribution.taskId,
             cycleId: this._turnAttribution.cycleId,
             activeMs: Math.max(0, this._turnLastActivityTs - this._lastSubmitTs),
+            branch: this._turnAttribution.branch,
             requestCount: this._lastRequestMetrics.requestCount,
             inputTokens: this._lastRequestMetrics.inputTokens,
             outputTokens: this._lastRequestMetrics.outputTokens,
@@ -4015,7 +4037,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private async _loadCostAttribution(workspaceKey: string): Promise<CostAttributionSummary[]> {
         const map = await this._loadSpecCostMap(workspaceKey);
-        const groups = new Map<string, CostAttributionSummary & { turns: Set<string> }>();
+        const groups = new Map<string, CostAttributionSummary & { turns: Set<string>; branchSet: Set<string> }>();
         for (const value of Object.values(map.turns)) {
             const key = value.specSlug || 'ad-hoc';
             const detail = value.taskId || value.cycleId || '';
@@ -4027,13 +4049,15 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 cycleId: value.cycleId,
                 turnCount: 0,
                 activeMs: 0,
+                branches: [],
                 requestCount: 0,
                 inputTokens: 0,
                 outputTokens: 0,
                 cachedTokens: 0,
                 nanoAiu: 0,
                 cacheMisses: 0,
-                turns: new Set<string>()
+                turns: new Set<string>(),
+                branchSet: new Set<string>()
             };
             group.requestCount += value.requestCount;
             group.inputTokens += value.inputTokens;
@@ -4042,12 +4066,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             group.nanoAiu += value.nanoAiu;
             group.cacheMisses = (group.cacheMisses || 0) + (value.cacheMisses || 0);
             group.activeMs += value.activeMs || 0;
+            if (value.branch) { group.branchSet.add(value.branch); }
             group.turns.add(value.turnId);
             groups.set(groupKey, group);
         }
         return [...groups.values()].map(group => {
-            const { turns, ...summary } = group;
+            const { turns, branchSet, ...summary } = group;
             summary.turnCount = turns.size;
+            summary.branches = [...branchSet].sort();
             return summary;
         }).sort((a, b) => b.nanoAiu - a.nanoAiu);
     }
@@ -6564,7 +6590,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
         </div>
         <div class="conversation-health" title="Conversation cost and cache health">
-            <button type="button" class="health-metrics" data-tab="observability" title="Open Metrics"><strong id="common-turn-summary">0 req &middot; <span class="health-cost">$0.00</span> &middot; 0 in / 0 out &middot; &ndash; cache</strong><span id="common-cache-age" class="health-cache">Age: -</span></button>
+            <button type="button" class="health-metrics" data-tab="observability" title="Open Metrics"><span id="common-turn-summary">0 req &middot; <strong class="health-cost">$0.00</strong> &middot; 0 in / 0 out &middot; &ndash; cache</span><strong id="common-cache-age" class="health-cache">Age: -</strong></button>
             <button type="button" class="health-attribution" id="cost-attribution-toggle" title="Ad hoc work is not charged to the active spec. Click to change attribution.">Ad hoc work</button>
         </div>
 

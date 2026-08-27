@@ -1617,6 +1617,7 @@
                             sc.cycleId = typeof a.cycleId === 'string' ? a.cycleId : '';
                             sc.turnCount = Number(a.turnCount) || 0;
                             sc.activeMs = Number(a.activeMs) || 0;
+                            sc.branches = Array.isArray(a.branches) ? a.branches.filter(function(b) { return typeof b === 'string' && b; }) : [];
                             return sc;
                         }) : [],
                         attributionMode: message.metrics.attributionMode === 'ad-hoc' ? 'ad-hoc' : 'spec',
@@ -2938,7 +2939,7 @@
         if (commonSummary) {
             var turnRequests = Number(turn.requestCount) || 0;
             commonSummary.innerHTML = turnRequests + ' req' + (turnRequests === 1 ? '' : 's') +
-                ' &middot; <span class="health-cost">' + dollars(turn.nanoAiu) + '</span>' +
+                ' &middot; <strong class="health-cost">' + dollars(turn.nanoAiu) + '</strong>' +
                 ' &middot; ' + tok(turn.inputTokens) + ' in / ' + tok(turn.outputTokens) + ' out' +
                 ' &middot; ' + hitPct(turn) + ' cache';
         }
@@ -5334,6 +5335,12 @@
             var specTurns = attributed.reduce(function(sum, a) { return sum + a.turnCount; }, 0);
             var specActiveMs = attributed.reduce(function(sum, a) { return sum + a.activeMs; }, 0);
             if (specNano) facts.push(formatDollars(specNano) + ' · ' + formatActiveTime(specActiveMs) + ' active · ' + specTurns + ' turns');
+            var specBranches = [];
+            attributed.forEach(function(a) {
+                (a.branches || []).forEach(function(branch) { if (specBranches.indexOf(branch) < 0) specBranches.push(branch); });
+            });
+            if (specBranches.length === 1) facts.push('<span title="Git branch captured at each attributed turn">branch ' + escapeHtml(specBranches[0]) + '</span>');
+            else if (specBranches.length > 1) facts.push('<span title="' + escapeHtml(specBranches.join(', ')) + '">' + specBranches.length + ' branches</span>');
 
             var body = expanded
                 ? '<div class="spec-body">' +

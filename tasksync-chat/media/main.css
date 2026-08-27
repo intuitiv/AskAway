@@ -148,12 +148,12 @@ body {
     border-bottom: 1px solid var(--vscode-panel-border);
     background: var(--vscode-sideBar-background);
 }
-.health-metrics, .health-attribution { border: 0; background: transparent; color: var(--vscode-descriptionForeground); font: 12px var(--vscode-editor-font-family); font-weight: 600; cursor: pointer; }
+.health-metrics, .health-attribution { border: 0; background: transparent; color: var(--vscode-descriptionForeground); font: 11px var(--vscode-font-family); font-weight: 400; cursor: pointer; }
 .health-metrics { display: flex; flex-direction: row; align-items: center; justify-content: space-between; flex: 1; gap: 10px; padding: 0; text-align: left; min-width: 0; }
-.health-metrics strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.health-cost { color: var(--vscode-errorForeground, #f14c4c); }
-.health-cache { font-size: 10px; white-space: nowrap; }
-.health-attribution { font-size: 10px; color: var(--vscode-textLink-foreground); border-left: 1px solid var(--vscode-panel-border); padding-left: 8px; white-space: nowrap; }
+.health-metrics > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.health-cost { color: var(--vscode-errorForeground, #f14c4c); font-weight: 700; }
+.health-cache { font-size: 11px; font-weight: 700; white-space: nowrap; }
+.health-attribution { font-size: 10px; font-weight: 400; color: var(--vscode-textLink-foreground); border-left: 1px solid var(--vscode-panel-border); padding-left: 8px; white-space: nowrap; }
 .health-metrics:hover, .health-attribution:hover { color: var(--vscode-foreground); }
 .health-cache.warm { color: var(--vscode-charts-green); }
 .health-cache.cooling { color: var(--vscode-charts-yellow); }
