@@ -844,8 +844,8 @@
             '<div class="obs-context-cost-chart" id="obs-context-cost-chart"><div class="obs-na">No data yet</div></div>' +
             '<div class="observability-model-note">Cost attribution - tracked prospectively from the turn when attribution was enabled</div>' +
             '<table class="observability-table observability-model-table">' +
-            '<thead><tr><th>Spec / Task</th><th>Turns</th><th>Reqs</th><th>Cost</th><th>Input</th><th>Cache</th></tr></thead>' +
-            '<tbody id="obs-attribution-tbody"><tr><td colspan="6" class="obs-na">No attributed turns yet</td></tr></tbody>' +
+            '<thead><tr><th>Spec / Task</th><th>Time</th><th>Turns</th><th>Reqs</th><th>Cost</th><th>Input</th><th>Cache</th></tr></thead>' +
+            '<tbody id="obs-attribution-tbody"><tr><td colspan="7" class="obs-na">No attributed turns yet</td></tr></tbody>' +
             '</table>' +
             '<div class="observability-model-note">Tool calls this month</div>' +
             '<table class="observability-table observability-model-table">' +
@@ -1616,6 +1616,7 @@
                             sc.taskId = typeof a.taskId === 'string' ? a.taskId : '';
                             sc.cycleId = typeof a.cycleId === 'string' ? a.cycleId : '';
                             sc.turnCount = Number(a.turnCount) || 0;
+                            sc.activeMs = Number(a.activeMs) || 0;
                             return sc;
                         }) : [],
                         attributionMode: message.metrics.attributionMode === 'ad-hoc' ? 'ad-hoc' : 'spec',
@@ -3021,15 +3022,16 @@
             var tbody = document.getElementById('obs-attribution-tbody');
             if (!tbody) return;
             var entries = observabilityMetrics.costAttribution || [];
-            if (!entries.length) { tbody.innerHTML = '<tr><td colspan="6" class="obs-na">No attributed turns yet. Tracking begins with the next user turn.</td></tr>'; return; }
+            if (!entries.length) { tbody.innerHTML = '<tr><td colspan="7" class="obs-na">No attributed turns yet. Tracking begins with the next user turn.</td></tr>'; return; }
             var groups = {};
             entries.forEach(function (entry) {
                 var key = entry.specSlug || 'ad-hoc';
-                var group = groups[key] || { key: key, turns: {}, requests: 0, nano: 0, input: 0, cached: 0, details: [] };
+                var group = groups[key] || { key: key, turns: {}, requests: 0, nano: 0, input: 0, cached: 0, activeMs: 0, details: [] };
                 group.requests += entry.requestCount;
                 group.nano += entry.nanoAiu;
                 group.input += entry.inputTokens;
                 group.cached += entry.cachedTokens;
+                group.activeMs += entry.activeMs;
                 group.turns[(entry.taskId || entry.cycleId || '__general') + ':' + entry.turnCount] = true;
                 group.details.push(entry);
                 groups[key] = group;
@@ -3039,9 +3041,9 @@
                 var turns = group.details.reduce(function (sum, d) { return sum + d.turnCount; }, 0);
                 var hit = group.input ? Math.round(group.cached / group.input * 100) + '%' : '&ndash;';
                 var label = key === 'ad-hoc' ? 'Ad hoc' : key;
-                var main = '<tr><td class="obs-scope"><strong>' + escapeHtml(label) + '</strong></td><td>' + turns + '</td><td>' + group.requests + '</td><td>' + formatDollars(group.nano) + '</td><td>' + tok(group.input) + '</td><td>' + hit + '</td></tr>';
+                var main = '<tr><td class="obs-scope"><strong>' + escapeHtml(label) + '</strong></td><td>' + formatActiveTime(group.activeMs) + '</td><td>' + turns + '</td><td>' + group.requests + '</td><td>' + formatDollars(group.nano) + '</td><td>' + tok(group.input) + '</td><td>' + hit + '</td></tr>';
                 var details = group.details.filter(function (d) { return d.taskId || d.cycleId; }).map(function (d) {
-                    return '<tr class="obs-attribution-detail"><td class="obs-scope">' + escapeHtml(d.taskId || d.cycleId) + '</td><td>' + d.turnCount + '</td><td>' + d.requestCount + '</td><td>' + formatDollars(d.nanoAiu) + '</td><td>' + tok(d.inputTokens) + '</td><td>' + (d.inputTokens ? Math.round(d.cachedTokens / d.inputTokens * 100) + '%' : '&ndash;') + '</td></tr>';
+                    return '<tr class="obs-attribution-detail"><td class="obs-scope">' + escapeHtml(d.taskId || d.cycleId) + '</td><td>' + formatActiveTime(d.activeMs) + '</td><td>' + d.turnCount + '</td><td>' + d.requestCount + '</td><td>' + formatDollars(d.nanoAiu) + '</td><td>' + tok(d.inputTokens) + '</td><td>' + (d.inputTokens ? Math.round(d.cachedTokens / d.inputTokens * 100) + '%' : '&ndash;') + '</td></tr>';
                 }).join('');
                 return main + details;
             }).join('');
@@ -5274,6 +5276,15 @@
         return '$' + ((Number(nanoAiu) || 0) / 1000000000 / 100).toFixed(2);
     }
 
+    function formatActiveTime(ms) {
+        var value = Math.max(0, Number(ms) || 0);
+        if (value > 0 && value < 60000) return '&lt;1m';
+        var minutes = Math.round(value / 60000);
+        if (minutes < 60) return minutes + 'm';
+        var hours = Math.floor(minutes / 60);
+        return hours + 'h' + (minutes % 60 ? ' ' + (minutes % 60) + 'm' : '');
+    }
+
     function renderSpecs() {
         var list = document.getElementById('specs-list');
         if (!list) return;
@@ -5321,7 +5332,8 @@
             var attributed = (observabilityMetrics.costAttribution || []).filter(function(a) { return a.specSlug === spec.slug; });
             var specNano = attributed.reduce(function(sum, a) { return sum + a.nanoAiu; }, 0);
             var specTurns = attributed.reduce(function(sum, a) { return sum + a.turnCount; }, 0);
-            if (specNano) facts.push(formatDollars(specNano) + ' attributed · ' + specTurns + ' turns');
+            var specActiveMs = attributed.reduce(function(sum, a) { return sum + a.activeMs; }, 0);
+            if (specNano) facts.push(formatDollars(specNano) + ' · ' + formatActiveTime(specActiveMs) + ' active · ' + specTurns + ' turns');
 
             var body = expanded
                 ? '<div class="spec-body">' +

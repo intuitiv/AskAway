@@ -121,6 +121,7 @@ interface CostAttributionSummary extends ScopeMetrics {
     taskId: string;
     cycleId: string;
     turnCount: number;
+    activeMs: number;
 }
 
 interface ObservabilityMetrics {
@@ -332,6 +333,7 @@ interface SpecCostTurn extends ScopeMetrics {
     specSlug: string;
     taskId: string;
     cycleId: string;
+    activeMs: number;
     updatedAt: number;
 }
 
@@ -678,6 +680,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     });
     /** Wall-clock of the last user submit; "This turn" aggregates llm_requests with ts >= this. */
     private _lastSubmitTs = Date.now();
+    private _turnLastActivityTs = this._lastSubmitTs;
     /** Highest user_message.ts seen in log files — prevents duplicate turn resets on re-scan. */
     private _logTurnStartTs: number = 0;
     private _costAttributionMode: 'spec' | 'ad-hoc';
@@ -2304,6 +2307,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                                 continue;
                             }
                             if (tTs >= this._lastSubmitTs) {
+                                this._turnLastActivityTs = Math.max(this._turnLastActivityTs, tTs + Math.max(0, durMs));
                                 this._foldToolAgg(this._turnToolAgg, toolName, durMs, tStatus, argsStr.length, resultStr.length, group);
                                 if (isChildLog && subagentId) { this._ensureTurnSubagent(subagentId, subagentLabel, tTs); }
                                 // Copilot truncates attrs.result (~5K chars) in the debug log, so
@@ -2378,6 +2382,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     // _resetTurnMetrics() clears it at each turn boundary.
                     const isMiss = this._isCacheMiss(inputTokens, cachedTokens);
                     if (ts >= this._lastSubmitTs) {
+                        this._turnLastActivityTs = Math.max(this._turnLastActivityTs, ts + (typeof parsed.dur === 'number' ? Math.max(0, parsed.dur) : 0));
                         if (isChildLog && subagentId) { this._ensureTurnSubagent(subagentId, subagentLabel, ts); }
                         this._lastRequestMetrics.requestCount += 1;
                         this._lastRequestMetrics.inputTokens += inputTokens;
@@ -3993,6 +3998,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             specSlug: this._turnAttribution.specSlug,
             taskId: this._turnAttribution.taskId,
             cycleId: this._turnAttribution.cycleId,
+            activeMs: Math.max(0, this._turnLastActivityTs - this._lastSubmitTs),
             requestCount: this._lastRequestMetrics.requestCount,
             inputTokens: this._lastRequestMetrics.inputTokens,
             outputTokens: this._lastRequestMetrics.outputTokens,
@@ -4020,6 +4026,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 taskId: value.taskId,
                 cycleId: value.cycleId,
                 turnCount: 0,
+                activeMs: 0,
                 requestCount: 0,
                 inputTokens: 0,
                 outputTokens: 0,
@@ -4034,6 +4041,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             group.cachedTokens += value.cachedTokens;
             group.nanoAiu += value.nanoAiu;
             group.cacheMisses = (group.cacheMisses || 0) + (value.cacheMisses || 0);
+            group.activeMs += value.activeMs || 0;
             group.turns.add(value.turnId);
             groups.set(groupKey, group);
         }
@@ -5063,6 +5071,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      *  Pass ts to use the log-entry timestamp (more accurate); omit to use wall-clock. */
     private _resetTurnMetrics(ts?: number): void {
         this._lastSubmitTs = ts ?? Date.now();
+        this._turnLastActivityTs = this._lastSubmitTs;
         this._lastRequestMetrics = this._emptyScope();
         this._turnToolAgg.clear();
         this._turnRequests = [];
