@@ -6555,8 +6555,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
         </div>
         <div class="conversation-health" title="Conversation cost and cache health">
-            <button type="button" class="health-metrics" data-tab="observability" title="Open Metrics"><strong id="common-spend">This turn: $0.00</strong><span id="common-cache-age" class="health-cache">Cache: -</span></button>
-            <button type="button" class="health-attribution" id="cost-attribution-toggle" title="Toggle whether new turns are charged to the active spec or Ad hoc work">Ad hoc</button>
+            <button type="button" class="health-metrics" data-tab="observability" title="Open Metrics"><strong id="common-turn-summary">0 req &middot; <span class="health-cost">$0.00</span> &middot; 0 in / 0 out &middot; &ndash; cache</strong><span id="common-cache-age" class="health-cache">Age: -</span></button>
+            <button type="button" class="health-attribution" id="cost-attribution-toggle" title="Ad hoc work is not charged to the active spec. Click to change attribution.">Ad hoc work</button>
         </div>
 
         <!-- Chat Panel -->

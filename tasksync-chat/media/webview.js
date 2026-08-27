@@ -2877,7 +2877,7 @@
         var ts = Number(observabilityMetrics.lastRequestTs) || 0;
         if (!ts) {
             if (el) { el.textContent = 'Prompt cache age: \u2013'; el.className = 'obs-cache-age'; }
-            if (common) { common.textContent = 'Cache: \u2013'; common.className = 'health-cache'; }
+            if (common) { common.textContent = 'Age: \u2013'; common.className = 'health-cache'; }
             return;
         }
         var secs = Math.max(0, Math.floor((Date.now() - ts) / 1000));
@@ -2894,7 +2894,7 @@
         }
         if (common) {
             common.className = 'health-cache ' + (secs < 285 ? 'warm' : secs < 300 ? 'cooling' : 'cold');
-            common.textContent = 'Cache: ' + clock + (secs >= 300 ? ' cold' : ' warm');
+            common.textContent = 'Age: ' + clock + (secs >= 300 ? ' cold' : ' warm');
         }
         // Sound alert once per request-cycle when the cache is about to expire (~4:45), so the
         // user can hit Ping in time. Re-arms whenever a new request resets the clock (ts changes).
@@ -2933,10 +2933,22 @@
             return Math.round((Number(s.cachedTokens) || 0) / inp * 100) + '%';
         };
         var setCell = function (id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
-        setCell('common-spend', 'This turn: ' + dollars(turn.nanoAiu));
+        var commonSummary = document.getElementById('common-turn-summary');
+        if (commonSummary) {
+            var turnRequests = Number(turn.requestCount) || 0;
+            commonSummary.innerHTML = turnRequests + ' req' + (turnRequests === 1 ? '' : 's') +
+                ' &middot; <span class="health-cost">' + dollars(turn.nanoAiu) + '</span>' +
+                ' &middot; ' + tok(turn.inputTokens) + ' in / ' + tok(turn.outputTokens) + ' out' +
+                ' &middot; ' + hitPct(turn) + ' cache';
+        }
         var attributionToggle = document.getElementById('cost-attribution-toggle');
         if (attributionToggle) {
-            attributionToggle.textContent = observabilityMetrics.activeAttribution.label || 'Ad hoc';
+            attributionToggle.textContent = observabilityMetrics.activeAttribution.key === 'ad-hoc'
+                ? 'Ad hoc work'
+                : (observabilityMetrics.activeAttribution.label || 'Active spec');
+            attributionToggle.title = observabilityMetrics.activeAttribution.key === 'ad-hoc'
+                ? 'Ad hoc work is not charged to the active spec. Click to charge future turns to the active spec.'
+                : 'Future turns are charged to ' + attributionToggle.textContent + '. Click for Ad hoc work.';
             attributionToggle.classList.toggle('ad-hoc', observabilityMetrics.attributionMode === 'ad-hoc');
         }
         var setHit = function (id, s) {
