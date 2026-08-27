@@ -16,6 +16,14 @@ export interface SpecPhase {
     done: number;
 }
 
+export interface SpecTaskSummary {
+    id: string;
+    text: string;
+    done: boolean;
+    phase: string;
+    cycleId: string;
+}
+
 export interface SpecCycleTask {
     id: string;
     text: string;
@@ -43,6 +51,7 @@ export interface SpecSummary {
     slug: string;
     dir: string;
     title: string;
+    purpose: string;
     stage: SpecStage;
     total: number;
     done: number;
@@ -51,6 +60,7 @@ export interface SpecSummary {
     nextTaskText: string;
     clarifications: number;
     phases: SpecPhase[];
+    tasks: SpecTaskSummary[];
     cycles: SpecCycleSummary[];
     active: boolean;
     hasPlan: boolean;
@@ -102,6 +112,28 @@ function extractTitle(specText: string, slug: string): string {
     return slug.replace(/^\d+[-_]?/, '').replace(/[-_]/g, ' ').trim() || slug;
 }
 
+function extractPurpose(specText: string): string {
+    const explicit = /^\*\*(?:Purpose|Summary|Input)\*\*:\s*(.+(?:\r?\n(?!\s*\r?$|#|\*\*[^*]+\*\*:).+)*)/im.exec(specText);
+    if (explicit) {
+        return explicit[1].replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    const lines = specText.split(/\r?\n/);
+    let paragraph: string[] = [];
+    for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#') || line.startsWith('```') || line.startsWith('|') || /^\*\*[^*]+\*\*:/.test(line)) {
+            if (paragraph.length) { break; }
+            continue;
+        }
+        if (/^[-*]\s/.test(line)) {
+            if (paragraph.length) { break; }
+            continue;
+        }
+        paragraph.push(line);
+    }
+    return paragraph.join(' ').replace(/\s+/g, ' ').trim();
+}
+
 function countClarifications(...texts: string[]): number {
     let n = 0;
     for (const text of texts) {
@@ -114,7 +146,7 @@ function stripTaskTags(text: string): string {
     return text.replace(/\[(P|US\d+|CY-\d+|[A-Z]{1,4}\d*)\]/gi, '').replace(/\s{2,}/g, ' ').trim();
 }
 
-interface ParsedTask { id: string; text: string; done: boolean; cycleId: string; }
+interface ParsedTask extends SpecTaskSummary { }
 
 interface TaskParse {
     total: number;
@@ -150,6 +182,7 @@ function parseTasks(text: string): TaskParse {
             id: task[2] || '',
             text: stripTaskTags(rawText),
             done: isDone,
+            phase: current?.name || '',
             cycleId: cycleMatch ? `CY-${cycleMatch[1].padStart(3, '0')}` : ''
         });
         total++;
@@ -248,6 +281,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
             slug: entry.name,
             dir,
             title: extractTitle(specText, entry.name),
+            purpose: extractPurpose(specText),
             stage: deriveStage({ hasPlan, hasTasks, total: parsed.total, done: parsed.done, clarifications }),
             total: parsed.total,
             done: parsed.done,
@@ -256,6 +290,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
             nextTaskText: parsed.nextText,
             clarifications,
             phases: parsed.phases,
+            tasks: parsed.tasks,
             cycles: [],
             active: entry.name === activeSlug,
             hasPlan,

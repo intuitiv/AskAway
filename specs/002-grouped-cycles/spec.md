@@ -48,6 +48,10 @@ Cycles are generated as part of `/tasks`; the reviewer does not need to build th
 Spec Kit produces the dependency-ordered tasks, the agent groups related tasks and writes the cycle
 tags and metadata in the same operation.
 
+This applies to newly generated specs from this feature onward. Existing task lists are not
+retrofitted when `/tasks` is rerun; they remain cycle-free unless the reviewer explicitly asks to
+migrate them.
+
 Tasks belong together when at least one of these is true:
 
 - one task produces the behavior or evidence another task consumes;
@@ -61,7 +65,7 @@ no useful relationship exists; automatic grouping must not create artificial wor
 
 Prefer two to five tasks per cycle. Use more only when they form one indivisible verification batch.
 The next ID is the highest existing workspace cycle number plus one. A later `/tasks` run preserves
-existing tags and assigns IDs only to new or ungrouped tasks.
+existing tags and assigns IDs only to tasks newly added by that generation run.
 
 Manual adjustment remains available for exceptions:
 

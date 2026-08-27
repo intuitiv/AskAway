@@ -5191,6 +5191,7 @@
 
             var body = expanded
                 ? '<div class="spec-body">' +
+                                    (spec.purpose ? '<div class="spec-purpose">' + escapeHtml(spec.purpose) + '</div>' : '') +
                   (facts.length ? '<div class="spec-meta">' + escapeHtml(facts.join(' · ')) + '</div>' : '') +
                   (spec.cycles && spec.cycles.length
                       ? '<div class="spec-cycles"><div class="spec-section-label">Cycles</div>' + spec.cycles.map(function(c) {
@@ -5209,6 +5210,28 @@
                                 nextLabel + '</div>';
                         }).join('') + '</div>'
                       : '') +
+                  (spec.tasks && spec.tasks.length ? (function() {
+                      var pending = spec.tasks.filter(function(t) { return !t.done; }).slice(0, 5);
+                      var completed = spec.tasks.filter(function(t) { return t.done; }).slice(-3).reverse();
+                      var rows = pending.map(function(t) {
+                          return '<div class="spec-work-row"><span class="codicon codicon-circle-large-outline"></span>' +
+                              '<span class="spec-work-text">' + escapeHtml(t.text || t.id) + '</span>' +
+                              (t.id ? '<span class="spec-work-id">' + escapeHtml(t.id) + '</span>' +
+                                  '<button class="spec-task-run" data-act="cmd" data-cmd="/implement ' + escapeHtml(t.id) + '" title="Implement this task"><span class="codicon codicon-play"></span></button>' : '') +
+                              '</div>';
+                      }).join('');
+                      if (!pending.length) {
+                          rows = completed.map(function(t) {
+                              return '<div class="spec-work-row done"><span class="codicon codicon-check"></span>' +
+                                  '<span class="spec-work-text">' + escapeHtml(t.text || t.id) + '</span>' +
+                                  (t.id ? '<span class="spec-work-id">' + escapeHtml(t.id) + '</span>' : '') + '</div>';
+                          }).join('');
+                      }
+                      var remaining = spec.tasks.filter(function(t) { return !t.done; }).length - pending.length;
+                      return '<div class="spec-work"><div class="spec-section-label">' +
+                          (pending.length ? 'Up next' : 'Recently completed') + '</div>' + rows +
+                          (remaining > 0 ? '<div class="spec-work-more">+' + remaining + ' more in tasks.md</div>' : '') + '</div>';
+                  })() : '') +
                   (spec.phases.length
                       ? '<div class="spec-phases">' + spec.phases.map(function(p) {
                             return '<div class="spec-phase"><span>' + escapeHtml(p.name) + '</span><span>' +
