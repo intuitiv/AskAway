@@ -5213,12 +5213,7 @@
                 { cmd: '/check', label: '/check', hint: 'Verify code matches the spec' }
             ];
         }
-        var out = [];
-        if (spec.nextTaskId) {
-            out.push({ cmd: '/implement ' + spec.nextTaskId, label: '/implement ' + spec.nextTaskId, hint: spec.nextTaskText || 'Next unticked task' });
-        }
-        out.push({ cmd: '/continue ' + id, label: '/continue ' + id, hint: 'Resume this feature from where it stopped' });
-        return out;
+        return [{ cmd: '/continue ' + id, label: '/continue ' + id, hint: 'Ask the agent to inspect readiness and pitch the next eligible task' }];
     }
 
     function initSpecsTab() {
@@ -5306,11 +5301,6 @@
             var expanded = !!specsExpanded[spec.slug];
             var pct = spec.total ? spec.percent : 0;
 
-            var next = spec.nextTaskId || spec.nextTaskText
-                ? '<div class="spec-next" title="' + escapeHtml(spec.nextTaskText) + '"><span class="spec-next-id">' +
-                                    escapeHtml(spec.nextTaskId || 'next') + '</span>' + formatSpecInline(spec.nextTaskText) + '</div>'
-                : '<div class="spec-next specs-muted">' + (spec.hasTasks ? 'All tasks done' : 'No tasks yet') + '</div>';
-
             var facts = [];
             if (spec.total) facts.push(spec.done + '/' + spec.total + ' tasks');
             if (spec.clarifications) facts.push(spec.clarifications + ' clarify');
@@ -5343,14 +5333,24 @@
                         }).join('') + '</div>'
                       : '') +
                   (spec.tasks && spec.tasks.length ? (function() {
-                      var pending = spec.tasks.filter(function(t) { return !t.done; }).slice(0, 5);
+                      var pending = spec.tasks.filter(function(t) { return !t.done; });
                       var completed = spec.tasks.filter(function(t) { return t.done; }).slice(-3).reverse();
-                      var rows = pending.map(function(t) {
-                          return '<div class="spec-work-row"><span class="codicon codicon-circle-large-outline"></span>' +
-                              '<span class="spec-work-text">' + formatSpecInline(t.text || t.id) + '</span>' +
-                              (t.id ? '<span class="spec-work-id">' + escapeHtml(t.id) + '</span>' +
-                                  '<button class="spec-task-run" data-act="cmd" data-cmd="/implement ' + escapeHtml(t.id) + '" title="Implement this task"><span class="codicon codicon-play"></span></button>' : '') +
-                              '</div>';
+                      var phaseOrder = [];
+                      var byPhase = {};
+                      pending.forEach(function(t) {
+                          var phase = t.phase || 'Other tasks';
+                          if (!byPhase[phase]) { byPhase[phase] = []; phaseOrder.push(phase); }
+                          byPhase[phase].push(t);
+                      });
+                      var rows = phaseOrder.map(function(phase) {
+                          return '<details class="spec-work-phase"><summary class="spec-work-phase-title">' + formatSpecInline(phase) + '<span>' + byPhase[phase].length + ' open</span></summary>' +
+                              byPhase[phase].map(function(t) {
+                                  return '<div class="spec-work-row"><span class="codicon codicon-circle-large-outline"></span>' +
+                                      '<span class="spec-work-id">' + escapeHtml(t.id || '') + '</span>' +
+                                      '<span class="spec-work-text">' + formatSpecInline(t.text || t.id) + '</span>' +
+                                      (t.id ? '<button class="spec-task-run" data-act="cmd" data-cmd="/implement ' + escapeHtml(t.id) + '" title="Prepare this task"><span class="codicon codicon-play"></span></button>' : '') +
+                                      '</div>';
+                              }).join('') + '</details>';
                       }).join('');
                       if (!pending.length) {
                           rows = completed.map(function(t) {
@@ -5359,17 +5359,9 @@
                                   (t.id ? '<span class="spec-work-id">' + escapeHtml(t.id) + '</span>' : '') + '</div>';
                           }).join('');
                       }
-                      var remaining = spec.tasks.filter(function(t) { return !t.done; }).length - pending.length;
                       return '<div class="spec-work"><div class="spec-section-label">' +
-                          (pending.length ? 'Up next' : 'Recently completed') + '</div>' + rows +
-                          (remaining > 0 ? '<div class="spec-work-more">+' + remaining + ' more in tasks.md</div>' : '') + '</div>';
+                          (pending.length ? 'Open tasks <span class="spec-section-hint">grouped by phase, not a recommendation</span>' : 'Recently completed') + '</div>' + rows + '</div>';
                   })() : '') +
-                  (spec.phases.length
-                        ? '<div class="spec-phases"><div class="spec-section-label" title="Sections from tasks.md, with completed and total task counts">Task groups <span class="spec-section-hint">from tasks.md</span></div>' + spec.phases.map(function(p) {
-                            return '<div class="spec-phase"><span>' + formatSpecInline(p.name) + '</span><span>' +
-                                   p.done + '/' + p.total + '</span></div>';
-                    }).join('') + '</div>'
-                      : '') +
                   '<div class="spec-actions">' +
                   specCommands(spec).map(function(c) {
                       return '<button class="spec-action" data-act="cmd" data-cmd="' + escapeHtml(c.cmd) +
@@ -5385,7 +5377,7 @@
             return '' +
                 '<div class="spec-card' + (spec.active ? ' spec-card-active' : '') + (expanded ? ' expanded' : '') + '"' +
                     ' data-slug="' + escapeHtml(spec.slug) + '" data-dir="' + escapeHtml(spec.dir) + '"' +
-                    ' data-id="' + escapeHtml(spec.id) + '" data-next="' + escapeHtml(spec.nextTaskId) + '">' +
+                    ' data-id="' + escapeHtml(spec.id) + '">' +
                 '  <div class="spec-card-head" data-act="toggle">' +
                 '    <span class="codicon codicon-chevron-right spec-chevron"></span>' +
                 '    <span class="spec-id">' + escapeHtml(spec.id) + '</span>' +
@@ -5395,8 +5387,7 @@
                 '    <span class="spec-badge spec-stage-' + spec.stage + '">' + (SPEC_STAGE_LABEL[spec.stage] || spec.stage) + '</span>' +
                 '    <span class="spec-pct">' + pct + '%</span>' +
                 '  </div>' +
-                '  <div class="spec-bar"><div class="spec-bar-fill" style="width:' + pct + '%"></div></div>' +
-                next +
+                '  <div class="spec-bar" title="' + spec.done + ' of ' + spec.total + ' tasks complete"><div class="spec-bar-fill" style="width:' + pct + '%"></div></div>' +
                 body +
                 '</div>';
         }).join('');

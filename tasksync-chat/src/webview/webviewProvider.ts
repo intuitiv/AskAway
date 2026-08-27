@@ -325,11 +325,22 @@ interface SeenMeta {
     in: number;    // inputTokens
     out: number;   // outputTokens
     cached?: number; // cachedTokens (added v3; absent on older entries)
-    attributionKey?: string;
-    specSlug?: string;
-    taskId?: string;
-    cycleId?: string;
-    turnId?: string;
+}
+
+interface SpecCostTurn extends ScopeMetrics {
+    turnId: string;
+    specSlug: string;
+    taskId: string;
+    cycleId: string;
+    updatedAt: number;
+}
+
+interface SpecCostMap {
+    version: 1;
+    workspaceKey: string;
+    startedAt: number;
+    turns: Record<string, SpecCostTurn>;
+    updatedAt: number;
 }
 
 interface ObservabilityLedger {
@@ -672,6 +683,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _costAttributionMode: 'spec' | 'ad-hoc';
     private _costAttributionStartedAt: number;
     private _turnAttribution = { key: 'ad-hoc', specSlug: '', taskId: '', cycleId: '', turnId: '' };
+    private _specCostMap: SpecCostMap | undefined;
     // Throttle the cross-workspace overall(month) computation (reads all month shards).
     private _overallLastComputedAt: number = 0;
     private _overallCache: { totals: ScopeMetrics; perModel: ModelBreakdown[]; compaction: { count: number; nanoAiu: number } } = {
@@ -2100,7 +2112,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     overall: overall.totals,
                     perModel: overall.perModel,
                     contextCostCurve: this._buildContextCostCurve(ledger),
-                    costAttribution: this._buildCostAttribution(ledger),
+                    costAttribution: await this._loadCostAttribution(workspaceKey),
                     attributionMode: this._costAttributionMode,
                     activeAttribution: this._activeAttributionLabel(),
                     overallCompaction: overall.compaction,
@@ -2206,6 +2218,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                             const message = JSON.parse(line) as { ts?: number; attrs?: { content?: string } };
                             const ts = message.ts;
                             if (typeof ts === 'number' && ts > this._logTurnStartTs) {
+                                await this._updateSpecCostMap(workspaceKey);
                                 this._logTurnStartTs = ts;
                                 this._resetTurnMetrics(ts);
                                 this._snapshotTurnAttribution(sessionId, ts, message.attrs?.content || '');
@@ -2414,14 +2427,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     if (ledger.seen[recordKey]) {
                         continue;
                     }
-                    const attribution = ts >= this._costAttributionStartedAt ? this._turnAttribution : undefined;
                     ledger.seen[recordKey] = {
-                        ts, model, nano: nanoAiu, in: inputTokens, out: outputTokens, cached: cachedTokens,
-                        attributionKey: attribution?.key,
-                        specSlug: attribution?.specSlug,
-                        taskId: attribution?.taskId,
-                        cycleId: attribution?.cycleId,
-                        turnId: attribution?.turnId
+                        ts, model, nano: nanoAiu, in: inputTokens, out: outputTokens, cached: cachedTokens
                     };
 
                     // Workspace cumulative ledger.
@@ -2464,6 +2471,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 }
                 // Read offset was already advanced (newline-aligned) when the bytes were read.
             }
+            await this._updateSpecCostMap(workspaceKey);
 
             // Emit cache-miss records with before/after neighbor context. `window` prepends the
             // previous poll's tail so an early-in-batch spike still gets "before" context, and we
@@ -2526,7 +2534,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 overall: overall.totals,
                 perModel: overall.perModel,
                 contextCostCurve: this._buildContextCostCurve(ledger),
-                costAttribution: this._buildCostAttribution(ledger),
+                costAttribution: await this._loadCostAttribution(workspaceKey),
                 attributionMode: this._costAttributionMode,
                 activeAttribution: this._activeAttributionLabel(),
                 overallCompaction: overall.compaction,
@@ -3954,17 +3962,63 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         };
     }
 
-    private _buildCostAttribution(ledger: ObservabilityLedger): CostAttributionSummary[] {
+    private _specCostMapPath(workspaceKey: string): string {
+        return path.join(this._context.globalStorageUri.fsPath, 'spec-cost-maps', `${workspaceKey}.json`);
+    }
+
+    private async _loadSpecCostMap(workspaceKey: string): Promise<SpecCostMap> {
+        if (this._specCostMap?.workspaceKey === workspaceKey) { return this._specCostMap; }
+        try {
+            const parsed = JSON.parse(await fs.promises.readFile(this._specCostMapPath(workspaceKey), 'utf8')) as SpecCostMap;
+            if (parsed.version === 1 && parsed.workspaceKey === workspaceKey && parsed.turns) {
+                this._specCostMap = parsed;
+                return parsed;
+            }
+        } catch { /* first use or corrupt file: start prospective mapping */ }
+        this._specCostMap = {
+            version: 1,
+            workspaceKey,
+            startedAt: this._costAttributionStartedAt,
+            turns: {},
+            updatedAt: Date.now()
+        };
+        return this._specCostMap;
+    }
+
+    private async _updateSpecCostMap(workspaceKey: string): Promise<void> {
+        if (!this._turnAttribution.turnId || this._lastSubmitTs < this._costAttributionStartedAt) { return; }
+        const map = await this._loadSpecCostMap(workspaceKey);
+        map.turns[this._turnAttribution.turnId] = {
+            turnId: this._turnAttribution.turnId,
+            specSlug: this._turnAttribution.specSlug,
+            taskId: this._turnAttribution.taskId,
+            cycleId: this._turnAttribution.cycleId,
+            requestCount: this._lastRequestMetrics.requestCount,
+            inputTokens: this._lastRequestMetrics.inputTokens,
+            outputTokens: this._lastRequestMetrics.outputTokens,
+            cachedTokens: this._lastRequestMetrics.cachedTokens,
+            nanoAiu: this._lastRequestMetrics.nanoAiu,
+            cacheMisses: this._lastRequestMetrics.cacheMisses || 0,
+            updatedAt: Date.now()
+        };
+        map.updatedAt = Date.now();
+        const file = this._specCostMapPath(workspaceKey);
+        await fs.promises.mkdir(path.dirname(file), { recursive: true });
+        await fs.promises.writeFile(file, JSON.stringify(map, null, 2), 'utf8');
+    }
+
+    private async _loadCostAttribution(workspaceKey: string): Promise<CostAttributionSummary[]> {
+        const map = await this._loadSpecCostMap(workspaceKey);
         const groups = new Map<string, CostAttributionSummary & { turns: Set<string> }>();
-        for (const value of Object.values(ledger.seen)) {
-            if (!value || value === true || !value.attributionKey) { continue; }
+        for (const value of Object.values(map.turns)) {
+            const key = value.specSlug || 'ad-hoc';
             const detail = value.taskId || value.cycleId || '';
-            const groupKey = `${value.attributionKey}\u0000${detail}`;
+            const groupKey = `${key}\u0000${detail}`;
             const group = groups.get(groupKey) || {
-                key: value.attributionKey,
-                specSlug: value.specSlug || '',
-                taskId: value.taskId || '',
-                cycleId: value.cycleId || '',
+                key,
+                specSlug: value.specSlug,
+                taskId: value.taskId,
+                cycleId: value.cycleId,
                 turnCount: 0,
                 requestCount: 0,
                 inputTokens: 0,
@@ -3974,13 +4028,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 cacheMisses: 0,
                 turns: new Set<string>()
             };
-            group.requestCount++;
-            group.inputTokens += value.in;
-            group.outputTokens += value.out;
-            group.cachedTokens += value.cached || 0;
-            group.nanoAiu += value.nano;
-            if ((value.cached || 0) < value.in * 0.5) { group.cacheMisses = (group.cacheMisses || 0) + 1; }
-            if (value.turnId) { group.turns.add(value.turnId); }
+            group.requestCount += value.requestCount;
+            group.inputTokens += value.inputTokens;
+            group.outputTokens += value.outputTokens;
+            group.cachedTokens += value.cachedTokens;
+            group.nanoAiu += value.nanoAiu;
+            group.cacheMisses = (group.cacheMisses || 0) + (value.cacheMisses || 0);
+            group.turns.add(value.turnId);
             groups.set(groupKey, group);
         }
         return [...groups.values()].map(group => {

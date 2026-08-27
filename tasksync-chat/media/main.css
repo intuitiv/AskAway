@@ -5084,9 +5084,9 @@ button#send-btn:disabled {
 }
 
 .spec-body {
-    margin-top: 6px;
+    margin-top: 10px;
     border-top: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.2));
-    padding-top: 5px;
+    padding-top: 9px;
 }
 
 .spec-id {
@@ -5122,16 +5122,16 @@ button#send-btn:disabled {
 .spec-stage-needs-clarify { background: var(--vscode-charts-red, #f14c4c); color: #fff; }
 
 .spec-bar {
-    height: 3px;
-    border-radius: 2px;
-    background: var(--vscode-progressBar-background, rgba(128,128,128,0.25));
-    opacity: 0.35;
-    margin-top: 5px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--vscode-widget-border, rgba(128,128,128,0.25));
+    margin-top: 7px;
     overflow: hidden;
 }
 .spec-bar-fill {
     height: 100%;
-    background: var(--vscode-charts-green, #89d185);
+    border-radius: inherit;
+    background: var(--vscode-progressBar-background, #0e70c0);
 }
 
 .spec-next {
@@ -5162,17 +5162,23 @@ button#send-btn:disabled {
     color: var(--vscode-foreground);
 }
 .spec-work { margin-top: 8px; }
+.spec-work-phase { margin: 6px 0 9px; border-left: 2px solid var(--vscode-panel-border); padding-left: 8px; }
+.spec-work-phase-title { display: flex; justify-content: space-between; gap: 8px; padding: 4px 2px; font-size: 10px; font-weight: 700; color: var(--vscode-foreground); cursor: pointer; }
+.spec-work-phase-title:hover { background: var(--vscode-list-hoverBackground); }
+.spec-work-phase-title::marker { color: var(--vscode-descriptionForeground); }
+.spec-work-phase-title span { font-size: 9px; font-weight: 400; color: var(--vscode-descriptionForeground); white-space: nowrap; }
 .spec-work-row {
     display: grid;
-    grid-template-columns: 14px minmax(0, 1fr) auto 22px;
-    align-items: center;
-    gap: 4px;
-    min-height: 24px;
+    grid-template-columns: 14px 38px minmax(0, 1fr) 22px;
+    align-items: start;
+    gap: 5px;
+    min-height: 26px;
+    padding: 4px 0;
     border-top: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.2));
 }
 .spec-work-row.done { grid-template-columns: 14px minmax(0, 1fr) auto; opacity: 0.72; }
 .spec-work-row .codicon { font-size: 11px; color: var(--vscode-descriptionForeground); }
-.spec-work-text { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spec-work-text { font-size: 10px; line-height: 1.35; white-space: normal; }
 .spec-work-id { font: 9px var(--vscode-editor-font-family); color: var(--vscode-descriptionForeground); }
 .spec-task-run {
     width: 22px;
