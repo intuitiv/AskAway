@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
+import { SPEC_KIT_PROMPTS } from './specs/specKitPromptAssets';
 import { registerTools } from './tools';
 import { McpServerManager } from './mcp/mcpServer';
 import { killAllGradleRuns } from './gradle/gradleEngine';
@@ -33,6 +34,21 @@ function formatError(error: unknown): string {
         return `${error.name}: ${error.message}${error.stack ? `\n${error.stack}` : ''}`;
     }
     return String(error);
+}
+
+async function ensureSpecKitPromptsInstalled(): Promise<void> {
+    const promptsDir = path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User', 'prompts');
+    try {
+        await fs.promises.mkdir(promptsDir, { recursive: true });
+        for (const [name, content] of Object.entries(SPEC_KIT_PROMPTS)) {
+            const target = path.join(promptsDir, name);
+            const existing = await fs.promises.readFile(target, 'utf8').catch(() => undefined);
+            if (existing !== content) { await fs.promises.writeFile(target, content, 'utf8'); }
+        }
+        logRuntime('Installed AskAway Spec Kit prompts', { count: Object.keys(SPEC_KIT_PROMPTS).length });
+    } catch (err) {
+        logRuntime('Warning: Could not install AskAway Spec Kit prompts', formatError(err));
+    }
 }
 
 function logRuntime(message: string, details?: unknown): void {
@@ -94,6 +110,7 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - Next-task selection reads the implementation log before task order, excludes manual/reviewer-owned/blocked/moved/deferred work, requires completed prerequisites, prefers non-mesh work, and uses file order only as a tie-breaker. The Specs tab shows open inventory, not an authoritative recommendation.
 - Cycle execution resolves the exact tagged tasks across specs, pitches membership once, invokes one implementation worker per ready task, and preserves one writer per ownership area. A failed task blocks its dependents while proven-independent tasks may continue; every task keeps separate evidence and log state.
 - When generating tasks for a new spec, automatically group related work into cycles using dependencies, shared ownership/context, shared verification, or useful waiting-time overlap. On reruns, group only newly added tasks; never retrofit an existing task list unless requested. Leave unrelated tasks ungrouped. Each cycle description must state the exact behavior, artifact, and evidence produced when it completes.
+- Keep tasks.md as a compact executable index: every row retains ID, labels, action, primary file path and short demo reference. Put long rationale, alternatives and evidence in task-details.md under stable \`## TNNN — title\` headings; implementations read only the selected section with read_doc.
 - Review and demo each item clearly, but batch repeated setup, shared verification, and one git commit for the cycle. Example: while task A's Gradle test runs, analyze task B or collect task C's evidence instead of polling.
 - Only overlap independent work. Never let two workers edit the same ownership area, and never invent busywork just to avoid waiting.
 - Start a known Gradle build early enough to overlap it with independent work from another approved task. Never poll while useful analysis or editing remains.
@@ -967,6 +984,7 @@ export function activate(context: vscode.ExtensionContext) {
     activationOutputChannel = outputChannel;
     context.subscriptions.push(outputChannel);
     outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Extension activating...`);
+    void ensureSpecKitPromptsInstalled();
 
     void ensureAskAwayBuildAgentInstalled(context);
     void ensureCoworkInstalled(context);

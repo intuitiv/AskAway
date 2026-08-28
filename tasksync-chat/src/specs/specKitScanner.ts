@@ -67,6 +67,7 @@ export interface SpecSummary {
     hasTasks: boolean;
     lastActivity: number;
     implementationRecords: number;
+    pullRequestUrl: string;
 }
 
 export interface SpecScanResult {
@@ -113,13 +114,15 @@ function extractTitle(specText: string, slug: string): string {
 }
 
 function extractPurpose(specText: string): string {
-    const explicit = /^\*\*(?:Purpose|Summary|Input)\*\*:\s*(.+(?:\r?\n(?!\s*\r?$|#|\*\*[^*]+\*\*:).+)*)/im.exec(specText);
+    const explicit = /^\*\*(?:Purpose|Summary)\*\*:\s*(.+(?:\r?\n(?!\s*\r?$|#|\*\*[^*]+\*\*:).+)*)/im.exec(specText);
     if (explicit) {
         return explicit[1].replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
     }
     const lines = specText.split(/\r?\n/);
+    const contextIndex = lines.findIndex(line => /^##\s+(?:Context|Overview|Problem)\b/i.test(line));
+    const candidates = contextIndex >= 0 ? lines.slice(contextIndex + 1) : lines;
     let paragraph: string[] = [];
-    for (const raw of lines) {
+    for (const raw of candidates) {
         const line = raw.trim();
         if (!line || line.startsWith('#') || line.startsWith('```') || line.startsWith('|') || /^\*\*[^*]+\*\*:/.test(line)) {
             if (paragraph.length) { break; }
@@ -143,7 +146,19 @@ function countClarifications(...texts: string[]): number {
 }
 
 function stripTaskTags(text: string): string {
-    return text.replace(/\[(P|US\d+|CY-\d+|[A-Z]{1,4}\d*)\]/gi, '').replace(/\s{2,}/g, ' ').trim();
+    return text
+        .replace(/\[(P|US\d+|CY-\d+|mesh|[A-Z]{1,4}\d*)\]/gi, '')
+        .replace(/^\s*\*{4}\s*/, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+function extractPullRequestUrl(...texts: string[]): string {
+    for (const text of texts) {
+        const match = /https:\/\/github\.com\/[^\s<>)]+\/pull\/\d+/i.exec(text);
+        if (match) { return match[0]; }
+    }
+    return '';
 }
 
 interface ParsedTask extends SpecTaskSummary { }
@@ -268,6 +283,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
         const specText = readTextFile(path.join(dir, 'spec.md'));
         const planText = readTextFile(path.join(dir, 'plan.md'));
         const tasksText = readTextFile(path.join(dir, 'tasks.md'));
+        const implementationText = readTextFile(path.join(dir, 'implementation-log.md'));
         if (!specText && !planText && !tasksText) { continue; }
 
         const parsed = parseTasks(tasksText);
@@ -296,7 +312,8 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
             hasPlan,
             hasTasks,
             lastActivity: newestMtime(dir),
-            implementationRecords: countLogRows(readTextFile(path.join(dir, 'implementation-log.md')))
+            implementationRecords: countLogRows(implementationText),
+            pullRequestUrl: extractPullRequestUrl(specText, planText, tasksText, implementationText)
         });
     }
 

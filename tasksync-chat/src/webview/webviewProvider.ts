@@ -123,6 +123,8 @@ interface CostAttributionSummary extends ScopeMetrics {
     turnCount: number;
     activeMs: number;
     branches: string[];
+    conversationLogs: string[];
+    commandStage: string;
 }
 
 interface ObservabilityMetrics {
@@ -336,6 +338,8 @@ interface SpecCostTurn extends ScopeMetrics {
     cycleId: string;
     activeMs: number;
     branch?: string;
+    conversationLogs?: string[];
+    commandStage?: string;
     updatedAt: number;
 }
 
@@ -687,7 +691,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _logTurnStartTs: number = 0;
     private _costAttributionMode: 'spec' | 'ad-hoc';
     private _costAttributionStartedAt: number;
-    private _turnAttribution = { key: 'ad-hoc', specSlug: '', taskId: '', cycleId: '', turnId: '', branch: '' };
+    private _turnAttribution = { key: 'ad-hoc', specSlug: '', taskId: '', cycleId: '', turnId: '', branch: '', pendingNewSpec: false, commandStage: 'other' };
+    private _turnLogFiles = new Set<string>();
     private _specCostMap: SpecCostMap | undefined;
     // Throttle the cross-workspace overall(month) computation (reads all month shards).
     private _overallLastComputedAt: number = 0;
@@ -2384,6 +2389,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     // _resetTurnMetrics() clears it at each turn boundary.
                     const isMiss = this._isCacheMiss(inputTokens, cachedTokens);
                     if (ts >= this._lastSubmitTs) {
+                        this._turnLogFiles.add(`${path.basename(path.dirname(logFile))}/${path.basename(logFile)}`);
                         this._turnLastActivityTs = Math.max(this._turnLastActivityTs, ts + (typeof parsed.dur === 'number' ? Math.max(0, parsed.dur) : 0));
                         if (isChildLog && subagentId) { this._ensureTurnSubagent(subagentId, subagentLabel, ts); }
                         this._lastRequestMetrics.requestCount += 1;
@@ -3957,8 +3963,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _snapshotTurnAttribution(sessionId: string, ts: number, content: string): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const activeSlug = root ? scanSpecs(root).activeSlug : '';
-        const taskId = (/\/implement\s+(T\d+[a-zA-Z]*)\b/i.exec(content) || [])[1] || '';
-        const cycleId = (/\/implement\s+(CY-\d+)\b/i.exec(content) || [])[1]?.toUpperCase() || '';
+        const taskId = (/\/(?:sk\.)?implement\s+(T\d+[a-zA-Z]*)\b/i.exec(content) || [])[1] || '';
+        const cycleId = (/\/(?:sk\.)?implement\s+(CY-\d+)\b/i.exec(content) || [])[1]?.toUpperCase() || '';
+        const commandMatch = /^\/(?:sk\.)?(new|start|continue|plan|tasks|check|implement|handoff|review)\b/i.exec(content.trim());
+        const commandStage = commandMatch ? commandMatch[1].toLowerCase() : 'other';
         const useSpec = this._costAttributionMode === 'spec' && !!activeSlug;
         this._turnAttribution = {
             key: useSpec ? activeSlug : 'ad-hoc',
@@ -3966,8 +3974,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             taskId: useSpec ? taskId.toUpperCase() : '',
             cycleId: useSpec ? cycleId : '',
             turnId: `${sessionId}:${ts}`,
-            branch: root ? this._readGitBranch(root) : ''
+            branch: root ? this._readGitBranch(root) : '',
+            pendingNewSpec: commandStage === 'new',
+            commandStage
         };
+        this._turnLogFiles = new Set([`${sessionId}/main.jsonl`]);
     }
 
     private _readGitBranch(root: string): string {
@@ -4013,6 +4024,15 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private async _updateSpecCostMap(workspaceKey: string): Promise<void> {
         if (!this._turnAttribution.turnId || this._lastSubmitTs < this._costAttributionStartedAt) { return; }
+        if (this._turnAttribution.pendingNewSpec && this._costAttributionMode === 'spec') {
+            const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const activeSlug = root ? scanSpecs(root).activeSlug : '';
+            if (activeSlug && activeSlug !== this._turnAttribution.specSlug) {
+                this._turnAttribution.key = activeSlug;
+                this._turnAttribution.specSlug = activeSlug;
+                this._turnAttribution.pendingNewSpec = false;
+            }
+        }
         const map = await this._loadSpecCostMap(workspaceKey);
         map.turns[this._turnAttribution.turnId] = {
             turnId: this._turnAttribution.turnId,
@@ -4021,6 +4041,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             cycleId: this._turnAttribution.cycleId,
             activeMs: Math.max(0, this._turnLastActivityTs - this._lastSubmitTs),
             branch: this._turnAttribution.branch,
+            conversationLogs: [...this._turnLogFiles].sort(),
+            commandStage: this._turnAttribution.commandStage,
             requestCount: this._lastRequestMetrics.requestCount,
             inputTokens: this._lastRequestMetrics.inputTokens,
             outputTokens: this._lastRequestMetrics.outputTokens,
@@ -4037,11 +4059,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private async _loadCostAttribution(workspaceKey: string): Promise<CostAttributionSummary[]> {
         const map = await this._loadSpecCostMap(workspaceKey);
-        const groups = new Map<string, CostAttributionSummary & { turns: Set<string>; branchSet: Set<string> }>();
+        const groups = new Map<string, CostAttributionSummary & { turns: Set<string>; branchSet: Set<string>; logSet: Set<string> }>();
         for (const value of Object.values(map.turns)) {
             const key = value.specSlug || 'ad-hoc';
             const detail = value.taskId || value.cycleId || '';
-            const groupKey = `${key}\u0000${detail}`;
+            const commandStage = value.commandStage || 'other';
+            const groupKey = `${key}\u0000${commandStage}\u0000${detail}`;
             const group = groups.get(groupKey) || {
                 key,
                 specSlug: value.specSlug,
@@ -4050,6 +4073,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 turnCount: 0,
                 activeMs: 0,
                 branches: [],
+                conversationLogs: [],
+                commandStage,
                 requestCount: 0,
                 inputTokens: 0,
                 outputTokens: 0,
@@ -4057,7 +4082,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 nanoAiu: 0,
                 cacheMisses: 0,
                 turns: new Set<string>(),
-                branchSet: new Set<string>()
+                branchSet: new Set<string>(),
+                logSet: new Set<string>()
             };
             group.requestCount += value.requestCount;
             group.inputTokens += value.inputTokens;
@@ -4067,13 +4093,15 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             group.cacheMisses = (group.cacheMisses || 0) + (value.cacheMisses || 0);
             group.activeMs += value.activeMs || 0;
             if (value.branch) { group.branchSet.add(value.branch); }
+            for (const log of value.conversationLogs || []) { group.logSet.add(log); }
             group.turns.add(value.turnId);
             groups.set(groupKey, group);
         }
         return [...groups.values()].map(group => {
-            const { turns, branchSet, ...summary } = group;
+            const { turns, branchSet, logSet, ...summary } = group;
             summary.turnCount = turns.size;
             summary.branches = [...branchSet].sort();
+            summary.conversationLogs = [...logSet].sort();
             return summary;
         }).sort((a, b) => b.nanoAiu - a.nanoAiu);
     }
@@ -5105,6 +5133,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._turnSubagents.clear();
         this._turnSpanToSubagent.clear();
         this._turnSubagentLabelById.clear();
+        this._turnLogFiles.clear();
         this._turnFirstReqSeen = false;
     }
 
@@ -6591,7 +6620,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         </div>
         <div class="conversation-health" title="Conversation cost and cache health">
             <button type="button" class="health-metrics" data-tab="observability" title="Open Metrics"><span id="common-turn-summary">0 req &middot; <strong class="health-cost">$0.00</strong> &middot; 0 in / 0 out &middot; &ndash; cache</span><strong id="common-cache-age" class="health-cache">Age: -</strong></button>
-            <button type="button" class="health-attribution" id="cost-attribution-toggle" title="Ad hoc work is not charged to the active spec. Click to change attribution.">Ad hoc work</button>
+            <button type="button" class="health-attribution" id="cost-attribution-toggle" title="Ad hoc work is not charged to the active spec. Click to change attribution.">Cost to: Ad hoc</button>
         </div>
 
         <!-- Chat Panel -->
@@ -6868,8 +6897,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <div class="specs-shell">
                 <div class="specs-header">
                     <div class="specs-active" id="specs-active-chip"></div>
-                    <button class="specs-toggle" id="specs-show-done" type="button" aria-pressed="false"
-                        title="Include specs whose tasks are all complete">Show completed</button>
+                    <div class="specs-toggle" title="Include specs whose tasks are all complete">
+                        <span>Show completed</span>
+                        <div class="toggle-switch specs-toggle-switch" id="specs-show-done" role="switch" aria-checked="false" tabindex="0"></div>
+                    </div>
                     <button class="specs-refresh-btn" id="specs-refresh-btn" title="Rescan specs/">
                         <span class="codicon codicon-refresh"></span>
                     </button>

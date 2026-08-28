@@ -844,8 +844,8 @@
             '<div class="obs-context-cost-chart" id="obs-context-cost-chart"><div class="obs-na">No data yet</div></div>' +
             '<div class="observability-model-note">Cost attribution - tracked prospectively from the turn when attribution was enabled</div>' +
             '<table class="observability-table observability-model-table">' +
-            '<thead><tr><th>Spec / Task</th><th>Time</th><th>Turns</th><th>Reqs</th><th>Cost</th><th>Input</th><th>Cache</th></tr></thead>' +
-            '<tbody id="obs-attribution-tbody"><tr><td colspan="7" class="obs-na">No attributed turns yet</td></tr></tbody>' +
+            '<thead><tr><th>Spec / Task</th><th>AI time</th><th>Reqs</th><th>Cost</th><th>Input</th><th>Cache</th></tr></thead>' +
+            '<tbody id="obs-attribution-tbody"><tr><td colspan="6" class="obs-na">No attributed requests yet</td></tr></tbody>' +
             '</table>' +
             '<div class="observability-model-note">Tool calls this month</div>' +
             '<table class="observability-table observability-model-table">' +
@@ -1618,6 +1618,8 @@
                             sc.turnCount = Number(a.turnCount) || 0;
                             sc.activeMs = Number(a.activeMs) || 0;
                             sc.branches = Array.isArray(a.branches) ? a.branches.filter(function(b) { return typeof b === 'string' && b; }) : [];
+                            sc.conversationLogs = Array.isArray(a.conversationLogs) ? a.conversationLogs.filter(function(log) { return typeof log === 'string' && log; }) : [];
+                            sc.commandStage = typeof a.commandStage === 'string' ? a.commandStage : 'other';
                             return sc;
                         }) : [],
                         attributionMode: message.metrics.attributionMode === 'ad-hoc' ? 'ad-hoc' : 'spec',
@@ -2946,11 +2948,11 @@
         var attributionToggle = document.getElementById('cost-attribution-toggle');
         if (attributionToggle) {
             attributionToggle.textContent = observabilityMetrics.activeAttribution.key === 'ad-hoc'
-                ? 'Ad hoc work'
-                : (observabilityMetrics.activeAttribution.label || 'Active spec');
+                ? 'Cost to: Ad hoc'
+                : 'Cost to: ' + (observabilityMetrics.activeAttribution.label || 'Active spec');
             attributionToggle.title = observabilityMetrics.activeAttribution.key === 'ad-hoc'
-                ? 'Ad hoc work is not charged to the active spec. Click to charge future turns to the active spec.'
-                : 'Future turns are charged to ' + attributionToggle.textContent + '. Click for Ad hoc work.';
+                ? 'New requests are not charged to the active spec. Click to charge them to the active spec.'
+                : 'New requests are charged to this spec. Click to mark unrelated work as Ad hoc.';
             attributionToggle.classList.toggle('ad-hoc', observabilityMetrics.attributionMode === 'ad-hoc');
         }
         var setHit = function (id, s) {
@@ -3023,7 +3025,7 @@
             var tbody = document.getElementById('obs-attribution-tbody');
             if (!tbody) return;
             var entries = observabilityMetrics.costAttribution || [];
-            if (!entries.length) { tbody.innerHTML = '<tr><td colspan="7" class="obs-na">No attributed turns yet. Tracking begins with the next user turn.</td></tr>'; return; }
+            if (!entries.length) { tbody.innerHTML = '<tr><td colspan="6" class="obs-na">No attributed requests yet. Tracking begins with the next request.</td></tr>'; return; }
             var groups = {};
             entries.forEach(function (entry) {
                 var key = entry.specSlug || 'ad-hoc';
@@ -3039,12 +3041,13 @@
             });
             tbody.innerHTML = Object.keys(groups).sort().map(function (key) {
                 var group = groups[key];
-                var turns = group.details.reduce(function (sum, d) { return sum + d.turnCount; }, 0);
                 var hit = group.input ? Math.round(group.cached / group.input * 100) + '%' : '&ndash;';
                 var label = key === 'ad-hoc' ? 'Ad hoc' : key;
-                var main = '<tr><td class="obs-scope"><strong>' + escapeHtml(label) + '</strong></td><td>' + formatActiveTime(group.activeMs) + '</td><td>' + turns + '</td><td>' + group.requests + '</td><td>' + formatDollars(group.nano) + '</td><td>' + tok(group.input) + '</td><td>' + hit + '</td></tr>';
-                var details = group.details.filter(function (d) { return d.taskId || d.cycleId; }).map(function (d) {
-                    return '<tr class="obs-attribution-detail"><td class="obs-scope">' + escapeHtml(d.taskId || d.cycleId) + '</td><td>' + formatActiveTime(d.activeMs) + '</td><td>' + d.turnCount + '</td><td>' + d.requestCount + '</td><td>' + formatDollars(d.nanoAiu) + '</td><td>' + tok(d.inputTokens) + '</td><td>' + (d.inputTokens ? Math.round(d.cachedTokens / d.inputTokens * 100) + '%' : '&ndash;') + '</td></tr>';
+                var main = '<tr><td class="obs-scope"><strong>' + escapeHtml(label) + '</strong></td><td>' + formatActiveTime(group.activeMs) + '</td><td>' + group.requests + '</td><td>' + formatDollars(group.nano) + '</td><td>' + tok(group.input) + '</td><td>' + hit + '</td></tr>';
+                var details = group.details.map(function (d) {
+                    var detailLabel = d.commandStage || 'other';
+                    if (d.taskId || d.cycleId) detailLabel += ' &middot; ' + escapeHtml(d.taskId || d.cycleId);
+                    return '<tr class="obs-attribution-detail"><td class="obs-scope">' + detailLabel + '</td><td>' + formatActiveTime(d.activeMs) + '</td><td>' + d.requestCount + '</td><td>' + formatDollars(d.nanoAiu) + '</td><td>' + tok(d.inputTokens) + '</td><td>' + (d.inputTokens ? Math.round(d.cachedTokens / d.inputTokens * 100) + '%' : '&ndash;') + '</td></tr>';
                 }).join('');
                 return main + details;
             }).join('');
@@ -5211,24 +5214,24 @@
     function specCommands(spec) {
         var id = spec.id || spec.slug;
         if (!spec.active) {
-            return [{ cmd: '/start ' + id, label: '/start ' + id, hint: 'Make ' + id + ' the active feature' }];
+            return [{ cmd: '/sk.start ' + id, label: '/sk.start ' + id, hint: 'Make ' + id + ' the active feature' }];
         }
         if (spec.clarifications > 0 && !spec.hasTasks) {
-            return [{ cmd: '/check', label: '/check', hint: spec.clarifications + ' open [NEEDS CLARIFICATION] — resolve before planning' }];
+            return [{ cmd: '/sk.check', label: '/sk.check', hint: spec.clarifications + ' open [NEEDS CLARIFICATION] — resolve before planning' }];
         }
         if (!spec.hasPlan) {
-            return [{ cmd: '/plan', label: '/plan', hint: 'No plan.md yet' }];
+            return [{ cmd: '/sk.plan', label: '/sk.plan', hint: 'No plan.md yet' }];
         }
         if (!spec.hasTasks || spec.total === 0) {
-            return [{ cmd: '/tasks', label: '/tasks', hint: 'Plan exists, no tasks.md yet' }];
+            return [{ cmd: '/sk.tasks', label: '/sk.tasks', hint: 'Plan exists, no tasks.md yet' }];
         }
         if (spec.done >= spec.total) {
             return [
-                { cmd: '/handoff', label: '/handoff', hint: 'All tasks done — close the session' },
-                { cmd: '/check', label: '/check', hint: 'Verify code matches the spec' }
+                { cmd: '/sk.handoff', label: '/sk.handoff', hint: 'All tasks done — close the session' },
+                { cmd: '/sk.check', label: '/sk.check', hint: 'Verify code matches the spec' }
             ];
         }
-        return [{ cmd: '/continue ' + id, label: '/continue ' + id, hint: 'Ask the agent to inspect readiness and pitch the next eligible task' }];
+        return [{ cmd: '/sk.continue ' + id, label: '/sk.continue ' + id, hint: 'Ask the agent to inspect readiness and pitch the next eligible task' }];
     }
 
     function initSpecsTab() {
@@ -5238,9 +5241,13 @@
         }
         var showDone = document.getElementById('specs-show-done');
         if (showDone) {
-            showDone.addEventListener('click', function() {
+            var toggleCompletedSpecs = function() {
                 specsShowDone = !specsShowDone;
                 renderSpecs();
+            };
+            showDone.addEventListener('click', toggleCompletedSpecs);
+            showDone.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCompletedSpecs(); }
             });
         }
         var list = document.getElementById('specs-list');
@@ -5305,12 +5312,12 @@
 
         var toggle = document.getElementById('specs-show-done');
         if (toggle) {
-            toggle.setAttribute('aria-pressed', specsShowDone ? 'true' : 'false');
-            toggle.textContent = specsShowDone ? 'Hide completed' : 'Show completed';
+            toggle.setAttribute('aria-checked', specsShowDone ? 'true' : 'false');
+            toggle.classList.toggle('active', specsShowDone);
             toggle.title = specsShowDone
                 ? 'Hide specs whose tasks are all complete'
                 : 'Include specs whose tasks are all complete';
-            toggle.classList.toggle('hidden', doneCount === 0);
+            toggle.parentElement.classList.toggle('hidden', doneCount === 0);
         }
 
         // The active feature is never hidden by the Completed filter — it is what /continue would act on.
@@ -5326,26 +5333,33 @@
             var pct = spec.total ? spec.percent : 0;
 
             var facts = [];
-            if (spec.total) facts.push(spec.done + '/' + spec.total + ' tasks');
-            if (spec.clarifications) facts.push(spec.clarifications + ' clarify');
-            if (spec.implementationRecords) facts.push('<span title="Completed task rows recorded in implementation-log.md">' + spec.implementationRecords + ' logged completions</span>');
-            if (spec.lastActivity) facts.push(specAgo(spec.lastActivity));
+            if (spec.total) facts.push('<span><b>' + spec.done + '/' + spec.total + '</b> tasks</span>');
+            if (spec.clarifications) facts.push('<span><b>' + spec.clarifications + '</b> clarifications</span>');
+            if (spec.implementationRecords) facts.push('<span title="Rows in implementation-log.md; cumulative, not daily"><b>' + spec.implementationRecords + '</b> implementation records</span>');
+            if (spec.lastActivity) facts.push('<span>Updated ' + specAgo(spec.lastActivity) + '</span>');
             var attributed = (observabilityMetrics.costAttribution || []).filter(function(a) { return a.specSlug === spec.slug; });
             var specNano = attributed.reduce(function(sum, a) { return sum + a.nanoAiu; }, 0);
             var specTurns = attributed.reduce(function(sum, a) { return sum + a.turnCount; }, 0);
+            var specRequests = attributed.reduce(function(sum, a) { return sum + a.requestCount; }, 0);
             var specActiveMs = attributed.reduce(function(sum, a) { return sum + a.activeMs; }, 0);
-            if (specNano) facts.push(formatDollars(specNano) + ' · ' + formatActiveTime(specActiveMs) + ' active · ' + specTurns + ' turns');
+            if (specNano) facts.push('<span>' + formatDollars(specNano) + ' cost</span>');
+            if (specActiveMs) facts.push('<span>' + formatActiveTime(specActiveMs) + ' AI time</span>');
+            if (specRequests) facts.push('<span><b>' + specRequests + '</b> requests</span>');
             var specBranches = [];
             attributed.forEach(function(a) {
                 (a.branches || []).forEach(function(branch) { if (specBranches.indexOf(branch) < 0) specBranches.push(branch); });
             });
-            if (specBranches.length === 1) facts.push('<span title="Git branch captured at each attributed turn">branch ' + escapeHtml(specBranches[0]) + '</span>');
+            if (specBranches.length === 1) facts.push('<span title="Git branch captured at each attributed request">Branch: ' + escapeHtml(specBranches[0]) + '</span>');
             else if (specBranches.length > 1) facts.push('<span title="' + escapeHtml(specBranches.join(', ')) + '">' + specBranches.length + ' branches</span>');
+            if (spec.pullRequestUrl) {
+                var prNumber = (/\/pull\/(\d+)/.exec(spec.pullRequestUrl) || [])[1] || 'PR';
+                facts.push('<button class="spec-stat-link" data-act="external" data-url="' + escapeHtml(spec.pullRequestUrl) + '">PR #' + escapeHtml(prNumber) + '</button>');
+            }
 
             var body = expanded
                 ? '<div class="spec-body">' +
                   (spec.purpose ? '<div class="spec-purpose">' + formatSpecInline(spec.purpose) + '</div>' : '') +
-                  (facts.length ? '<div class="spec-meta">' + facts.join(' · ') + '</div>' : '') +
+                  (facts.length ? '<div class="spec-meta">' + facts.join('') + '</div>' : '') +
                   (spec.cycles && spec.cycles.length
                       ? '<div class="spec-cycles"><div class="spec-section-label">Cycles</div>' + spec.cycles.map(function(c) {
                             var nextLabel = c.nextTaskId
@@ -5357,7 +5371,7 @@
                                 (c.specCount > 1 ? '<span class="spec-cycle-count">' + c.specCount + ' specs</span>' : '') +
                                 '<span class="spec-cycle-progress">' + c.done + '/' + c.total + '</span>' +
                                 '<span class="spec-cycle-state">' + escapeHtml(c.state) + '</span>' +
-                                (c.state !== 'complete' ? '<button class="spec-action" data-act="cmd" data-cmd="/implement ' + escapeHtml(c.id) + '">Implement cycle</button>' : '') +
+                                (c.state !== 'complete' ? '<button class="spec-action" data-act="cmd" data-cmd="/sk.implement ' + escapeHtml(c.id) + '">Implement cycle</button>' : '') +
                                 '</div>' +
                                 (c.description ? '<div class="spec-cycle-description">' + formatSpecInline(c.description) + '</div>' : '') +
                                 nextLabel + '</div>';
@@ -5374,12 +5388,12 @@
                           byPhase[phase].push(t);
                       });
                       var rows = phaseOrder.map(function(phase) {
-                          return '<details class="spec-work-phase"><summary class="spec-work-phase-title">' + formatSpecInline(phase) + '<span>' + byPhase[phase].length + ' open</span></summary>' +
+                          return '<details class="spec-work-phase"><summary class="spec-work-phase-title"><span class="codicon codicon-chevron-right spec-phase-caret"></span><span class="spec-phase-name">' + formatSpecInline(phase) + '</span><span class="spec-phase-count">' + byPhase[phase].length + ' open</span></summary>' +
                               byPhase[phase].map(function(t) {
                                   return '<div class="spec-work-row"><span class="codicon codicon-circle-large-outline"></span>' +
                                       '<span class="spec-work-id">' + escapeHtml(t.id || '') + '</span>' +
                                       '<span class="spec-work-text">' + formatSpecInline(t.text || t.id) + '</span>' +
-                                      (t.id ? '<button class="spec-task-run" data-act="cmd" data-cmd="/implement ' + escapeHtml(t.id) + '" title="Prepare this task"><span class="codicon codicon-play"></span></button>' : '') +
+                                      (t.id ? '<button class="spec-task-run" data-act="cmd" data-cmd="/sk.implement ' + escapeHtml(t.id) + '" title="Prepare this task"><span class="codicon codicon-play"></span></button>' : '') +
                                       '</div>';
                               }).join('') + '</details>';
                       }).join('');
@@ -5391,7 +5405,7 @@
                           }).join('');
                       }
                       return '<div class="spec-work"><div class="spec-section-label">' +
-                          (pending.length ? 'Open tasks <span class="spec-section-hint">grouped by phase, not a recommendation</span>' : 'Recently completed') + '</div>' + rows + '</div>';
+                          (pending.length ? 'Open tasks' : 'Recently completed') + '</div>' + rows + '</div>';
                   })() : '') +
                   '<div class="spec-actions">' +
                   specCommands(spec).map(function(c) {
@@ -5401,7 +5415,7 @@
                   '<button class="spec-action spec-open" data-act="open" data-file="spec.md" title="Open in the editor">Open spec.md</button>' +
                   (spec.hasPlan ? '<button class="spec-action spec-open" data-act="open" data-file="plan.md" title="Open in the editor">Open plan.md</button>' : '') +
                   (spec.hasTasks ? '<button class="spec-action spec-open" data-act="open" data-file="tasks.md" title="Open in the editor">Open tasks.md</button>' : '') +
-                  (specNano ? '<button class="spec-action" data-act="cmd" data-cmd="Review cost, delivered value, mistakes, and reusable learnings for spec ' + escapeHtml(spec.slug) + '. Measured attributed cost: ' + formatDollars(specNano) + ' across ' + specTurns + ' turns. Read its spec.md, tasks.md, implementation-log.md, and relevant git history. Separate valuable implementation effort from rework and dead ends; identify root causes, what not to repeat, and concrete knowledge worth saving to repository memory. Do not change product code.">Review cost &amp; learnings</button>' : '') +
+                  (specNano ? '<button class="spec-action" data-act="cmd" data-cmd="/sk.review ' + escapeHtml(spec.id || spec.slug) + '" title="Analyze attributed conversations, cost, AI time, branches, tasks, implementation records and PR evidence; propose reusable repository knowledge">Review cost &amp; learnings</button>' : '') +
                   '</div></div>'
                 : '';
 
@@ -5439,6 +5453,8 @@
             vscode.postMessage({ type: 'runSpecCommand', command: btn.getAttribute('data-cmd') });
         } else if (act === 'open') {
             vscode.postMessage({ type: 'openSpecFile', dir: dir, file: btn.getAttribute('data-file') });
+        } else if (act === 'external') {
+            vscode.postMessage({ type: 'openExternal', url: btn.getAttribute('data-url') });
         }
     }
 

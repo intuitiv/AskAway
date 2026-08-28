@@ -4962,20 +4962,14 @@ button#send-btn:disabled {
 .specs-shell {
     display: flex;
     flex-direction: column;
-    height: 100%;
-    padding: 8px 10px;
-    gap: 8px;
-    overflow: hidden;
+    gap: 6px;
 }
-
-.specs-header {
+    color: var(--vscode-descriptionForeground);
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.specs-active {
+.specs-toggle-switch { width: 30px; height: 16px; }
+.specs-toggle-switch::after { width: 10px; height: 10px; }
+.specs-toggle-switch.active::after { transform: translateX(14px); }
     flex: 1;
     min-width: 0;
     font-size: 11px;
@@ -5153,10 +5147,20 @@ button#send-btn:disabled {
 }
 
 .spec-meta {
-    font-size: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 7px;
+    padding: 6px;
+    border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.25));
+    background: var(--vscode-sideBar-background);
+    font-size: 9px;
     color: var(--vscode-descriptionForeground);
-    margin-top: 3px;
 }
+.spec-meta > span, .spec-stat-link { padding: 2px 5px; border-right: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.25)); }
+.spec-meta > span:last-child { border-right: 0; }
+.spec-stat-link { border-top: 0; border-bottom: 0; border-left: 0; background: transparent; color: var(--vscode-textLink-foreground); cursor: pointer; font: inherit; }
+.spec-stat-link:hover { text-decoration: underline; }
 
 .spec-purpose {
     margin-top: 3px;
@@ -5165,11 +5169,15 @@ button#send-btn:disabled {
     color: var(--vscode-foreground);
 }
 .spec-work { margin-top: 8px; }
-.spec-work-phase { margin: 6px 0 9px; border-left: 2px solid var(--vscode-panel-border); padding-left: 8px; }
-.spec-work-phase-title { display: flex; justify-content: space-between; gap: 8px; padding: 4px 2px; font-size: 10px; font-weight: 700; color: var(--vscode-foreground); cursor: pointer; }
+.spec-work-phase { margin: 2px 0; border-left: 2px solid transparent; }
+.spec-work-phase[open] { border-left-color: var(--vscode-focusBorder); padding-left: 6px; }
+.spec-work-phase-title { display: flex; align-items: center; gap: 5px; padding: 5px 3px; font-size: 10px; font-weight: 600; color: var(--vscode-foreground); cursor: pointer; }
 .spec-work-phase-title:hover { background: var(--vscode-list-hoverBackground); }
-.spec-work-phase-title::marker { color: var(--vscode-descriptionForeground); }
-.spec-work-phase-title span { font-size: 9px; font-weight: 400; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+.spec-work-phase-title::marker { display: none; content: ''; }
+.spec-phase-caret { color: var(--vscode-descriptionForeground); transition: transform 0.12s ease; }
+.spec-work-phase[open] .spec-phase-caret { transform: rotate(90deg); }
+.spec-phase-name { flex: 1; min-width: 0; }
+.spec-phase-count { margin-left: auto; font-size: 9px; font-weight: 400; color: var(--vscode-descriptionForeground); white-space: nowrap; }
 .spec-work-row {
     display: grid;
     grid-template-columns: 14px 38px minmax(0, 1fr) 22px;
