@@ -430,12 +430,12 @@
         "askaway.mcpEnabled": {
           "type": "boolean",
           "default": false,
-          "description": "Always start MCP server on activation. Enable this if you use AskAway with external IDEs like Kiro, Cursor, or Antigravity."
+          "description": "Always start MCP server on activation. Enable this if you use AskAway with external clients like Claude Code, Kiro, Cursor, or Antigravity."
         },
         "askaway.mcpAutoStartIfClients": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically start MCP server if external client configurations are detected (Kiro, Cursor, Antigravity)."
+          "description": "Automatically start MCP server if external client configurations are detected (Claude Code, Kiro, Cursor, Antigravity)."
         },
         "askaway.mcpPort": {
           "type": "number",

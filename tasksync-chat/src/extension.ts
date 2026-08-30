@@ -318,11 +318,12 @@ const CACHE_TIMER_INJECT_SCRIPT = `// AskAway prompt-cache activity timer. Stamp
 // separate subagent-cache-activity-ts instead.
 const fs = require('fs'), path = require('path'), os = require('os');
 try {
-    let ev = '', tool = '';
+    let ev = '', tool = '', transcript = '';
     try {
         const p = JSON.parse(fs.readFileSync(0, 'utf8'));
         ev = p.hook_event_name || p.hookEventName || '';
         tool = p.tool_name || p.toolName || '';
+        transcript = p.transcript_path || p.transcriptPath || '';
     } catch (e) {}
     const cfg = path.join(os.homedir(), '.askaway');
     try { fs.mkdirSync(cfg, { recursive: true }); } catch (e) {}
@@ -331,7 +332,10 @@ try {
     const now = String(Date.now());
     const isChild = inflight > 0 && ev === 'PostToolUse' && tool !== 'runSubagent';
     fs.writeFileSync(path.join(cfg, isChild ? 'subagent-cache-activity-ts' : 'cache-activity-ts'), now, 'utf8');
-    if (ev === 'Stop') { fs.writeFileSync(path.join(cfg, 'turn-complete-ts'), now, 'utf8'); }
+    if (ev === 'Stop') {
+        fs.writeFileSync(path.join(cfg, 'turn-complete-ts'), now, 'utf8');
+        if (transcript) { fs.writeFileSync(path.join(cfg, 'turn-complete-transcript'), transcript, 'utf8'); }
+    }
 } catch (e) {}
 process.exit(0);
 `;
@@ -557,7 +561,7 @@ async function writeSubagentModelSentinel(): Promise<void> {
     }
 }
 
-/** Install the sub-agent model PreToolUse hook (Copilot hooks + Claude settings, best-effort). */
+/** Install the Copilot sub-agent model PreToolUse hook. Claude model aliases are provider-specific. */
 async function ensureSubagentModelHookInstalled(): Promise<void> {
     const gatePath = path.join(os.homedir(), '.askaway', 'hooks', 'subagent-model-gate.sh');
     const injectPath = path.join(os.homedir(), '.askaway', 'hooks', 'subagent-model.js');
@@ -584,23 +588,6 @@ async function ensureSubagentModelHookInstalled(): Promise<void> {
         };
         await fs.promises.writeFile(copilotHookPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
 
-        // Claude Code: ~/.claude/settings.json hooks.PreToolUse with a runSubagent matcher.
-        const claudeSettingsPath = path.join(os.homedir(), '.claude', 'settings.json');
-        await fs.promises.mkdir(path.dirname(claudeSettingsPath), { recursive: true });
-        let settings: any = {};
-        try { settings = JSON.parse(await fs.promises.readFile(claudeSettingsPath, 'utf8')); } catch (err) {
-            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') { throw err; }
-        }
-        if (!settings || typeof settings !== 'object' || Array.isArray(settings)) { settings = {}; }
-        if (!settings.hooks || typeof settings.hooks !== 'object' || Array.isArray(settings.hooks)) { settings.hooks = {}; }
-        if (!Array.isArray(settings.hooks.PreToolUse)) { settings.hooks.PreToolUse = []; }
-        const hasEntry = settings.hooks.PreToolUse.some((e: any) =>
-            Array.isArray(e?.hooks) && e.hooks.some((h: any) => h?.command === SUBAGENT_MODEL_GATE_COMMAND));
-        if (!hasEntry) {
-            settings.hooks.PreToolUse.push({ matcher: 'runSubagent', hooks: [{ type: 'command', command: SUBAGENT_MODEL_GATE_COMMAND }] });
-            await fs.promises.writeFile(claudeSettingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
-        }
-
         logRuntime('Installed AskAway sub-agent model hook', { gatePath, injectPath });
     } catch (err) {
         logRuntime('Warning: Could not install AskAway sub-agent model hook', formatError(err));
@@ -625,7 +612,7 @@ async function writeBudgetSentinels(context: vscode.ExtensionContext): Promise<v
     }
 }
 
-/** Install the turn-budget UserPromptSubmit hook (Claude settings + Copilot hooks). */
+/** Install the Copilot turn-budget UserPromptSubmit hook. Claude usage has a separate provider. */
 async function ensureBudgetHookInstalled(): Promise<void> {
     const gatePath = path.join(os.homedir(), '.askaway', 'hooks', 'budget-gate.sh');
     const injectPath = path.join(os.homedir(), '.askaway', 'hooks', 'budget-inject.js');
@@ -637,23 +624,6 @@ async function ensureBudgetHookInstalled(): Promise<void> {
         await fs.promises.chmod(gatePath, 0o755);
         if (await fs.promises.readFile(injectPath, 'utf8').catch(() => undefined) !== BUDGET_INJECT_SCRIPT) {
             await fs.promises.writeFile(injectPath, BUDGET_INJECT_SCRIPT, 'utf8');
-        }
-
-        // Claude Code: ~/.claude/settings.json hooks.UserPromptSubmit
-        const claudeSettingsPath = path.join(os.homedir(), '.claude', 'settings.json');
-        await fs.promises.mkdir(path.dirname(claudeSettingsPath), { recursive: true });
-        let settings: any = {};
-        try { settings = JSON.parse(await fs.promises.readFile(claudeSettingsPath, 'utf8')); } catch (err) {
-            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') { throw err; }
-        }
-        if (!settings || typeof settings !== 'object' || Array.isArray(settings)) { settings = {}; }
-        if (!settings.hooks || typeof settings.hooks !== 'object' || Array.isArray(settings.hooks)) { settings.hooks = {}; }
-        if (!Array.isArray(settings.hooks.UserPromptSubmit)) { settings.hooks.UserPromptSubmit = []; }
-        const hasBudget = settings.hooks.UserPromptSubmit.some((e: any) =>
-            Array.isArray(e?.hooks) && e.hooks.some((h: any) => h?.command === BUDGET_GATE_COMMAND));
-        if (!hasBudget) {
-            settings.hooks.UserPromptSubmit.push({ hooks: [{ type: 'command', command: BUDGET_GATE_COMMAND }] });
-            await fs.promises.writeFile(claudeSettingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
         }
 
         // VS Code Copilot: ~/.copilot/hooks/budget-inject.json (best-effort — event support may vary).

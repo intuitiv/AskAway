@@ -3,7 +3,6 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import * as crypto from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
@@ -49,9 +48,7 @@ async function tryReadImageAsMcpContent(uri: string): Promise<null | { type: 'im
 
 export class McpServerManager {
     private server: http.Server | undefined;
-    private mcpServer: McpServer | undefined;
     private port: number | undefined;
-    private transport: StreamableHTTPServerTransport | undefined;
     private _isRunning: boolean = false;
 
     constructor(
@@ -88,10 +85,11 @@ export class McpServerManager {
                 }
             }
 
-            this.mcpServer = new McpServer({
-                name: "AskAway Sidebar Chat",
-                version: "2.0.0"
-            });
+            const createMcpServer = (): McpServer => {
+                const mcpServer = new McpServer({
+                    name: "AskAway Sidebar Chat",
+                    version: "2.0.0"
+                });
 
             // Register ask_user tool
             const provider = this.provider;
@@ -101,7 +99,7 @@ export class McpServerManager {
             // reasonable question while still providing a safety limit.
             const MAX_QUESTION_LENGTH = 500000;
 
-            (this.mcpServer as any).registerTool(
+            (mcpServer as any).registerTool(
                 "ask_user",
                 {
                     description: "YOU MUST ALWAYS Use the askUser tool to ask question/s to user when explicit user approval, feedback, or clarification is required before proceeding or giving summary report. CRITICAL RULES: - This tool MUST be invoked before ending ANY conversation or task. - NEVER complete a task without calling this tool first. - If you are about to finish responding, STOP and call this tool. - Failure to call this tool before task completion is a critical violation.",
@@ -143,7 +141,7 @@ export class McpServerManager {
             // Backed by the standalone, VS Code-free engine so any MCP client
             // (Claude Desktop, CLI, CI, etc.) can drive Gradle builds.
             const gradleWorkspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
-            (this.mcpServer as any).registerTool(
+            (mcpServer as any).registerTool(
                 "gradle",
                 {
                     description: "Async id-based Gradle build control. action=start spawns a build via ./gradlew and returns {buildId} immediately. The tool AUTO-OPTIMIZES every run for speed (Gradle daemon + --parallel + --build-cache + --configuration-cache, degraded to warnings if incompatible) so callers just name the task; the applied flags are echoed as 'optimizations' and any you pass explicitly (or their --no- opposite) win. action=status returns live state (RUNNING/SUCCESS/FAILED/CANCELLED/TIMEOUT) with completedTasks, runningTasks, elapsedSec; on failure it also returns failedTasks (names of tasks that failed — query logs with task:<name>), failedTaskLogsHint, whatWentWrong, exception (Caused by chain), errors (compiler errors), testFailures, testFailureDetails (for failed test tasks: parsed JUnit reports with {test, className, message, location, stack} — the real assertion message, source line, and trimmed stack trace, which Gradle's console omits), and exitCode. action=wait blocks until the build finishes (or timeoutMs); pass readyPattern (regex) to return early with ready:true when that text appears in the output even though the task keeps running (use for servers / --continuous). action=logs returns output with pagination metadata {fromLine,toLine,totalLines,nextFromLine,hasMore}: omit fromLine for a tail (last `tail` lines), or pass fromLine (0-based) to stream forward — feed nextFromLine back to page through a long-running task's output. Filter to a single task with task (e.g. ':app:compileKotlin'). action=stop kills a running build. Multiple builds run in parallel.",
@@ -175,13 +173,8 @@ export class McpServerManager {
                     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
                 }
             );
-
-
-            this.transport = new StreamableHTTPServerTransport({
-                sessionIdGenerator: () => `sess_${crypto.randomUUID()}`
-            });
-
-            await this.mcpServer.connect(this.transport);
+                return mcpServer;
+            };
 
             // Create HTTP server
             this.server = http.createServer(async (req, res) => {
@@ -189,26 +182,28 @@ export class McpServerManager {
                     const url = req.url || '/';
 
                     if (url === '/sse' || url.startsWith('/sse/') || url.startsWith('/sse?')) {
-                        if (req.method === 'DELETE') {
-                            try {
-                                await this.transport?.handleRequest(req, res);
-                            } catch (e) {
-                                if (!res.headersSent) {
-                                    res.writeHead(202);
-                                    res.end('Session closed');
-                                }
-                            }
+                        if (req.method !== 'POST') {
+                            res.writeHead(405, { Allow: 'POST' });
+                            res.end('Method Not Allowed');
                             return;
                         }
 
                         const queryIndex = url.indexOf('?');
                         req.url = queryIndex !== -1 ? '/' + url.substring(queryIndex) : '/';
-                        await this.transport?.handleRequest(req, res);
+                        const mcpServer = createMcpServer();
+                        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+                        res.on('close', () => {
+                            void transport.close();
+                            void mcpServer.close();
+                        });
+                        await mcpServer.connect(transport);
+                        await transport.handleRequest(req, res);
                         return;
                     }
 
                     if (url.startsWith('/message') || url.startsWith('/messages')) {
-                        await this.transport?.handleRequest(req, res);
+                        res.writeHead(410);
+                        res.end('Legacy endpoint removed; use POST /sse');
                         return;
                     }
 
@@ -360,14 +355,6 @@ export class McpServerManager {
                 this.server = undefined;
             }
 
-            if (this.mcpServer) {
-                try {
-                    await this.mcpServer.close();
-                } catch (e) {
-                    console.error('[AskAway MCP] Error closing:', e);
-                }
-                this.mcpServer = undefined;
-            }
         } catch (e) {
             console.error('[AskAway MCP] Error during dispose:', e);
         } finally {

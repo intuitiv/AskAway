@@ -14,6 +14,7 @@ import { CONFIG_NAMESPACE } from '../constants/branding';
  */
 
 const STAMP = path.join(os.homedir(), '.askaway', 'turn-complete-ts');
+const TRANSCRIPT = path.join(os.homedir(), '.askaway', 'turn-complete-transcript');
 const TAIL_BYTES = 4 * 1024 * 1024; // agent_response lines are large; the last one is at the end
 const TURN_LOOKBACK_MS = 10 * 60 * 1000;
 const WATCH_INTERVAL_MS = 2000;
@@ -101,6 +102,13 @@ export class HandoffNotifier implements vscode.Disposable {
 
     /** Handoff from the newest session in this workspace's Copilot debug logs. */
     private _findHandoff(minTs: number): HandoffParts | undefined {
+        try {
+            const transcript = fs.readFileSync(TRANSCRIPT, 'utf8').trim();
+            if (transcript && fs.statSync(transcript).mtimeMs >= minTs) {
+                const parts = findClaudeHandoff(readTail(transcript, TAIL_BYTES), minTs);
+                if (parts) { return parts; }
+            }
+        } catch { /* no Claude Stop transcript available */ }
         if (!this._debugLogsDir) { return undefined; }
         let newest: { file: string; mtime: number } | undefined;
         let sessions: string[] = [];
@@ -115,6 +123,26 @@ export class HandoffNotifier implements vscode.Disposable {
         if (!newest) { return undefined; }
         return findHandoff(readTail(newest.file, TAIL_BYTES), minTs);
     }
+}
+
+export function findClaudeHandoff(jsonl: string, minTs: number): HandoffParts | undefined {
+    const lines = jsonl.split('\n');
+    for (let i = lines.length - 1, scanned = 0; i >= 0 && scanned < 200; i--) {
+        let parsed: any;
+        try { parsed = JSON.parse(lines[i]); } catch { continue; }
+        const message = parsed?.message;
+        if (parsed?.type !== 'assistant' && parsed?.role !== 'assistant' && message?.role !== 'assistant') { continue; }
+        scanned++;
+        const timestamp = typeof parsed?.timestamp === 'string' ? Date.parse(parsed.timestamp) : parsed?.ts;
+        if (typeof timestamp === 'number' && timestamp < minTs) { return undefined; }
+        const content = message?.content ?? parsed?.content ?? parsed?.text;
+        const text = typeof content === 'string' ? content : Array.isArray(content)
+            ? content.map((part: any) => typeof part === 'string' ? part : part?.text || '').join('\n')
+            : '';
+        const handoff = extractHandoff(text);
+        if (handoff) { return handoff; }
+    }
+    return undefined;
 }
 
 function detailedHandoffUpdate(parts: HandoffParts): string {
