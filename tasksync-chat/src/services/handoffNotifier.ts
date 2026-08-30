@@ -79,20 +79,15 @@ export class HandoffNotifier implements vscode.Disposable {
                 return;
             }
             this._lastPostedHandoff = parts.handoff;
-            // Handoff FIRST: if a transport truncates, the mandatory part must survive.
-            let markdown = `**AskAway \u2014 turn complete**\n\n${parts.handoff}`;
-            if (parts.details) {
-                const details = parts.details.length > DETAILS_MAX_CHARS
-                    ? `${parts.details.slice(0, DETAILS_MAX_CHARS)}\u2026`
-                    : parts.details;
-                markdown += `\n\n———\n\n${details}`;
-            }
             for (const target of enabled) {
                 const poster = target.get();
                 if (!poster?.isConfigured()) {
                     this._log(`Handoff notifier: ${target.name} is enabled but not configured`);
                     continue;
                 }
+                const markdown = target.name === 'Telegram'
+                    ? compactHandoffUpdate(parts.handoff)
+                    : detailedHandoffUpdate(parts);
                 const ok = await poster.postText(
                     markdown,
                     `AskAway — turn complete: ${parts.handoff.slice(0, 200)}`
@@ -120,6 +115,28 @@ export class HandoffNotifier implements vscode.Disposable {
         if (!newest) { return undefined; }
         return findHandoff(readTail(newest.file, TAIL_BYTES), minTs);
     }
+}
+
+function detailedHandoffUpdate(parts: HandoffParts): string {
+    let markdown = `**AskAway \u2014 turn complete**\n\n${parts.handoff}`;
+    if (parts.details) {
+        const details = parts.details.length > DETAILS_MAX_CHARS
+            ? `${parts.details.slice(0, DETAILS_MAX_CHARS)}\u2026`
+            : parts.details;
+        markdown += `\n\n———\n\n${details}`;
+    }
+    return markdown;
+}
+
+export function compactHandoffUpdate(handoff: string): string {
+    const field = (name: string): string => {
+        const match = new RegExp(`^(?:\\*\\*)?${name}(?:\\*\\*)?:\\s*(.+)$`, 'im').exec(handoff);
+        return match?.[1]?.trim() || '';
+    };
+    const summary = field('Summary');
+    const status = field('Status');
+    const text = summary || status || handoff.replace(/\s+/g, ' ').trim();
+    return `**AskAway:** ${text.slice(0, 500)}`;
 }
 
 /** Read the trailing `bytes` of a file (the first line is likely partial and gets dropped). */

@@ -3752,7 +3752,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _refreshSpecs(): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) {
-            this._broadcast({ type: 'specsData', data: { enabled: false, specsRoot: '', activeSlug: '', specs: [] } });
+            this._broadcast({ type: 'specsData', data: { enabled: false, specsRoot: '', activeSlug: '', repositoryUrl: '', specs: [] } });
             return;
         }
         this._ensureSpecsWatcher();

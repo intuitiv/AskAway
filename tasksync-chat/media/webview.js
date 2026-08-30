@@ -5196,7 +5196,7 @@
     var workerGroupsExpanded = { command: new Set(), subagent: new Set() };
 
     // ---- Spec Kit overview tab ----
-    var specsState = { enabled: false, activeSlug: '', specs: [] };
+    var specsState = { enabled: false, activeSlug: '', repositoryUrl: '', specs: [] };
     var specsShowDone = false;
     var specsExpanded = {};
 
@@ -5256,7 +5256,7 @@
     }
 
     function applySpecsData(data) {
-        specsState = data || { enabled: false, activeSlug: '', specs: [] };
+        specsState = data || { enabled: false, activeSlug: '', repositoryUrl: '', specs: [] };
         var tabBtn = document.getElementById('tab-specs');
         if (tabBtn) tabBtn.classList.toggle('hidden', !specsState.enabled);
         if (!specsState.enabled && currentTab === 'specs') switchTab('chat');
@@ -5349,7 +5349,10 @@
             attributed.forEach(function(a) {
                 (a.branches || []).forEach(function(branch) { if (specBranches.indexOf(branch) < 0) specBranches.push(branch); });
             });
-            if (specBranches.length === 1) facts.push('<span title="Git branch captured at each attributed request">Branch: ' + escapeHtml(specBranches[0]) + '</span>');
+            if (specBranches.length === 1 && specsState.repositoryUrl) {
+                var branchUrl = specsState.repositoryUrl + '/tree/' + specBranches[0].split('/').map(encodeURIComponent).join('/');
+                facts.push('<button class="spec-stat-link" data-act="external" data-url="' + escapeHtml(branchUrl) + '" title="Open branch on GitHub">Branch: ' + escapeHtml(specBranches[0]) + '</button>');
+            } else if (specBranches.length === 1) facts.push('<span title="Git branch captured at each attributed request">Branch: ' + escapeHtml(specBranches[0]) + '</span>');
             else if (specBranches.length > 1) facts.push('<span title="' + escapeHtml(specBranches.join(', ')) + '">' + specBranches.length + ' branches</span>');
             if (spec.pullRequestUrl) {
                 var prNumber = (/\/pull\/(\d+)/.exec(spec.pullRequestUrl) || [])[1] || 'PR';

@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
-import { SPEC_KIT_PROMPTS } from './specs/specKitPromptAssets';
+import { CLAUDE_SPEC_KIT_COMMANDS, SPEC_KIT_PROMPTS } from './specs/specKitPromptAssets';
 import { registerTools } from './tools';
 import { McpServerManager } from './mcp/mcpServer';
 import { killAllGradleRuns } from './gradle/gradleEngine';
@@ -38,14 +38,24 @@ function formatError(error: unknown): string {
 
 async function ensureSpecKitPromptsInstalled(): Promise<void> {
     const promptsDir = path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User', 'prompts');
+    const claudeCommandsDir = path.join(os.homedir(), '.claude', 'commands');
     try {
         await fs.promises.mkdir(promptsDir, { recursive: true });
         for (const [name, content] of Object.entries(SPEC_KIT_PROMPTS)) {
             const target = path.join(promptsDir, name);
             const existing = await fs.promises.readFile(target, 'utf8').catch(() => undefined);
-            if (existing !== content) { await fs.promises.writeFile(target, content, 'utf8'); }
+            if (existing === undefined) { await fs.promises.writeFile(target, content, 'utf8'); }
         }
-        logRuntime('Installed AskAway Spec Kit prompts', { count: Object.keys(SPEC_KIT_PROMPTS).length });
+        await fs.promises.mkdir(claudeCommandsDir, { recursive: true });
+        for (const [name, content] of Object.entries(CLAUDE_SPEC_KIT_COMMANDS)) {
+            const target = path.join(claudeCommandsDir, name);
+            const existing = await fs.promises.readFile(target, 'utf8').catch(() => undefined);
+            if (existing === undefined) { await fs.promises.writeFile(target, content, 'utf8'); }
+        }
+        logRuntime('Installed missing Spec Kit commands', {
+            copilot: Object.keys(SPEC_KIT_PROMPTS).length,
+            claude: Object.keys(CLAUDE_SPEC_KIT_COMMANDS).length
+        });
     } catch (err) {
         logRuntime('Warning: Could not install AskAway Spec Kit prompts', formatError(err));
     }
@@ -932,7 +942,8 @@ async function hasExternalMcpClientsAsync(): Promise<boolean> {
     const configPaths = [
         path.join(os.homedir(), '.kiro', 'settings', 'mcp.json'),
         path.join(os.homedir(), '.cursor', 'mcp.json'),
-        path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json')
+        path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json'),
+        path.join(os.homedir(), '.claude.json')
     ];
 
     for (const configPath of configPaths) {
@@ -940,7 +951,8 @@ async function hasExternalMcpClientsAsync(): Promise<boolean> {
             const content = await fs.promises.readFile(configPath, 'utf8');
             const config = JSON.parse(content);
             // Check if askaway is registered
-            if (config.mcpServers?.[MCP_SERVER_NAME]) {
+            const claudeProjects = Object.values(config.projects || {}) as Array<{ mcpServers?: Record<string, unknown> }>;
+            if (config.mcpServers?.[MCP_SERVER_NAME] || claudeProjects.some(project => project.mcpServers?.[MCP_SERVER_NAME])) {
                 _hasExternalMcpClientsResult = true;
                 return true;
             }

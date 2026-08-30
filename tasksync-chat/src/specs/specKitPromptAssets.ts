@@ -81,3 +81,38 @@ description: Review one spec's measured cost, AI time, requests, conversations, 
 Review spec \`$ARGUMENTS\` without changing product code. Read its spec, plan, compact tasks, relevant task details, implementation log, PR evidence and Git history. Read AskAway's workspace spec-cost map and only conversation logs attributed to this spec. Break dollars, AI-active time and requests down by new, plan, tasks, check, implement, review and other stages, then compare them with delivered outcomes. Separate productive effort, necessary research, rework and dead ends; identify root causes and repository knowledge worth saving. Never treat lower cost alone as higher value.
 `,
 };
+
+const CLAUDE_HEADER = `---
+disable-model-invocation: true
+---
+`;
+
+export const CLAUDE_SPEC_KIT_COMMANDS: Record<string, string> = {
+    'sk.new.md': `${CLAUDE_HEADER}
+Create a new numbered feature from $ARGUMENTS under specs/. Preserve the previous .specify/feature.json value until creation succeeds. Write spec.md with an explicit one-line **Purpose** field, mark genuine unknowns [NEEDS CLARIFICATION], then activate the new feature. Do not plan or implement.
+`,
+    'sk.start.md': `${CLAUDE_HEADER}
+Select feature $ARGUMENTS in .specify/feature.json. Read its spec, plan, compact task index, latest implementation-log row, and only relevant task-details.md sections. Report current state without implementing.
+`,
+    'sk.continue.md': `${CLAUDE_HEADER}
+Resume feature $ARGUMENTS, or the active feature when omitted. Read implementation-log.md before tasks.md. Exclude manual, reviewer-owned, blocked, moved and deferred work; require completed prerequisites; prefer non-mesh work. Read only the selected task-details.md section. Pitch exactly one task with Task, Plan, Value and Demo, then wait for approval.
+`,
+    'sk.plan.md': `${CLAUDE_HEADER}
+Plan the active feature from spec.md. Stop on unresolved [NEEDS CLARIFICATION] or contradictory scope. Produce the standard Spec Kit planning artifacts and report unresolved decisions. Do not generate tasks or implementation.
+`,
+    'sk.tasks.md': `${CLAUDE_HEADER}
+Generate tasks for the active feature. Keep tasks.md as an independently executable index, normally under 500 lines: each checkbox row needs ID, labels, action, primary file path, dependencies and a short demo. Put long rationale, alternatives, evidence and expanded demos in task-details.md under stable ## TNNN headings. Do not implement.
+`,
+    'sk.implement.md': `${CLAUDE_HEADER}
+Implement exactly task or cycle $ARGUMENTS. Read tasks.md and only matching task-details.md sections. Pitch Task/Cycle, Plan, Value and Demo unless already approved in this conversation. Fix the owning rule, preserve unrelated changes, verify, update the task checkbox and implementation-log.md, and report real evidence.
+`,
+    'sk.check.md': `${CLAUDE_HEADER}
+Diagnose the active feature: resolve clarifications first, analyze contradictory artifacts without changing code, or append missing tasks when code and task records drift. $ARGUMENTS may force a specific check. Report exactly what changed.
+`,
+    'sk.handoff.md': `${CLAUDE_HEADER}
+Verify current evidence, update implementation-log.md and concise repository memory, and report the active feature plus exact resume command. Git history and implementation records are the audit; do not write a per-turn audit file in a Git repository.
+`,
+    'sk.review.md': `${CLAUDE_HEADER}
+Review spec $ARGUMENTS without changing product code. Read its artifacts, task details, implementation log, PR and Git history. If AskAway attribution data is available, compare dollars, AI time and requests by workflow stage and inspect only mapped conversations. Separate productive work, necessary research, rework and dead ends; save only reusable repository knowledge.
+`
+};

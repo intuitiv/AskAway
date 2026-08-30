@@ -4964,12 +4964,13 @@ button#send-btn:disabled {
     flex-direction: column;
     gap: 6px;
 }
-    color: var(--vscode-descriptionForeground);
+.specs-header {
     display: flex;
     align-items: center;
-.specs-toggle-switch { width: 30px; height: 16px; }
-.specs-toggle-switch::after { width: 10px; height: 10px; }
-.specs-toggle-switch.active::after { transform: translateX(14px); }
+    gap: 10px;
+    min-height: 28px;
+}
+.specs-active {
     flex: 1;
     min-width: 0;
     font-size: 11px;
@@ -4978,6 +4979,10 @@ button#send-btn:disabled {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.specs-active .codicon { color: var(--vscode-charts-blue, #3794ff); }
+.specs-toggle-switch { width: 30px; height: 16px; }
+.specs-toggle-switch::after { width: 10px; height: 10px; }
+.specs-toggle-switch.active::after { transform: translateX(14px); }
 
 .specs-muted { color: var(--vscode-descriptionForeground); }
 
@@ -5000,19 +5005,12 @@ button#send-btn:disabled {
 }
 
 .specs-toggle {
-    border: 1px solid var(--vscode-button-border, var(--vscode-widget-border));
-    border-radius: 3px;
-    background: var(--vscode-button-secondaryBackground);
-    padding: 3px 7px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 10px;
-    color: var(--vscode-button-secondaryForeground);
-    cursor: pointer;
+    color: var(--vscode-descriptionForeground);
     white-space: nowrap;
-}
-.specs-toggle:hover { background: var(--vscode-button-secondaryHoverBackground); }
-.specs-toggle[aria-pressed="true"] {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
 }
 
 .specs-list {
@@ -5037,9 +5035,9 @@ button#send-btn:disabled {
     background: var(--vscode-editorWidget-background);
 }
 .spec-card-active {
-    border-color: var(--vscode-focusBorder);
-    border-left-color: var(--vscode-charts-blue, #3794ff);
-    background: var(--vscode-list-activeSelectionBackground, var(--vscode-editorWidget-background));
+    border-color: var(--vscode-charts-blue, #3794ff);
+    border-left: 5px solid var(--vscode-charts-blue, #3794ff);
+    background: color-mix(in srgb, var(--vscode-charts-blue, #3794ff) 8%, var(--vscode-editorWidget-background));
 }
 .spec-card-active .spec-title { color: var(--vscode-list-activeSelectionForeground, inherit); }
 

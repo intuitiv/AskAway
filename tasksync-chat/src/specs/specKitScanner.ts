@@ -74,6 +74,7 @@ export interface SpecScanResult {
     enabled: boolean;
     specsRoot: string;
     activeSlug: string;
+    repositoryUrl: string;
     specs: SpecSummary[];
 }
 
@@ -86,6 +87,28 @@ function readTextFile(file: string): string {
         const stat = fs.statSync(file);
         if (!stat.isFile() || stat.size > MAX_FILE_BYTES) { return ''; }
         return fs.readFileSync(file, 'utf8');
+    } catch {
+        return '';
+    }
+}
+
+function readRepositoryUrl(workspaceRoot: string): string {
+    try {
+        let gitDir = path.join(workspaceRoot, '.git');
+        if (fs.statSync(gitDir).isFile()) {
+            const match = /^gitdir:\s*(.+)$/im.exec(fs.readFileSync(gitDir, 'utf8'));
+            if (!match) { return ''; }
+            gitDir = path.resolve(workspaceRoot, match[1].trim());
+        }
+        let configFile = path.join(gitDir, 'config');
+        if (!fs.existsSync(configFile)) {
+            const commonDir = readTextFile(path.join(gitDir, 'commondir')).trim();
+            if (commonDir) { configFile = path.join(path.resolve(gitDir, commonDir), 'config'); }
+        }
+        const config = readTextFile(configFile);
+        const origin = /\[remote\s+"origin"\][\s\S]*?^\s*url\s*=\s*(.+)$/im.exec(config)?.[1]?.trim() || '';
+        const github = /^(?:git@github\.com:|https?:\/\/github\.com\/)([^/]+\/[^/]+?)(?:\.git)?$/i.exec(origin);
+        return github ? `https://github.com/${github[1].replace(/\.git$/i, '')}` : '';
     } catch {
         return '';
     }
@@ -115,26 +138,7 @@ function extractTitle(specText: string, slug: string): string {
 
 function extractPurpose(specText: string): string {
     const explicit = /^\*\*(?:Purpose|Summary)\*\*:\s*(.+(?:\r?\n(?!\s*\r?$|#|\*\*[^*]+\*\*:).+)*)/im.exec(specText);
-    if (explicit) {
-        return explicit[1].replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
-    }
-    const lines = specText.split(/\r?\n/);
-    const contextIndex = lines.findIndex(line => /^##\s+(?:Context|Overview|Problem)\b/i.test(line));
-    const candidates = contextIndex >= 0 ? lines.slice(contextIndex + 1) : lines;
-    let paragraph: string[] = [];
-    for (const raw of candidates) {
-        const line = raw.trim();
-        if (!line || line.startsWith('#') || line.startsWith('```') || line.startsWith('|') || /^\*\*[^*]+\*\*:/.test(line)) {
-            if (paragraph.length) { break; }
-            continue;
-        }
-        if (/^[-*]\s/.test(line)) {
-            if (paragraph.length) { break; }
-            continue;
-        }
-        paragraph.push(line);
-    }
-    return paragraph.join(' ').replace(/\s+/g, ' ').trim();
+    return explicit ? explicit[1].replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim() : '';
 }
 
 function countClarifications(...texts: string[]): number {
@@ -264,7 +268,7 @@ function readActiveSlug(workspaceRoot: string): string {
 /** Scan `<workspaceRoot>/specs/*` for Spec Kit features. Returns `enabled: false` when there is no specs/ dir. */
 export function scanSpecs(workspaceRoot: string): SpecScanResult {
     const specsRoot = path.join(workspaceRoot, 'specs');
-    const empty: SpecScanResult = { enabled: false, specsRoot, activeSlug: '', specs: [] };
+    const empty: SpecScanResult = { enabled: false, specsRoot, activeSlug: '', repositoryUrl: '', specs: [] };
     let entries: fs.Dirent[];
     try {
         if (!fs.statSync(specsRoot).isDirectory()) { return empty; }
@@ -358,5 +362,5 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
         return a.slug.localeCompare(b.slug, undefined, { numeric: true });
     });
 
-    return { enabled: specs.length > 0, specsRoot, activeSlug, specs };
+    return { enabled: specs.length > 0, specsRoot, activeSlug, repositoryUrl: readRepositoryUrl(workspaceRoot), specs };
 }
