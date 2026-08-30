@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
-import { CLAUDE_SPEC_KIT_COMMANDS, SPEC_KIT_PROMPTS } from './specs/specKitPromptAssets';
+import { CLAUDE_ASKAWAY_BUILD_AGENT, CLAUDE_SPEC_KIT_COMMANDS, SPEC_KIT_PROMPTS } from './specs/specKitPromptAssets';
 import { registerTools } from './tools';
 import { McpServerManager } from './mcp/mcpServer';
 import { killAllGradleRuns } from './gradle/gradleEngine';
@@ -39,6 +39,7 @@ function formatError(error: unknown): string {
 async function ensureSpecKitPromptsInstalled(): Promise<void> {
     const promptsDir = path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User', 'prompts');
     const claudeCommandsDir = path.join(os.homedir(), '.claude', 'commands');
+    const claudeAgentsDir = path.join(os.homedir(), '.claude', 'agents');
     try {
         await fs.promises.mkdir(promptsDir, { recursive: true });
         for (const [name, content] of Object.entries(SPEC_KIT_PROMPTS)) {
@@ -52,9 +53,15 @@ async function ensureSpecKitPromptsInstalled(): Promise<void> {
             const existing = await fs.promises.readFile(target, 'utf8').catch(() => undefined);
             if (existing === undefined) { await fs.promises.writeFile(target, content, 'utf8'); }
         }
+        await fs.promises.mkdir(claudeAgentsDir, { recursive: true });
+        const claudeAgentPath = path.join(claudeAgentsDir, 'askaway-build.md');
+        if (await fs.promises.readFile(claudeAgentPath, 'utf8').catch(() => undefined) === undefined) {
+            await fs.promises.writeFile(claudeAgentPath, CLAUDE_ASKAWAY_BUILD_AGENT, 'utf8');
+        }
         logRuntime('Installed missing Spec Kit commands', {
             copilot: Object.keys(SPEC_KIT_PROMPTS).length,
-            claude: Object.keys(CLAUDE_SPEC_KIT_COMMANDS).length
+            claude: Object.keys(CLAUDE_SPEC_KIT_COMMANDS).length,
+            claudeAgent: claudeAgentPath
         });
     } catch (err) {
         logRuntime('Warning: Could not install AskAway Spec Kit prompts', formatError(err));

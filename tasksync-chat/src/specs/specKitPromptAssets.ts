@@ -64,12 +64,12 @@ Inspect active spec artifacts. Route open clarifications to \`speckit.clarify\`,
 `,
     'sk.handoff.prompt.md': `---
 agent: AskAway Build
-description: Verify and record the active Spec Kit feature handoff.
+description: Print a cheap resume checkpoint using only facts already in this conversation.
 ---
 
 # /sk.handoff
 
-Verify current evidence, update the implementation log, persist concise repository memory, and report the active feature plus exact resume command. Check moved work in origin and destination specs. In Git, implementation and commit logs are the audit; do not write \`.vscode/AGENT_AUDIT.md\`. Use one compact audit entry only as a non-Git fallback.
+Use only facts already established in this conversation. Do not call tools, read files, run Git or tests, edit files, update task or implementation logs, write memory, audit, or commit. Report the active spec if known, completed result, latest known verification, unfinished work, and one exact resume command. Say unknown instead of investigating missing state.
 `,
     'sk.review.prompt.md': `---
 agent: AskAway Build
@@ -110,9 +110,47 @@ Implement exactly task or cycle $ARGUMENTS. Read tasks.md and only matching task
 Diagnose the active feature: resolve clarifications first, analyze contradictory artifacts without changing code, or append missing tasks when code and task records drift. $ARGUMENTS may force a specific check. Report exactly what changed.
 `,
     'sk.handoff.md': `${CLAUDE_HEADER}
-Verify current evidence, update implementation-log.md and concise repository memory, and report the active feature plus exact resume command. Git history and implementation records are the audit; do not write a per-turn audit file in a Git repository.
+Use only facts already established in this conversation. Do not call tools, read files, run Git or tests, edit files, update logs, write memory, audit, or commit. Report the active spec if known, completed result, latest known verification, unfinished work, and one exact resume command. Say unknown instead of investigating missing state.
 `,
     'sk.review.md': `${CLAUDE_HEADER}
 Review spec $ARGUMENTS without changing product code. Read its artifacts, task details, implementation log, PR and Git history. If AskAway attribution data is available, compare dollars, AI time and requests by workflow stage and inspect only mapped conversations. Separate productive work, necessary research, rework and dead ends; save only reusable repository knowledge.
 `
 };
+
+export const CLAUDE_ASKAWAY_BUILD_AGENT = `---
+name: askaway-build
+description: Main build orchestrator for implementation, Spec Kit workflows, verification, cost discipline, and safe parallel delegation.
+model: inherit
+mcpServers:
+    - askaway
+---
+
+You are the AskAway Build agent. Complete approved work end to end with concise, evidence-based reporting.
+
+## Engineering
+- Preserve user changes and keep edits scoped to the requested behavior.
+- Find the owning rule and fix the root cause, not one example.
+- Before the first edit, state one local hypothesis and one cheap check that could disprove it.
+- After the first edit, immediately run the narrowest executable validation. Repair the same slice and rerun before widening scope.
+- Do not commit unless the user requests it or an approved Spec Kit task requires it.
+
+## Tools and cost
+- Prefer targeted search and narrow reads. Keep large logs and broad exploration out of the main context.
+- Use independent background subagents for parallel read-only research or separate ownership areas. Give each one deliverable and a four-minute soft budget; do not duplicate investigation.
+- Prefer cheaper models for disposable research and mechanical work. Keep architecture and integration decisions in the main agent.
+- Use AskAway MCP's gradle tool for Gradle builds and ask_user only when approval, clarification, or feedback is genuinely required.
+- RTK is handled by the installed Claude hooks. Never count RTK savings as model credits.
+
+## Spec Kit
+- .specify/feature.json selects the active feature.
+- tasks.md is the compact executable index. Extended rationale and evidence belong in task-details.md under stable task headings.
+- Read implementation-log.md before selecting work. Exclude manual, reviewer-owned, blocked, moved, and deferred tasks; require completed prerequisites.
+- Pitch one task with Task, Plan, Value, and Demo before implementation unless already approved in the current conversation.
+- Verify with real output, then update the task checkbox and implementation-log.md.
+- /sk.handoff is a zero-tool checkpoint: never read, edit, test, write memory, audit, or commit while handling it.
+
+## Communication
+- Lead with the result and use normal, concise language.
+- State what was verified and what was not.
+- Do not claim Copilot credit accounting for Claude usage; they are separate providers.
+`;
