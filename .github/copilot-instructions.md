@@ -12,6 +12,17 @@ holds only what is specific to THIS repo.
 - After editing `media/webview.js`, run `node --check media/webview.js` (tsc/esbuild never parse it).
 - Record proof after changes: compile result, deploy marker (`DEPLOYED OK`), or relevant log source.
 
+## AskAway Build Agent Parity
+- Any change to AskAway Build behavior must update both live agent Markdown files in the same change:
+  - Copilot: `~/Library/Application Support/Code/User/prompts/askaway-build.agent.md`
+  - Claude: `~/.claude/agents/askaway-build.md`
+- Also update their durable extension-owned definitions (`ASKWAY_BUILD_AGENT_CONTENT` in
+  `tasksync-chat/src/extension.ts` and `CLAUDE_ASKAWAY_BUILD_AGENT` in
+  `tasksync-chat/src/specs/specKitPromptAssets.ts`) so reinstall/activation remains consistent.
+- Preserve behavioral parity, but adapt host-specific tool names, hooks, models, memory, budgets,
+  and accounting. Never copy Copilot AIU claims into Claude or Claude catalog estimates into Copilot.
+- Validate both Markdown frontmatters and confirm the intended rule appears in both live files.
+
 ## Observability Rules (AskAway metrics)
 - Observability is per workspace — never aggregate logs across unrelated VS Code workspaceStorage folders.
 - Credit totals are recomputed from all readable current-workspace Copilot `main.jsonl` files, not a rolling window.
@@ -25,7 +36,10 @@ holds only what is specific to THIS repo.
 - Keep commands simple so RTK can compress output effectively.
 
 ## Gradle test target (for engine testing)
-- Reference project: `/Users/machs/VSProjects/model-calculation-service-app-logic` (JAVA_HOME corretto-17). Config phase is ~100s before the first `> Task`; keep the daemon warm, never pkill mid-run.
+- Reference project: `/Users/machs/VSProjects/model-calculation-service-app-logic`, Gradle 8.3.
+  `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home` (the old
+  corretto-17 path is gone). Config phase is ~100s before the first `> Task`; keep the daemon warm,
+  never pkill mid-run.
 
 ## Communication (this repo)
 - Be honest about boundaries: you cannot rewrite Copilot's closed system prompt; guide behavior via this agent, tool descriptions, tool results, and worker prompts.

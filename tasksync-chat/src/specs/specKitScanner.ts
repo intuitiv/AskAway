@@ -28,12 +28,14 @@ export interface SpecCycleTask {
     id: string;
     text: string;
     done: boolean;
+    phase: string;
     specId: string;
     specSlug: string;
 }
 
 export interface SpecCycleSummary {
     id: string;
+    phase: string;
     title: string;
     description: string;
     verification: string;
@@ -66,7 +68,11 @@ export interface SpecSummary {
     hasPlan: boolean;
     hasTasks: boolean;
     lastActivity: number;
+    startedAt: number;
+    trackedDays: number;
+    branch: string;
     implementationRecords: number;
+    completedTasksByDay: Array<{ day: string; taskIds: string[] }>;
     pullRequestUrl: string;
 }
 
@@ -128,6 +134,22 @@ function newestMtime(dir: string): number {
     return newest;
 }
 
+function oldestMtime(dir: string): number {
+    let oldest = Number.POSITIVE_INFINITY;
+    try {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (!entry.isFile()) { continue; }
+            try { oldest = Math.min(oldest, fs.statSync(path.join(dir, entry.name)).mtimeMs); } catch { /* skip */ }
+        }
+    } catch { /* unreadable dir — skip */ }
+    return Number.isFinite(oldest) ? oldest : 0;
+}
+
+function extractFeatureBranch(tasksText: string): string {
+    return /\*\*Branch:\*\*\s*`?([^`·\r\n]+?)`?\s*(?:·|$)/im.exec(tasksText)?.[1]?.trim() ||
+        /^\*\*Feature branch:\*\*\s*`?([^`\r\n]+?)`?\s*$/im.exec(tasksText)?.[1]?.trim() || '';
+}
+
 function extractTitle(specText: string, slug: string): string {
     for (const line of specText.split(/\r?\n/)) {
         const m = /^#\s+(.+?)\s*$/.exec(line);
@@ -163,6 +185,20 @@ function extractPullRequestUrl(...texts: string[]): string {
         if (match) { return match[0]; }
     }
     return '';
+}
+
+function parseCompletedTasksByDay(implementationText: string): Array<{ day: string; taskIds: string[] }> {
+    const days = new Map<string, Set<string>>();
+    for (const line of implementationText.split(/\r?\n/)) {
+        const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
+        if (cells.length < 3 || !/^\d+$/.test(cells[0]) || !/^\d{4}-\d{2}-\d{2}$/.test(cells[2])) { continue; }
+        const taskId = /\b(T\d+[a-zA-Z]*)\b/.exec(cells[1])?.[1]?.toUpperCase();
+        if (!taskId) { continue; }
+        const tasks = days.get(cells[2]) || new Set<string>();
+        tasks.add(taskId);
+        days.set(cells[2], tasks);
+    }
+    return [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, taskIds]) => ({ day, taskIds: [...taskIds] }));
 }
 
 interface ParsedTask extends SpecTaskSummary { }
@@ -232,6 +268,11 @@ function parseCycleMetadata(text: string): Map<string, CycleMetadata> {
     return result;
 }
 
+function cyclePurpose(taskText: string): string {
+    const action = taskText.split(/\s+[—–]\s+/)[0].trim();
+    return action.length > 160 ? `${action.slice(0, 157)}...` : action;
+}
+
 function countLogRows(text: string): number {
     let n = 0;
     for (const line of text.split(/\r?\n/)) {
@@ -296,6 +337,8 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
         const hasPlan = planText.length > 0;
         const hasTasks = tasksText.length > 0;
 
+        const startedAt = oldestMtime(dir);
+        const lastActivity = newestMtime(dir);
         specs.push({
             id: (/^\d+/.exec(entry.name) || [''])[0],
             slug: entry.name,
@@ -315,8 +358,12 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
             active: entry.name === activeSlug,
             hasPlan,
             hasTasks,
-            lastActivity: newestMtime(dir),
+            lastActivity,
+            startedAt,
+            trackedDays: startedAt && lastActivity ? Math.max(1, Math.ceil((lastActivity - startedAt) / 86400000)) : 0,
+            branch: extractFeatureBranch(tasksText),
             implementationRecords: countLogRows(implementationText),
+            completedTasksByDay: parseCompletedTasksByDay(implementationText),
             pullRequestUrl: extractPullRequestUrl(specText, planText, tasksText, implementationText)
         });
     }
@@ -327,7 +374,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
         for (const task of tasksBySlug.get(spec.slug) || []) {
             if (!task.cycleId) { continue; }
             const members = cycles.get(task.cycleId) || [];
-            members.push({ id: task.id, text: task.text, done: task.done, specId: spec.id, specSlug: spec.slug });
+            members.push({ id: task.id, text: task.text, done: task.done, phase: task.phase, specId: spec.id, specSlug: spec.slug });
             cycles.set(task.cycleId, members);
         }
     }
@@ -343,8 +390,9 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
                 : done > 0 ? 'running' : 'ready';
             return {
                 id,
-                title: meta?.title || id,
-                description: meta?.description || '',
+                phase: tasks.find(task => task.specSlug === spec.slug)?.phase || tasks[0]?.phase || 'Other work',
+                title: meta?.title && meta.title.toUpperCase() !== id.toUpperCase() ? meta.title : '',
+                description: meta?.description || cyclePurpose(next?.text || tasks[0]?.text || ''),
                 verification: meta?.verification || '',
                 total: tasks.length,
                 done,

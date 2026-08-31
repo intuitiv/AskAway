@@ -81,6 +81,7 @@ const ASKWAY_BUILD_AGENT_CONTENT = `---
 description: "Use when: acting as the main AskAway build agent, orchestrating implementation work, RTK command optimization, observability fixes, builds, tests, and production-readiness tasks."
 name: "AskAway Build"
 tools: [vscode/extensions, vscode/memory, vscode/newWorkspace, vscode/resolveMemoryFileUri, vscode/runCommand, vscode/toolSearch, execute, read, agent, edit, search, todo]
+model: "GPT-5.6 Luna (copilot)"
 user-invocable: true
 ---
 
@@ -90,6 +91,7 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - Act as the primary build/orchestration agent for AskAway work.
 - Plan briefly, execute decisively, verify changes, and report concise proof.
 - Keep user-facing responses short, direct, and evidence-based.
+- Treat any request to change repository code, configuration, tests, documentation, task artifacts, or generated artifacts as implementation intent and internally route it through the same pipeline as \`/sk.implement\`, even when the user does not type the command. Resolve the active feature and exact task/cycle before editing. If no executable task exists, route through \`/sk.check\`, \`/sk.plan\`, and \`/sk.tasks\` as needed; never bypass acceptance gates with direct conversational edits. This routing does not require the user to retype a slash command.
 
 ## RTK Policy
 - Resolve RTK mode once at session start: if \`~/.askaway-rtk-enabled\` exists, set RTK mode on for this chat session.
@@ -171,7 +173,7 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 ## Delegation
 - Before doing work, separate decisions that need the main agent's context from outputs derivable from files, diffs, logs, or test results.
 - Delegate read-only exploration and mechanical artifact work to a cheaper subagent. Keep architecture choices, reviewer-facing tradeoffs, and final integration in the main agent.
-- Prefer the cheapest capable configured model. Use small fast models such as Sol, Tera, or Luna for searches, summaries, task-file updates, diff analysis, and log parsing; use a stronger model only when the task needs cross-cutting design judgment.
+- Use GPT-5.6 Luna for delegated searches, summaries, task-file updates, diff analysis, log parsing, and other disposable work. Use a stronger model only when the task needs cross-cutting design judgment and Luna cannot handle it.
 - Give each child one explicit deliverable and a hard four-minute instruction. Run children in parallel only when their work is independent.
 - During a Gradle run, use the time for another approved task or a delegated artifact job. Do not invent busywork merely to avoid waiting.
 
@@ -391,6 +393,40 @@ async function ensureCacheTimerHookInstalled(): Promise<void> {
         logRuntime('Installed AskAway cache-timer hook', { gatePath, injectPath });
     } catch (err) {
         logRuntime('Warning: Could not install AskAway cache-timer hook', formatError(err));
+    }
+}
+
+/** Install non-model Claude lifecycle hooks that attribute prompts and usage to shared specs. */
+async function ensureClaudeSpecHooksInstalled(port: number): Promise<void> {
+    const hookUrl = `http://127.0.0.1:${port}/hooks/claude-spec`;
+    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+    try {
+        await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true });
+        let settings: any = {};
+        try { settings = JSON.parse(await fs.promises.readFile(settingsPath, 'utf8')); } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') { throw err; }
+        }
+        if (!settings || typeof settings !== 'object' || Array.isArray(settings)) { settings = {}; }
+        if (!settings.hooks || typeof settings.hooks !== 'object' || Array.isArray(settings.hooks)) { settings.hooks = {}; }
+        let changed = false;
+        for (const event of ['UserPromptSubmit', 'Stop']) {
+            if (!Array.isArray(settings.hooks[event])) { settings.hooks[event] = []; }
+            const before = settings.hooks[event].length;
+            settings.hooks[event] = settings.hooks[event].filter((group: any) =>
+                !Array.isArray(group?.hooks) || !group.hooks.some((hook: any) =>
+                    hook?.type === 'http' && /^http:\/\/127\.0\.0\.1:\d+\/hooks\/claude-spec$/.test(hook?.url || '') && hook.url !== hookUrl));
+            if (settings.hooks[event].length !== before) { changed = true; }
+            const exists = settings.hooks[event].some((group: any) =>
+                Array.isArray(group?.hooks) && group.hooks.some((hook: any) => hook?.type === 'http' && hook?.url === hookUrl));
+            if (!exists) {
+                settings.hooks[event].push({ hooks: [{ type: 'http', url: hookUrl, timeout: 5 }] });
+                changed = true;
+            }
+        }
+        if (changed) { await fs.promises.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8'); }
+        logRuntime('Installed Claude spec attribution hooks', { url: hookUrl });
+    } catch (err) {
+        logRuntime('Warning: Could not install Claude spec attribution hooks', formatError(err));
     }
 }
 
@@ -1080,6 +1116,7 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.commands.registerCommand('askaway.startMcp', async () => {
                 if (mcpServer && !mcpServer.isRunning()) {
                     await mcpServer.start();
+                    if (mcpServer.getPort()) { await ensureClaudeSpecHooksInstalled(mcpServer.getPort()!); }
                     vscode.window.showInformationMessage('AskAway MCP Server started');
                 } else if (mcpServer?.isRunning()) {
                     vscode.window.showInformationMessage('AskAway MCP Server is already running');
@@ -1388,10 +1425,18 @@ export function activate(context: vscode.ExtensionContext) {
                 const mcpEnabled = config.get<boolean>('mcpEnabled', false);
                 const autoStartIfClients = config.get<boolean>('mcpAutoStartIfClients', true);
                 if (mcpEnabled) {
-                    mcpServer.start();
+                    mcpServer.start().then(async () => {
+                        const port = mcpServer?.getPort();
+                        if (port) { await ensureClaudeSpecHooksInstalled(port); }
+                    }).catch(() => {});
                 } else if (autoStartIfClients) {
                     hasExternalMcpClientsAsync().then(hasClients => {
-                        if (hasClients && mcpServer) { mcpServer.start(); }
+                        if (hasClients && mcpServer) {
+                            mcpServer.start().then(async () => {
+                                const port = mcpServer?.getPort();
+                                if (port) { await ensureClaudeSpecHooksInstalled(port); }
+                            }).catch(() => {});
+                        }
                     }).catch(() => {});
                 }
 

@@ -11,6 +11,7 @@ import { askUser } from '../tools';
 import { getImageMimeType } from '../utils/imageUtils';
 import { CONFIG_NAMESPACE, MCP_SERVER_NAME } from '../constants/branding';
 import { dispatchGradle, GradleInput } from '../gradle/gradleEngine';
+import { createClaudeSpecEvent } from '../observability/claudeSpecAttribution';
 
 
 async function tryReadImageAsMcpContent(uri: string): Promise<null | { type: 'image'; data: string; mimeType: string }> {
@@ -180,6 +181,23 @@ export class McpServerManager {
             this.server = http.createServer(async (req, res) => {
                 try {
                     const url = req.url || '/';
+
+                    if (url === '/hooks/claude-spec' && req.method === 'POST') {
+                        let raw = '';
+                        for await (const chunk of req) {
+                            raw += chunk;
+                            if (raw.length > 1024 * 1024) { throw new Error('Hook payload too large'); }
+                        }
+                        const event = createClaudeSpecEvent(JSON.parse(raw || '{}'));
+                        if (event) {
+                            const ledger = path.join(os.homedir(), '.askaway', 'claude-spec-events.jsonl');
+                            await fs.promises.mkdir(path.dirname(ledger), { recursive: true });
+                            await fs.promises.appendFile(ledger, `${JSON.stringify(event)}\n`, 'utf8');
+                        }
+                        res.writeHead(204);
+                        res.end();
+                        return;
+                    }
 
                     if (url === '/sse' || url.startsWith('/sse/') || url.startsWith('/sse?')) {
                         if (req.method !== 'POST') {

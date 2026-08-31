@@ -381,13 +381,21 @@ function runToStatus(run: GradleRun, root: string): Record<string, unknown> {
         const allFailed = [...new Set([...failedTasks, ...execFailed])];
         const primary = allFailed[0];
         const testFailureDetails = extractTestReportFailures(run.cwd, allFailed);
+        // A broad suite can fail in the hundreds; dumping every stack into the status
+        // response costs more tokens than the whole build log the tool exists to avoid.
+        const DETAIL_CAP = 5;
+        const cappedDetails = testFailureDetails.slice(0, DETAIL_CAP);
         Object.assign(result, {
             failedTasks: allFailed,
             whatWentWrong: f.whatWentWrong,
             exception: f.exception,
             errors: f.errors,
             testFailures: f.testFailures,
-            testFailureDetails,
+            testFailureCount: testFailureDetails.length,
+            testFailureDetails: cappedDetails,
+            testFailureDetailsTruncated: testFailureDetails.length > DETAIL_CAP
+                ? `${testFailureDetails.length - DETAIL_CAP} more — see the HTML report in whatWentWrong`
+                : undefined,
             exitCode: run.exitCode,
             // Direct pointer so the agent can pull just the failing task's output.
             failedTaskLogsHint: primary
@@ -437,7 +445,35 @@ function handleGradleStart(input: GradleInput, root: string): Record<string, unk
     // NOTE: `optimizations` are intentionally NOT returned to the caller (they'd
     // just cost the agent tokens on every start). They are still recorded to the
     // gradle-runs log for the savings/"success story" aggregate.
-    return { buildId: id, state: 'RUNNING', tasks, cwd: toRelative(root, cwd) };
+    const eta = typicalDurationSec(tasks);
+    return {
+        buildId: id, state: 'RUNNING', tasks, cwd: toRelative(root, cwd),
+        ...(eta ? {
+            typicalDurationSec: eta,
+            plan: `Past runs of these tasks took ~${eta}s. Queue up ~${eta}s of other work now, then poll action:status once.`,
+        } : {}),
+    };
+}
+
+/** Median wall time of previous runs of the same task list, from the run log. Gives the agent a
+ *  concrete budget to fill instead of a vague "go do something else". Median, not mean, so one
+ *  pathological 500s run does not distort the estimate. */
+function typicalDurationSec(tasks: string[]): number | undefined {
+    const key = tasks.join(',');
+    let lines: string[];
+    try { lines = fs.readFileSync(GRADLE_RUN_LOG, 'utf8').split('\n'); } catch { return undefined; }
+    const times: number[] = [];
+    for (const line of lines) {
+        if (!line) { continue; }
+        try {
+            const r = JSON.parse(line);
+            if ((r.tasks || []).join(',') !== key) { continue; }
+            if (typeof r.elapsedSec === 'number' && r.elapsedSec > 0) { times.push(r.elapsedSec); }
+        } catch { /* skip malformed row */ }
+    }
+    if (times.length < 3) { return undefined; }
+    times.sort((a, b) => a - b);
+    return times[Math.floor(times.length / 2)];
 }
 
 function handleGradleStatus(input: GradleInput, root: string): Record<string, unknown> {

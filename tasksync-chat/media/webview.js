@@ -1620,6 +1620,25 @@
                             sc.branches = Array.isArray(a.branches) ? a.branches.filter(function(b) { return typeof b === 'string' && b; }) : [];
                             sc.conversationLogs = Array.isArray(a.conversationLogs) ? a.conversationLogs.filter(function(log) { return typeof log === 'string' && log; }) : [];
                             sc.commandStage = typeof a.commandStage === 'string' ? a.commandStage : 'other';
+                            sc.provider = a.provider === 'claude' ? 'claude' : 'copilot';
+                            sc.estimatedUsd = Number(a.estimatedUsd) || 0;
+                            sc.cacheWrite5mTokens = Number(a.cacheWrite5mTokens) || 0;
+                            sc.cacheWrite1hTokens = Number(a.cacheWrite1hTokens) || 0;
+                            sc.models = Array.isArray(a.models) ? a.models.filter(function(model) { return typeof model === 'string'; }) : [];
+                            sc.firstAt = Number(a.firstAt) || 0;
+                            sc.lastAt = Number(a.lastAt) || 0;
+                            sc.activeDays = Number(a.activeDays) || 0;
+                            sc.activeDayKeys = Array.isArray(a.activeDayKeys) ? a.activeDayKeys.filter(function(day) { return typeof day === 'string'; }) : [];
+                            sc.daily = Array.isArray(a.daily) ? a.daily.map(function(day) {
+                                return {
+                                    day: typeof day.day === 'string' ? day.day : '',
+                                    requestCount: Number(day.requestCount) || 0,
+                                    activeMs: Number(day.activeMs) || 0,
+                                    nanoAiu: Number(day.nanoAiu) || 0,
+                                    estimatedUsd: Number(day.estimatedUsd) || 0,
+                                    models: Array.isArray(day.models) ? day.models.filter(function(model) { return typeof model === 'string'; }) : []
+                                };
+                            }) : [];
                             return sc;
                         }) : [],
                         attributionMode: message.metrics.attributionMode === 'ad-hoc' ? 'ad-hoc' : 'spec',
@@ -1776,6 +1795,7 @@
                     };
                 }
                 updateObservabilityUI();
+                renderSpecs();
                 break;
             case 'updateMemoriesList':
                 memoriesList = Array.isArray(message.memories) ? message.memories : [];
@@ -3029,9 +3049,11 @@
             var groups = {};
             entries.forEach(function (entry) {
                 var key = entry.specSlug || 'ad-hoc';
-                var group = groups[key] || { key: key, turns: {}, requests: 0, nano: 0, input: 0, cached: 0, activeMs: 0, details: [] };
+                var group = groups[key] || { key: key, turns: {}, requests: 0, nano: 0, estimatedUsd: 0, input: 0, cached: 0, activeMs: 0, hasClaude: false, details: [] };
                 group.requests += entry.requestCount;
                 group.nano += entry.nanoAiu;
+                group.estimatedUsd += entry.estimatedUsd || 0;
+                group.hasClaude = group.hasClaude || entry.provider === 'claude';
                 group.input += entry.inputTokens;
                 group.cached += entry.cachedTokens;
                 group.activeMs += entry.activeMs;
@@ -3043,11 +3065,14 @@
                 var group = groups[key];
                 var hit = group.input ? Math.round(group.cached / group.input * 100) + '%' : '&ndash;';
                 var label = key === 'ad-hoc' ? 'Ad hoc' : key;
-                var main = '<tr><td class="obs-scope"><strong>' + escapeHtml(label) + '</strong></td><td>' + formatActiveTime(group.activeMs) + '</td><td>' + group.requests + '</td><td>' + formatDollars(group.nano) + '</td><td>' + tok(group.input) + '</td><td>' + hit + '</td></tr>';
+                var groupCost = (group.nano ? formatDollars(group.nano) : '$0.00') + (group.estimatedUsd ? ' + ~$' + group.estimatedUsd.toFixed(2) + ' Claude' : '');
+                var main = '<tr><td class="obs-scope"><strong>' + escapeHtml(label) + '</strong></td><td>' + formatActiveTime(group.activeMs) + '</td><td>' + group.requests + '</td><td>' + groupCost + '</td><td>' + tok(group.input) + '</td><td>' + hit + '</td></tr>';
                 var details = group.details.map(function (d) {
-                    var detailLabel = d.commandStage || 'other';
+                    var detailLabel = (d.provider === 'claude' ? 'Claude &middot; ' : 'Copilot &middot; ') + (d.commandStage || 'other');
                     if (d.taskId || d.cycleId) detailLabel += ' &middot; ' + escapeHtml(d.taskId || d.cycleId);
-                    return '<tr class="obs-attribution-detail"><td class="obs-scope">' + detailLabel + '</td><td>' + formatActiveTime(d.activeMs) + '</td><td>' + d.requestCount + '</td><td>' + formatDollars(d.nanoAiu) + '</td><td>' + tok(d.inputTokens) + '</td><td>' + (d.inputTokens ? Math.round(d.cachedTokens / d.inputTokens * 100) + '%' : '&ndash;') + '</td></tr>';
+                    var cacheTitle = d.provider === 'claude' ? ' title="5m writes: ' + tok(d.cacheWrite5mTokens || 0) + ' · 1h writes: ' + tok(d.cacheWrite1hTokens || 0) + ' · models: ' + escapeHtml((d.models || []).join(', ')) + '"' : '';
+                    var detailCost = d.provider === 'claude' ? '~$' + (d.estimatedUsd || 0).toFixed(2) : formatDollars(d.nanoAiu);
+                    return '<tr class="obs-attribution-detail"><td class="obs-scope">' + detailLabel + '</td><td>' + formatActiveTime(d.activeMs) + '</td><td>' + d.requestCount + '</td><td>' + detailCost + '</td><td>' + tok(d.inputTokens) + '</td><td' + cacheTitle + '>' + (d.inputTokens ? Math.round(d.cachedTokens / d.inputTokens * 100) + '%' : '&ndash;') + '</td></tr>';
                 }).join('');
                 return main + details;
             }).join('');
@@ -5199,6 +5224,7 @@
     var specsState = { enabled: false, activeSlug: '', repositoryUrl: '', specs: [] };
     var specsShowDone = false;
     var specsExpanded = {};
+    var specsWorkExpanded = {};
 
     // "In progress" is reserved for the feature.json feature; a non-active spec with ticked tasks is "Started".
     var SPEC_STAGE_LABEL = {
@@ -5293,12 +5319,127 @@
         return hours + 'h' + (minutes % 60 ? ' ' + (minutes % 60) + 'm' : '');
     }
 
+    function formatVelocity(value, unit) {
+        return value.toFixed(value < 10 ? 1 : 0) + ' ' + unit;
+    }
+
+    function workspaceVelocity(allSpecs) {
+        var daily = {};
+        var models = {};
+        (allSpecs || []).forEach(function(spec) {
+            (spec.completedTasksByDay || []).forEach(function(completion) {
+                daily[completion.day] = daily[completion.day] || { tasks: {}, dollars: 0, activeMs: 0, requests: 0, hasUsage: false };
+                (completion.taskIds || []).forEach(function(taskId) { daily[completion.day].tasks[spec.slug + '\0' + taskId] = true; });
+            });
+        });
+        (observabilityMetrics.costAttribution || []).forEach(function(entry) {
+            if (!entry.specSlug) return;
+            (entry.daily || []).forEach(function(usage) {
+                if (!daily[usage.day] || !Object.keys(daily[usage.day].tasks).some(function(key) { return key.indexOf(entry.specSlug + '\0') === 0; })) return;
+                daily[usage.day].dollars += ((Number(usage.nanoAiu) || 0) / 1000000000 / 100) + (Number(usage.estimatedUsd) || 0);
+                daily[usage.day].activeMs += Number(usage.activeMs) || 0;
+                daily[usage.day].requests += Number(usage.requestCount) || 0;
+                daily[usage.day].hasUsage = true;
+                (usage.models || []).forEach(function(model) { models[model] = true; });
+            });
+        });
+        var observedDays = Object.keys(daily).filter(function(day) { return daily[day].hasUsage && Object.keys(daily[day].tasks).length; }).sort();
+        var tasks = observedDays.reduce(function(sum, day) { return sum + Object.keys(daily[day].tasks).length; }, 0);
+        var days = observedDays.length;
+        if (!tasks || !days) return null;
+        var dollars = observedDays.reduce(function(sum, day) { return sum + daily[day].dollars; }, 0);
+        var activeMs = observedDays.reduce(function(sum, day) { return sum + daily[day].activeMs; }, 0);
+        var dailyRates = observedDays.map(function(day) {
+            return day + ': ' + Object.keys(daily[day].tasks).length + ' tasks, $' + daily[day].dollars.toFixed(2) + ', ' + formatActiveTime(daily[day].activeMs) + ' AI, ' + daily[day].requests + ' requests';
+        });
+        var dailyTaskRates = observedDays.map(function(day) { return Object.keys(daily[day].tasks).length; });
+        return { tasks: tasks, days: days, tasksPerDay: tasks / days, dollarsPerDay: dollars / days, activeMsPerDay: activeMs / days, models: Object.keys(models).sort(), dailyRates: dailyRates, dailyTaskRates: dailyTaskRates };
+    }
+
+    function attributedUsd(entry) {
+        return ((Number(entry.nanoAiu) || 0) / 1000000000 / 100) + (Number(entry.estimatedUsd) || 0);
+    }
+
+    function percentile(values, fraction) {
+        if (!values.length) return 0;
+        var sorted = values.slice().sort(function(a, b) { return a - b; });
+        return sorted[Math.round((sorted.length - 1) * fraction)];
+    }
+
+    function formatEstimateDollars(value) {
+        if (value > 0 && value < 0.01) return '&lt;$0.01';
+        return '~$' + value.toFixed(value < 10 ? 2 : 0);
+    }
+
+    function projectSpecRemaining(spec, allSpecs) {
+        var remaining = Math.max(0, (Number(spec.total) || 0) - (Number(spec.done) || 0));
+        if (!remaining) return null;
+        var references = (allSpecs || []).map(function(candidate) {
+            if ((Number(candidate.done) || 0) < 3) return null;
+            var entries = (observabilityMetrics.costAttribution || []).filter(function(a) { return a.specSlug === candidate.slug; });
+            var cost = entries.reduce(function(sum, entry) { return sum + attributedUsd(entry); }, 0);
+            var activeMs = entries.reduce(function(sum, entry) { return sum + (Number(entry.activeMs) || 0); }, 0);
+            if (!cost && !activeMs) return null;
+            return { cost: cost / candidate.done, activeMs: activeMs / candidate.done };
+        }).filter(Boolean);
+        if (!references.length) return null;
+        var costs = references.map(function(reference) { return reference.cost; });
+        var times = references.map(function(reference) { return reference.activeMs; });
+        var confidence = references.length >= 5 ? 'high' : references.length >= 3 ? 'medium' : 'low';
+        var costLow = references.length === 1 ? costs[0] * 0.5 : percentile(costs, 0.25);
+        var costHigh = references.length === 1 ? costs[0] * 2 : percentile(costs, 0.75);
+        var timeLow = references.length === 1 ? times[0] * 0.5 : percentile(times, 0.25);
+        var timeHigh = references.length === 1 ? times[0] * 2 : percentile(times, 0.75);
+        return {
+            references: references.length,
+            confidence: confidence,
+            cost: percentile(costs, 0.5) * remaining,
+            costLow: costLow * remaining,
+            costHigh: costHigh * remaining,
+            activeMs: percentile(times, 0.5) * remaining,
+            timeLow: timeLow * remaining,
+            timeHigh: timeHigh * remaining
+        };
+    }
+
+    function shortSpecDate(ms) {
+        return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+
+    function projectSpecFinish(spec, velocity) {
+        var remaining = Math.max(0, (Number(spec.total) || 0) - (Number(spec.done) || 0));
+        if (!remaining || !velocity || velocity.tasksPerDay <= 0) return null;
+        var observed = velocity.dailyTaskRates || [];
+        var slowRate = observed.length > 1 ? percentile(observed, 0.25) : velocity.tasksPerDay * 0.5;
+        var fastRate = observed.length > 1 ? percentile(observed, 0.75) : velocity.tasksPerDay * 2;
+        slowRate = Math.max(0.1, slowRate);
+        fastRate = Math.max(slowRate, fastRate);
+        var likelyDays = Math.ceil(remaining / velocity.tasksPerDay);
+        var earlyDays = Math.max(1, Math.ceil(remaining / fastRate));
+        var lateDays = Math.max(earlyDays, Math.ceil(remaining / slowRate));
+        return {
+            likelyDays: likelyDays,
+            earlyDays: earlyDays,
+            lateDays: lateDays,
+            earlyDate: Date.now() + earlyDays * 86400000,
+            lateDate: Date.now() + lateDays * 86400000
+        };
+    }
+
     function renderSpecs() {
         var list = document.getElementById('specs-list');
         if (!list) return;
 
+        list.querySelectorAll('details[data-work-key]').forEach(function(details) {
+            specsWorkExpanded[details.getAttribute('data-work-key')] = details.open;
+        });
+
         var all = specsState.specs || [];
         var doneCount = all.filter(function(s) { return s.stage === 'done'; }).length;
+        var completedWorkCount = all.reduce(function(sum, spec) {
+            return sum + (spec.tasks || []).filter(function(task) { return task.done; }).length +
+                (spec.cycles || []).filter(function(cycle) { return cycle.state === 'complete'; }).length;
+        }, doneCount);
 
         var chip = document.getElementById('specs-active-chip');
         if (chip) {
@@ -5310,6 +5451,21 @@
             chip.title = act ? act.slug : '';
         }
 
+        var velocityChip = document.getElementById('specs-workspace-velocity');
+        var velocity = workspaceVelocity(all);
+        if (velocityChip) {
+            if (velocity) {
+                var velocityModel = velocity.models.length > 1 ? 'mixed models' : (velocity.models[0] || 'observed model');
+                velocityChip.innerHTML = '<span class="specs-velocity-label">Agent throughput</span> <b>' + formatVelocity(velocity.tasksPerDay, 'T') + '</b> · <b>$' + velocity.dollarsPerDay.toFixed(2) + '</b> · <b>' + formatActiveTime(velocity.activeMsPerDay) + '</b> / agent-active day';
+                velocityChip.title = 'Completed tasks per agent-active day from attributed Copilot and Claude implementation records. Excludes human waiting, manual work, and untracked user activity. Model: ' + velocityModel + '. Daily detail: ' + velocity.dailyRates.join(' | ') + '. Rates change with model, context, cache, prompting, and task mix.';
+                velocityChip.classList.remove('hidden');
+            } else {
+                velocityChip.innerHTML = '<span class="specs-velocity-label">Agent throughput</span> <span class="specs-velocity-muted">Insufficient data</span>';
+                velocityChip.title = 'Complete and attribute tasks across at least one agent-active day to calculate agent throughput. Human waiting and untracked manual work are excluded.';
+                velocityChip.classList.remove('hidden');
+            }
+        }
+
         var toggle = document.getElementById('specs-show-done');
         if (toggle) {
             toggle.setAttribute('aria-checked', specsShowDone ? 'true' : 'false');
@@ -5317,7 +5473,7 @@
             toggle.title = specsShowDone
                 ? 'Hide specs whose tasks are all complete'
                 : 'Include specs whose tasks are all complete';
-            toggle.parentElement.classList.toggle('hidden', doneCount === 0);
+            toggle.parentElement.classList.toggle('hidden', completedWorkCount === 0);
         }
 
         // The active feature is never hidden by the Completed filter — it is what /continue would act on.
@@ -5338,22 +5494,48 @@
             if (spec.implementationRecords) facts.push('<span title="Rows in implementation-log.md; cumulative, not daily"><b>' + spec.implementationRecords + '</b> implementation records</span>');
             if (spec.lastActivity) facts.push('<span>Updated ' + specAgo(spec.lastActivity) + '</span>');
             var attributed = (observabilityMetrics.costAttribution || []).filter(function(a) { return a.specSlug === spec.slug; });
+            var attributedBranches = [];
+            attributed.forEach(function(a) { (a.branches || []).forEach(function(branch) { if (attributedBranches.indexOf(branch) < 0) attributedBranches.push(branch); }); });
+            var displayBranch = attributedBranches[0] || spec.branch || '';
+            if (displayBranch) {
+                var branchLabel = 'Branch: ' + escapeHtml(displayBranch) + (attributedBranches.length > 1 ? ' +' + (attributedBranches.length - 1) : '');
+                if (specsState.repositoryUrl) {
+                    var branchUrl = specsState.repositoryUrl + '/tree/' + displayBranch.split('/').map(encodeURIComponent).join('/');
+                    facts.push('<button class="spec-stat-link" data-act="external" data-url="' + escapeHtml(branchUrl) + '" title="Open branch on GitHub">' + branchLabel + '</button>');
+                } else {
+                    facts.push('<span title="Branch from this spec\'s artifacts or attributed turns">' + branchLabel + '</span>');
+                }
+            }
+            if (spec.trackedDays) facts.push('<span title="Calendar span between this spec\'s first and latest artifact modification; it includes human waiting time"><b>' + spec.trackedDays + '</b> day' + (spec.trackedDays === 1 ? '' : 's') + ' in spec</span>');
             var specNano = attributed.reduce(function(sum, a) { return sum + a.nanoAiu; }, 0);
+            var specClaudeUsd = attributed.reduce(function(sum, a) { return sum + (a.estimatedUsd || 0); }, 0);
             var specTurns = attributed.reduce(function(sum, a) { return sum + a.turnCount; }, 0);
             var specRequests = attributed.reduce(function(sum, a) { return sum + a.requestCount; }, 0);
             var specActiveMs = attributed.reduce(function(sum, a) { return sum + a.activeMs; }, 0);
+            var specFirstAt = attributed.reduce(function(value, a) { return a.firstAt && (!value || a.firstAt < value) ? a.firstAt : value; }, 0);
+            var specLastAt = attributed.reduce(function(value, a) { return Math.max(value, a.lastAt || 0); }, 0);
+            var specDaySet = {};
+            attributed.forEach(function(a) { (a.activeDayKeys || []).forEach(function(day) { specDaySet[day] = true; }); });
+            var specActiveDays = Object.keys(specDaySet).length;
             if (specNano) facts.push('<span>' + formatDollars(specNano) + ' cost</span>');
+            if (specClaudeUsd) facts.push('<span>~$' + specClaudeUsd.toFixed(2) + ' Claude est.</span>');
             if (specActiveMs) facts.push('<span>' + formatActiveTime(specActiveMs) + ' AI time</span>');
+            if (specActiveDays) {
+                var span = specFirstAt && specLastAt ? shortSpecDate(specFirstAt) + (shortSpecDate(specFirstAt) !== shortSpecDate(specLastAt) ? '–' + shortSpecDate(specLastAt) : '') : '';
+                facts.push('<span title="Calendar days with at least one attributed turn; waiting time is not AI-active time"><b>' + specActiveDays + '</b> active day' + (specActiveDays === 1 ? '' : 's') + (span ? ' · ' + escapeHtml(span) : '') + '</span>');
+            }
             if (specRequests) facts.push('<span><b>' + specRequests + '</b> requests</span>');
-            var specBranches = [];
-            attributed.forEach(function(a) {
-                (a.branches || []).forEach(function(branch) { if (specBranches.indexOf(branch) < 0) specBranches.push(branch); });
-            });
-            if (specBranches.length === 1 && specsState.repositoryUrl) {
-                var branchUrl = specsState.repositoryUrl + '/tree/' + specBranches[0].split('/').map(encodeURIComponent).join('/');
-                facts.push('<button class="spec-stat-link" data-act="external" data-url="' + escapeHtml(branchUrl) + '" title="Open branch on GitHub">Branch: ' + escapeHtml(specBranches[0]) + '</button>');
-            } else if (specBranches.length === 1) facts.push('<span title="Git branch captured at each attributed request">Branch: ' + escapeHtml(specBranches[0]) + '</span>');
-            else if (specBranches.length > 1) facts.push('<span title="' + escapeHtml(specBranches.join(', ')) + '">' + specBranches.length + ' branches</span>');
+            if (!attributed.length) facts.push('<span title="Spec attribution is prospective. Exact historical cost cannot be reconstructed for turns recorded before tracking was enabled.">No tracked cost</span>');
+            var projection = projectSpecRemaining(spec, all);
+            if (projection) {
+                var projectionTitle = 'Ballpark from median observed cost and AI time per completed task across ' + projection.references + ' reference spec' + (projection.references === 1 ? '' : 's') + '. Range: ' + formatEstimateDollars(projection.costLow).replace('&lt;', '<') + '–' + formatEstimateDollars(projection.costHigh).replace('&lt;', '<') + ', ' + formatActiveTime(projection.timeLow).replace('&lt;', '<') + '–' + formatActiveTime(projection.timeHigh).replace('&lt;', '<') + '. Reflects the observed provider/model mix and prompt effectiveness; excludes human waiting time.';
+                facts.push('<span title="' + escapeHtml(projectionTitle) + '"><b>Est. remaining</b> ' + formatEstimateDollars(projection.cost) + ' · ' + formatActiveTime(projection.activeMs) + ' AI · ' + projection.confidence + ' (' + projection.references + ' refs)</span>');
+            }
+            var finish = projectSpecFinish(spec, velocity);
+            if (finish) {
+                var finishLabel = shortSpecDate(finish.earlyDate) + (shortSpecDate(finish.earlyDate) !== shortSpecDate(finish.lateDate) ? '–' + shortSpecDate(finish.lateDate) : '');
+                facts.push('<span title="Ballpark calendar range from observed agent-throughput quartiles; likely duration ' + finish.likelyDays + ' agent-active days. Excludes human waiting, review delays, weekends, manual work, and blocked work."><b>Est. finish</b> ' + escapeHtml(finishLabel) + ' (' + finish.earlyDays + '–' + finish.lateDays + ' agent-active days)</span>');
+            }
             if (spec.pullRequestUrl) {
                 var prNumber = (/\/pull\/(\d+)/.exec(spec.pullRequestUrl) || [])[1] || 'PR';
                 facts.push('<button class="spec-stat-link" data-act="external" data-url="' + escapeHtml(spec.pullRequestUrl) + '">PR #' + escapeHtml(prNumber) + '</button>');
@@ -5363,52 +5545,73 @@
                 ? '<div class="spec-body">' +
                   (spec.purpose ? '<div class="spec-purpose">' + formatSpecInline(spec.purpose) + '</div>' : '') +
                   (facts.length ? '<div class="spec-meta">' + facts.join('') + '</div>' : '') +
-                  (spec.cycles && spec.cycles.length
-                      ? '<div class="spec-cycles"><div class="spec-section-label">Cycles</div>' + spec.cycles.map(function(c) {
-                            var nextLabel = c.nextTaskId
-                                ? '<span class="spec-cycle-next">Next: ' + escapeHtml(c.nextTaskId) + ' ' + escapeHtml(c.nextTaskText) + '</span>'
-                                : '<span class="spec-cycle-next">All tasks complete</span>';
-                            return '<div class="spec-cycle" title="' + escapeHtml(c.description || c.title) + '">' +
-                                '<div class="spec-cycle-main"><span class="spec-cycle-id">' + escapeHtml(c.id) + '</span>' +
-                                '<span class="spec-cycle-title">' + formatSpecInline(c.title) + '</span>' +
-                                (c.specCount > 1 ? '<span class="spec-cycle-count">' + c.specCount + ' specs</span>' : '') +
-                                '<span class="spec-cycle-progress">' + c.done + '/' + c.total + '</span>' +
-                                '<span class="spec-cycle-state">' + escapeHtml(c.state) + '</span>' +
-                                (c.state !== 'complete' ? '<button class="spec-action" data-act="cmd" data-cmd="/sk.implement ' + escapeHtml(c.id) + '">Implement cycle</button>' : '') +
-                                '</div>' +
-                                (c.description ? '<div class="spec-cycle-description">' + formatSpecInline(c.description) + '</div>' : '') +
-                                nextLabel + '</div>';
-                        }).join('') + '</div>'
-                      : '') +
-                  (spec.tasks && spec.tasks.length ? (function() {
-                      var pending = spec.tasks.filter(function(t) { return !t.done; });
-                      var completed = spec.tasks.filter(function(t) { return t.done; }).slice(-3).reverse();
+                  ((spec.cycles && spec.cycles.length) ? (function() {
                       var phaseOrder = [];
                       var byPhase = {};
-                      pending.forEach(function(t) {
+                      spec.cycles.forEach(function(c) {
+                          if (!specsShowDone && c.state === 'complete') return;
+                          var phase = c.phase || 'Other work';
+                          if (!byPhase[phase]) { byPhase[phase] = []; phaseOrder.push(phase); }
+                          byPhase[phase].push(c);
+                      });
+                      if (!phaseOrder.length) return '';
+                      return '<div class="spec-work"><div class="spec-section-label">Phases</div>' + phaseOrder.map(function(phase) {
+                          var cycles = byPhase[phase];
+                          var phaseDone = cycles.reduce(function(sum, c) { return sum + c.done; }, 0);
+                          var phaseTotal = cycles.reduce(function(sum, c) { return sum + c.total; }, 0);
+                          var isCurrentPhase = cycles.some(function(c) { return c.nextTaskId === spec.nextTaskId; });
+                          var phaseKey = spec.slug + '|phase|' + phase;
+                          var phaseOpen = Object.prototype.hasOwnProperty.call(specsWorkExpanded, phaseKey) ? specsWorkExpanded[phaseKey] : isCurrentPhase;
+                          return '<details class="spec-work-phase" data-work-key="' + escapeHtml(phaseKey) + '"' + (phaseOpen ? ' open' : '') + '><summary class="spec-work-phase-title">' +
+                              '<span class="codicon codicon-chevron-right spec-phase-caret"></span>' +
+                              '<span class="spec-phase-name">' + formatSpecInline(phase) + '</span>' +
+                              '<span class="spec-phase-count">' + phaseDone + '/' + phaseTotal + ' tasks</span></summary>' +
+                              cycles.map(function(c) {
+                                  var isCurrentCycle = c.nextTaskId === spec.nextTaskId;
+                                  var title = c.title ? '<span class="spec-cycle-title">' + formatSpecInline(c.title) + '</span>' : '';
+                                  var cycleKey = spec.slug + '|cycle|' + c.id;
+                                  var cycleOpen = Object.prototype.hasOwnProperty.call(specsWorkExpanded, cycleKey) ? specsWorkExpanded[cycleKey] : isCurrentCycle;
+                                  var visibleTasks = specsShowDone ? c.tasks : c.tasks.filter(function(t) { return !t.done; });
+                                  var taskRows = visibleTasks.map(function(t) {
+                                      var crossSpec = t.specSlug !== spec.slug ? '<span class="spec-cycle-task-spec">Spec ' + escapeHtml(t.specId) + '</span>' : '';
+                                      return '<div class="spec-work-row' + (t.done ? ' done' : '') + '">' +
+                                          '<span class="codicon ' + (t.done ? 'codicon-check' : 'codicon-circle-large-outline') + '"></span>' +
+                                          '<span class="spec-work-id">' + escapeHtml(t.id || '') + '</span>' +
+                                          '<span class="spec-work-text">' + formatSpecInline(t.text || t.id) + crossSpec + (t.done ? '<span class="spec-done-label">Done</span>' : '') + '</span>' +
+                                          (!t.done && t.id ? '<button class="spec-task-run" data-act="cmd" data-cmd="/sk.implement ' + escapeHtml(t.id) + '" title="Implement ' + escapeHtml(t.id) + '" aria-label="Implement ' + escapeHtml(t.id) + '"><span class="codicon codicon-play"></span></button>' : '') +
+                                          '</div>';
+                                  }).join('');
+                                  return '<details class="spec-cycle" data-work-key="' + escapeHtml(cycleKey) + '"' + (cycleOpen ? ' open' : '') + '><summary class="spec-cycle-main">' +
+                                      '<span class="codicon codicon-chevron-right spec-cycle-caret"></span>' +
+                                      '<span class="spec-cycle-id">' + escapeHtml(c.id) + '</span>' + title +
+                                      (c.specCount > 1 ? '<span class="spec-cycle-count">' + c.specCount + ' specs</span>' : '') +
+                                      '<span class="spec-cycle-progress">' + c.done + '/' + c.total + '</span>' +
+                                      '<span class="spec-cycle-state">' + escapeHtml(c.state) + '</span>' +
+                                      (c.state !== 'complete' ? '<button class="spec-task-run spec-cycle-run" data-act="cmd" data-cmd="/sk.implement ' + escapeHtml(c.id) + '" title="Implement ' + escapeHtml(c.id) + '" aria-label="Implement ' + escapeHtml(c.id) + '"><span class="codicon codicon-play"></span></button>' : '') +
+                                      '</summary>' +
+                                      (c.description ? '<div class="spec-cycle-description">' + formatSpecInline(c.description) + '</div>' : '') +
+                                      taskRows + '</details>';
+                              }).join('') + '</details>';
+                      }).join('') + '</div>';
+                  })() : '') +
+                  ((!spec.cycles || !spec.cycles.length) && spec.tasks && spec.tasks.length ? (function() {
+                      var phaseOrder = [];
+                      var byPhase = {};
+                      spec.tasks.forEach(function(t) {
+                          if (!specsShowDone && t.done) return;
                           var phase = t.phase || 'Other tasks';
                           if (!byPhase[phase]) { byPhase[phase] = []; phaseOrder.push(phase); }
                           byPhase[phase].push(t);
                       });
-                      var rows = phaseOrder.map(function(phase) {
-                          return '<details class="spec-work-phase"><summary class="spec-work-phase-title"><span class="codicon codicon-chevron-right spec-phase-caret"></span><span class="spec-phase-name">' + formatSpecInline(phase) + '</span><span class="spec-phase-count">' + byPhase[phase].length + ' open</span></summary>' +
+                      if (!phaseOrder.length) return '';
+                      return '<div class="spec-work"><div class="spec-section-label">Phases</div>' + phaseOrder.map(function(phase, phaseIndex) {
+                          var phaseKey = spec.slug + '|phase|' + phase;
+                          var phaseOpen = Object.prototype.hasOwnProperty.call(specsWorkExpanded, phaseKey) ? specsWorkExpanded[phaseKey] : phaseIndex === 0;
+                          return '<details class="spec-work-phase" data-work-key="' + escapeHtml(phaseKey) + '"' + (phaseOpen ? ' open' : '') + '><summary class="spec-work-phase-title"><span class="codicon codicon-chevron-right spec-phase-caret"></span><span class="spec-phase-name">' + formatSpecInline(phase) + '</span><span class="spec-phase-count">' + byPhase[phase].filter(function(t) { return t.done; }).length + '/' + byPhase[phase].length + ' tasks</span></summary>' +
                               byPhase[phase].map(function(t) {
-                                  return '<div class="spec-work-row"><span class="codicon codicon-circle-large-outline"></span>' +
-                                      '<span class="spec-work-id">' + escapeHtml(t.id || '') + '</span>' +
-                                      '<span class="spec-work-text">' + formatSpecInline(t.text || t.id) + '</span>' +
-                                      (t.id ? '<button class="spec-task-run" data-act="cmd" data-cmd="/sk.implement ' + escapeHtml(t.id) + '" title="Prepare this task"><span class="codicon codicon-play"></span></button>' : '') +
-                                      '</div>';
+                                  return '<div class="spec-work-row' + (t.done ? ' done' : '') + '"><span class="codicon ' + (t.done ? 'codicon-check' : 'codicon-circle-large-outline') + '"></span><span class="spec-work-id">' + escapeHtml(t.id || '') + '</span><span class="spec-work-text">' + formatSpecInline(t.text || t.id) + (t.done ? '<span class="spec-done-label">Done</span>' : '') + '</span>' + (!t.done && t.id ? '<button class="spec-task-run" data-act="cmd" data-cmd="/sk.implement ' + escapeHtml(t.id) + '" title="Implement ' + escapeHtml(t.id) + '" aria-label="Implement ' + escapeHtml(t.id) + '"><span class="codicon codicon-play"></span></button>' : '') + '</div>';
                               }).join('') + '</details>';
-                      }).join('');
-                      if (!pending.length) {
-                          rows = completed.map(function(t) {
-                              return '<div class="spec-work-row done"><span class="codicon codicon-check"></span>' +
-                                  '<span class="spec-work-text">' + formatSpecInline(t.text || t.id) + '</span>' +
-                                  (t.id ? '<span class="spec-work-id">' + escapeHtml(t.id) + '</span>' : '') + '</div>';
-                          }).join('');
-                      }
-                      return '<div class="spec-work"><div class="spec-section-label">' +
-                          (pending.length ? 'Open tasks' : 'Recently completed') + '</div>' + rows + '</div>';
+                      }).join('') + '</div>';
                   })() : '') +
                   '<div class="spec-actions">' +
                   specCommands(spec).map(function(c) {
@@ -5418,7 +5621,7 @@
                   '<button class="spec-action spec-open" data-act="open" data-file="spec.md" title="Open in the editor">Open spec.md</button>' +
                   (spec.hasPlan ? '<button class="spec-action spec-open" data-act="open" data-file="plan.md" title="Open in the editor">Open plan.md</button>' : '') +
                   (spec.hasTasks ? '<button class="spec-action spec-open" data-act="open" data-file="tasks.md" title="Open in the editor">Open tasks.md</button>' : '') +
-                  (specNano ? '<button class="spec-action" data-act="cmd" data-cmd="/sk.review ' + escapeHtml(spec.id || spec.slug) + '" title="Analyze attributed conversations, cost, AI time, branches, tasks, implementation records and PR evidence; propose reusable repository knowledge">Review cost &amp; learnings</button>' : '') +
+                  ((specNano || specClaudeUsd) ? '<button class="spec-action" data-act="cmd" data-cmd="/sk.review ' + escapeHtml(spec.id || spec.slug) + '" title="Analyze attributed conversations, cost, AI time, branches, tasks, implementation records and PR evidence; propose reusable repository knowledge">Review cost &amp; learnings</button>' : '') +
                   '</div></div>'
                 : '';
 
@@ -5453,6 +5656,7 @@
             specsExpanded[slug] = !specsExpanded[slug];
             renderSpecs();
         } else if (act === 'cmd') {
+            e.preventDefault();
             vscode.postMessage({ type: 'runSpecCommand', command: btn.getAttribute('data-cmd') });
         } else if (act === 'open') {
             vscode.postMessage({ type: 'openSpecFile', dir: dir, file: btn.getAttribute('data-file') });

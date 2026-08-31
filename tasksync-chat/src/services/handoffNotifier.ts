@@ -87,7 +87,7 @@ export class HandoffNotifier implements vscode.Disposable {
                     continue;
                 }
                 const markdown = target.name === 'Telegram'
-                    ? compactHandoffUpdate(parts.handoff)
+                    ? telegramHandoffUpdate(parts)
                     : detailedHandoffUpdate(parts);
                 const ok = await poster.postText(
                     markdown,
@@ -156,15 +156,29 @@ function detailedHandoffUpdate(parts: HandoffParts): string {
     return markdown;
 }
 
-export function compactHandoffUpdate(handoff: string): string {
+export function telegramHandoffUpdate(parts: HandoffParts): string {
+    const source = `${parts.details}\n${parts.handoff}`;
     const field = (name: string): string => {
-        const match = new RegExp(`^(?:\\*\\*)?${name}(?:\\*\\*)?:\\s*(.+)$`, 'im').exec(handoff);
+        const match = new RegExp(`^(?:\\*\\*)?${name}(?:\\*\\*)?:\\s*(.+)$`, 'im').exec(source);
         return match?.[1]?.trim() || '';
     };
-    const summary = field('Summary');
-    const status = field('Status');
-    const text = summary || status || handoff.replace(/\s+/g, ' ').trim();
-    return `**AskAway:** ${text.slice(0, 500)}`;
+    const lines = [
+        ['Status', field('Status')],
+        ['Goal', field('Goal')],
+        ['Why', field('Why')],
+        ['Unlocks', field('Unlocks')],
+        ['Acceptance', field('Acceptance')],
+        ['Next', field('Next')],
+        ['Summary', field('Summary')]
+    ].filter((entry): entry is [string, string] => !!entry[1]);
+    const text = lines.length > 0
+        ? `**AskAway**\n\n${lines.map(([name, value]) => `**${name}:** ${value}`).join('\n')}`
+        : `**AskAway**\n\n${parts.handoff || parts.details}`;
+    return text.slice(0, 2200);
+}
+
+export function compactHandoffUpdate(handoff: string): string {
+    return telegramHandoffUpdate({ handoff, details: '' });
 }
 
 /** Read the trailing `bytes` of a file (the first line is likely partial and gets dropped). */

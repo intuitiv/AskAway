@@ -12,6 +12,8 @@ import { Plan, PlanTask, PlanTaskStatus, createPlan, createTask, findTaskById, g
 import { PlanEditorProvider } from '../plan/planEditorProvider';
 import { getUserMemoryDir, summarizeAndStoreMemory, listMemories } from '../memory/memoryStore';
 import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
+import { ClaudeSpecEvent, commandSwitchesSpec, pairClaudeTurns, parseClaudeUsage } from '../observability/claudeSpecAttribution';
+import { LogCursor, reconcileLogCursor } from '../observability/logCursor';
 
 // Exact token counting via the o200k_base BPE (GPT-4o / GPT-5 family, which Copilot uses).
 // Lazily loaded on first use to avoid paying the encoding-table init cost at activation.
@@ -125,6 +127,16 @@ interface CostAttributionSummary extends ScopeMetrics {
     branches: string[];
     conversationLogs: string[];
     commandStage: string;
+    provider?: 'copilot' | 'claude';
+    estimatedUsd?: number;
+    cacheWrite5mTokens?: number;
+    cacheWrite1hTokens?: number;
+    models?: string[];
+    firstAt?: number;
+    lastAt?: number;
+    activeDays?: number;
+    activeDayKeys?: string[];
+    daily?: Array<{ day: string; requestCount: number; activeMs: number; nanoAiu: number; estimatedUsd: number; models: string[] }>;
 }
 
 interface ObservabilityMetrics {
@@ -340,6 +352,7 @@ interface SpecCostTurn extends ScopeMetrics {
     branch?: string;
     conversationLogs?: string[];
     commandStage?: string;
+    startedAt?: number;
     updatedAt: number;
 }
 
@@ -610,7 +623,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _observabilityPollInterval: ReturnType<typeof setInterval> | null = null;
     private readonly _OBSERVABILITY_POLL_MS = 2000;
     /** Tracks byte + line offsets already consumed per log file so we only read new lines on each poll. */
-    private readonly _logFileReadOffsets = new Map<string, { byteOffset: number; lineCount: number }>();
+    private readonly _logFileReadOffsets = new Map<string, LogCursor>();
     /** Guards one-time load of persisted read offsets (survives extension restart → no re-scan / duplicate appends). */
     private _logOffsetsLoaded = false;
     /** Persisted per-file read cursors for the ALL-workspace global credit ingest (separate from the workspace scan). */
@@ -691,7 +704,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _logTurnStartTs: number = 0;
     private _costAttributionMode: 'spec' | 'ad-hoc';
     private _costAttributionStartedAt: number;
-    private _turnAttribution = { key: 'ad-hoc', specSlug: '', taskId: '', cycleId: '', turnId: '', branch: '', pendingNewSpec: false, commandStage: 'other' };
+    private _turnAttribution = { key: 'ad-hoc', specSlug: '', taskId: '', cycleId: '', turnId: '', branch: '', pendingSpecSwitch: false, commandStage: 'other' };
     private _turnLogFiles = new Set<string>();
     private _specCostMap: SpecCostMap | undefined;
     // Throttle the cross-workspace overall(month) computation (reads all month shards).
@@ -2154,11 +2167,25 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     // Incremental read: only consume bytes added since the last poll.
                     // This avoids re-scanning the entire (potentially 10k+ line) JSONL on every tick.
                     const entry = this._logFileReadOffsets.get(logFile);
-                    const knownOffset = entry?.byteOffset ?? 0;
-                    const knownLineCount = entry?.lineCount ?? 0;
                     const fd = await fs.promises.open(logFile, 'r');
                     try {
-                        const fileSize = (await fd.stat()).size;
+                        const stat = await fd.stat();
+                        const fileSize = stat.size;
+                        const fileId = `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`;
+                        let headHash: string | undefined;
+                        if (fileSize >= 512) {
+                            const head = Buffer.allocUnsafe(512);
+                            await fd.read(head, 0, head.length, 0);
+                            headHash = createHash('sha1').update(head).digest('hex');
+                        }
+                        // Copilot can truncate or replace main.jsonl in place. A durable cursor from
+                        // the previous incarnation would then skip every new user/request record,
+                        // leaving metrics frozen until reload. File shrink or a changed immutable
+                        // prefix identifies a new incarnation and safely restarts this file at zero;
+                        // request-level ledger dedup prevents historical rows from double-counting.
+                        const cursor = reconcileLogCursor(entry, fileSize, headHash, fileId);
+                        const knownOffset = cursor.byteOffset;
+                        const knownLineCount = cursor.lineCount;
                         if (fileSize > knownOffset) {
                             const buf = Buffer.allocUnsafe(fileSize - knownOffset);
                             await fd.read(buf, 0, buf.length, knownOffset);
@@ -2176,8 +2203,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                             const consumedLines = raw.split('\n').length - 1; // trailing '' after final \n
                             this._logFileReadOffsets.set(logFile, {
                                 byteOffset: knownOffset + lastNl + 1,
-                                lineCount: knownLineCount + consumedLines
+                                lineCount: knownLineCount + consumedLines,
+                                headHash: cursor.headHash,
+                                fileId
                             });
+                        } else if (!entry?.fileId || (!entry.headHash && headHash)) {
+                            this._logFileReadOffsets.set(logFile, cursor);
                         }
                     } finally {
                         await fd.close();
@@ -2975,10 +3006,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._logOffsetsLoaded = true;
         try {
             const raw = await fs.promises.readFile(this._getLogOffsetsPath(), 'utf8');
-            const parsed = JSON.parse(raw) as Record<string, { byteOffset: number; lineCount: number }>;
+            const parsed = JSON.parse(raw) as Record<string, LogCursor>;
             for (const [file, off] of Object.entries(parsed)) {
                 if (off && typeof off.byteOffset === 'number' && typeof off.lineCount === 'number') {
-                    this._logFileReadOffsets.set(file, { byteOffset: off.byteOffset, lineCount: off.lineCount });
+                    this._logFileReadOffsets.set(file, { byteOffset: off.byteOffset, lineCount: off.lineCount, headHash: off.headHash, fileId: off.fileId });
                 }
             }
         } catch { /* no persisted offsets yet */ }
@@ -2986,11 +3017,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private async _saveLogOffsets(): Promise<void> {
         try {
-            const obj: Record<string, { byteOffset: number; lineCount: number }> = {};
+            const obj: Record<string, LogCursor> = {};
             for (const [file, off] of this._logFileReadOffsets.entries()) { obj[file] = off; }
             const p = this._getLogOffsetsPath();
             await fs.promises.mkdir(path.dirname(p), { recursive: true });
-            await fs.promises.writeFile(p, JSON.stringify(obj));
+            await this._writeJsonAtomic(p, obj);
         } catch { /* best-effort */ }
     }
 
@@ -3498,7 +3529,17 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             .sort()
             .join('|');
         const storage = this._context.storageUri?.fsPath ?? '';
-        return this._hashText(folders || storage || 'no-workspace');
+        // storageUri is VS Code's stable identity for this workspace. Folder paths can change
+        // when a multi-root workspace is opened differently, which otherwise orphaned history.
+        return this._hashText(storage || folders || 'no-workspace');
+    }
+
+    private _getLegacyFolderWorkspaceKey(): string {
+        const folders = (vscode.workspace.workspaceFolders ?? [])
+            .map(folder => folder.uri.fsPath)
+            .sort()
+            .join('|');
+        return this._hashText(folders || 'no-workspace');
     }
 
     private _getObservabilityLedgerPath(workspaceKey: string): string {
@@ -3552,7 +3593,19 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 };
             }
         } catch {
-            // Start a fresh ledger when no prior ledger exists or the file is unreadable.
+            // Start below, after attempting migration from the former folder-path key.
+        }
+        const legacyKey = this._getLegacyFolderWorkspaceKey();
+        if (legacyKey !== workspaceKey) {
+            try {
+                const raw = await fs.promises.readFile(this._getObservabilityLedgerPath(legacyKey), 'utf8');
+                const legacy = JSON.parse(raw) as Partial<ObservabilityLedger>;
+                if (legacy.version === 1 && legacy.seen && typeof legacy.seen === 'object') {
+                    const migrated = { ...legacy, workspaceKey } as ObservabilityLedger;
+                    await this._saveObservabilityLedger(migrated);
+                    return migrated;
+                }
+            } catch { /* no legacy ledger to migrate */ }
         }
 
         return {
@@ -3572,7 +3625,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private async _saveObservabilityLedger(ledger: ObservabilityLedger): Promise<void> {
         const ledgerPath = this._getObservabilityLedgerPath(ledger.workspaceKey);
         await fs.promises.mkdir(path.dirname(ledgerPath), { recursive: true });
-        await fs.promises.writeFile(ledgerPath, JSON.stringify(ledger));
+        await this._writeJsonAtomic(ledgerPath, ledger);
+    }
+
+    private async _writeJsonAtomic(file: string, value: unknown): Promise<void> {
+        const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
+        await fs.promises.writeFile(temporary, JSON.stringify(value), 'utf8');
+        await fs.promises.rename(temporary, file);
     }
 
     private _hashText(value: string): string {
@@ -3975,7 +4034,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             cycleId: useSpec ? cycleId : '',
             turnId: `${sessionId}:${ts}`,
             branch: root ? this._readGitBranch(root) : '',
-            pendingNewSpec: commandStage === 'new',
+            pendingSpecSwitch: commandSwitchesSpec(commandStage),
             commandStage
         };
         this._turnLogFiles = new Set([`${sessionId}/main.jsonl`]);
@@ -4011,7 +4070,21 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 this._specCostMap = parsed;
                 return parsed;
             }
-        } catch { /* first use or corrupt file: start prospective mapping */ }
+        } catch { /* first use or corrupt file: try the former folder-path key below */ }
+        const legacyKey = this._getLegacyFolderWorkspaceKey();
+        if (legacyKey !== workspaceKey) {
+            try {
+                const parsed = JSON.parse(await fs.promises.readFile(this._specCostMapPath(legacyKey), 'utf8')) as SpecCostMap;
+                if (parsed.version === 1 && parsed.turns) {
+                    const migrated = { ...parsed, workspaceKey };
+                    this._specCostMap = migrated;
+                    const file = this._specCostMapPath(workspaceKey);
+                    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+                    await this._writeJsonAtomic(file, migrated);
+                    return migrated;
+                }
+            } catch { /* no legacy spec map to migrate */ }
+        }
         this._specCostMap = {
             version: 1,
             workspaceKey,
@@ -4024,13 +4097,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private async _updateSpecCostMap(workspaceKey: string): Promise<void> {
         if (!this._turnAttribution.turnId || this._lastSubmitTs < this._costAttributionStartedAt) { return; }
-        if (this._turnAttribution.pendingNewSpec && this._costAttributionMode === 'spec') {
+        if (this._turnAttribution.pendingSpecSwitch && this._costAttributionMode === 'spec') {
             const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
             const activeSlug = root ? scanSpecs(root).activeSlug : '';
             if (activeSlug && activeSlug !== this._turnAttribution.specSlug) {
                 this._turnAttribution.key = activeSlug;
                 this._turnAttribution.specSlug = activeSlug;
-                this._turnAttribution.pendingNewSpec = false;
+                this._turnAttribution.pendingSpecSwitch = false;
             }
         }
         const map = await this._loadSpecCostMap(workspaceKey);
@@ -4043,6 +4116,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             branch: this._turnAttribution.branch,
             conversationLogs: [...this._turnLogFiles].sort(),
             commandStage: this._turnAttribution.commandStage,
+            startedAt: this._lastSubmitTs,
             requestCount: this._lastRequestMetrics.requestCount,
             inputTokens: this._lastRequestMetrics.inputTokens,
             outputTokens: this._lastRequestMetrics.outputTokens,
@@ -4054,18 +4128,18 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         map.updatedAt = Date.now();
         const file = this._specCostMapPath(workspaceKey);
         await fs.promises.mkdir(path.dirname(file), { recursive: true });
-        await fs.promises.writeFile(file, JSON.stringify(map, null, 2), 'utf8');
+        await this._writeJsonAtomic(file, map);
     }
 
     private async _loadCostAttribution(workspaceKey: string): Promise<CostAttributionSummary[]> {
         const map = await this._loadSpecCostMap(workspaceKey);
-        const groups = new Map<string, CostAttributionSummary & { turns: Set<string>; branchSet: Set<string>; logSet: Set<string> }>();
+        const groups = new Map<string, CostAttributionSummary & { turns: Set<string>; branchSet: Set<string>; logSet: Set<string>; daySet: Set<string>; dailyMap: Map<string, { day: string; requestCount: number; activeMs: number; nanoAiu: number; estimatedUsd: number; models: Set<string> }> }>();
         for (const value of Object.values(map.turns)) {
             const key = value.specSlug || 'ad-hoc';
             const detail = value.taskId || value.cycleId || '';
             const commandStage = value.commandStage || 'other';
             const groupKey = `${key}\u0000${commandStage}\u0000${detail}`;
-            const group = groups.get(groupKey) || {
+            const group: CostAttributionSummary & { turns: Set<string>; branchSet: Set<string>; logSet: Set<string>; daySet: Set<string>; dailyMap: Map<string, { day: string; requestCount: number; activeMs: number; nanoAiu: number; estimatedUsd: number; models: Set<string> }> } = groups.get(groupKey) || {
                 key,
                 specSlug: value.specSlug,
                 taskId: value.taskId,
@@ -4083,8 +4157,21 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 cacheMisses: 0,
                 turns: new Set<string>(),
                 branchSet: new Set<string>(),
-                logSet: new Set<string>()
+                logSet: new Set<string>(),
+                daySet: new Set<string>(),
+                dailyMap: new Map()
             };
+            const turnStart = value.startedAt || Number(value.turnId.split(':').pop()) || value.updatedAt;
+            const turnEnd = turnStart + Math.max(0, value.activeMs || 0);
+            group.firstAt = group.firstAt ? Math.min(group.firstAt, turnStart) : turnStart;
+            group.lastAt = Math.max(group.lastAt || 0, turnEnd);
+            const day = new Date(turnStart).toISOString().slice(0, 10);
+            group.daySet.add(day);
+            const daily = group.dailyMap.get(day) || { day, requestCount: 0, activeMs: 0, nanoAiu: 0, estimatedUsd: 0, models: new Set<string>() };
+            daily.requestCount += value.requestCount;
+            daily.activeMs += value.activeMs || 0;
+            daily.nanoAiu += value.nanoAiu;
+            group.dailyMap.set(day, daily);
             group.requestCount += value.requestCount;
             group.inputTokens += value.inputTokens;
             group.outputTokens += value.outputTokens;
@@ -4097,13 +4184,92 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             group.turns.add(value.turnId);
             groups.set(groupKey, group);
         }
-        return [...groups.values()].map(group => {
-            const { turns, branchSet, logSet, ...summary } = group;
+        const copilot = [...groups.values()].map(group => {
+            const { turns, branchSet, logSet, daySet, dailyMap, ...summary } = group;
             summary.turnCount = turns.size;
             summary.branches = [...branchSet].sort();
             summary.conversationLogs = [...logSet].sort();
+            summary.provider = 'copilot' as const;
+            summary.activeDays = daySet.size;
+            summary.activeDayKeys = [...daySet].sort();
+            summary.daily = [...dailyMap.values()].map(value => ({ ...value, models: [...value.models] }));
             return summary;
-        }).sort((a, b) => b.nanoAiu - a.nanoAiu);
+        });
+        const claude = await this._loadClaudeCostAttribution();
+        return [...copilot, ...claude].sort((a, b) =>
+            ((b.nanoAiu / 1e9 / 100) + (b.estimatedUsd || 0)) - ((a.nanoAiu / 1e9 / 100) + (a.estimatedUsd || 0)));
+    }
+
+    private async _loadClaudeCostAttribution(): Promise<CostAttributionSummary[]> {
+        const ledgerPath = path.join(os.homedir(), '.askaway', 'claude-spec-events.jsonl');
+        let raw = '';
+        try { raw = await fs.promises.readFile(ledgerPath, 'utf8'); } catch { return []; }
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) { return []; }
+        const events: ClaudeSpecEvent[] = [];
+        for (const line of raw.split('\n')) {
+            if (!line) { continue; }
+            try {
+                const event = JSON.parse(line) as ClaudeSpecEvent;
+                if (event.provider === 'claude' && path.resolve(event.cwd) === path.resolve(root)) { events.push(event); }
+            } catch { /* malformed rows do not hide later valid turns */ }
+        }
+        const grouped = new Map<string, CostAttributionSummary & { branchSet: Set<string>; logSet: Set<string>; modelSet: Set<string>; daySet: Set<string>; dailyMap: Map<string, { day: string; requestCount: number; activeMs: number; nanoAiu: number; estimatedUsd: number; models: Set<string> }> }>();
+        for (const boundary of pairClaudeTurns(events)) {
+            const { submit, stop, endTs, specSlug } = boundary;
+            const transcriptFiles: string[] = [];
+            try { transcriptFiles.push(await fs.promises.readFile(submit.transcriptPath, 'utf8')); } catch { /* transcript may have expired */ }
+            const childDir = submit.transcriptPath.replace(/\.jsonl$/, '') + path.sep + 'subagents';
+            try {
+                for (const name of await fs.promises.readdir(childDir)) {
+                    if (!name.endsWith('.jsonl')) { continue; }
+                    try { transcriptFiles.push(await fs.promises.readFile(path.join(childDir, name), 'utf8')); } catch { /* skip unreadable child */ }
+                }
+            } catch { /* no child agents */ }
+            const usage = parseClaudeUsage(transcriptFiles, submit.ts, endTs);
+            const groupKey = `${specSlug || 'ad-hoc'}\u0000${submit.commandStage}\u0000${submit.taskId || submit.cycleId}`;
+            const group: CostAttributionSummary & { branchSet: Set<string>; logSet: Set<string>; modelSet: Set<string>; daySet: Set<string>; dailyMap: Map<string, { day: string; requestCount: number; activeMs: number; nanoAiu: number; estimatedUsd: number; models: Set<string> }> } = grouped.get(groupKey) || {
+                key: specSlug || 'ad-hoc', specSlug, taskId: submit.taskId, cycleId: submit.cycleId,
+                turnCount: 0, activeMs: 0, branches: [], conversationLogs: [], commandStage: submit.commandStage,
+                requestCount: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, nanoAiu: 0, cacheMisses: 0,
+                provider: 'claude', estimatedUsd: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, models: [],
+                branchSet: new Set<string>(), logSet: new Set<string>(), modelSet: new Set<string>(), daySet: new Set<string>(), dailyMap: new Map()
+            };
+            group.firstAt = group.firstAt ? Math.min(group.firstAt, submit.ts) : submit.ts;
+            group.lastAt = Math.max(group.lastAt || 0, stop?.ts || (submit.ts + usage.activeMs));
+            const day = new Date(submit.ts).toISOString().slice(0, 10);
+            group.daySet.add(day);
+            const daily = group.dailyMap.get(day) || { day, requestCount: 0, activeMs: 0, nanoAiu: 0, estimatedUsd: 0, models: new Set<string>() };
+            daily.requestCount += usage.requestCount;
+            daily.activeMs += stop ? Math.max(0, stop.ts - submit.ts) : usage.activeMs;
+            daily.estimatedUsd += usage.estimatedUsd;
+            for (const model of usage.models) { daily.models.add(model); }
+            group.dailyMap.set(day, daily);
+            group.turnCount++;
+            group.activeMs += stop ? Math.max(0, stop.ts - submit.ts) : usage.activeMs;
+            group.requestCount += usage.requestCount;
+            group.inputTokens += usage.inputTokens;
+            group.outputTokens += usage.outputTokens;
+            group.cachedTokens += usage.cachedTokens;
+            group.cacheMisses = (group.cacheMisses || 0) + usage.cacheMisses;
+            group.estimatedUsd = (group.estimatedUsd || 0) + usage.estimatedUsd;
+            group.cacheWrite5mTokens = (group.cacheWrite5mTokens || 0) + usage.cacheWrite5mTokens;
+            group.cacheWrite1hTokens = (group.cacheWrite1hTokens || 0) + usage.cacheWrite1hTokens;
+            if (submit.branch) { group.branchSet.add(submit.branch); }
+            group.logSet.add(submit.transcriptPath);
+            for (const model of usage.models) { group.modelSet.add(model); }
+            grouped.set(groupKey, group);
+        }
+        return [...grouped.values()].map(group => {
+            const { branchSet, logSet, modelSet, daySet, dailyMap, ...summary } = group;
+            summary.branches = [...branchSet].sort();
+            summary.conversationLogs = [...logSet].sort();
+            summary.models = [...modelSet].sort();
+            summary.activeDays = daySet.size;
+            summary.activeDayKeys = [...daySet].sort();
+            summary.daily = [...dailyMap.values()].map(value => ({ ...value, models: [...value.models] }));
+            return summary;
+        });
     }
 
     private _activeAttributionLabel(): { key: string; label: string } {
@@ -6897,6 +7063,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <div class="specs-shell">
                 <div class="specs-header">
                     <div class="specs-active" id="specs-active-chip"></div>
+                     <div class="specs-velocity" id="specs-workspace-velocity"></div>
                     <div class="specs-toggle" title="Include specs whose tasks are all complete">
                         <span>Show completed</span>
                         <div class="toggle-switch specs-toggle-switch" id="specs-show-done" role="switch" aria-checked="false" tabindex="0"></div>
