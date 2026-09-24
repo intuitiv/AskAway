@@ -113,7 +113,7 @@ const packet = (overrides = {}) => ({
     const reuseArgs = children[1].args;
     assert.equal(reuseArgs[reuseArgs.indexOf('--session') + 1], 'ses_A');
     const listed = runtime.list(wsA).find((r) => r.runId === run2.runId);
-    assert.equal(listed.contextTokens, 1255, 'historical/cached context of the reused worker stays visible');
+    assert.equal(listed.nextInputTokens, 1595, 'a reused worker starts from the context it carries: last prompt 1255 + last output 340');
     assert.equal(listed.sessionOpenAction, 'opencode --session ses_A');
     children[1].emitEvent(session('ses_A'));
     children[1].emitEvent(finish('ses_A', 900, 100, 0.001));
@@ -182,6 +182,6 @@ const packet = (overrides = {}) => ({
     console.log('EV-010 LifecyclePollingLedger: PASS factTypes=start,before_tool,after_tool,checkpoint,message_update,stop,approval,error transcriptTextInLedger=0');
     console.log('EV-011 AsyncUsageSeparatedFromTurnCap: PASS turn1=$0.0021 turn2=$0.0010 crossWorkspaceLeak=0 source=github-copilot');
     console.log('EV-012 WorkerOperationsReflectLedger: PASS start=STARTING wait=STILL_RUNNING|COMPLETED cancelQueued=0spawn cancelRunning=killed resume=sameSession logs=factsOnly');
-    console.log('EV-013 ObservableLedgerBehavior: PASS perRunCostReset=0 historicalContext=1255 approvalNotificationOnly=true retiredAt300001=true');
+    console.log('EV-013 ObservableLedgerBehavior: PASS perRunCostReset=0 historicalContext=1595 approvalNotificationOnly=true retiredAt300001=true');
     console.log('CAC-CY-004 ObservableWorkerStateReady: PASS');
 })().catch((error) => { console.error(error); process.exit(1); });

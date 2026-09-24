@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MAX_WAIT_SECONDS, OpenCodeWorkerRuntime, WorkerPacket } from './openCodeRuntime';
+import { projectWorkersState } from './workersState';
 
 export const WORKER_TOOL_NAMES = ['worker_start', 'worker_submit', 'worker_list', 'worker_status', 'worker_wait', 'worker_cancel', 'worker_resume', 'worker_logs'] as const;
 
@@ -68,12 +69,20 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
     }, async (args) => (await runtime()).submit(args.workerId, packetOf(args)));
 
     register('worker_list', {
-        description: 'List runs in a workspace with state, model, cost, queue position, and the session-open command.',
+        description: 'List this workspace\'s live workers (running or still warm) so you can reuse one: mode, model, state, what it knows, '
+            + 'next-request input size, and seconds until its cache goes cold. Prefer worker_submit to a warm worker whose knowledge fits the packet.',
         inputSchema: z.object({ workspacePath: z.string().optional() }),
-    }, async (args) => (await runtime()).list(args.workspacePath || defaultWorkspace).map((run) => ({
-        runId: run.runId, workerId: run.workerId, state: run.state, profile: run.profile, model: run.model,
-        queuePosition: run.queuePosition, elapsedMs: run.elapsedMs, cost: run.usage.cost, sessionOpenAction: run.sessionOpenAction,
-    })));
+    }, async (args) => {
+        const now = Date.now();
+        return projectWorkersState(await runtime(), args.workspacePath || defaultWorkspace, () => now).workers
+            .filter((worker) => !worker.expired)
+            .map((worker) => ({
+                workerId: worker.workerId, profile: worker.profile, model: worker.model, thinking: worker.thinking, state: worker.state,
+                knowledge: worker.knowledge, nextInputTokens: worker.nextInputTokens,
+                warmForSeconds: worker.cacheExpiresAt ? Math.max(0, Math.round((worker.cacheExpiresAt - now) / 1000)) : 0,
+                lastRunId: worker.runs[worker.runs.length - 1]?.runId ?? '', cost: worker.usage.cost, sessionOpenAction: worker.sessionOpenAction,
+            }));
+    });
 
     register('worker_status', {
         description: 'Current state, usage, and blocker reason for one run.',

@@ -3136,7 +3136,7 @@
                         '<details class="obs-tl-item obs-tl-tool" data-eid="' + eid + '"' + openAttr + '>' +
                         '<summary class="obs-tl-head">' +
                         '<span class="obs-tl-kind">tool</span>' +
-                        '<span class="obs-tl-name">' + subagentBadge + '<span class="obs-req-id">' + escapeHtml(String(ev.id || '?')) + '</span> ' + escapeHtml(String(ev.tool || 'unknown')) + '</span>' +
+                        '<span class="obs-tl-name">' + subagentBadge + workerRefBadge(workerRefsFromPreview(ev.outputPreview)) + '<span class="obs-req-id">' + escapeHtml(String(ev.id || '?')) + '</span> ' + escapeHtml(String(ev.tool || 'unknown')) + '</span>' +
                         '<span class="obs-tl-metric" title="input tokens">\u2193' + tok(ev.inputTokens) + '</span>' +
                         '<span class="obs-tl-metric' + (outHeavy ? ' obs-cache-risk' : '') + '" title="output tokens \u2014 large tool output is re-billed in history until compaction">\u2191' + tok(ev.outputTokens) + '</span>' +
                         '<span class="' + timeCls + '" title="duration">' + sec(ev.durMs) + 's</span>' +
@@ -5258,6 +5258,25 @@
     function workersPendingApprovals(state) {
         return state && state.workers ? state.workers.filter(function (w) { return w.state === 'WAITING_APPROVAL'; }).length : 0;
     }
+    function workersCacheTimer(worker, now) {
+        if (!worker.cacheExpiresAt) return '';
+        var s = Math.max(0, Math.round((worker.cacheExpiresAt - now) / 1000));
+        var label = Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + (s % 60);
+        return '<span class="worker-cache-timer' + (s <= 60 ? ' worker-cache-timer-low' : '') +
+            '" title="Prompt cache stays warm this long; after that the worker is pruned and a new one is created">cache warm ' + label + '</span>';
+    }
+    // Worker tools return JSON with workerId/runId; the turn trace shows them as a link to the Workers tab.
+    function workerRefsFromPreview(text) {
+        var s = String(text || '');
+        var w = s.match(/"workerId"\s*:\s*"(worker-[A-Za-z0-9-]+)"/);
+        var r = s.match(/"runId"\s*:\s*"(run-[A-Za-z0-9-]+)"/);
+        return w ? { workerId: w[1], runId: r ? r[1] : '' } : null;
+    }
+    function workerRefBadge(refs) {
+        if (!refs) return '';
+        return '<span class="obs-worker-tag" data-worker-ref="' + workersEsc(refs.workerId) + '" title="Show this worker in the Workers tab">' +
+            workersEsc(refs.workerId) + (refs.runId ? ' · ' + workersEsc(refs.runId) : '') + '</span> ';
+    }
     function renderWorkersHtml(state, filter, expanded) {
         if (!state) return '<div class="workers-empty">Worker runtime not available.</div>';
         var server = state.server || { state: 'NOT_ATTACHED', endpoint: '' };
@@ -5267,9 +5286,13 @@
         if (pending) {
             html += '<div class="workers-approval-notice">' + pending + ' worker' + (pending > 1 ? 's' : '') + ' waiting for approval. Open the session in OpenCode to answer.</div>';
         }
-        var shown = (state.workers || []).filter(function (w) { return workersMatch(w, filter); });
+        var shown = (state.workers || []).filter(function (w) { return !w.expired && workersMatch(w, filter); });
+        var hidden = (state.workers || []).filter(function (w) { return w.expired; }).length;
+        if (hidden) {
+            html += '<div class="workers-hidden-note">' + hidden + ' expired worker' + (hidden > 1 ? 's' : '') + ' hidden (cache cold or retired)</div>';
+        }
         if (!shown.length) {
-            return html + '<div class="workers-empty">' + ((state.workers || []).length ? 'No worker matches the filter.' : 'No workers in this workspace yet.') + '</div>';
+            return html + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>';
         }
         shown.forEach(function (w) {
             var u = w.usage || {};
@@ -5282,7 +5305,10 @@
                 '</div>' +
                 '<div class="worker-selection">' + workersEsc(w.adapter) + ' · ' + workersEsc(w.model) + ' · ' + workersEsc(w.thinking) + '</div>' +
                 '<div class="worker-usage">$' + (u.cost || 0).toFixed(4) + ' · in ' + workersTokens(u.input) + ' · out ' + workersTokens(u.output) +
-                ' · cached ' + workersTokens(u.cacheRead) + ' · ctx ' + workersTokens(w.contextTokens) + '</div>' +
+                ' · cached ' + workersTokens(u.cacheRead) + '</div>' +
+                '<div class="worker-next"><span title="What the next model request of this worker will send (last prompt + last output). Retires above 300K.">next input ' +
+                workersTokens(w.nextInputTokens) + '</span>' + workersCacheTimer(w, state.generatedAt) + '</div>' +
+                (w.knowledge ? '<div class="worker-knowledge" title="What this worker says it knows; the orchestrator uses it to pick a worker to reuse">' + workersEsc(w.knowledge) + '</div>' : '') +
                 (w.blocker ? '<div class="worker-blocker">' + workersEsc(w.blocker) + '</div>' : '') +
                 '<div class="worker-actions">' +
                 (w.sessionId ? '<button class="worker-open-btn" data-worker-action="open" data-session-id="' + workersEsc(w.sessionId) + '" title="' + workersEsc(w.sessionOpenAction) + '">Open in VS Code</button>' +
@@ -5324,6 +5350,15 @@
     }
 
     function initWorkersTab() {
+        document.addEventListener('click', function (e) {
+            var tag = e.target.closest && e.target.closest('[data-worker-ref]');
+            if (!tag) return;
+            e.preventDefault();
+            var box = document.getElementById('workers-filter');
+            workersFilterText = tag.getAttribute('data-worker-ref');
+            if (box) box.value = workersFilterText;
+            switchTab('workers');
+        });
         var filter = document.getElementById('workers-filter');
         if (filter) filter.addEventListener('input', function () { workersFilterText = filter.value; applyWorkersState(workersState); });
         var refresh = document.getElementById('workers-refresh-btn');

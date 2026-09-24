@@ -576,7 +576,7 @@
         ],
         "toolReferenceName": "workerList",
         "displayName": "Worker List",
-        "modelDescription": "List runs in a workspace with state, model, cost, queue position, and the session-open command.",
+        "modelDescription": "List this workspace's live workers (running or still warm) so you can reuse one: mode, model, state, what it knows, next-request input size, and seconds until its cache goes cold. Prefer worker_submit to a warm worker whose knowledge fits the packet.",
         "canBeReferencedInPrompt": true,
         "icon": "$(server-process)",
         "inputSchema": {

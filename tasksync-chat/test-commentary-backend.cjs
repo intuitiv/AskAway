@@ -9,7 +9,7 @@ const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 
 const buildDir = path.join(__dirname, '.commentary-test-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
-for (const name of ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workerTools', 'commentary/commentary']) {
+for (const name of ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary']) {
     const out = path.join(buildDir, `${name}.js`);
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', `${name}.ts`), 'utf8'),

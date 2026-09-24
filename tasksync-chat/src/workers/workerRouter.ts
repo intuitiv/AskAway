@@ -185,6 +185,12 @@ export class WorkerRouter {
         return this.workersById.get(workerId);
     }
 
+    /** When an idle worker's prompt cache goes cold and it stops being reusable; 0 while running or when never reusable. */
+    cacheExpiresAt(worker: RoutedWorker): number {
+        if (worker.active || worker.state === 'RETIRED' || worker.state === 'ORPHANED') { return 0; }
+        return worker.lastActivityAt + this.cacheTtlMs;
+    }
+
     workers(workspacePath?: string): RoutedWorker[] {
         const all = [...this.workersById.values()];
         if (!workspacePath) { return all; }

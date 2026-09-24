@@ -11,7 +11,7 @@ function loadDefinitions() {
     // Built inside the package so `zod` resolves from node_modules; layout mirrors src/.
     const buildDir = path.join(root, '.lm-manifest-build');
     fs.rmSync(buildDir, { recursive: true, force: true });
-    const files = ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workerTools', 'commentary/commentary'];
+    const files = ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary'];
     for (const name of files) {
         const out = path.join(buildDir, `${name}.js`);
         fs.mkdirSync(path.dirname(out), { recursive: true });

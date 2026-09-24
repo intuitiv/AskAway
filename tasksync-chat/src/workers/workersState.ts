@@ -26,7 +26,13 @@ export interface WorkerRow {
     sessionOpenAction: string;
     lastUpdateAt: number;
     blocker: string;
-    contextTokens: number;
+    /** Tokens the worker's next request will send; the number that drives cost and the 300K retirement. */
+    nextInputTokens: number;
+    /** When the idle worker's prompt cache goes cold (0 while running or never reusable). */
+    cacheExpiresAt: number;
+    /** Not running and no longer reusable: cache cold or retired. The Workers tab hides these. */
+    expired: boolean;
+    knowledge: string;
     usage: RunUsage;
     runs: WorkerRunTrace[];
 }
@@ -67,7 +73,8 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
     for (const [workerId, runs] of byWorker) {
         runs.sort((a, b) => a.startedAt - b.startedAt);
         const routed = runtime.router.worker(workerId);
-        const latest = runs[runs.length - 1];
+        // A queue entry cancelled before it started never ran, so it does not define the worker's state.
+        const latest = [...runs].reverse().find((run) => run.reason !== 'cancelled before start') ?? runs[runs.length - 1];
         const active = runs.find((run) => run.queuePosition === 0 && !TERMINAL.includes(run.state));
         const current = active ?? latest;
         const state: ProjectedWorkerState = routed?.state === 'RETIRED' || routed?.state === 'ORPHANED' ? routed.state : current.state;
@@ -81,11 +88,15 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
             startedAt: run.startedAt, endedAt: run.endedAt, elapsedMs: run.elapsedMs, usage: { ...run.usage }, reason: run.reason ?? '',
         }));
         const session = [...runs].reverse().find((run) => run.sessionId);
+        const cacheExpiresAt = routed ? runtime.router.cacheExpiresAt(routed) : 0;
+        const expired = !active && (state === 'RETIRED' || (cacheExpiresAt > 0 && now() >= cacheExpiresAt));
         workers.push({
             workerId, state, adapter: 'opencode', profile: latest.profile, model: latest.model, thinking: latest.thinking,
             sessionId: session?.sessionId ?? '', sessionOpenAction: session?.sessionOpenAction ?? '',
             lastUpdateAt: Math.max(...runs.map((run) => run.updatedAt)), blocker,
-            contextTokens: latest.contextTokens, usage: sumUsage(traces), runs: traces,
+            nextInputTokens: current.nextInputTokens || routed?.contextTokens || 0, cacheExpiresAt, expired,
+            knowledge: [...runs].reverse().find((run) => run.knowledge)?.knowledge ?? '',
+            usage: sumUsage(traces), runs: traces,
         });
     }
     workers.sort((a, b) => b.lastUpdateAt - a.lastUpdateAt);

@@ -11,7 +11,7 @@ const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 const buildDir = path.join(__dirname, '.worker-tools-test-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(buildDir);
-for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workerTools']) {
+for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) {
     fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
         fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
         { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
@@ -58,7 +58,8 @@ const call = async (name, args) => {
 
     const listed = await call('worker_list', {});
     assert.equal(listed.length, 1);
-    assert.deepEqual(Object.keys(listed[0]).sort(), ['cost', 'elapsedMs', 'model', 'profile', 'queuePosition', 'runId', 'sessionOpenAction', 'state', 'workerId']);
+    assert.deepEqual(Object.keys(listed[0]).sort(), ['cost', 'knowledge', 'lastRunId', 'model', 'nextInputTokens', 'profile', 'sessionOpenAction', 'state', 'thinking', 'warmForSeconds', 'workerId']);
+    assert.equal(listed[0].nextInputTokens, 12, 'next input = last prompt + last output');
     assert.equal(listed[0].sessionOpenAction, 'opencode --session ses_T');
     assert.equal((await call('worker_status', { runId: started.runId })).usage.cost, 0.0004);
     assert.equal((await call('worker_status', { runId: 'ghost' })).status, 'UNKNOWN_RUN');
@@ -69,10 +70,13 @@ const call = async (name, args) => {
     assert.equal((await call('worker_cancel', { runId: queued.runId })).status, 'CANCELLATION_REQUESTED');
     assert.equal((await call('worker_status', { runId: queued.runId })).state, 'CANCELLED');
 
-    children[0].stdout.write(`${JSON.stringify({ type: 'text', sessionID: 'ses_T', part: { type: 'text', text: 'Result: PASS\nEvidence: ok' } })}\n`);
+    children[0].stdout.write(`${JSON.stringify({ type: 'text', sessionID: 'ses_T', part: { type: 'text', text: 'Result: PASS\nEvidence: ok\nKnowledge: knows slugify.js, its test, and the scratch dir layout' } })}\n`);
     await new Promise((resolve) => setImmediate(resolve));
     children[0].emit('exit', 0, null);
     assert.equal((await call('worker_wait', { runId: started.runId, timeoutSeconds: 1 })).status, 'COMPLETED');
+    const catalog = await call('worker_list', {});
+    assert.deepEqual([catalog[0].knowledge, catalog[0].state, catalog[0].warmForSeconds > 290], ['knows slugify.js, its test, and the scratch dir layout', 'COMPLETED', true],
+        'a finished worker publishes what it knows and how long it stays warm');
     const facts = await call('worker_logs', { runId: started.runId, limit: 1 });
     assert.equal(facts.length, 1, 'logs are bounded by limit');
     assert.deepEqual(Object.keys(facts[0]).sort().filter((k) => facts[0][k] !== undefined), ['exitCode', 'ts', 'type']);

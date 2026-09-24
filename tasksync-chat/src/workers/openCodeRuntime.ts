@@ -64,6 +64,10 @@ export interface RunView {
     usage: RunUsage;
     queuePosition: number;
     reason?: string;
+    /** What the worker's next model request will send: last prompt (input + cache) plus last output. */
+    nextInputTokens: number;
+    /** The worker's own one-line summary of the context it holds, for reuse decisions. */
+    knowledge: string;
 }
 
 export interface ChildLike {
@@ -113,7 +117,7 @@ export function renderPacket(packet: WorkerPacket): string {
         `Acceptance: ${packet.acceptance}`,
         `Expected result: ${packet.expected}`,
         `Verification command: ${packet.command}`,
-        'Finish with: Result: PASS|FAIL|BLOCKED, Evidence: <exact line>, Not done: <list or none>.',
+        'Finish with: Result: PASS|FAIL|BLOCKED, Evidence: <exact line>, Not done: <list or none>, Knowledge: <up to 25 words on the code and context you now hold, so later packets can reuse you>.',
     ].join('\n');
 }
 
@@ -306,7 +310,7 @@ export class OpenCodeWorkerRuntime {
             for (const record of records) {
                 if (record.type !== 'checkpoint' || !record.usage) { continue; }
                 for (const key of Object.keys(usage) as Array<keyof RunUsage>) { usage[key] += record.usage[key]; }
-                contextTokens = record.usage.input + record.usage.cacheRead + record.usage.cacheWrite;
+                contextTokens = record.usage.input + record.usage.cacheRead + record.usage.cacheWrite + record.usage.output;
             }
             const sessionId = [...records].reverse().find((record) => record.sessionId)?.sessionId ?? '';
             const ended = last.exitCode !== undefined;
@@ -316,7 +320,7 @@ export class OpenCodeWorkerRuntime {
             this.runs.set(runId, {
                 runId, workerId: first.workerId, sessionId, state, profile: first.profile, model: first.model, thinking: first.thinking,
                 dispatchTurnId: first.dispatchTurnId, startedAt: first.ts, endedAt: last.ts, updatedAt: last.ts, elapsedMs: last.ts - first.ts,
-                usage, queuePosition: 0, reason, workspace, packet: '', evidence: [], waiters: [],
+                usage, queuePosition: 0, reason, workspace, packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
             });
             const adopted = this.adopted.get(first.workerId);
             if (!adopted || last.ts >= adopted.lastTs) {
@@ -345,6 +349,7 @@ export class OpenCodeWorkerRuntime {
             state: 'STARTING', profile: packet.profile, model: routed.model, thinking: routed.thinking,
             dispatchTurnId: packet.dispatchTurnId, startedAt: this.now(), updatedAt: this.now(), elapsedMs: 0, usage: emptyUsage(),
             queuePosition: routed.queuePosition, workspace, packet: renderPacket(packet), evidence: [], waiters: [],
+            nextInputTokens: this.router.worker(routed.workerId)?.contextTokens ?? 0, knowledge: '',
         };
         this.runs.set(run.runId, run);
         if (routed.queuePosition === 0) { this.launch(run, run.packet); }
@@ -365,7 +370,6 @@ export class OpenCodeWorkerRuntime {
         run.child = child;
         let buffer = '';
         let lastText = '';
-        let lastContext = 0;
         let started = false;
         child.stdout?.on('data', (chunk: Buffer) => {
             buffer += chunk.toString();
@@ -388,7 +392,7 @@ export class OpenCodeWorkerRuntime {
                     const usage: RunUsage = { input: tokens.input ?? 0, output: tokens.output ?? 0, reasoning: tokens.reasoning ?? 0,
                         cacheRead: tokens.cache?.read ?? 0, cacheWrite: tokens.cache?.write ?? 0, cost: part.cost ?? 0, steps: 1 };
                     for (const key of Object.keys(usage) as Array<keyof RunUsage>) { run.usage[key] += usage[key]; }
-                    lastContext = usage.input + usage.cacheRead + usage.cacheWrite;
+                    run.nextInputTokens = usage.input + usage.cacheRead + usage.cacheWrite + usage.output;
                     this.record(run, { type: 'checkpoint', usage });
                 } else if (/permission/i.test(String(event?.type))) {
                     run.state = 'WAITING_APPROVAL';
@@ -405,7 +409,9 @@ export class OpenCodeWorkerRuntime {
         child.on('exit', (code, signal) => {
             run.evidence = lastText.trim().split('\n').slice(-MAX_EVIDENCE_LINES);
             const worker = this.router.worker(run.workerId);
-            this.router.complete(run.workerId, run.runId, { contextTokens: lastContext || worker?.contextTokens || 0 });
+            this.router.complete(run.workerId, run.runId, { contextTokens: run.nextInputTokens || worker?.contextTokens || 0 });
+            const knowledge = [...run.evidence].reverse().find((line) => /^\W*Knowledge:/i.test(line));
+            if (knowledge) { run.knowledge = knowledge.replace(/^\W*Knowledge:\s*/i, '').slice(0, 200); }
             const cancelled = run.reason === 'cancelled by caller';
             // The packet contract requires a Result/Evidence report; a silent exit 0 proves nothing.
             const silent = code === 0 && !signal && !cancelled && run.evidence.join('').trim() === '';
@@ -435,8 +441,8 @@ export class OpenCodeWorkerRuntime {
     }
 
     private view(run: RunRecord): RunView {
-        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, startedAt, endedAt, updatedAt, usage, queuePosition, reason } = run;
-        return { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, startedAt, endedAt, updatedAt,
+        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge } = run;
+        return { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, startedAt, endedAt, updatedAt, nextInputTokens, knowledge,
             elapsedMs: (endedAt ?? this.now()) - startedAt, usage: { ...usage }, queuePosition, reason };
     }
 

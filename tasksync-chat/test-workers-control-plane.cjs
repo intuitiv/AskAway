@@ -98,7 +98,8 @@ const packet = (overrides = {}) => ({
     assert.deepEqual([a.state, a.adapter, a.profile, a.model, a.thinking], ['WAITING_APPROVAL', 'opencode', 'code', 'github-copilot/gpt-5.6-terra', 'high']);
     assert.equal(a.blocker, 'waiting for approval in OpenCode');
     assert.deepEqual([a.sessionId, a.sessionOpenAction], ['ses_A', 'opencode --session ses_A']);
-    assert.equal(a.contextTokens, 1250, 'historical/cached context of the reused worker');
+    assert.equal(a.nextInputTokens, 300 + 1500 + 20, 'next input = last prompt (input + cache) + last output, live while running');
+    assert.deepEqual([a.expired, a.cacheExpiresAt], [false, 0], 'a running worker has no cache countdown');
     assert.deepEqual(a.runs.map((r) => [r.runId, r.state, r.queuePosition]),
         [[run1.runId, 'COMPLETED', 0], [run2.runId, 'WAITING_APPROVAL', 0], [run3.runId, 'STARTING', 1]]);
     const [t1, t2] = a.runs;
@@ -141,34 +142,47 @@ const packet = (overrides = {}) => ({
     const to = webview.indexOf('// ── end Workers pure render ──');
     assert.ok(from > 0 && to > from, 'Workers render block present');
     const ui = {};
-    require('node:vm').runInNewContext(`${webview.slice(from, to)}\nout.render = renderWorkersHtml; out.pending = workersPendingApprovals;`, { out: ui });
+    require('node:vm').runInNewContext(`${webview.slice(from, to)}\nout.render = renderWorkersHtml; out.pending = workersPendingApprovals; out.refs = workerRefsFromPreview; out.badge = workerRefBadge;`, { out: ui });
+
+    // Metrics turn trace: a worker tool's JSON output yields a worker/run badge that links to this tab.
+    assert.deepEqual(JSON.parse(JSON.stringify(ui.refs('{"runId":"run-84lnfg-4","workerId":"worker-84lnfg-3","state":"STARTING"}'))), { workerId: 'worker-84lnfg-3', runId: 'run-84lnfg-4' });
+    assert.equal(ui.refs('{"status":"ok"}'), null);
+    assert.equal(ui.badge(ui.refs('{"workerId":"worker-a-1"}')), '<span class="obs-worker-tag" data-worker-ref="worker-a-1" title="Show this worker in the Workers tab">worker-a-1</span> ');
+    assert.match(webview, /workerRefBadge\(workerRefsFromPreview\(ev\.outputPreview\)\)/, 'turn-trace tool rows carry the badge');
 
     const all = ui.render(state, '', {});
-    assert.equal((all.match(/class="worker-card"/g) || []).length, 3);
+    assert.equal((all.match(/class="worker-card"/g) || []).length, 2, 'the retired worker is hidden');
+    assert.match(all, /1 expired worker hidden \(cache cold or retired\)/);
+    assert.match(all, /next input 1\.8K<\/span><\/div>/, 'running worker: next input, no timer');
+    assert.match(all, /next input 0<\/span><span class="worker-cache-timer" title="[^"]+">cache warm 5:00<\/span>/, 'idle worker: cache countdown');
     assert.match(all, /1 worker waiting for approval\. Open the session in OpenCode/);
     assert.match(all, /Server: NOT_ATTACHED/);
     assert.equal(ui.pending(state), 1);
     const onlyVerify = ui.render(state, 'verify', {});
-    assert.equal((onlyVerify.match(/class="worker-card"/g) || []).length, 2, 'filter by mode');
+    assert.equal((onlyVerify.match(/class="worker-card"/g) || []).length, 1, 'filter by mode');
     assert.doesNotMatch(onlyVerify, new RegExp(run1.workerId));
     assert.match(ui.render(state, 'nothing-matches', {}), /No worker matches the filter/);
-    assert.match(ui.render({ ...state, workers: [] }, '', {}), /No workers in this workspace yet/);
+    assert.match(ui.render({ ...state, workers: [] }, '', {}), /No live workers in this workspace\./);
 
     const openA = ui.render(state, '', { [run1.workerId]: true });
     const openButtons = openA.match(/data-worker-action="open" data-session-id="[^"]*"/g) || [];
-    assert.deepEqual(openButtons.sort(), ['ses_A', 'ses_C', 'ses_D'].map((id) => `data-worker-action="open" data-session-id="${id}"`));
+    assert.deepEqual(openButtons.sort(), ['ses_A', 'ses_C'].map((id) => `data-worker-action="open" data-session-id="${id}"`));
     assert.equal((openA.match(/<tr data-run-id=/g) || []).length, 3, 'expanded trace lists every run');
     assert.match(openA, new RegExp(`data-run-id="${run1.runId}"><td>${run1.runId}</td><td>COMPLETED</td><td>turn-1</td><td>4s</td><td>\\$0\\.0021</td><td>1\\.2K</td><td>340</td><td>50</td>`));
     assert.match(openA, new RegExp(`data-run-id="${run3.runId}"><td>${run3.runId}</td><td>STARTING #1</td>`), 'queued run shows its position');
     assert.match(openA, /gpt-5\.6-terra · high/);
-    assert.match(openA, /\$0\.0025 · in 1\.5K · out 360 · cached 1\.6K · ctx 1\.3K/);
+    assert.match(openA, /\$0\.0025 · in 1\.5K · out 360 · cached 1\.6K<\/div>/);
+    clock += 301_000;
+    const later = JSON.parse(JSON.stringify(projectWorkersState(runtime, wsA, now)));
+    assert.deepEqual(later.workers.filter((w) => !w.expired).map((w) => w.workerId), [run1.workerId], 'after 5 min idle the failed worker expires; the running one stays');
+    assert.match(ui.render(later, '', {}), /2 expired workers hidden/);
     const actions = [...openA.matchAll(/data-worker-action="([^"]+)"/g)].map((m) => m[1]);
     assert.deepEqual([...new Set(actions)].sort(), ['open', 'open-external', 'trace'], 'no approval or conversation controls');
     assert.equal((openA.match(/data-worker-action="open-external" data-session-id="ses_A"/g) || []).length, 1, 'terminal-app open targets the same session');
     assert.doesNotMatch(openA, /SECRET-OBJECTIVE|TRANSCRIPT-TEXT|<textarea/);
     const hostile = { ...state, workers: [{ ...state.workers[0], profile: '<img src=x onerror=alert(1)>' }] };
     assert.doesNotMatch(ui.render(hostile, '', {}), /<img/, 'worker fields are escaped');
-    console.log(`EV-015 WorkersViewInteraction: PASS cards=3 filtered=2 openTargets=${openButtons.length} traceRows=3 pendingApproval=1`);
+    console.log(`EV-015 WorkersViewInteraction: PASS cards=2 hiddenExpired=1 cacheTimer=5:00 nextInput=1.8K filtered=1 openTargets=${openButtons.length} traceRows=3 pendingApproval=1`);
 
     const css = fs.readFileSync(path.join(__dirname, 'media', 'main.css'), 'utf8');
     for (const selector of ['.workers-filter', '.worker-state-waiting_approval', '.worker-state-failed', '.worker-trace', '.workers-approval-notice', '.worker-open-btn']) {

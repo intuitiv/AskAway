@@ -5036,6 +5036,15 @@ button#send-btn:disabled {
 .worker-id { margin-left: auto; font-size: 10px; opacity: 0.6; font-family: var(--vscode-editor-font-family); }
 .worker-selection, .worker-usage { font-size: 11px; opacity: 0.85; font-family: var(--vscode-editor-font-family); }
 .worker-blocker { font-size: 11px; color: var(--vscode-errorForeground); }
+.worker-next { display: flex; gap: 8px; font-size: 11px; font-family: var(--vscode-editor-font-family); }
+.worker-cache-timer { margin-left: auto; color: var(--vscode-charts-green); }
+.worker-cache-timer-low { color: var(--vscode-charts-yellow); }
+.worker-knowledge { font-size: 11px; font-style: italic; opacity: 0.8; }
+.workers-hidden-note { font-size: 10px; opacity: 0.6; }
+.obs-worker-tag {
+    font-size: 10px; padding: 0 5px; border-radius: 8px; cursor: pointer; font-family: var(--vscode-editor-font-family);
+    background: var(--vscode-charts-blue); color: #fff;
+}
 .worker-actions { display: flex; gap: 6px; }
 .worker-actions button {
     font-size: 11px; padding: 1px 8px; border: none; border-radius: 3px; cursor: pointer;
