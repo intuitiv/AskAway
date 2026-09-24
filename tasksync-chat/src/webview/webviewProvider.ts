@@ -6787,7 +6787,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     <div class="cm-goal-head">
                         <span class="cm-goal-label">Main goal</span>
                         <span class="cm-goal-saved" id="cm-goal-saved"></span>
-                        <button class="cm-btn" id="cm-goal-clear" title="Clear the main goal">Clear</button>
                     </div>
                     <textarea class="cm-goal-input" id="cm-goal-input" rows="4" placeholder="What should the orchestrator focus on? Saved as you type. Empty = the active spec cycle."></textarea>
                 </div>
@@ -6799,8 +6798,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                         <button class="cm-filter" data-cm-filter="question">Questions</button>
                         <button class="cm-filter" data-cm-filter="blocked">Blocked</button>
                     </div>
-                    <button class="cm-btn" id="cm-copy" title="Copy goal + uncleared feed as the next conversation's opener">Copy opener</button>
-                    <button class="cm-btn" id="cm-clear" title="Clear the feed (kept as audit history)">Clear feed</button>
+                    <button class="cm-icon-btn" id="cm-copy" title="Copy goal + feed as the next conversation's opener" aria-label="Copy opener"><span class="codicon codicon-copy"></span></button>
+                    <button class="cm-icon-btn" id="cm-clear" title="Clear the feed (kept as history)" aria-label="Clear feed"><span class="codicon codicon-clear-all"></span></button>
                 </div>
                 <div class="cm-feed" id="cm-feed"></div>
             </div>

@@ -4980,6 +4980,11 @@ button#send-btn:disabled {
     background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
 }
 .cm-btn { border-radius: 3px; }
+.cm-icon-btn {
+    display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; padding: 0;
+    border: none; border-radius: 4px; cursor: pointer; background: transparent; color: var(--vscode-foreground); opacity: 0.8;
+}
+.cm-icon-btn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1)); opacity: 1; }
 .cm-filter.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 .cm-feed { display: flex; flex-direction: column; overflow-y: auto; }
 .cm-summary { font-size: 11px; opacity: 0.7; padding: 0 2px 4px; border-bottom: 1px solid var(--vscode-panel-border); }
@@ -5048,7 +5053,11 @@ button#send-btn:disabled {
 .worker-banner { display: flex; gap: 8px; align-items: baseline; font-size: 11px; }
 .worker-banner-metrics { flex: 1; min-width: 0; }
 .worker-knowledge { font-size: 11px; font-style: italic; opacity: 0.8; }
-.workers-hidden-note { font-size: 10px; opacity: 0.6; }
+.workers-hidden-note {
+    align-self: flex-start; font-size: 10px; padding: 1px 8px; border: 1px dashed var(--vscode-panel-border); border-radius: 10px;
+    background: transparent; color: var(--vscode-foreground); opacity: 0.75; cursor: pointer;
+}
+.workers-hidden-note:hover { opacity: 1; }
 .obs-worker-tag {
     font-size: 10px; padding: 0 5px; border-radius: 8px; cursor: pointer; font-family: var(--vscode-editor-font-family);
     background: var(--vscode-charts-blue); color: #fff;

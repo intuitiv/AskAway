@@ -155,7 +155,11 @@ const packet = (overrides = {}) => ({
 
     const all = ui.render(state, '', {});
     assert.equal((all.match(/class="worker-card"/g) || []).length, 2, 'the retired worker is hidden');
-    assert.match(all, /1 expired worker hidden \(cache cold or retired\)/);
+    assert.match(all, /<button class="workers-hidden-note" data-worker-action="toggle-expired">Show 1 expired worker \(cache cold or retired\)<\/button>/);
+    const withExpired = ui.render(state, '', {}, true);
+    assert.equal((withExpired.match(/class="worker-card"/g) || []).length, 3, 'the toggle reveals the retired worker');
+    assert.match(withExpired, />Hide 1 expired<\/button>/);
+    assert.match(webview, /action === 'toggle-expired'/);
     assert.match(all, /<span class="worker-banner-metrics">1 req &middot; <strong class="health-cost">\$0\.0004<\/strong> &middot; 1\.80K last in \/ 20 turn out &middot; 83% cache<\/span><strong class="health-cache warm">Age: 0:00 warm<\/strong>/,
         'running worker: the chat banner for its current run');
     assert.ok(all.includes(ui.chatBanner(a.banner)), 'the card uses exactly the chat banner template');
@@ -179,9 +183,13 @@ const packet = (overrides = {}) => ({
     clock += 301_000;
     const later = JSON.parse(JSON.stringify(projectWorkersState(runtime, wsA, now)));
     assert.deepEqual(later.workers.filter((w) => !w.expired).map((w) => w.workerId), [run1.workerId], 'after 5 min idle the failed worker expires; the running one stays');
-    assert.match(ui.render(later, '', {}), /2 expired workers hidden/);
+    assert.match(ui.render(later, '', {}), /Show 2 expired workers/);
+    // Age counts up with the clock, not only when a new state arrives.
+    const ageAt = (ms) => (ui.render({ ...state, generatedAt: state.generatedAt + ms }, '', {}).match(/Age: (\d:\d\d) (warm|cold)/) || [])[1];
+    assert.deepEqual([ageAt(0), ageAt(7000), ageAt(65_000)], ['0:00', '0:07', '1:05'], 'Age advances as time passes');
+    assert.match(webview, /generatedAt: Date\.now\(\) - workersClockSkew/, 'the tab re-renders with the current clock every second');
     const actions = [...openA.matchAll(/data-worker-action="([^"]+)"/g)].map((m) => m[1]);
-    assert.deepEqual([...new Set(actions)].sort(), ['open', 'open-external', 'trace'], 'no approval or conversation controls');
+    assert.deepEqual([...new Set(actions)].sort(), ['open', 'open-external', 'toggle-expired', 'trace'], 'no approval or conversation controls');
     assert.equal((openA.match(/data-worker-action="open-external" data-session-id="ses_A"/g) || []).length, 1, 'terminal-app open targets the same session');
     assert.doesNotMatch(openA, /SECRET-OBJECTIVE|TRANSCRIPT-TEXT|<textarea/);
     const hostile = { ...state, workers: [{ ...state.workers[0], profile: '<img src=x onerror=alert(1)>' }] };

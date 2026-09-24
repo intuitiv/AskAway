@@ -5248,7 +5248,6 @@
             });
             goal.addEventListener('blur', function () { if (goalTimer) saveGoal(); });
         }
-        on('cm-goal-clear', function () { if (goal) goal.value = ''; if (saved) saved.textContent = ''; vscode.postMessage({ type: 'clearCommentary', what: 'goal' }); });
         on('cm-clear', function () { vscode.postMessage({ type: 'clearCommentary', what: 'feed' }); });
         on('cm-copy', function () { if (commentaryView) vscode.postMessage({ type: 'copyToClipboard', text: commentaryView.opener }); });
         var filters = document.getElementById('cm-filters');
@@ -5305,7 +5304,7 @@
         return '<span class="obs-worker-tag" data-worker-ref="' + workersEsc(refs.workerId) + '" title="Show this worker in the Workers tab">' +
             workersEsc(refs.workerId) + (refs.runId ? ' · ' + workersEsc(refs.runId) : '') + '</span> ';
     }
-    function renderWorkersHtml(state, filter, expanded) {
+    function renderWorkersHtml(state, filter, expanded, showExpired) {
         if (!state) return '<div class="workers-empty">Worker runtime not available.</div>';
         var server = state.server || { state: 'NOT_ATTACHED', endpoint: '' };
         var html = '<div class="workers-server workers-server-' + workersEsc(server.state).toLowerCase() + '">Server: ' + workersEsc(server.state) +
@@ -5314,10 +5313,11 @@
         if (pending) {
             html += '<div class="workers-approval-notice">' + pending + ' worker' + (pending > 1 ? 's' : '') + ' waiting for approval. Open the session in OpenCode to answer.</div>';
         }
-        var shown = (state.workers || []).filter(function (w) { return !w.expired && workersMatch(w, filter); });
+        var shown = (state.workers || []).filter(function (w) { return (showExpired || !w.expired) && workersMatch(w, filter); });
         var hidden = (state.workers || []).filter(function (w) { return w.expired; }).length;
         if (hidden) {
-            html += '<div class="workers-hidden-note">' + hidden + ' expired worker' + (hidden > 1 ? 's' : '') + ' hidden (cache cold or retired)</div>';
+            html += '<button class="workers-hidden-note" data-worker-action="toggle-expired">' +
+                (showExpired ? 'Hide ' + hidden + ' expired' : 'Show ' + hidden + ' expired worker' + (hidden > 1 ? 's' : '') + ' (cache cold or retired)') + '</button>';
         }
         if (!shown.length) {
             return html + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>';
@@ -5359,12 +5359,22 @@
     var workersState = null;
     var workersFilterText = '';
     var workersExpanded = {};
-    var workersPollTimer = null;
+    var workersShowExpired = false;
+    var workersClockSkew = 0;
+    var workersTicks = 0;
+
+    function paintWorkers() {
+        var list = document.getElementById('workers-list');
+        if (!list || !workersState) return;
+        // Age ticks locally between polls; the skew keeps it on the extension host's clock.
+        var ticking = Object.assign({}, workersState, { generatedAt: Date.now() - workersClockSkew });
+        list.innerHTML = renderWorkersHtml(ticking, workersFilterText, workersExpanded, workersShowExpired);
+    }
 
     function applyWorkersState(data) {
         workersState = data;
-        var list = document.getElementById('workers-list');
-        if (list) list.innerHTML = renderWorkersHtml(workersState, workersFilterText, workersExpanded);
+        if (data && data.generatedAt) workersClockSkew = Date.now() - data.generatedAt;
+        paintWorkers();
         var badge = document.getElementById('tab-badge-workers');
         if (badge) {
             var pending = workersPendingApprovals(workersState);
@@ -5384,7 +5394,7 @@
             switchTab('workers');
         });
         var filter = document.getElementById('workers-filter');
-        if (filter) filter.addEventListener('input', function () { workersFilterText = filter.value; applyWorkersState(workersState); });
+        if (filter) filter.addEventListener('input', function () { workersFilterText = filter.value; paintWorkers(); });
         var refresh = document.getElementById('workers-refresh-btn');
         if (refresh) refresh.addEventListener('click', function () { vscode.postMessage({ type: 'requestWorkersState' }); });
         var list = document.getElementById('workers-list');
@@ -5394,12 +5404,22 @@
             var action = btn.getAttribute('data-worker-action');
             if (action === 'open' || action === 'open-external') {
                 vscode.postMessage({ type: 'openWorkerSession', sessionId: btn.getAttribute('data-session-id'), external: action === 'open-external' });
+            } else if (action === 'toggle-expired') {
+                workersShowExpired = !workersShowExpired;
+                paintWorkers();
             } else {
                 var id = btn.getAttribute('data-worker-id');
                 workersExpanded[id] = !workersExpanded[id];
-                applyWorkersState(workersState);
+                paintWorkers();
             }
         });
+        // Runs whenever the panel is visible, however it became visible (click, restore, badge link).
+        setInterval(function () {
+            var panel = document.getElementById('panel-workers');
+            if (!panel || !panel.classList.contains('active')) return;
+            paintWorkers();
+            if (++workersTicks % 3 === 0) vscode.postMessage({ type: 'requestWorkersState' });
+        }, 1000);
     }
 
     function initSpecsTab() {
@@ -5763,10 +5783,8 @@
         } else if (tab === 'specs') {
             vscode.postMessage({ type: 'requestSpecs' });
         }
-        if (workersPollTimer) { clearInterval(workersPollTimer); workersPollTimer = null; }
         if (tab === 'workers') {
             vscode.postMessage({ type: 'requestWorkersState' });
-            workersPollTimer = setInterval(function () { vscode.postMessage({ type: 'requestWorkersState' }); }, 3000);
         }
         if (tab === 'commentary') {
             vscode.postMessage({ type: 'requestCommentary' });

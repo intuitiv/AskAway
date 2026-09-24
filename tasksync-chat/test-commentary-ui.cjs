@@ -48,7 +48,7 @@ for (const id of ['data-tab="commentary"', 'id="panel-commentary"', 'id="cm-goal
     assert.ok(provider.includes(id), `panel has ${id}`);
 }
 assert.match(webview, /case 'commentaryState':\s*applyCommentaryState\(message\.data\)/);
-for (const message of ["type: 'setCommentaryGoal'", "type: 'clearCommentary', what: 'goal'", "type: 'clearCommentary', what: 'feed'", "type: 'copyToClipboard', text: commentaryView.opener", "type: 'requestCommentary'"]) {
+for (const message of ["type: 'setCommentaryGoal'", "type: 'clearCommentary', what: 'feed'", "type: 'copyToClipboard', text: commentaryView.opener", "type: 'requestCommentary'"]) {
     assert.ok(webview.includes(message), `webview sends ${message}`);
 }
 const css = fs.readFileSync(path.join(__dirname, 'media', 'main.css'), 'utf8');
