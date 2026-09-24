@@ -12,7 +12,7 @@ import { Plan, PlanTask, PlanTaskStatus, createPlan, createTask, findTaskById, g
 import { PlanEditorProvider } from '../plan/planEditorProvider';
 import { getUserMemoryDir, summarizeAndStoreMemory, listMemories } from '../memory/memoryStore';
 import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
-import { sessionOpenCommand, WorkersState } from '../workers/workersState';
+import { sessionOpenCommand, WorkersState, WorkerTrace } from '../workers/workersState';
 import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
 import { sharedCommentaryStore } from '../workers/workerHost';
@@ -393,6 +393,7 @@ const GLOBAL_FOLD_VERSION = 4;
 type ToWebviewMessage =
     | { type: 'specsData'; data: SpecScanResult }
     | { type: 'workersState'; data: WorkersState | null }
+    | { type: 'workerTrace'; data: WorkerTrace }
     | { type: 'commentaryState'; data: CommentaryView | null }
     | { type: 'updateQueue'; queue: QueuedPrompt[]; enabled: boolean }
     | { type: 'updateWorkerQueue'; tasks: Array<{ id: string; role: 'command' | 'subagent'; task: string; status: 'pending' | 'running' | 'done'; createdAt: number }> }
@@ -477,6 +478,7 @@ type FromWebviewMessage =
     | { type: 'changeWorkerModel'; role: 'command' | 'subagent' }
     | { type: 'requestModels' }
     | { type: 'requestWorkersState' }
+    | { type: 'requestWorkerTrace'; workerId: string }
     | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
     | { type: 'requestCommentary' }
     | { type: 'setCommentaryGoal'; goal: string }
@@ -1422,6 +1424,18 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const data = root && this._workersStateSource ? this._workersStateSource(root) : null;
         this._broadcast({ type: 'workersState', data });
+    }
+
+    private _workerTraceSource: ((workspacePath: string, workerId: string) => Promise<WorkerTrace>) | undefined;
+
+    public setWorkerTraceSource(source: (workspacePath: string, workerId: string) => Promise<WorkerTrace>): void {
+        this._workerTraceSource = source;
+    }
+
+    private async _refreshWorkerTrace(workerId: string): Promise<void> {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root || !this._workerTraceSource || typeof workerId !== 'string') { return; }
+        this._broadcast({ type: 'workerTrace', data: await this._workerTraceSource(root, workerId) });
     }
 
     private _commentarySubscribed = false;
@@ -4606,6 +4620,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'requestWorkersState':
                 this._refreshWorkersState();
+                break;
+            case 'requestWorkerTrace':
+                void this._refreshWorkerTrace(message.workerId);
                 break;
             case 'openWorkerSession':
                 this._openWorkerSession(message.sessionId, message.external === true);

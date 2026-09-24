@@ -139,6 +139,7 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
             + 'One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. '
             + 'Lead with one emoji; **bold** the outcome, ==highlight== the one number that matters. '
             + 'kind `update` for everything that is just happening. kind `heads-up` when you will need something from the reviewer soon, or something is unclear to you, so they can prepare. '
+            + 'You hold the context the reviewer lacks, so a heads-up names exactly what you need: the decision and its options, or the input. Never just "something is unclear". '
             + '10-20 words. Batch it with the step\'s real tool call; do not repeat it in chat.',
         inputSchema: z.object({
             kind: z.enum(COMMENTARY_KINDS),

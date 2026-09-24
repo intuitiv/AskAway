@@ -100,12 +100,7 @@ interface RunRecord extends RunView {
     evidence: string[];
     child?: ChildLike;
     waiters: Array<() => void>;
-    /** Bounded tool input/output text for the trace; memory only, never written to the ledger. */
-    toolPreviews?: Map<string, { input: string; output: string }>;
 }
-
-const PREVIEW_CHARS = 600;
-const MAX_PREVIEWS_PER_RUN = 200;
 
 const REQUIRED: Array<keyof WorkerPacket> = ['workspacePath', 'profile', 'dispatchTurnId', 'baseRevision', 'objective', 'acceptance', 'expected', 'command'];
 const PLACEHOLDER = /\bTBD\b|\bTODO\b|<required[^>]*>|\?\?\?/i;
@@ -286,11 +281,6 @@ export class OpenCodeWorkerRuntime {
         return this.readLedger(canonical(workspacePath));
     }
 
-    /** Tool input/output preview of a call in a run this host observed; gone after a reload. */
-    toolPreview(runId: string, callId: string): { input: string; output: string } | undefined {
-        return this.runs.get(runId)?.toolPreviews?.get(callId);
-    }
-
     /**
      * Restores this workspace's workers and runs from the ledger after a reload. A worker reconnects only when the
      * shared server is live and it has a recorded session; otherwise it is ORPHANED with the reason. Safe to call again:
@@ -439,9 +429,6 @@ export class OpenCodeWorkerRuntime {
                     } else {
                         const input = JSON.stringify(part.state?.input ?? {});
                         const output = String(part.state?.output ?? part.state?.error ?? '');
-                        const previews = run.toolPreviews ??= new Map();
-                        if (previews.size >= MAX_PREVIEWS_PER_RUN) { previews.delete(previews.keys().next().value as string); }
-                        previews.set(callId, { input: input.slice(0, PREVIEW_CHARS), output: output.slice(0, PREVIEW_CHARS) });
                         const time = part.state?.time ?? {};
                         this.record(run, { type: 'after_tool', tool: String(part.tool), callId, status: status === 'error' ? 'error' : 'ok',
                             durMs: time.start && time.end ? time.end - time.start : undefined,

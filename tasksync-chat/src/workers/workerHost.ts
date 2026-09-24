@@ -4,6 +4,7 @@ import { CommentaryStore } from '../commentary/commentary';
 import { OpenCodeWorkerRuntime } from './openCodeRuntime';
 import { defaultServerDeps, DEFAULT_OPENCODE_SERVER_URL, ensureSharedOpenCodeServer, ServerStatus } from './sharedServer';
 import { loadWorkerProfiles } from './workerProfiles';
+import { SessionMessage } from './workersState';
 
 let runtime: OpenCodeWorkerRuntime | undefined;
 let ready: Promise<OpenCodeWorkerRuntime> | undefined;
@@ -43,6 +44,14 @@ export async function observeWorkers(workspacePath: string): Promise<void> {
 
 function serverUrl(): string {
     return process.env.ASKAWAY_OPENCODE_SERVER_URL || DEFAULT_OPENCODE_SERVER_URL;
+}
+
+/** A worker session's messages from the shared OpenCode server, which owns the transcript. */
+export async function fetchSessionMessages(sessionId: string): Promise<SessionMessage[]> {
+    const base = (sharedWorkerRuntime().serverEndpoint || serverUrl()).replace(/\/$/, '');
+    const response = await fetch(`${base}/session/${encodeURIComponent(sessionId)}/message`, { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) { throw new Error(`HTTP ${response.status}`); }
+    return await response.json() as SessionMessage[];
 }
 
 export function sharedServerStatus(): ServerStatus | undefined {

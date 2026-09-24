@@ -34,6 +34,7 @@ Decisions and constraints the reviewer stated. Change a rule only when the revie
 - The orchestrator narrates every decision, question, and blocker in 10-20 words. Short and plain, never detailed.
 - Commentary is a tool call, not prose (reviewer, 2026-09-24): prose also renders in VS Code chat, cannot be extracted reliably, and would show twice.
 - Commentary exists for exactly three reasons (reviewer, 2026-09-24): trace the execution, let the reviewer guide it in time, and prepare the reviewer for questions coming their way. So only two kinds: `update` and `heads-up` (something will be needed, or something is unclear). No category filters.
+- "Orchestrator has all the context, it has to be explicit on what it needs" (reviewer, 2026-09-24): a heads-up names the exact decision, options, or input needed.
 - The main goal is what the reviewer writes in the goal box. Without one, it is the active spec's current cycle. A side question gets a brief answer, then work returns to the main goal.
 - Goal and uncleared commentary carry into the next conversation; the reviewer clears them explicitly.
 - Authoring skills are the `launchpad-build-*` set from `~/VSProjects/vibecoding/build/skills-bundle`, not the schema-skills template.

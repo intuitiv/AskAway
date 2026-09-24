@@ -112,9 +112,9 @@ const packet = (overrides = {}) => ({
     // The run trace is in the Metrics turn-trace format: each request row leads the tools it decided.
     assert.deepEqual(t1.events.map((e) => [e.kind, e.id, e.model || e.tool]), [['request', 'STEP1', 'gpt-5.6-terra'], ['tool', 'EDIT1', 'edit']]);
     assert.deepEqual([t1.events[0].inputTokens, t1.events[0].cachedTokens, t1.events[0].dollars], [1250, 50, 0.0021], 'input is the full prompt, as in Metrics');
-    assert.deepEqual([t1.events[1].durMs, t1.events[1].status, t1.events[1].inputPreview, t1.events[1].outputPreview], [1250, 'ok', '{"filePath":"math.js"}', 'Edit applied']);
+    assert.deepEqual([t1.events[1].durMs, t1.events[1].status, t1.events[1].inputPreview, t1.events[1].outputPreview], [1250, 'ok', '', ''], 'ledger facts carry no tool text');
     const ledgerText = fs.readdirSync(ledgerDir).map((f) => fs.readFileSync(path.join(ledgerDir, f), 'utf8')).join('');
-    assert.doesNotMatch(ledgerText, /Edit applied|math\.js/, 'tool text stays in memory; the ledger keeps facts only');
+    assert.doesNotMatch(ledgerText, /Edit applied|math\.js/, 'the ledger keeps facts only; OpenCode owns the transcript');
     assert.equal(a.usage.input, 1500);
     assert.equal(a.lastUpdateAt, 1_000_000 + 7000, 'last update is the approval event time');
 
@@ -193,10 +193,38 @@ const packet = (overrides = {}) => ({
     assert.ok(openA.includes(ui.trace(t1.events, { openIds: {} })), 'run rows are exactly the Metrics trace rows');
     assert.match(openA, /<thead><tr><th>ID<\/th><th>Model \/ Tool<\/th><th>Credits<\/th><th>Input<\/th><th>Output<\/th><th>Cached<\/th><th title="cached \/ input">Hit%<\/th><\/tr><\/thead>/, 'same columns as Metrics');
     assert.match(openA, /<span class="obs-req-id">STEP1<\/span><\/td><td class="obs-scope">gpt-5\.6-terra<\/td><td>\$0\.0021<\/td><td>1\.25K<\/td><td>340<\/td><td>50<\/td><td class="obs-cache-risk">4%<\/td>/);
-    assert.match(openA, /<details class="obs-tl-item obs-tl-tool" data-eid="t:EDIT1:1">[\s\S]*?edit<\/span>[\s\S]*?1\.25s[\s\S]*?Edit applied/, 'tool rows expand to input and output like Metrics');
+    assert.match(openA, /<details class="obs-tl-item obs-tl-tool" data-eid="t:EDIT1:1">[\s\S]*?edit<\/span>[\s\S]*?1\.25s/, 'ledger facts render as Metrics tool rows before the session loads');
     const kept = ui.render(state, '', { [run1.workerId]: true }, false, { 't:EDIT1:1': true });
     assert.match(kept, /data-eid="t:EDIT1:1" open>/, 'an expanded row stays open across the 1s re-render');
-    console.log('EV-038 SharedTraceRows: PASS metricsBlock=traceRowsHtml workerRowsContainMetricsRows=true partitionsPerRun=3 expandKept=true ledgerText=0');
+
+    // Expanding a trace reads the worker's OpenCode session (shape of GET /session/:id/message) for real tool input and output.
+    const { loadWorkerTrace } = require(path.join(buildDir, 'workersState.js'));
+    const at = (ms) => a.runs[0].startedAt + ms;
+    const session = [
+        { info: { role: 'user', time: { created: at(1) } }, parts: [{ type: 'text', text: 'packet' }] },
+        { info: { role: 'assistant', modelID: 'gpt-5.6-terra', time: { created: at(2) } }, parts: [
+            { type: 'step-start' },
+            { type: 'tool', callID: 'call_N0kFHF5QnlLjX7Z0NDtTAtGE', tool: 'bash', state: { status: 'completed', input: { command: 'ls /tmp/aa-evals/sim' }, output: 'wordcount.js\nwordcount.test.js', time: { start: 10, end: 50 } } },
+            { type: 'step-finish', id: 'prt_0d402f213001xlo939tIFPQjy9', tokens: { input: 5827, output: 43, cache: { read: 0, write: 0 } }, cost: 0.0015322 },
+        ] },
+        { info: { role: 'assistant', modelID: 'gpt-5.6-terra', time: { created: a.runs[1].startedAt + 5 } }, parts: [
+            { type: 'step-finish', id: 'prt_0d4030d29001xjnNWcklEY3tcU', tokens: { input: 66, output: 108, cache: { read: 6121, write: 0 } }, cost: 0.00026837 },
+        ] },
+    ];
+    const fetched = [];
+    const trace = JSON.parse(JSON.stringify(await loadWorkerTrace(state, run1.workerId, async (sid) => { fetched.push(sid); return session; })));
+    assert.deepEqual(fetched, ['ses_A'], 'reads exactly this worker\'s session');
+    assert.deepEqual(trace.runs[run1.runId].map((e) => [e.kind, e.id, e.tool || e.model]), [['request', 'PQJY9', 'gpt-5.6-terra'], ['tool', 'TATGE', 'bash']]);
+    assert.deepEqual(trace.runs[run2.runId].map((e) => e.id), ['Y3TCU'], 'a message belongs to the run that was active when it was written');
+    assert.deepEqual(trace.runs[run3.runId], [], 'a queued run owns no messages');
+    const withSession = ui.render(state, '', { [run1.workerId]: true }, false, {}, { [run1.workerId]: trace });
+    assert.ok(withSession.includes(ui.trace(trace.runs[run1.runId], { openIds: {} })), 'session rows are the Metrics trace rows');
+    assert.match(withSession, /<pre class="obs-tl-pre">\{&quot;command&quot;:&quot;ls \/tmp\/aa-evals\/sim&quot;\}<\/pre>[\s\S]*?<pre class="obs-tl-pre">wordcount\.js\nwordcount\.test\.js<\/pre>/, 'tool input and output are shown');
+    const down = JSON.parse(JSON.stringify(await loadWorkerTrace(state, run1.workerId, async () => { throw new Error('ECONNREFUSED'); })));
+    assert.match(ui.render(state, '', { [run1.workerId]: true }, false, {}, { [run1.workerId]: down }), /Tool input and output unavailable: OpenCode server did not answer \(ECONNREFUSED\)/);
+    assert.match(webview, /type: 'requestWorkerTrace', workerId: id/, 'expanding a trace requests it');
+    assert.match(fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8'), /case 'requestWorkerTrace':/);
+    console.log('EV-038 SharedTraceRows: PASS metricsBlock=traceRowsHtml workerRowsContainMetricsRows=true partitionsPerRun=3 expandKept=true toolText=fromOpenCodeSession ledgerText=0');
     assert.match(openA, /gpt-5\.6-terra · high/);
     clock += 301_000;
     const later = JSON.parse(JSON.stringify(projectWorkersState(runtime, wsA, now)));

@@ -1463,6 +1463,9 @@
             case 'workersState':
                 applyWorkersState(message.data);
                 break;
+            case 'workerTrace':
+                if (message.data && message.data.workerId) { workersTraces[message.data.workerId] = message.data; paintWorkers(); }
+                break;
             case 'commentaryState':
                 applyCommentaryState(message.data);
                 break;
@@ -5300,21 +5303,26 @@
             workersEsc(refs.workerId) + (refs.runId ? ' · ' + workersEsc(refs.runId) : '') + '</span> ';
     }
     // One trace for the worker's conversation: the Metrics rows, with a partition line per run.
-    function workerTraceHtml(worker, openIds, now) {
-        var rows = '';
+    // trace: the worker's OpenCode session read on expand; until it arrives, the ledger's facts (no tool text).
+    function workerTraceHtml(worker, openIds, now, trace) {
+        var fromSession = !!(trace && trace.source === 'opencode');
+        var rows = (trace && !fromSession)
+            ? '<tr><td colspan="7" class="obs-na">Tool input and output unavailable: ' + workersEsc(trace.reason) + '</td></tr>'
+            : '';
         (worker.runs || []).forEach(function (r) {
             var ru = r.usage || {};
+            var events = fromSession ? (trace.runs[r.runId] || []) : r.events;
             rows += '<tr class="worker-run-partition" data-run-id="' + workersEsc(r.runId) + '"><td colspan="7">' +
                 '<span class="worker-state worker-state-' + workersEsc(r.state).toLowerCase() + '">' + workersEsc(r.state) + (r.queuePosition ? ' #' + r.queuePosition : '') + '</span> ' +
                 '<span class="obs-req-id">' + workersEsc(r.runId) + '</span> · turn ' + workersEsc(r.dispatchTurnId) + ' · ' + workersDuration(r.elapsedMs) +
                 ' · $' + (ru.cost || 0).toFixed(4) + ' · ' + (ru.steps || 0) + ' req' + (r.reason ? ' · ' + workersEsc(r.reason) : '') + '</td></tr>';
-            rows += (r.events && r.events.length)
-                ? traceRowsHtml(r.events, { openIds: openIds, now: now })
+            rows += (events && events.length)
+                ? traceRowsHtml(events, { openIds: openIds, now: now })
                 : '<tr><td colspan="7" class="obs-na">' + (r.queuePosition ? 'Queued' : 'No events yet') + '</td></tr>';
         });
         return '<table class="observability-table observability-model-table obs-timeline-table worker-trace">' + TRACE_HEAD + '<tbody>' + rows + '</tbody></table>';
     }
-    function renderWorkersHtml(state, filter, expanded, showExpired, openIds) {
+    function renderWorkersHtml(state, filter, expanded, showExpired, openIds, traces) {
         if (!state) return '<div class="workers-empty">Worker runtime not available.</div>';
         var server = state.server || { state: 'NOT_ATTACHED', endpoint: '' };
         var html = '<div class="workers-server workers-server-' + workersEsc(server.state).toLowerCase() + '">' +
@@ -5346,7 +5354,7 @@
                 '<button class="worker-trace-btn" data-worker-action="trace" data-worker-id="' + workersEsc(w.workerId) + '">' + (open ? 'Hide' : 'Trace') + ' (' + (w.runs || []).length + ')</button>' +
                 '</div>';
             if (open) {
-                html += workerTraceHtml(w, openIds || {}, state.generatedAt);
+                html += workerTraceHtml(w, openIds || {}, state.generatedAt, traces && traces[w.workerId]);
             }
             html += '</div>';
         });
@@ -5357,6 +5365,7 @@
     var workersState = null;
     var workersFilterText = '';
     var workersExpanded = {};
+    var workersTraces = {};
     var workersShowExpired = false;
     var workersClockSkew = 0;
     var workersTicks = 0;
@@ -5366,7 +5375,7 @@
         if (!list || !workersState) return;
         // Age ticks locally between polls; the skew keeps it on the extension host's clock.
         var ticking = Object.assign({}, workersState, { generatedAt: Date.now() - workersClockSkew });
-        list.innerHTML = renderWorkersHtml(ticking, workersFilterText, workersExpanded, workersShowExpired, traceOpenIds(list));
+        list.innerHTML = renderWorkersHtml(ticking, workersFilterText, workersExpanded, workersShowExpired, traceOpenIds(list), workersTraces);
         var toggle = document.getElementById('workers-show-expired');
         if (toggle) {
             toggle.setAttribute('aria-checked', workersShowExpired ? 'true' : 'false');
@@ -5418,6 +5427,7 @@
             } else {
                 var id = btn.getAttribute('data-worker-id');
                 workersExpanded[id] = !workersExpanded[id];
+                if (workersExpanded[id]) vscode.postMessage({ type: 'requestWorkerTrace', workerId: id });
                 paintWorkers();
             }
         });
@@ -5426,7 +5436,10 @@
             var panel = document.getElementById('panel-workers');
             if (!panel || !panel.classList.contains('active')) return;
             paintWorkers();
-            if (++workersTicks % 3 === 0) vscode.postMessage({ type: 'requestWorkersState' });
+            if (++workersTicks % 3 === 0) {
+                vscode.postMessage({ type: 'requestWorkersState' });
+                Object.keys(workersExpanded).forEach(function (id) { if (workersExpanded[id]) vscode.postMessage({ type: 'requestWorkerTrace', workerId: id }); });
+            }
         }, 1000);
     }
 
