@@ -940,15 +940,16 @@ async function hasExternalMcpClientsAsync(): Promise<boolean> {
     const configPaths = [
         path.join(os.homedir(), '.kiro', 'settings', 'mcp.json'),
         path.join(os.homedir(), '.cursor', 'mcp.json'),
-        path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json')
+        path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json'),
+        path.join(os.homedir(), '.config', 'opencode', 'opencode.json')
     ];
 
     for (const configPath of configPaths) {
         try {
             const content = await fs.promises.readFile(configPath, 'utf8');
             const config = JSON.parse(content);
-            // Check if askaway is registered
-            if (config.mcpServers?.[MCP_SERVER_NAME]) {
+            // Check if askaway is registered (OpenCode names its section `mcp`)
+            if (config.mcpServers?.[MCP_SERVER_NAME] || config.mcp?.[MCP_SERVER_NAME]) {
                 _hasExternalMcpClientsResult = true;
                 return true;
             }

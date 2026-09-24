@@ -64,6 +64,32 @@ const { registerVsCodeToolBridge } = require(path.join(buildDir, 'vscodeToolBrid
     const failed = await client.callTool({ name: 'copilot_memory', arguments: { command: 'view', path: '/boom' } });
     assert.deepEqual([failed.isError, failed.content[0].text], [true, 'VS Code tool copilot_memory failed: no such memory']);
 
+    // Workers write memories: create and str_replace (both fail on a stale view), one writer per path at a time.
+    let inFlight = 0, maxInFlight = 0;
+    lm.invokeTool = async (name, options) => {
+        invoked.push([name, options.input]);
+        inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        inFlight--;
+        return { content: [new LanguageModelTextPart(`${options.input.command} ${options.input.path}`)] };
+    };
+    const edit = (p, n) => client.callTool({ name: 'copilot_memory', arguments: { command: 'str_replace', path: p, old_str: `v${n}`, new_str: `v${n + 1}` } });
+    const created = await client.callTool({ name: 'copilot_memory', arguments: { command: 'create', path: '/memories/repo/worker-note.md', file_text: 'fact' } });
+    assert.equal(created.content[0].text, 'create /memories/repo/worker-note.md', 'a worker can create a memory');
+    maxInFlight = 0;
+    await Promise.all([edit('/memories/repo/a.md', 1), edit('/memories/repo/a.md', 2), edit('/memories/repo/a.md', 3)]);
+    assert.equal(maxInFlight, 1, 'concurrent edits of one memory run one at a time');
+    maxInFlight = 0;
+    await Promise.all([edit('/memories/repo/a.md', 1), edit('/memories/repo/b.md', 1)]);
+    assert.equal(maxInFlight, 2, 'different memories do not wait for each other');
+    const before = invoked.length;
+    for (const command of ['insert', 'delete', 'rename']) {
+        const refused = await client.callTool({ name: 'copilot_memory', arguments: { command, path: '/memories/repo/a.md' } });
+        assert.equal(refused.isError, true, `${command} is refused`);
+        assert.match(refused.content[0].text, /Workers may only view, create, str_replace memories/);
+    }
+    assert.equal(invoked.length, before, 'refused commands never reach VS Code');
+
     const config = JSON.parse(fs.readFileSync(path.join(require('node:os').homedir(), '.config', 'opencode', 'opencode.json'), 'utf8'));
     assert.equal(config.mcp.askaway?.url, 'http://127.0.0.1:3579/sse', 'OpenCode workers reach the AskAway MCP');
     for (const key of ['askaway_worker_*', 'askaway_ask_user', 'askaway_commentary']) { assert.equal(config.permission[key], 'deny', `${key} stays orchestrator-only`); }
