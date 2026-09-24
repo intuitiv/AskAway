@@ -16,6 +16,7 @@ import { OpenCodeWorkerRuntime } from '../workers/openCodeRuntime';
 import { fetchSessionMessages, observeWorkers, sharedWorkerRuntime, sharedWorkerRuntimeReady } from '../workers/workerHost';
 import { loadWorkerTrace, projectWorkersState } from '../workers/workersState';
 import { registerWorkerTools } from '../workers/workerTools';
+import { registerVsCodeToolBridge } from '../workers/vscodeToolBridge';
 export { createWorkerOperationFacade, type WorkerOperationFacade } from './workerOperationFacade';
 
 export const WORKER_RUNTIME_OPERATIONS = [
@@ -284,6 +285,7 @@ export class McpServerManager {
             );
 
             registerWorkerTools((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), () => sharedWorkerRuntimeReady(gradleWorkspaceRoot), gradleWorkspaceRoot);
+            registerVsCodeToolBridge((name, config, handler) => (mcpServer as any).registerTool(name, config, handler));
                 return mcpServer;
             };
 
