@@ -8,6 +8,10 @@ import { getImageMimeType } from './utils/imageUtils';
 import { withTimeout } from './utils/operationDeadline';
 import { PlanTaskStatus } from './plan/planTypes';
 import { dispatchGradle, GradleInput } from './gradle/gradleEngine';
+import { commentaryToolDefinitions } from './commentary/commentary';
+import { registerLmToolDefinitions } from './workers/lmTools';
+import { sharedCommentaryStore, sharedWorkerRuntimeReady } from './workers/workerHost';
+import { workerToolDefinitions } from './workers/workerTools';
 
 /**
  * Append a per-invocation record for an AskAway LM tool to
@@ -902,6 +906,13 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     if (askUserTool) {
         context.subscriptions.push(askUserTool);
     }
+
+    // Same definitions as the MCP surface, so the VS Code orchestrator reaches workers without the MCP server running.
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+    context.subscriptions.push(...registerLmToolDefinitions([
+        ...workerToolDefinitions(sharedWorkerRuntimeReady, workspaceRoot),
+        ...commentaryToolDefinitions(sharedCommentaryStore, workspaceRoot),
+    ]));
 
     // ── bash_task + research_on delegated worker tools are DISABLED for shipping ──
     // Kept in source for future re-enable, but not registered so they never appear to the

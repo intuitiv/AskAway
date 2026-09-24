@@ -89,7 +89,7 @@ interface RunRecord extends RunView {
 
 const REQUIRED: Array<keyof WorkerPacket> = ['workspacePath', 'profile', 'dispatchTurnId', 'baseRevision', 'objective', 'acceptance', 'expected', 'command'];
 const PLACEHOLDER = /\bTBD\b|\bTODO\b|<required[^>]*>|\?\?\?/i;
-const CREDENTIAL = /\bgh[pousr]_[A-Za-z0-9]{20,}|\bsk-[A-Za-z0-9]{20,}|\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}|\bsqu_[A-Za-z0-9]{20,}|\d{8,}:[A-Za-z0-9_-]{30,}/;
+export const CREDENTIAL = /\bgh[pousr]_[A-Za-z0-9]{20,}|\bsk-[A-Za-z0-9]{20,}|\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}|\bsqu_[A-Za-z0-9]{20,}|\d{8,}:[A-Za-z0-9_-]{30,}/;
 
 /** Rejects packets that a worker could not execute from the packet alone, or that would leak a credential. */
 export function validatePacket(packet: WorkerPacket): string {
@@ -143,7 +143,7 @@ export class OpenCodeWorkerRuntime {
     private readonly ledgerDir: string;
     private readonly now: () => number;
     private readonly spawner: Spawner;
-    private readonly attachUrl?: string;
+    private attachUrl?: string;
 
     constructor(profiles: WorkerProfile[], options: RuntimeOptions = {}) {
         this.now = options.now ?? Date.now;
@@ -156,6 +156,11 @@ export class OpenCodeWorkerRuntime {
     /** The shared OpenCode server workers attach to; empty when each run hosts its own. */
     get serverEndpoint(): string {
         return this.attachUrl ?? '';
+    }
+
+    /** Later launches attach to this server instead of hosting their own. */
+    setServerEndpoint(url: string): void {
+        this.attachUrl = url || undefined;
     }
 
     start(packet: WorkerPacket): RunView | { status: 'SELECTION_UNAVAILABLE' | 'INELIGIBLE'; reason: string } {
@@ -190,7 +195,8 @@ export class OpenCodeWorkerRuntime {
             .map((run) => {
                 const worker = this.router.worker(run.workerId);
                 return { ...this.view(run), contextTokens: worker?.contextTokens ?? 0, workerState: worker?.state ?? 'UNKNOWN',
-                    sessionOpenAction: run.sessionId ? `opencode --session ${run.sessionId}` : '' };
+                    sessionOpenAction: !run.sessionId ? '' : this.attachUrl
+                        ? `opencode attach ${this.attachUrl} --session ${run.sessionId}` : `opencode --session ${run.sessionId}` };
             });
     }
 

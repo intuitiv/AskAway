@@ -13,6 +13,8 @@ import { PlanEditorProvider } from '../plan/planEditorProvider';
 import { getUserMemoryDir, summarizeAndStoreMemory, listMemories } from '../memory/memoryStore';
 import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
 import { sessionOpenCommand, WorkersState } from '../workers/workersState';
+import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
+import { sharedCommentaryStore } from '../workers/workerHost';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
 
@@ -390,6 +392,7 @@ const GLOBAL_FOLD_VERSION = 4;
 type ToWebviewMessage =
     | { type: 'specsData'; data: SpecScanResult }
     | { type: 'workersState'; data: WorkersState | null }
+    | { type: 'commentaryState'; data: CommentaryView | null }
     | { type: 'updateQueue'; queue: QueuedPrompt[]; enabled: boolean }
     | { type: 'updateWorkerQueue'; tasks: Array<{ id: string; role: 'command' | 'subagent'; task: string; status: 'pending' | 'running' | 'done'; createdAt: number }> }
     | { type: 'availableModels'; models: Array<{ id: string; name: string; vendor: string; family: string; maxInputTokens: number }> }
@@ -474,6 +477,9 @@ type FromWebviewMessage =
     | { type: 'requestModels' }
     | { type: 'requestWorkersState' }
     | { type: 'openWorkerSession'; sessionId: string }
+    | { type: 'requestCommentary' }
+    | { type: 'setCommentaryGoal'; goal: string }
+    | { type: 'clearCommentary'; what: 'feed' | 'goal' | 'all' }
     | { type: 'clearPersistedHistory' }
     | { type: 'openHistoryModal' }
     | { type: 'searchFiles'; query: string }
@@ -1415,6 +1421,23 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const data = root && this._workersStateSource ? this._workersStateSource(root) : null;
         this._broadcast({ type: 'workersState', data });
+    }
+
+    private _commentarySubscribed = false;
+
+    private _handleCommentary(action: 'request' | 'goal' | 'clear', value?: string): void {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) { this._broadcast({ type: 'commentaryState', data: null }); return; }
+        const store = sharedCommentaryStore();
+        if (!this._commentarySubscribed) {
+            this._commentarySubscribed = true;
+            store.onChange((state) => {
+                if (commentaryKey(state.workspacePath) === commentaryKey(root)) { this._broadcast({ type: 'commentaryState', data: commentaryView(state) }); }
+            });
+        }
+        if (action === 'goal') { store.setGoal(root, value ?? ''); return; }
+        if (action === 'clear') { store.clear(root, value === 'goal' || value === 'all' ? value : 'feed'); return; }
+        this._broadcast({ type: 'commentaryState', data: commentaryView(store.read(root)) });
     }
 
     /** Opens the exact OpenCode session in a terminal; only sessions of this workspace's workers are accepted. */
@@ -4584,6 +4607,15 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'openWorkerSession':
                 this._openWorkerSession(message.sessionId);
+                break;
+            case 'requestCommentary':
+                this._handleCommentary('request');
+                break;
+            case 'setCommentaryGoal':
+                this._handleCommentary('goal', message.goal);
+                break;
+            case 'clearCommentary':
+                this._handleCommentary('clear', message.what);
                 break;
             case 'openSpecFile':
                 this._openSpecFile(message.dir, message.file);

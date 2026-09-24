@@ -389,6 +389,385 @@
           "properties": {},
           "additionalProperties": false
         }
+      },
+      {
+        "name": "worker_start",
+        "tags": [
+          "askaway",
+          "workers",
+          "opencode",
+          "orchestrator"
+        ],
+        "toolReferenceName": "workerStart",
+        "displayName": "Worker Start",
+        "modelDescription": "Start an async worker run for one self-contained packet. Returns a non-terminal handle immediately; never waits for completion.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(server-process)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "profile": {
+              "type": "string",
+              "description": "Worker mode: explore, research, verify, gradle, test, code, rca, review, authoring, devx."
+            },
+            "model": {
+              "type": "string",
+              "description": "provider/model; must be allowed by the mode. Omit for the mode default."
+            },
+            "thinking": {
+              "type": "string",
+              "description": "Reasoning variant; must be allowed by the mode."
+            },
+            "dispatchTurnId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The orchestrator turn this work is attributed to."
+            },
+            "baseRevision": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Explicit commit, tag, or remote ref."
+            },
+            "objective": {
+              "type": "string",
+              "minLength": 1
+            },
+            "allowedFiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Files the worker may change; empty means read-only."
+            },
+            "acceptance": {
+              "type": "string",
+              "minLength": 1,
+              "description": "One observable assertion."
+            },
+            "expected": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The exact expected result."
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The verification command."
+            },
+            "estimatedSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "workspacePath": {
+              "type": "string",
+              "description": "Defaults to the current workspace."
+            }
+          },
+          "required": [
+            "profile",
+            "dispatchTurnId",
+            "baseRevision",
+            "objective",
+            "allowedFiles",
+            "acceptance",
+            "expected",
+            "command"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "worker_submit",
+        "tags": [
+          "askaway",
+          "workers",
+          "opencode",
+          "orchestrator"
+        ],
+        "toolReferenceName": "workerSubmit",
+        "displayName": "Worker Submit",
+        "modelDescription": "Queue a packet on an existing warm worker (reuses its OpenCode session). Refuses explicitly if the worker is retired or ineligible.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(server-process)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "workerId": {
+              "type": "string"
+            },
+            "profile": {
+              "type": "string",
+              "description": "Worker mode: explore, research, verify, gradle, test, code, rca, review, authoring, devx."
+            },
+            "model": {
+              "type": "string",
+              "description": "provider/model; must be allowed by the mode. Omit for the mode default."
+            },
+            "thinking": {
+              "type": "string",
+              "description": "Reasoning variant; must be allowed by the mode."
+            },
+            "dispatchTurnId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The orchestrator turn this work is attributed to."
+            },
+            "baseRevision": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Explicit commit, tag, or remote ref."
+            },
+            "objective": {
+              "type": "string",
+              "minLength": 1
+            },
+            "allowedFiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Files the worker may change; empty means read-only."
+            },
+            "acceptance": {
+              "type": "string",
+              "minLength": 1,
+              "description": "One observable assertion."
+            },
+            "expected": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The exact expected result."
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The verification command."
+            },
+            "estimatedSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "workspacePath": {
+              "type": "string",
+              "description": "Defaults to the current workspace."
+            }
+          },
+          "required": [
+            "workerId",
+            "profile",
+            "dispatchTurnId",
+            "baseRevision",
+            "objective",
+            "allowedFiles",
+            "acceptance",
+            "expected",
+            "command"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "worker_list",
+        "tags": [
+          "askaway",
+          "workers",
+          "opencode",
+          "orchestrator"
+        ],
+        "toolReferenceName": "workerList",
+        "displayName": "Worker List",
+        "modelDescription": "List runs in a workspace with state, model, cost, queue position, and the session-open command.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(server-process)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "workspacePath": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "worker_status",
+        "tags": [
+          "askaway",
+          "workers",
+          "opencode",
+          "orchestrator"
+        ],
+        "toolReferenceName": "workerStatus",
+        "displayName": "Worker Status",
+        "modelDescription": "Current state, usage, and blocker reason for one run.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(server-process)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "runId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "runId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "worker_wait",
+        "tags": [
+          "askaway",
+          "workers",
+          "opencode",
+          "orchestrator"
+        ],
+        "toolReferenceName": "workerWait",
+        "displayName": "Worker Wait",
+        "modelDescription": "Wait for a run to finish, at most 240s. On the ceiling it returns STILL_RUNNING: end your turn and check back instead of waiting again.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(server-process)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "runId": {
+              "type": "string"
+            },
+            "timeoutSeconds": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 240
+            }
+          },
+          "required": [
+            "runId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "worker_cancel",
+        "tags": [
+          "askaway",
+          "workers",
+          "opencode",
+          "orchestrator"
+        ],
+        "toolReferenceName": "workerCancel",
+        "displayName": "Worker Cancel",
+        "modelDescription": "Cancel a run. A queued run is removed before it starts; a running one is stopped.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(server-process)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "runId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "runId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "worker_resume",
+        "tags": [
+          "askaway",
+          "workers",
+          "opencode",
+          "orchestrator"
+        ],
+        "toolReferenceName": "workerResume",
+        "displayName": "Worker Resume",
+        "modelDescription": "Continue a failed or cancelled run in its OpenCode session, or report that a fresh submission is required.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(server-process)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "runId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "runId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "worker_logs",
+        "tags": [
+          "askaway",
+          "workers",
+          "opencode",
+          "orchestrator"
+        ],
+        "toolReferenceName": "workerLogs",
+        "displayName": "Worker Logs",
+        "modelDescription": "Lifecycle facts for a run (types, tools, usage). Never transcript text.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(server-process)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "runId": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "runId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "commentary",
+        "tags": [
+          "askaway",
+          "commentary",
+          "orchestrator"
+        ],
+        "toolReferenceName": "commentary",
+        "displayName": "Commentary",
+        "modelDescription": "Post one live-commentary line to the reviewer's Commentary tab: a decision, question, progress, or blocker in 10-20 plain words. Call it in the same parallel batch as the step's real tool call so it never costs an extra request. Do not repeat the text in chat.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(comment-discussion)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "decision",
+                "question",
+                "progress",
+                "blocked"
+              ]
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "description": "10-20 plain words: what and why."
+            },
+            "turnId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "additionalProperties": false
+        }
       }
     ],
     "viewsContainers": {
@@ -809,7 +1188,7 @@
     "compile": "tsc -p ./",
     "watch": "node esbuild.js --watch",
     "lint": "eslint src --ext ts",
-    "test:workers": "node test-worker-selection.cjs && node test-worker-observability.cjs && node test-worker-mcp-tools.cjs && node test-worker-runtime-contract.cjs && node test-workers-control-plane.cjs && node test-conversation-hooks.cjs && node test-eval-graders.cjs"
+    "test:workers": "node test-worker-selection.cjs && node test-worker-observability.cjs && node test-worker-mcp-tools.cjs && node test-worker-runtime-contract.cjs && node test-workers-control-plane.cjs && node test-commentary-backend.cjs && node test-shared-server-attach.cjs && node test-conversation-hooks.cjs && node test-eval-graders.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
