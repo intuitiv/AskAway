@@ -19,4 +19,5 @@ Let one strong-model orchestrator run for a long time at low cost by delegating 
 ## Current position
 - Done: P0 contract (CY-001), shared server and live two-session proof (CY-002), profiles/routing/serial queues (CY-003), real OpenCode runtime with lifecycle ledger, dispatch-turn attribution, and the eight `worker_*` MCP tools (CY-004), piecewise live lifecycle tests (T029), the Workers and Commentary tabs (CY-005), reload recovery, retirement, archive-only prune, and the end-to-end flow (CY-006), VS Code tool bridge for workers (T039).
 - Next: orchestrator policy, verification by behaviour (T040), perf/quality workers (T032/T033), and evals (CY-007).
+- CY-007 status (2026-09-24): done T022, T025, T026, T027, T028, T039, T040; built, live proof pending: T032, T033; open: T023 (routing in the old tasksync-opencode sessionManager), T024 (capture policy), T034 (commentary eval).
 - Deferred: Herdr, as a possible second adapter later. Side channel belongs to Spec 003.
