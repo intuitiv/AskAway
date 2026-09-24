@@ -271,6 +271,27 @@ const packet = (overrides = {}) => ({
     assert.match(ui.render({ ...state, workers: [], scoreboard: board }, '', {}), /No live workers[\s\S]*Eval scoreboard/, 'shown even with no workers');
     assert.doesNotMatch(ui.render(state, '', {}), /Eval scoreboard/, 'hidden when there are no results');
     console.log(`EV-015b WorkersQueueAndEvals: PASS cancelQueued=true refused=3 scoreboardRows=${board.length} malformedSkipped=1`);
+
+    // The tab answers "how many are there" and "how do I spend less" before any card.
+    assert.match(all, /^<div class="workers-summary"><strong>2<\/strong> live workers &middot; 1 running &middot; 1 queued &middot; 1 warm &middot; 1 completed &middot; <strong class="health-cost">\$0\.0025<\/strong> spent<\/div>/);
+    assert.match(all, new RegExp(`<div class="workers-tips"><div class="workers-tips-head">Save cost</div><div class="workers-tip">Reuse verify worker ${runC.workerId} for the next verify packet: its cache is warm for 5:00`));
+    const tipsWithBoard = ui.render({ ...state, scoreboard: [
+        { mode: 'code', model: 'gpt-5.6-terra', variant: 'high', runs: 3, passed: 2, avgCost: 0.01, avgMs: 1 },
+        { mode: 'code', model: 'gpt-5.6-luna', variant: 'low', runs: 4, passed: 4, avgCost: 0.002, avgMs: 1 },
+    ] }, '', {});
+    assert.match(tipsWithBoard, /For code, gpt-5\.6-luna passed 4\/4 evals at \$0\.0020 vs gpt-5\.6-terra at \$0\.0100: try gpt-5\.6-luna first\./, 'the scoreboard points at a cheaper model that passes as often');
+    const bloated = { ...state, workers: state.workers.map((w) => w.workerId === run1.workerId ? { ...w, nextInputTokens: 250000, banner: { ...w.banner, requests: 3, lastIn: 1000, lastCached: 100 } } : w) };
+    assert.match(ui.render(bloated, '', {}), new RegExp(`${run1.workerId} re-sends 250K tokens per request`));
+    assert.match(ui.render(bloated, '', {}), /last request hit only 10% cache: send its packets back to back, within 5 minutes\./);
+    // Swimlanes appear only when packets name a track; untracked workers go last.
+    assert.doesNotMatch(all, /workers-lane/, 'no lanes without tracks');
+    const tracked = { ...state, workers: state.workers.map((w) => w.workerId === runC.workerId ? { ...w, track: 'B' } : w.workerId === run1.workerId ? { ...w, track: 'A' } : w) };
+    const lanes = [...ui.render(tracked, '', {}, true).matchAll(/<div class="workers-lane" data-track="([^"]*)">([^<]*)/g)].map((m) => m[2]);
+    assert.deepEqual(lanes, ['Track A &middot; 1 worker &middot; ', 'Track B &middot; 1 worker &middot; ', 'No track &middot; 1 worker &middot; ']);
+    const trackRuntime = new OpenCodeWorkerRuntime(profiles, { ledgerDir: fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-track-')), spawner, now });
+    trackRuntime.start(packet({ track: 'A' }));
+    assert.equal(projectWorkersState(trackRuntime, wsA, now).workers[0].track, 'A', 'the packet track reaches the tab');
+    console.log('EV-015c WorkersSummaryTipsLanes: PASS summary=counts+spend tips=reuse,bloat,cacheMiss,cheaperModel lanes=byTrack');
     assert.equal((openA.match(/data-worker-action="open-external" data-session-id="ses_A"/g) || []).length, 1, 'terminal-app open targets the same session');
     assert.doesNotMatch(openA, /SECRET-OBJECTIVE|TRANSCRIPT-TEXT|<textarea/);
     const hostile = { ...state, workers: [{ ...state.workers[0], profile: '<img src=x onerror=alert(1)>' }] };

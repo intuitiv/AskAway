@@ -23,6 +23,7 @@ export interface LifecycleRecord {
     sessionId: string;
     dispatchTurnId: string;
     source: string;
+    track?: string;
     profile: string;
     model: string;
     thinking: string;
@@ -52,6 +53,8 @@ export interface WorkerPacket {
     expected: string;
     command: string;
     estimatedSeconds?: number;
+    /** The orchestrator's track this packet belongs to (e.g. "A"); the Workers tab groups by it. */
+    track?: string;
 }
 
 export interface RunView {
@@ -63,6 +66,7 @@ export interface RunView {
     model: string;
     thinking: string;
     dispatchTurnId: string;
+    track: string;
     startedAt: number;
     endedAt?: number;
     updatedAt: number;
@@ -368,7 +372,7 @@ export class OpenCodeWorkerRuntime {
                 : 'interrupted by reload; worker_resume continues its session';
             this.runs.set(runId, {
                 runId, workerId: first.workerId, sessionId, state, profile: first.profile, model: first.model, thinking: first.thinking,
-                dispatchTurnId: first.dispatchTurnId, startedAt: first.ts, endedAt: last.ts, updatedAt: last.ts, elapsedMs: last.ts - first.ts,
+                dispatchTurnId: first.dispatchTurnId, track: first.track ?? '', startedAt: first.ts, endedAt: last.ts, updatedAt: last.ts, elapsedMs: last.ts - first.ts,
                 usage, queuePosition: 0, reason, workspace, packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
                 lastPromptTokens, lastCachedTokens,
             });
@@ -397,7 +401,7 @@ export class OpenCodeWorkerRuntime {
         const run: RunRecord = {
             runId: routed.runId, workerId: routed.workerId, sessionId: this.sessionsByWorker.get(routed.workerId) ?? '',
             state: 'STARTING', profile: packet.profile, model: routed.model, thinking: routed.thinking,
-            dispatchTurnId: packet.dispatchTurnId, startedAt: this.now(), updatedAt: this.now(), elapsedMs: 0, usage: emptyUsage(),
+            dispatchTurnId: packet.dispatchTurnId, track: String(packet.track ?? '').trim().slice(0, 24), startedAt: this.now(), updatedAt: this.now(), elapsedMs: 0, usage: emptyUsage(),
             queuePosition: routed.queuePosition, workspace, packet: renderPacket(packet), evidence: [], waiters: [],
             nextInputTokens: this.router.worker(routed.workerId)?.contextTokens ?? 0, knowledge: '', lastPromptTokens: 0, lastCachedTokens: 0,
         };
@@ -503,15 +507,15 @@ export class OpenCodeWorkerRuntime {
     }
 
     private view(run: RunRecord): RunView {
-        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens } = run;
-        return { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, startedAt, endedAt, updatedAt, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens,
+        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens } = run;
+        return { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens,
             elapsedMs: (endedAt ?? this.now()) - startedAt, usage: { ...usage }, queuePosition, reason };
     }
 
     private record(run: RunRecord, fact: Pick<LifecycleRecord, 'type'> & Partial<LifecycleRecord>): void {
         const record: LifecycleRecord = {
             ts: this.now(), workspace: run.workspace, workerId: run.workerId, runId: run.runId, sessionId: run.sessionId,
-            dispatchTurnId: run.dispatchTurnId, source: run.model.split('/')[0] || 'unknown',
+            dispatchTurnId: run.dispatchTurnId, source: run.model.split('/')[0] || 'unknown', ...(run.track ? { track: run.track } : {}),
             profile: run.profile, model: run.model, thinking: run.thinking, ...fact,
         };
         run.updatedAt = record.ts;

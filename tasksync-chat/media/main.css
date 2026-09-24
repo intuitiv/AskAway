@@ -5002,6 +5002,11 @@ button#send-btn:disabled {
 }
 .workers-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
 .workers-server { font-size: 11px; opacity: 0.8; }
+.workers-summary { font-size: 12px; }
+.workers-tips { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; border-left: 3px solid var(--vscode-charts-green); background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04)); }
+.workers-tips-head { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--vscode-charts-green); }
+.workers-tip { font-size: 11px; line-height: 1.4; }
+.workers-lane { font-size: 11px; font-weight: 600; padding: 4px 2px 0; border-bottom: 1px solid var(--vscode-panel-border); }
 .workers-approval-notice {
     padding: 4px 8px; border-radius: 3px; font-size: 12px;
     background: var(--vscode-inputValidation-warningBackground); border: 1px solid var(--vscode-inputValidation-warningBorder);

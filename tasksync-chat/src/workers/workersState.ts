@@ -40,6 +40,8 @@ export interface WorkerRow {
     /** Not running and no longer reusable: cache cold or retired. The Workers tab hides these. */
     expired: boolean;
     knowledge: string;
+    /** The orchestrator track of the worker's latest run that named one; '' when none did. */
+    track: string;
     /** Same fields as the chat banner, for the worker's current (or last) run: requests, $, last in / run out, cache hit, age. */
     banner: { requests: number; dollars: number; lastIn: number; lastCached: number; turnOut: number; lastActivityAt: number };
     usage: RunUsage;
@@ -208,6 +210,7 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
             lastUpdateAt: Math.max(...runs.map((run) => run.updatedAt)), blocker,
             nextInputTokens: current.nextInputTokens || routed?.contextTokens || 0, cacheExpiresAt, expired,
             knowledge: [...runs].reverse().find((run) => run.knowledge)?.knowledge ?? '',
+            track: [...runs].reverse().find((run) => run.track)?.track ?? '',
             banner: { requests: current.usage.steps, dollars: current.usage.cost, lastIn: current.lastPromptTokens, lastCached: current.lastCachedTokens,
                 turnOut: current.usage.output, lastActivityAt: current.updatedAt },
             usage: sumUsage(traces), runs: traces,

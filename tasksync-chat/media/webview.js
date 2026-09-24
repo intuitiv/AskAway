@@ -5323,11 +5323,68 @@
         });
         return '<table class="observability-table observability-model-table obs-timeline-table worker-trace">' + TRACE_HEAD + '<tbody>' + rows + '</tbody></table>';
     }
+    function workerShortModel(model) { return String(model || '').split('/').pop(); }
+    function workerIsWarm(w, now) { return !w.expired && w.state !== 'RUNNING' && w.state !== 'STARTING' && w.state !== 'WAITING_APPROVAL' && w.cacheExpiresAt > now; }
+    // Headline for "how many are there": live workers by state, queued runs, and the workspace's worker spend.
+    function workersSummaryHtml(state) {
+        var now = state.generatedAt;
+        var all = state.workers || [];
+        var live = all.filter(function (w) { return !w.expired; });
+        var running = live.filter(function (w) { return w.state === 'RUNNING' || w.state === 'STARTING' || w.state === 'WAITING_APPROVAL'; }).length;
+        var warm = live.filter(function (w) { return workerIsWarm(w, now); }).length;
+        var queued = all.reduce(function (n, w) { return n + (w.runs || []).filter(function (r) { return r.queuePosition > 0 && r.state === 'STARTING'; }).length; }, 0);
+        var dollars = all.reduce(function (n, w) { return n + ((w.usage && w.usage.cost) || 0); }, 0);
+        return '<div class="workers-summary"><strong>' + live.length + '</strong> live worker' + (live.length === 1 ? '' : 's') +
+            ' &middot; ' + running + ' running &middot; ' + queued + ' queued &middot; ' + warm + ' warm &middot; ' + (all.length - live.length) + ' completed' +
+            ' &middot; <strong class="health-cost">$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2) + '</strong> spent</div>';
+    }
+    // Concrete ways to spend less, from the same data the cards show plus the eval scoreboard.
+    function workerCostTips(state) {
+        var now = state.generatedAt;
+        var tips = [];
+        var live = (state.workers || []).filter(function (w) { return !w.expired; });
+        live.forEach(function (w) {
+            var b = w.banner || {};
+            if (workerIsWarm(w, now)) {
+                tips.push('Reuse ' + w.profile + ' worker ' + w.workerId + ' for the next ' + w.profile + ' packet: its cache is warm for ' +
+                    cacheAgeLabel(Math.floor((w.cacheExpiresAt - now) / 1000)).clock + ', so its ' + formatObservabilityCompact(w.nextInputTokens) + ' tokens of context bill at the cached rate.');
+            }
+            if (w.nextInputTokens > 200000) {
+                tips.push(w.workerId + ' re-sends ' + formatObservabilityCompact(w.nextInputTokens) + ' tokens per request; start a fresh worker for unrelated work (it retires at 300K).');
+            }
+            if ((b.requests || 0) > 1 && b.lastIn > 0 && (b.lastCached || 0) / b.lastIn < 0.5) {
+                tips.push(w.workerId + '\u2019s last request hit only ' + Math.round((b.lastCached || 0) / b.lastIn * 100) + '% cache: send its packets back to back, within 5 minutes.');
+            }
+        });
+        var board = state.scoreboard || [];
+        var modes = {};
+        live.forEach(function (w) { modes[w.profile + '\u0000' + workerShortModel(w.model)] = { mode: w.profile, model: workerShortModel(w.model) }; });
+        Object.keys(modes).forEach(function (key) {
+            var m = modes[key];
+            var mine = board.filter(function (r) { return r.mode === m.mode && r.model === m.model; })[0];
+            if (!mine) return;
+            var cheaper = board.filter(function (r) {
+                return r.mode === m.mode && r.model !== m.model && r.runs >= 2 && r.avgCost < mine.avgCost * 0.7 && r.passed / r.runs >= mine.passed / mine.runs;
+            }).sort(function (a, b) { return a.avgCost - b.avgCost; })[0];
+            if (cheaper) {
+                tips.push('For ' + m.mode + ', ' + cheaper.model + ' passed ' + cheaper.passed + '/' + cheaper.runs + ' evals at $' + cheaper.avgCost.toFixed(4) +
+                    ' vs ' + m.model + ' at $' + mine.avgCost.toFixed(4) + ': try ' + cheaper.model + ' first.');
+            }
+        });
+        return tips;
+    }
+    function workerCostTipsHtml(state) {
+        var tips = workerCostTips(state);
+        if (!tips.length) return '';
+        return '<div class="workers-tips"><div class="workers-tips-head">Save cost</div>' +
+            tips.map(function (t) { return '<div class="workers-tip">' + workersEsc(t) + '</div>'; }).join('') + '</div>';
+    }
     function renderWorkersHtml(state, filter, expanded, showExpired, openIds, traces) {
         if (!state) return '<div class="workers-empty">Worker runtime not available.</div>';
         var server = state.server || { state: 'NOT_ATTACHED', endpoint: '' };
-        var html = '<div class="workers-server workers-server-' + workersEsc(server.state).toLowerCase() + '">' +
-            (server.state === 'ATTACHED' ? 'Shared OpenCode server · ' + workersEsc(server.endpoint) : 'Shared OpenCode server not running · starts with the first worker') + '</div>';
+        var html = workersSummaryHtml(state) + '<div class="workers-server workers-server-' + workersEsc(server.state).toLowerCase() + '">' +
+            (server.state === 'ATTACHED' ? 'Shared OpenCode server · ' + workersEsc(server.endpoint) : 'Shared OpenCode server not running · starts with the first worker') + '</div>' +
+            workerCostTipsHtml(state);
         var pending = workersPendingApprovals(state);
         if (pending) {
             html += '<div class="workers-approval-notice">' + pending + ' worker' + (pending > 1 ? 's' : '') + ' waiting for approval. Open the session in OpenCode to answer.</div>';
@@ -5337,7 +5394,22 @@
         if (!shown.length) {
             return html + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>' + workersScoreboardHtml(state.scoreboard, openIds);
         }
+        // Swimlanes: one lane per orchestrator track, only when packets carry tracks.
+        var laned = shown.some(function (w) { return w.track; });
+        if (laned) {
+            shown = shown.slice().sort(function (a, b) {
+                return (a.track ? 0 : 1) - (b.track ? 0 : 1) || String(a.track).localeCompare(String(b.track));
+            });
+        }
+        var lane = null;
         shown.forEach(function (w) {
+            if (laned && w.track !== lane) {
+                lane = w.track;
+                var inLane = shown.filter(function (x) { return x.track === lane; });
+                var laneCost = inLane.reduce(function (n, x) { return n + ((x.usage && x.usage.cost) || 0); }, 0);
+                html += '<div class="workers-lane" data-track="' + workersEsc(lane) + '">' + (lane ? 'Track ' + workersEsc(lane) : 'No track') +
+                    ' &middot; ' + inLane.length + ' worker' + (inLane.length === 1 ? '' : 's') + ' &middot; <strong class="health-cost">$' + laneCost.toFixed(4) + '</strong></div>';
+            }
             var open = expanded && expanded[w.workerId];
             html += '<div class="worker-card" data-worker-id="' + workersEsc(w.workerId) + '">' +
                 '<div class="worker-card-head">' +

@@ -458,6 +458,11 @@
               "type": "number",
               "exclusiveMinimum": 0
             },
+            "track": {
+              "type": "string",
+              "maxLength": 24,
+              "description": "Your plan's track for this packet, e.g. \"A\"; the Workers tab shows one lane per track."
+            },
             "workspacePath": {
               "type": "string",
               "description": "Defaults to the current workspace."
@@ -546,6 +551,11 @@
             "estimatedSeconds": {
               "type": "number",
               "exclusiveMinimum": 0
+            },
+            "track": {
+              "type": "string",
+              "maxLength": 24,
+              "description": "Your plan's track for this packet, e.g. \"A\"; the Workers tab shows one lane per track."
             },
             "workspacePath": {
               "type": "string",

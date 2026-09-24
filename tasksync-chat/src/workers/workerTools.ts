@@ -26,6 +26,7 @@ const packetShape = {
     expected: z.string().min(1).describe('The exact expected result.'),
     command: z.string().min(1).describe('The verification command.'),
     estimatedSeconds: z.number().positive().optional(),
+    track: z.string().max(24).optional().describe('Your plan\'s track for this packet, e.g. "A"; the Workers tab shows one lane per track.'),
     workspacePath: z.string().optional().describe('Defaults to the current workspace.'),
 };
 
