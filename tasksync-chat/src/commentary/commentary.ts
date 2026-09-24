@@ -12,7 +12,7 @@ export const MIN_COMMENTARY_WORDS = 3;
 const MAX_GOAL_CHARS = 2000;
 const OPENER_ITEMS = 30;
 
-export interface CommentaryItem { id: string; ts: number; kind: CommentaryKind; text: string; turnId: string; ref: string }
+export interface CommentaryItem { id: string; ts: number; kind: CommentaryKind; text: string; turnId: string }
 
 /** Persisted per workspace so the next conversation's hook can carry goal and feed over. */
 export interface CommentaryState {
@@ -44,7 +44,7 @@ export function buildOpener(state: CommentaryState): string {
         lines.push(`Commentary since last clear (${items.length}):`);
         for (const item of items) {
             const time = new Date(item.ts).toISOString().slice(11, 16);
-            lines.push(`- ${time}${item.ref ? ` ${item.ref}` : ''} ${item.kind === 'heads-up' ? 'HEADS-UP: ' : ''}${item.text}`);
+            lines.push(`- ${time} ${item.kind === 'heads-up' ? 'HEADS-UP: ' : ''}${item.text}`);
         }
     }
     lines.push('Continue toward the main goal.');
@@ -88,7 +88,7 @@ export class CommentaryStore {
         this.listeners.push(listener);
     }
 
-    post(workspacePath: string, input: { kind: string; text: string; turnId?: string; ref?: string }): PostResult {
+    post(workspacePath: string, input: { kind: string; text: string; turnId?: string }): PostResult {
         if (!COMMENTARY_KINDS.includes(input.kind as CommentaryKind)) {
             return { status: 'REJECTED', reason: `kind must be one of ${COMMENTARY_KINDS.join(', ')}` };
         }
@@ -100,7 +100,7 @@ export class CommentaryStore {
         const state = this.read(workspacePath);
         const ts = Math.max(this.now(), (state.items[state.items.length - 1]?.ts ?? 0) + 1, state.clearedAt + 1);
         const item: CommentaryItem = { id: `c-${ts.toString(36)}-${++this.sequence}`, ts, kind: input.kind as CommentaryKind, text,
-            turnId: input.turnId ?? '', ref: String(input.ref ?? '').trim().slice(0, 12) };
+            turnId: input.turnId ?? '' };
         state.items.push(item);
         this.write(state);
         return { status: 'POSTED', id: item.id };
@@ -139,11 +139,10 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
             + 'One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. '
             + 'Lead with one emoji; **bold** the outcome, ==highlight== the one number that matters. '
             + 'kind `update` for everything that is just happening. kind `heads-up` when you will need something from the reviewer soon, or something is unclear to you, so they can prepare. '
-            + '10-20 words. `ref` is track.step, e.g. "A.3". Batch it with the step\'s real tool call; do not repeat it in chat.',
+            + '10-20 words. Batch it with the step\'s real tool call; do not repeat it in chat.',
         inputSchema: z.object({
             kind: z.enum(COMMENTARY_KINDS),
             text: z.string().min(1).describe('10-20 plain words: what is happening and why.'),
-            ref: z.string().max(12).optional().describe('Track and step, e.g. "A.3" for track A, step 3.'),
             turnId: z.string().optional(),
         }),
         run: (args) => store().post(defaultWorkspace, args),

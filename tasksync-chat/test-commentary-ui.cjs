@@ -31,15 +31,15 @@ const view = {
 const html = ui.render(view);
 assert.match(html, /^<div class="cm-summary">5 lines · 1 heads-up · 3 archived<\/div>/);
 const ids = [...html.matchAll(/data-id="(c\d)"/g)].map((m) => m[1]);
-assert.deepEqual(ids, ['c5', 'c4', 'c3', 'c2', 'c1'], 'newest first, like a live match feed');
-assert.match(html, /<div class="cm-item" data-id="c3"><div class="cm-ball">B\.1<\/div><div class="cm-body"><div class="cm-meta"><span class="cm-time">19:15:00<\/span><\/div>/, 'updates carry no category label, old kinds included');
+assert.deepEqual(ids, ['c1', 'c2', 'c3', 'c4', 'c5'], 'oldest first, newest at the bottom, like the chat');
+assert.match(html, /<div class="cm-item" data-id="c3"><div class="cm-body"><div class="cm-meta"><span class="cm-time">19:15:00<\/span><\/div>/, 'updates carry no category label, old kinds included');
 assert.match(html, /<div class="cm-item cm-heads-up" data-id="c4">[\s\S]*?<span class="cm-heads-up-tag">HEADS-UP<\/span>/, 'a heads-up stands out');
 assert.match(ui.render({ ...view, items: [{ id: 'q', ts: t0, kind: 'question', text: 'old feed' }] }), /cm-heads-up/, 'old question/blocked lines read as heads-up');
-assert.match(html, /data-id="c5"><div class="cm-ball">•<\/div>/, 'a line without ref gets a plain ball');
+assert.doesNotMatch(html, /cm-ball|A\.1|B\.1|0\.1/, 'no track.step refs, even for old items that stored one');
 assert.doesNotMatch(html, /<script>/, 'text is escaped');
 assert.match(ui.render({ items: [], archivedCount: 0 }), /Waiting for the orchestrator's first update\./);
 assert.equal(ui.open(view), 1);
-console.log('EV-030a CommentaryFeedRender: PASS newestFirst=true kinds=update+heads-up noFilters=true escaped=true');
+console.log('EV-030a CommentaryFeedRender: PASS newestAtBottom=true refs=none kinds=update+heads-up noFilters=true escaped=true');
 
 // Markup and wiring: the tab exists, its controls send the backend messages, pushes are rendered.
 const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
@@ -52,7 +52,7 @@ for (const message of ["type: 'setCommentaryGoal'", "type: 'clearCommentary', wh
     assert.ok(webview.includes(message), `webview sends ${message}`);
 }
 const css = fs.readFileSync(path.join(__dirname, 'media', 'main.css'), 'utf8');
-for (const selector of ['.cm-heads-up', '.cm-heads-up-tag', '.cm-ball', '.cm-goal-input', '.cm-icon-btn']) {
+for (const selector of ['.cm-heads-up', '.cm-heads-up-tag', '.cm-goal-input', '.cm-icon-btn']) {
     assert.ok(css.includes(selector), `style for ${selector}`);
 }
 

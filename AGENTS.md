@@ -10,6 +10,17 @@ their work elsewhere. Be careful:
 - UI pieces are testable as pure render blocks and reviewable in Storybook (`tasksync-chat/storybook/`).
 - Deploy only after tests pass; commit focused checkpoints.
 
+## Consistent Experience — top priority (reviewer, 2026-09-24)
+
+"If we reuse the same component and send data by converting into single format, we get consistent
+experience." Consistency across tabs outranks every other UI concern.
+- Before building any UI piece, find the existing component that shows the same kind of thing
+  (trace, usage banner, toggle, badge, feed) and reuse it. Never build a second look-alike.
+- Convert new data into the existing component's input format at the data boundary; the component
+  stays one shared pure render block (e.g. `traceRowsHtml` serves the Metrics trace and the Workers trace).
+- Same behaviour everywhere: ordering (newest at the bottom), expand/collapse, colours, labels, switches.
+- Tests assert the reuse: the new view's output contains the shared component's output.
+
 ## Worker Runtime Boundary
 
 AskAway's main orchestrator runs in native VS Code Copilot Chat. Async workers may run as named

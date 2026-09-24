@@ -61,7 +61,9 @@ const packet = (overrides = {}) => ({
     // Worker A, run 1: completes with real usage.
     const run1 = runtime.start(packet());
     children[0].emitEvent(start('ses_A'));
-    children[0].emitEvent(finish('ses_A', 1200, 340, 50, 0.0021));
+    children[0].emitEvent({ type: 'tool_use', sessionID: 'ses_A', part: { id: 'prt_t1', callID: 'call_EDIT1', tool: 'edit',
+        state: { status: 'completed', input: { filePath: 'math.js' }, output: 'Edit applied', time: { start: 100, end: 1350 } } } });
+    children[0].emitEvent({ ...finish('ses_A', 1200, 340, 50, 0.0021), part: { ...finish('ses_A', 1200, 340, 50, 0.0021).part, id: 'prt_STEP1' } });
     children[0].emitEvent(text('ses_A', 'Result: PASS TRANSCRIPT-TEXT'));
     clock += 4000;
     await children[0].finish(0);
@@ -107,6 +109,12 @@ const packet = (overrides = {}) => ({
     assert.deepEqual([t2.dispatchTurnId, t2.usage.cost, t2.usage.input, t2.usage.output, t2.usage.cacheRead], ['turn-2', 0.0004, 300, 20, 1500],
         'per-run cost resets while reused cached input stays visible');
     assert.equal(a.usage.cost, 0.0021 + 0.0004);
+    // The run trace is in the Metrics turn-trace format: each request row leads the tools it decided.
+    assert.deepEqual(t1.events.map((e) => [e.kind, e.id, e.model || e.tool]), [['request', 'STEP1', 'gpt-5.6-terra'], ['tool', 'EDIT1', 'edit']]);
+    assert.deepEqual([t1.events[0].inputTokens, t1.events[0].cachedTokens, t1.events[0].dollars], [1250, 50, 0.0021], 'input is the full prompt, as in Metrics');
+    assert.deepEqual([t1.events[1].durMs, t1.events[1].status, t1.events[1].inputPreview, t1.events[1].outputPreview], [1250, 'ok', '{"filePath":"math.js"}', 'Edit applied']);
+    const ledgerText = fs.readdirSync(ledgerDir).map((f) => fs.readFileSync(path.join(ledgerDir, f), 'utf8')).join('');
+    assert.doesNotMatch(ledgerText, /Edit applied|math\.js/, 'tool text stays in memory; the ledger keeps facts only');
     assert.equal(a.usage.input, 1500);
     assert.equal(a.lastUpdateAt, 1_000_000 + 7000, 'last update is the approval event time');
 
@@ -145,27 +153,30 @@ const packet = (overrides = {}) => ({
     const bannerFrom = webview.indexOf('// ── Usage banner');
     const bannerTo = webview.indexOf('// ── end Usage banner ──');
     assert.ok(bannerFrom > 0 && bannerTo > bannerFrom, 'shared usage banner block present');
-    require('node:vm').runInNewContext(`${webview.slice(bannerFrom, bannerTo)}\n${webview.slice(from, to)}\nout.render = renderWorkersHtml; out.pending = workersPendingApprovals; out.refs = workerRefsFromPreview; out.badge = workerRefBadge; out.chatBanner = usageBannerHtml;`, { out: ui });
+    const traceFrom = webview.indexOf('// ── Turn trace rows: pure render');
+    const traceTo = webview.indexOf('// ── end Turn trace rows ──');
+    assert.ok(traceFrom > 0 && traceTo > traceFrom, 'shared turn-trace block present');
+    require('node:vm').runInNewContext(`${webview.slice(bannerFrom, bannerTo)}\n${webview.slice(traceFrom, traceTo)}\n${webview.slice(from, to)}\nout.render = renderWorkersHtml; out.pending = workersPendingApprovals; out.refs = workerRefsFromPreview; out.badge = workerRefBadge; out.chatBanner = usageBannerHtml; out.trace = traceRowsHtml;`, { out: ui });
 
     // Metrics turn trace: a worker tool's JSON output yields a worker/run badge that links to this tab.
     assert.deepEqual(JSON.parse(JSON.stringify(ui.refs('{"runId":"run-84lnfg-4","workerId":"worker-84lnfg-3","state":"STARTING"}'))), { workerId: 'worker-84lnfg-3', runId: 'run-84lnfg-4' });
     assert.equal(ui.refs('{"status":"ok"}'), null);
     assert.equal(ui.badge(ui.refs('{"workerId":"worker-a-1"}')), '<span class="obs-worker-tag" data-worker-ref="worker-a-1" title="Show this worker in the Workers tab">worker-a-1</span> ');
     assert.match(webview, /workerRefBadge\(workerRefsFromPreview\(ev\.outputPreview\)\)/, 'turn-trace tool rows carry the badge');
+    assert.match(webview, /eventTbody\.innerHTML = traceRowsHtml\(events, /, 'the Metrics timeline renders through the shared trace block');
 
     const all = ui.render(state, '', {});
     assert.equal((all.match(/class="worker-card"/g) || []).length, 2, 'the retired worker is hidden');
-    assert.match(all, /<button class="workers-hidden-note" data-worker-action="toggle-expired">Show 1 expired worker \(cache cold or retired\)<\/button>/);
+    assert.doesNotMatch(all, /expired worker|toggle-expired/, 'no inline expired button; the header switch controls it');
     const withExpired = ui.render(state, '', {}, true);
     assert.equal((withExpired.match(/class="worker-card"/g) || []).length, 3, 'the toggle reveals the retired worker');
-    assert.match(withExpired, />Hide 1 expired<\/button>/);
-    assert.match(webview, /action === 'toggle-expired'/);
     assert.match(all, /<span class="worker-banner-metrics">1 req &middot; <strong class="health-cost">\$0\.0004<\/strong> &middot; 1\.80K last in \/ 20 turn out &middot; 83% cache<\/span><strong class="health-cache warm">Age: 0:00 warm<\/strong>/,
         'running worker: the chat banner for its current run');
     assert.ok(all.includes(ui.chatBanner(a.banner)), 'the card uses exactly the chat banner template');
     assert.match(all, /0 reqs &middot; <strong class="health-cost">\$0\.00<\/strong> &middot; 0 last in \/ 0 turn out &middot; – cache/, 'idle worker with no requests');
     assert.match(all, /1 worker waiting for approval\. Open the session in OpenCode/);
-    assert.match(all, /Server: NOT_ATTACHED/);
+    assert.match(all, /Shared OpenCode server not running · starts with the first worker/);
+    assert.match(ui.render({ ...state, server: { state: 'ATTACHED', endpoint: 'http://127.0.0.1:4096' } }, '', {}), /Shared OpenCode server · http:\/\/127\.0\.0\.1:4096/);
     assert.equal(ui.pending(state), 1);
     const onlyVerify = ui.render(state, 'verify', {});
     assert.equal((onlyVerify.match(/class="worker-card"/g) || []).length, 1, 'filter by mode');
@@ -176,28 +187,36 @@ const packet = (overrides = {}) => ({
     const openA = ui.render(state, '', { [run1.workerId]: true });
     const openButtons = openA.match(/data-worker-action="open" data-session-id="[^"]*"/g) || [];
     assert.deepEqual(openButtons.sort(), ['ses_A', 'ses_C'].map((id) => `data-worker-action="open" data-session-id="${id}"`));
-    assert.equal((openA.match(/<tr data-run-id=/g) || []).length, 3, 'expanded trace lists every run');
-    assert.match(openA, new RegExp(`data-run-id="${run1.runId}"><td>${run1.runId}</td><td>COMPLETED</td><td>turn-1</td><td>4s</td><td>\\$0\\.0021</td><td>1\\.2K</td><td>340</td><td>50</td>`));
-    assert.match(openA, new RegExp(`data-run-id="${run3.runId}"><td>${run3.runId}</td><td>STARTING #1</td>`), 'queued run shows its position');
+    assert.equal((openA.match(/<tr class="worker-run-partition" data-run-id=/g) || []).length, 3, 'one partition per run in the worker conversation');
+    assert.match(openA, new RegExp(`data-run-id="${run1.runId}"><td colspan="7"><span class="worker-state worker-state-completed">COMPLETED</span> <span class="obs-req-id">${run1.runId}</span> · turn turn-1 · 4s · \\$0\\.0021 · 1 req</td>`));
+    assert.match(openA, /worker-state-starting">STARTING #1<\/span>[\s\S]*?Queued/, 'queued run shows its position');
+    assert.ok(openA.includes(ui.trace(t1.events, { openIds: {} })), 'run rows are exactly the Metrics trace rows');
+    assert.match(openA, /<thead><tr><th>ID<\/th><th>Model \/ Tool<\/th><th>Credits<\/th><th>Input<\/th><th>Output<\/th><th>Cached<\/th><th title="cached \/ input">Hit%<\/th><\/tr><\/thead>/, 'same columns as Metrics');
+    assert.match(openA, /<span class="obs-req-id">STEP1<\/span><\/td><td class="obs-scope">gpt-5\.6-terra<\/td><td>\$0\.0021<\/td><td>1\.25K<\/td><td>340<\/td><td>50<\/td><td class="obs-cache-risk">4%<\/td>/);
+    assert.match(openA, /<details class="obs-tl-item obs-tl-tool" data-eid="t:EDIT1:1">[\s\S]*?edit<\/span>[\s\S]*?1\.25s[\s\S]*?Edit applied/, 'tool rows expand to input and output like Metrics');
+    const kept = ui.render(state, '', { [run1.workerId]: true }, false, { 't:EDIT1:1': true });
+    assert.match(kept, /data-eid="t:EDIT1:1" open>/, 'an expanded row stays open across the 1s re-render');
+    console.log('EV-038 SharedTraceRows: PASS metricsBlock=traceRowsHtml workerRowsContainMetricsRows=true partitionsPerRun=3 expandKept=true ledgerText=0');
     assert.match(openA, /gpt-5\.6-terra · high/);
     clock += 301_000;
     const later = JSON.parse(JSON.stringify(projectWorkersState(runtime, wsA, now)));
     assert.deepEqual(later.workers.filter((w) => !w.expired).map((w) => w.workerId), [run1.workerId], 'after 5 min idle the failed worker expires; the running one stays');
-    assert.match(ui.render(later, '', {}), /Show 2 expired workers/);
+    assert.match(ui.render(later, '', {}), /class="worker-card"/);
+    assert.equal((ui.render(later, '', {}).match(/class="worker-card"/g) || []).length, 1, 'two expired workers are hidden');
     // Age counts up with the clock, not only when a new state arrives.
     const ageAt = (ms) => (ui.render({ ...state, generatedAt: state.generatedAt + ms }, '', {}).match(/Age: (\d:\d\d) (warm|cold)/) || [])[1];
     assert.deepEqual([ageAt(0), ageAt(7000), ageAt(65_000)], ['0:00', '0:07', '1:05'], 'Age advances as time passes');
     assert.match(webview, /generatedAt: Date\.now\(\) - workersClockSkew/, 'the tab re-renders with the current clock every second');
     const actions = [...openA.matchAll(/data-worker-action="([^"]+)"/g)].map((m) => m[1]);
-    assert.deepEqual([...new Set(actions)].sort(), ['open', 'open-external', 'toggle-expired', 'trace'], 'no approval or conversation controls');
+    assert.deepEqual([...new Set(actions)].sort(), ['open', 'open-external', 'trace'], 'no approval or conversation controls');
     assert.equal((openA.match(/data-worker-action="open-external" data-session-id="ses_A"/g) || []).length, 1, 'terminal-app open targets the same session');
     assert.doesNotMatch(openA, /SECRET-OBJECTIVE|TRANSCRIPT-TEXT|<textarea/);
     const hostile = { ...state, workers: [{ ...state.workers[0], profile: '<img src=x onerror=alert(1)>' }] };
     assert.doesNotMatch(ui.render(hostile, '', {}), /<img/, 'worker fields are escaped');
-    console.log(`EV-015 WorkersViewInteraction: PASS cards=2 hiddenExpired=1 banner=sharedTemplate filtered=1 openTargets=${openButtons.length} traceRows=3 pendingApproval=1`);
+    console.log(`EV-015 WorkersViewInteraction: PASS cards=2 hiddenExpired=1 banner=sharedTemplate trace=metricsRows partitions=3 filtered=1 openTargets=${openButtons.length} pendingApproval=1`);
 
     const css = fs.readFileSync(path.join(__dirname, 'media', 'main.css'), 'utf8');
-    for (const selector of ['.workers-filter', '.worker-state-waiting_approval', '.worker-state-failed', '.worker-trace', '.workers-approval-notice', '.worker-open-btn']) {
+    for (const selector of ['.workers-filter', '.worker-state-waiting_approval', '.worker-state-failed', '.worker-run-partition', '.workers-approval-notice', '.worker-open-btn']) {
         assert.ok(css.includes(selector), `style for ${selector}`);
     }
     console.log('EV-016 WorkersControlPlanePresentation: PASS selectors=6');
@@ -205,6 +224,7 @@ const packet = (overrides = {}) => ({
     const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
     assert.match(provider, /data-tab="workers"/);
     assert.match(provider, /id="panel-workers"/);
+    assert.match(provider, /<span>Show completed<\/span>\s*<div class="toggle-switch specs-toggle-switch" id="workers-show-expired" role="switch"/, 'the same switch as the Specs tab');
     assert.match(provider, /sessionOpenCommand\(this\._workersStateSource\(root\), sessionId\)/, 'open-session goes through the allowlist');
     assert.match(provider, /if \(external\) \{ openInTerminalApp\(command, root\); return; \}/, 'terminal-app open uses the same allowlisted command');
     const terminalJs = ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', 'workers', 'terminalApp.ts'), 'utf8'),

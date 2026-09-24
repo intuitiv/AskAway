@@ -4958,7 +4958,7 @@ button#send-btn:disabled {
     animation: planPulse 2s ease-in-out infinite;
 }
 
-/* ===== Commentary tab (live orchestrator feed, newest first) ===== */
+/* ===== Commentary tab (live orchestrator feed, newest at the bottom) ===== */
 .cm-shell { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .cm-goal-input {
     resize: vertical; min-height: 110px; padding: 6px 8px; font-family: inherit; font-size: 13px; line-height: 1.45;
@@ -4976,16 +4976,11 @@ button#send-btn:disabled {
 .cm-summary { font-size: 11px; opacity: 0.7; padding: 0 2px 4px; border-bottom: 1px solid var(--vscode-panel-border); }
 .cm-empty { padding: 14px; text-align: center; opacity: 0.7; }
 .cm-item { display: flex; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--vscode-panel-border); }
-@keyframes cmArrive { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes cmArrive { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .cm-item.cm-new { animation: cmArrive 0.35s ease-out, cmGlow 2.4s ease-out; }
 @keyframes cmGlow { from { background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06)); } to { background: transparent; } }
 .cm-typing::after { content: '\258D'; margin-left: 1px; opacity: 0.7; animation: cmBlink 0.9s steps(2) infinite; }
 @keyframes cmBlink { 50% { opacity: 0; } }
-.cm-ball {
-    flex: 0 0 34px; height: 22px; line-height: 22px; text-align: center; border-radius: 11px;
-    font-size: 11px; font-weight: 700; font-family: var(--vscode-editor-font-family);
-    background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
-}
 .cm-body { flex: 1; min-width: 0; }
 .cm-meta { display: flex; gap: 8px; align-items: baseline; font-size: 10px; }
 .cm-time { opacity: 0.55; font-family: var(--vscode-editor-font-family); }
@@ -4994,8 +4989,7 @@ button#send-btn:disabled {
 .cm-text mark { background: rgba(204, 167, 0, 0.35); color: inherit; padding: 0 2px; border-radius: 2px; }
 .cm-text u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .cm-text code { font-family: var(--vscode-editor-font-family); font-size: 11px; padding: 0 3px; border-radius: 3px; background: var(--vscode-input-background); }
-.cm-heads-up { background: rgba(204, 167, 0, 0.08); }
-.cm-heads-up .cm-ball { background: var(--vscode-charts-yellow); color: #000; }
+.cm-heads-up { background: rgba(204, 167, 0, 0.08); box-shadow: inset 3px 0 0 var(--vscode-charts-yellow); }
 .cm-heads-up-tag { font-weight: 700; letter-spacing: 0.04em; color: var(--vscode-charts-yellow); }
 
 /* ===== Workers tab (OpenCode control plane; no transcript or approval controls) ===== */
@@ -5008,7 +5002,6 @@ button#send-btn:disabled {
 }
 .workers-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
 .workers-server { font-size: 11px; opacity: 0.8; }
-.workers-server-not_attached { color: var(--vscode-editorWarning-foreground); }
 .workers-approval-notice {
     padding: 4px 8px; border-radius: 3px; font-size: 12px;
     background: var(--vscode-inputValidation-warningBackground); border: 1px solid var(--vscode-inputValidation-warningBorder);
@@ -5032,11 +5025,6 @@ button#send-btn:disabled {
 .worker-banner { display: flex; gap: 8px; align-items: baseline; font-size: 11px; }
 .worker-banner-metrics { flex: 1; min-width: 0; }
 .worker-knowledge { font-size: 11px; font-style: italic; opacity: 0.8; }
-.workers-hidden-note {
-    align-self: flex-start; font-size: 10px; padding: 1px 8px; border: 1px dashed var(--vscode-panel-border); border-radius: 10px;
-    background: transparent; color: var(--vscode-foreground); opacity: 0.75; cursor: pointer;
-}
-.workers-hidden-note:hover { opacity: 1; }
 .obs-worker-tag {
     font-size: 10px; padding: 0 5px; border-radius: 8px; cursor: pointer; font-family: var(--vscode-editor-font-family);
     background: var(--vscode-charts-blue); color: #fff;
@@ -5047,8 +5035,11 @@ button#send-btn:disabled {
     background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
 }
 .worker-actions .worker-open-btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-.worker-trace { width: 100%; border-collapse: collapse; font-size: 10px; font-family: var(--vscode-editor-font-family); }
-.worker-trace th, .worker-trace td { text-align: left; padding: 1px 4px; border-bottom: 1px solid var(--vscode-panel-border); }
+/* The worker trace IS the Metrics timeline table; only the per-run partition row is its own. */
+.worker-run-partition td {
+    font-size: 11px; padding: 4px 4px 2px; font-family: var(--vscode-editor-font-family);
+    border-top: 2px solid var(--vscode-panel-border); background: var(--vscode-sideBarSectionHeader-background, transparent);
+}
 
 /* ===== Spec Kit overview tab ===== */
 .specs-shell {

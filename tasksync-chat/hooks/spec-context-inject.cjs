@@ -51,7 +51,7 @@ function carryOver(commentary) {
     lines.push(`Main goal: ${commentary.goal || '(none set; use the active spec cycle)'}`);
     for (const item of commentary.items.slice(-30)) {
         const flagged = ['heads-up', 'question', 'blocked'].includes(item.kind);
-        lines.push(`- ${new Date(item.ts).toISOString().slice(11, 16)}${item.ref ? ` ${item.ref}` : ''} ${flagged ? 'HEADS-UP: ' : ''}${item.text}`);
+        lines.push(`- ${new Date(item.ts).toISOString().slice(11, 16)} ${flagged ? 'HEADS-UP: ' : ''}${item.text}`);
     }
     return lines.join('\n');
 }

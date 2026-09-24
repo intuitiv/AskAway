@@ -2878,6 +2878,178 @@
     }
     // ── end Usage banner ──
 
+    // ── Turn trace rows: pure render (Metrics timeline and Workers trace; tested in test-workers-control-plane.cjs) ──
+    // events: Metrics turnEvents shape (kind request|tool). ctx: { openIds, subagents: {id: summary}, splitHtml(split), now }.
+    // A request carries nanoAiu (Copilot) or dollars (OpenCode); everything else is the same row.
+    var TRACE_HEAD = '<thead><tr><th>ID</th><th>Model / Tool</th><th>Credits</th><th>Input</th><th>Output</th><th>Cached</th><th title="cached / input">Hit%</th></tr></thead>';
+    function traceEsc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function traceRowsHtml(events, ctx) {
+        ctx = ctx || {};
+        var openIds = ctx.openIds || {};
+        var now = ctx.now || Date.now();
+        var tok = formatObservabilityCompact;
+        var aiu = function (nano) { return formatObservabilityCompact((Number(nano) || 0) / 1000000000); };
+        var sec = function (ms) { return ((Number(ms) || 0) / 1000).toFixed(2); };
+        var credits = function (ev) { return ev.dollars != null ? '$' + (Number(ev.dollars) || 0).toFixed(4) : aiu(ev.nanoAiu); };
+        var buildToolRow = function (ev, k) {
+            var eid = 't:' + String(ev.id || '') + ':' + k;
+            var openAttr = openIds[eid] ? ' open' : '';
+            var statusOk = !(ev.status && ev.status !== 'ok' && ev.status !== 'success');
+            var timeCls = statusOk ? 'obs-tl-time' : 'obs-tl-time obs-cache-risk';
+            // Heavy tool output is re-sent (billed) on every later request until compaction.
+            var inHeavy = (Number(ev.inputTokens) || 0) > 1000;
+            var outHeavy = (Number(ev.outputTokens) || 0) > 4000;
+            var isSubagent = String(ev.tool || '') === 'runSubagent';
+            var toolRowCls = 'obs-event-tool' + ((inHeavy || outHeavy) ? ' obs-row-flag' : '') + (isSubagent ? ' obs-row-subagent' : '');
+            var subagentBadge = isSubagent ? '<span class="obs-kind-tag obs-tag-subagent" title="Sub-agent invocation \u2014 its nested model calls are billed as regular requests">sub-agent</span> ' : '';
+            return '<tr class="' + toolRowCls + '"><td colspan="7" class="obs-tool-cell">' +
+                '<details class="obs-tl-item obs-tl-tool" data-eid="' + traceEsc(eid) + '"' + openAttr + '>' +
+                '<summary class="obs-tl-head">' +
+                '<span class="obs-tl-kind">tool</span>' +
+                '<span class="obs-tl-name">' + subagentBadge + workerRefBadge(workerRefsFromPreview(ev.outputPreview)) + '<span class="obs-req-id">' + traceEsc(String(ev.id || '?')) + '</span> ' + traceEsc(String(ev.tool || 'unknown')) + '</span>' +
+                '<span class="obs-tl-metric" title="input tokens">\u2193' + tok(ev.inputTokens) + '</span>' +
+                '<span class="obs-tl-metric' + (outHeavy ? ' obs-cache-risk' : '') + '" title="output tokens \u2014 large tool output is re-billed in history until compaction">\u2191' + tok(ev.outputTokens) + '</span>' +
+                '<span class="' + timeCls + '" title="duration">' + sec(ev.durMs) + 's</span>' +
+                '</summary>' +
+                '<div class="obs-tl-body">' +
+                '<div class="obs-tl-field"><span class="obs-tl-label">Input</span><pre class="obs-tl-pre">' + traceEsc(String(ev.inputPreview || '\u2013')) + '</pre></div>' +
+                '<div class="obs-tl-field"><span class="obs-tl-label">Output</span><pre class="obs-tl-pre">' + traceEsc(String(ev.outputPreview || '\u2013')) + '</pre></div>' +
+                '<div class="obs-tl-meta">status ' + traceEsc(String(ev.status || 'ok')) + ' \u00b7 group ' + traceEsc(String(ev.group || 'default')) + '</div>' +
+                '</div></details>' +
+                '</td></tr>';
+        };
+        var buildRequestRow = function (ev, k) {
+            var reid = 'r:' + String(ev.id || '') + ':' + k;
+            var isOpen = !!openIds[reid];
+            var inp = Number(ev.inputTokens) || 0;
+            var pct = inp > 0 ? Math.round((Number(ev.cachedTokens) || 0) / inp * 100) : 100;
+            var missed = (inp > 0 && pct < 50);
+            var bigOut = (Number(ev.outputTokens) || 0) > 1000;
+            var bigCredit = ((Number(ev.nanoAiu) || 0) / 1e9) > 100;
+            var hitCls = missed ? ' class="obs-cache-risk"' : '';
+            var outCls = bigOut ? ' class="obs-cache-risk"' : '';
+            var credCls = bigCredit ? ' class="obs-cache-risk"' : '';
+            var hasSplit = !!(ev.split && ctx.splitHtml);
+            var reqRowCls = 'obs-event-request' +
+                ((missed || bigOut || bigCredit) ? ' obs-row-flag' : '') +
+                (ev.subagent ? ' obs-row-subagent-req' : '') +
+                (hasSplit ? ' obs-clickable' : '') +
+                (isOpen ? ' obs-expanded' : '');
+            var caret = hasSplit ? '<span class="obs-caret">\u25B8</span>' : '<span class="obs-caret-spacer"></span>';
+            var subTag = ev.firstOfTurn ? '<span class="obs-sub-tag" title="This turn\u2019s initiating request \u2014 your submission">submission</span> ' : '';
+            var kindTag = '';
+            if (ev.kindTag === 'compaction') { kindTag = '<span class="obs-kind-tag obs-tag-compaction" title="Context compaction (summarizeConversationHistory) \u2014 billed as a request">compaction</span> '; }
+            else if (ev.kindTag === 'retry') { kindTag = '<span class="obs-kind-tag obs-tag-retry" title="Retried request \u2014 billed again">retry</span> '; }
+            var html = '<tr class="' + reqRowCls + '" data-eid="' + traceEsc(reid) + '">' +
+                '<td>' + caret + '<span class="obs-req-id">' + traceEsc(String(ev.id || '?')) + '</span></td>' +
+                '<td class="obs-scope">' + subTag + kindTag + traceEsc(String(ev.model || 'unknown')) + '</td>' +
+                '<td' + credCls + '>' + credits(ev) + '</td>' +
+                '<td>' + tok(ev.inputTokens) + '</td>' +
+                '<td' + outCls + '>' + tok(ev.outputTokens) + '</td>' +
+                '<td>' + tok(ev.cachedTokens) + '</td>' +
+                '<td' + hitCls + '>' + pct + '%</td></tr>';
+            if (hasSplit) {
+                html += '<tr class="obs-detail-row' + (isOpen ? ' obs-open' : '') + '" data-for="' + traceEsc(reid) + '"' +
+                    (isOpen ? '' : ' style="display:none"') + '>' +
+                    '<td colspan="7">' + ctx.splitHtml(ev.split) + '</td></tr>';
+            }
+            return html;
+        };
+        var buildAnyRow = function (ev, k) {
+            return ev.kind === 'tool' ? buildToolRow(ev, k) : buildRequestRow(ev, k);
+        };
+
+        // Sub-agent events collapse into one group anchored where the group's first event sits.
+        var saSummary = ctx.subagents || {};
+        var renderItems = [];
+        var groups = {};
+        for (var k = 0; k < events.length; k++) {
+            var ev = events[k];
+            var said = ev.subagentId;
+            if (said) {
+                if (!groups[said]) {
+                    groups[said] = { id: said, items: [], reqCount: 0, toolCount: 0, nano: 0, inTok: 0, outTok: 0, minTs: Number(ev.ts) || 0, maxTs: Number(ev.ts) || 0, models: {} };
+                    renderItems.push({ type: 'group', id: said });
+                }
+                var g = groups[said];
+                g.items.push({ ev: ev, k: k });
+                if (ev.kind === 'tool') { g.toolCount++; g.outTok += Number(ev.outputTokens) || 0; }
+                else {
+                    g.reqCount++; g.nano += Number(ev.nanoAiu) || 0; g.inTok += Number(ev.inputTokens) || 0; g.outTok += Number(ev.outputTokens) || 0;
+                    var mdl = String(ev.model || 'unknown');
+                    g.models[mdl] = (g.models[mdl] || 0) + 1;
+                }
+                var ets = Number(ev.ts) || 0;
+                if (ets && (!g.minTs || ets < g.minTs)) { g.minTs = ets; }
+                if (ets > g.maxTs) { g.maxTs = ets; }
+            } else {
+                renderItems.push({ type: 'event', ev: ev, k: k });
+            }
+        }
+
+        var eventRows = '';
+        for (var ri = 0; ri < renderItems.length; ri++) {
+            var item = renderItems[ri];
+            if (item.type === 'event') {
+                eventRows += buildAnyRow(item.ev, item.k);
+                continue;
+            }
+            var grp = groups[item.id];
+            var sum = saSummary[item.id] || null;
+            var gLabel = (sum && sum.label) ? sum.label : 'sub-agent';
+            var done = !!(sum && sum.done);
+            var gid = 'sa:' + item.id;
+            var gOpenAttr = openIds[gid] ? ' open' : '';
+            // While running, wall time from the first observed activity is the honest live number.
+            var gDurMs = done
+                ? Number(sum.durMs) || 0
+                : Math.max(0, (grp.maxTs - grp.minTs), (sum && sum.startedTs) ? (now - sum.startedTs) : 0);
+            var gCold = !done && gDurMs >= 240000;
+            var gOut = done ? (Number(sum.outputTokens) || grp.outTok) : grp.outTok;
+            var statusBad = sum && sum.status && sum.status !== 'ok' && sum.status !== 'success';
+            var stateBadge = done
+                ? (statusBad ? '<span class="obs-kind-tag obs-tag-retry" title="Sub-agent ended with an error">failed</span>' : '<span class="obs-sub-tag" title="Sub-agent completed">done</span>')
+                : (gCold
+                    ? '<span class="obs-kind-tag obs-tag-retry obs-sa-running" title="Past the ~5m prompt-cache window \u2014 this sub-agent is now being re-billed at full price">running\u2026 cache cold</span>'
+                    : '<span class="obs-kind-tag obs-tag-subagent obs-sa-running" title="Sub-agent still running \u2014 totals update live">running\u2026</span>');
+            var nestedRows = '';
+            grp.items.sort(function (a, b) { return (Number(a.ev.ts) || 0) - (Number(b.ev.ts) || 0); });
+            for (var gi = 0; gi < grp.items.length; gi++) { nestedRows += buildAnyRow(grp.items[gi].ev, grp.items[gi].k); }
+            var domModel = '', domN = -1;
+            for (var mk in grp.models) { if (grp.models[mk] > domN) { domN = grp.models[mk]; domModel = mk; } }
+            var modelBadge = domModel ? '<span class="obs-tl-metric" title="model this sub-agent ran on \u2014 delegate to a cheaper model to cut cost">' + traceEsc(domModel) + '</span>' : '';
+            eventRows += '<tr class="obs-event-tool obs-row-subagent"><td colspan="7" class="obs-tool-cell">' +
+                '<details class="obs-tl-item obs-tl-subagent" data-eid="' + traceEsc(gid) + '"' + gOpenAttr + '>' +
+                '<summary class="obs-tl-head">' +
+                '<span class="obs-tl-kind obs-tag-subagent">sub-agent</span>' +
+                '<span class="obs-tl-name"><span class="obs-req-id">' + traceEsc(String(item.id)) + '</span> ' + traceEsc(String(gLabel)) + ' ' + stateBadge + '</span>' +
+                modelBadge +
+                '<span class="obs-tl-metric" title="nested LLM requests / tool calls">' + grp.reqCount + ' req \u00b7 ' + grp.toolCount + ' tools</span>' +
+                '<span class="obs-tl-metric" title="credits (AIU)">' + aiu(grp.nano) + ' AIU</span>' +
+                '<span class="obs-tl-metric" title="output tokens">\u2191' + tok(gOut) + '</span>' +
+                '<span class="obs-tl-time' + (gCold ? ' obs-cache-risk' : '') + '" title="total wall time">' + sec(gDurMs) + 's</span>' +
+                '</summary>' +
+                '<div class="obs-tl-body obs-tl-subagent-body">' +
+                '<table class="observability-table obs-timeline-table obs-subagent-nested"><tbody>' + nestedRows + '</tbody></table>' +
+                '</div></details>' +
+                '</td></tr>';
+        }
+        return eventRows;
+    }
+    // Expanded rows survive a re-render: collect them before replacing innerHTML.
+    function traceOpenIds(root) {
+        var ids = {};
+        if (!root) return ids;
+        root.querySelectorAll('details[open][data-eid]').forEach(function (n) { ids[n.getAttribute('data-eid')] = true; });
+        root.querySelectorAll('tr.obs-detail-row.obs-open').forEach(function (n) { ids[n.getAttribute('data-for')] = true; });
+        return ids;
+    }
+    // ── end Turn trace rows ──
+
     function renderConversationHealth() {
         var summary = document.getElementById('common-turn-summary');
         var turn = observabilityMetrics.lastRequest || {};
@@ -3129,177 +3301,14 @@
                     return copy;
                 });
             }
-            // Preserve which tool rows / request rows are currently expanded across 2s re-renders.
-            var openIds = {};
-            var openNodes = eventTbody.querySelectorAll('details[open]');
-            for (var oi = 0; oi < openNodes.length; oi++) {
-                openIds[openNodes[oi].getAttribute('data-eid')] = true;
-            }
-            var openReqNodes = eventTbody.querySelectorAll('tr.obs-detail-row.obs-open');
-            for (var ori = 0; ori < openReqNodes.length; ori++) {
-                openIds[openReqNodes[ori].getAttribute('data-for')] = true;
-            }
             if (!events.length) {
                 eventTbody.innerHTML = '<tr><td colspan="7" class="obs-na">No events yet</td></tr>';
             } else {
-                // Build one HTML <tr> (+ optional detail row) for a single tool event.
-                var buildToolRow = function (ev, k) {
-                    var eid = 't:' + String(ev.id || '') + ':' + k;
-                    var openAttr = openIds[eid] ? ' open' : '';
-                    var statusOk = !(ev.status && ev.status !== 'ok' && ev.status !== 'success');
-                    var timeCls = statusOk ? 'obs-tl-time' : 'obs-tl-time obs-cache-risk';
-                    // Flag heavy tool INPUT (>1K) and heavy tool OUTPUT (>4K). A large tool output
-                    // is the bigger cost driver: it is appended to the conversation history and
-                    // re-sent (billed) on every subsequent request until compaction.
-                    var inHeavy = (Number(ev.inputTokens) || 0) > 1000;
-                    var outHeavy = (Number(ev.outputTokens) || 0) > 4000;
-                    var toolHeavy = inHeavy || outHeavy;
-                    var isSubagent = String(ev.tool || '') === 'runSubagent';
-                    var toolRowCls = 'obs-event-tool' + (toolHeavy ? ' obs-row-flag' : '') + (isSubagent ? ' obs-row-subagent' : '');
-                    var subagentBadge = isSubagent ? '<span class="obs-kind-tag obs-tag-subagent" title="Sub-agent invocation \u2014 its nested model calls are billed as regular requests">sub-agent</span> ' : '';
-                    return '<tr class="' + toolRowCls + '"><td colspan="7" class="obs-tool-cell">' +
-                        '<details class="obs-tl-item obs-tl-tool" data-eid="' + eid + '"' + openAttr + '>' +
-                        '<summary class="obs-tl-head">' +
-                        '<span class="obs-tl-kind">tool</span>' +
-                        '<span class="obs-tl-name">' + subagentBadge + workerRefBadge(workerRefsFromPreview(ev.outputPreview)) + '<span class="obs-req-id">' + escapeHtml(String(ev.id || '?')) + '</span> ' + escapeHtml(String(ev.tool || 'unknown')) + '</span>' +
-                        '<span class="obs-tl-metric" title="input tokens">\u2193' + tok(ev.inputTokens) + '</span>' +
-                        '<span class="obs-tl-metric' + (outHeavy ? ' obs-cache-risk' : '') + '" title="output tokens \u2014 large tool output is re-billed in history until compaction">\u2191' + tok(ev.outputTokens) + '</span>' +
-                        '<span class="' + timeCls + '" title="duration">' + sec(ev.durMs) + 's</span>' +
-                        '</summary>' +
-                        '<div class="obs-tl-body">' +
-                        '<div class="obs-tl-field"><span class="obs-tl-label">Input</span><pre class="obs-tl-pre">' + escapeHtml(String(ev.inputPreview || '\u2013')) + '</pre></div>' +
-                        '<div class="obs-tl-field"><span class="obs-tl-label">Output</span><pre class="obs-tl-pre">' + escapeHtml(String(ev.outputPreview || '\u2013')) + '</pre></div>' +
-                        '<div class="obs-tl-meta">status ' + escapeHtml(String(ev.status || 'ok')) + ' \u00b7 group ' + escapeHtml(String(ev.group || 'default')) + '</div>' +
-                        '</div></details>' +
-                        '</td></tr>';
-                };
-                // Build one HTML request <tr> (+ optional expandable detail row).
-                var buildRequestRow = function (ev, k) {
-                    var reid = 'r:' + String(ev.id || '') + ':' + k;
-                    var isOpen = !!openIds[reid];
-                    var inp = Number(ev.inputTokens) || 0;
-                    var pct = inp > 0 ? Math.round((Number(ev.cachedTokens) || 0) / inp * 100) : 100;
-                    var missed = (inp > 0 && pct < 50);
-                    var bigOut = (Number(ev.outputTokens) || 0) > 1000;
-                    var bigCredit = ((Number(ev.nanoAiu) || 0) / 1e9) > 100;
-                    var hitCls = missed ? ' class="obs-cache-risk"' : '';
-                    var outCls = bigOut ? ' class="obs-cache-risk"' : '';
-                    var credCls = bigCredit ? ' class="obs-cache-risk"' : '';
-                    var hasSplit = !!ev.split;
-                    var reqRowCls = 'obs-event-request' +
-                        ((missed || bigOut || bigCredit) ? ' obs-row-flag' : '') +
-                        (ev.subagent ? ' obs-row-subagent-req' : '') +
-                        (hasSplit ? ' obs-clickable' : '') +
-                        (isOpen ? ' obs-expanded' : '');
-                    var caret = hasSplit ? '<span class="obs-caret">\u25B8</span>' : '<span class="obs-caret-spacer"></span>';
-                    var subTag = ev.firstOfTurn ? '<span class="obs-sub-tag" title="This turn\u2019s initiating request \u2014 your submission">submission</span> ' : '';
-                    var kindTag = '';
-                    if (ev.kindTag === 'compaction') { kindTag = '<span class="obs-kind-tag obs-tag-compaction" title="Context compaction (summarizeConversationHistory) \u2014 billed as a request">compaction</span> '; }
-                    else if (ev.kindTag === 'retry') { kindTag = '<span class="obs-kind-tag obs-tag-retry" title="Retried request \u2014 billed again">retry</span> '; }
-                    var html = '<tr class="' + reqRowCls + '" data-eid="' + reid + '">' +
-                        '<td>' + caret + '<span class="obs-req-id">' + escapeHtml(String(ev.id || '?')) + '</span></td>' +
-                        '<td class="obs-scope">' + subTag + kindTag + escapeHtml(String(ev.model || 'unknown')) + '</td>' +
-                        '<td' + credCls + '>' + aiu(ev.nanoAiu) + '</td>' +
-                        '<td>' + tok(ev.inputTokens) + '</td>' +
-                        '<td' + outCls + '>' + tok(ev.outputTokens) + '</td>' +
-                        '<td>' + tok(ev.cachedTokens) + '</td>' +
-                        '<td' + hitCls + '>' + pct + '%</td></tr>';
-                    if (hasSplit) {
-                        html += '<tr class="obs-detail-row' + (isOpen ? ' obs-open' : '') + '" data-for="' + reid + '"' +
-                            (isOpen ? '' : ' style="display:none"') + '>' +
-                            '<td colspan="7">' + renderSplitDetail(ev.split) + '</td></tr>';
-                    }
-                    return html;
-                };
-                var buildAnyRow = function (ev, k) {
-                    return ev.kind === 'tool' ? buildToolRow(ev, k) : buildRequestRow(ev, k);
-                };
-
                 // Sub-agent summaries (authoritative totals once the parent runSubagent finishes).
                 var saSummary = {};
                 var saList = observabilityMetrics.turnSubagents || [];
                 for (var si = 0; si < saList.length; si++) { saSummary[saList[si].subagentId] = saList[si]; }
-
-                // Partition events into top-level items and per-sub-agent groups, keeping the
-                // group anchored at the position of its first event so the timeline stays ordered.
-                var renderItems = [];
-                var groups = {};
-                for (var k = 0; k < events.length; k++) {
-                    var ev = events[k];
-                    var said = ev.subagentId;
-                    if (said) {
-                        if (!groups[said]) {
-                            groups[said] = { id: said, items: [], reqCount: 0, toolCount: 0, nano: 0, inTok: 0, outTok: 0, minTs: Number(ev.ts) || 0, maxTs: Number(ev.ts) || 0, models: {} };
-                            renderItems.push({ type: 'group', id: said });
-                        }
-                        var g = groups[said];
-                        g.items.push({ ev: ev, k: k });
-                        if (ev.kind === 'tool') { g.toolCount++; g.outTok += Number(ev.outputTokens) || 0; }
-                        else {
-                            g.reqCount++; g.nano += Number(ev.nanoAiu) || 0; g.inTok += Number(ev.inputTokens) || 0; g.outTok += Number(ev.outputTokens) || 0;
-                            var mdl = String(ev.model || 'unknown');
-                            g.models[mdl] = (g.models[mdl] || 0) + 1;
-                        }
-                        var ets = Number(ev.ts) || 0;
-                        if (ets && (!g.minTs || ets < g.minTs)) { g.minTs = ets; }
-                        if (ets > g.maxTs) { g.maxTs = ets; }
-                    } else {
-                        renderItems.push({ type: 'event', ev: ev, k: k });
-                    }
-                }
-
-                var eventRows = '';
-                for (var ri = 0; ri < renderItems.length; ri++) {
-                    var item = renderItems[ri];
-                    if (item.type === 'event') {
-                        eventRows += buildAnyRow(item.ev, item.k);
-                        continue;
-                    }
-                    // Sub-agent group: one collapsible wrapper aggregating all nested LLM + tool calls.
-                    var grp = groups[item.id];
-                    var sum = saSummary[item.id] || null;
-                    var gLabel = (sum && sum.label) ? sum.label : 'sub-agent';
-                    var done = !!(sum && sum.done);
-                    var gid = 'sa:' + item.id;
-                    var gOpenAttr = openIds[gid] ? ' open' : '';
-                    // While running, the debug-log event span (maxTs-minTs) is ~0 until the child has
-                    // logged at least two events, which is why this used to read 0.0s for most of the
-                    // run. Wall time from the first observed activity is the honest live number.
-                    var gDurMs = done
-                        ? Number(sum.durMs) || 0
-                        : Math.max(0, (grp.maxTs - grp.minTs), (sum && sum.startedTs) ? (Date.now() - sum.startedTs) : 0);
-                    var gCold = !done && gDurMs >= 240000;
-                    var gOut = done ? (Number(sum.outputTokens) || grp.outTok) : grp.outTok;
-                    var statusBad = sum && sum.status && sum.status !== 'ok' && sum.status !== 'success';
-                    var stateBadge = done
-                        ? (statusBad ? '<span class="obs-kind-tag obs-tag-retry" title="Sub-agent ended with an error">failed</span>' : '<span class="obs-sub-tag" title="Sub-agent completed">done</span>')
-                        : (gCold
-                            ? '<span class="obs-kind-tag obs-tag-retry obs-sa-running" title="Past the ~5m prompt-cache window \u2014 this sub-agent is now being re-billed at full price">running\u2026 cache cold</span>'
-                            : '<span class="obs-kind-tag obs-tag-subagent obs-sa-running" title="Sub-agent still running \u2014 totals update live">running\u2026</span>');
-                    var nestedRows = '';
-                    grp.items.sort(function (a, b) { return (Number(a.ev.ts) || 0) - (Number(b.ev.ts) || 0); });
-                    for (var gi = 0; gi < grp.items.length; gi++) { nestedRows += buildAnyRow(grp.items[gi].ev, grp.items[gi].k); }
-                    // Dominant model this sub-agent ran on (helps decide if a cheaper model would do).
-                    var domModel = '', domN = -1;
-                    for (var mk in grp.models) { if (grp.models[mk] > domN) { domN = grp.models[mk]; domModel = mk; } }
-                    var modelBadge = domModel ? '<span class="obs-tl-metric" title="model this sub-agent ran on \u2014 delegate to a cheaper model to cut cost">' + escapeHtml(domModel) + '</span>' : '';
-                    eventRows += '<tr class="obs-event-tool obs-row-subagent"><td colspan="7" class="obs-tool-cell">' +
-                        '<details class="obs-tl-item obs-tl-subagent" data-eid="' + gid + '"' + gOpenAttr + '>' +
-                        '<summary class="obs-tl-head">' +
-                        '<span class="obs-tl-kind obs-tag-subagent">sub-agent</span>' +
-                        '<span class="obs-tl-name"><span class="obs-req-id">' + escapeHtml(String(item.id)) + '</span> ' + escapeHtml(String(gLabel)) + ' ' + stateBadge + '</span>' +
-                        modelBadge +
-                        '<span class="obs-tl-metric" title="nested LLM requests / tool calls">' + grp.reqCount + ' req \u00b7 ' + grp.toolCount + ' tools</span>' +
-                        '<span class="obs-tl-metric" title="credits (AIU)">' + aiu(grp.nano) + ' AIU</span>' +
-                        '<span class="obs-tl-metric" title="output tokens">\u2191' + tok(gOut) + '</span>' +
-                        '<span class="obs-tl-time' + (gCold ? ' obs-cache-risk' : '') + '" title="total wall time">' + sec(gDurMs) + 's</span>' +
-                        '</summary>' +
-                        '<div class="obs-tl-body obs-tl-subagent-body">' +
-                        '<table class="observability-table obs-timeline-table obs-subagent-nested"><tbody>' + nestedRows + '</tbody></table>' +
-                        '</div></details>' +
-                        '</td></tr>';
-                }
-                eventTbody.innerHTML = eventRows;
+                eventTbody.innerHTML = traceRowsHtml(events, { openIds: traceOpenIds(eventTbody), subagents: saSummary, splitHtml: renderSplitDetail });
             }
             // Delegated click: toggle a request row's detail row (bound once).
             if (!eventTbody._obsClickBound) {
@@ -5165,12 +5174,11 @@
         if (!all.length) {
             return html + '<div class="cm-empty">Waiting for the orchestrator\'s first update.</div>';
         }
-        // Newest first, like a live match feed.
-        for (var n = all.length - 1; n >= 0; n--) {
+        // Oldest first, newest at the bottom, like the chat and every other feed here.
+        for (var n = 0; n < all.length; n++) {
             var item = all[n];
             var flagged = commentaryIsHeadsUp(item);
             html += '<div class="cm-item' + (flagged ? ' cm-heads-up' : '') + '" data-id="' + commentaryEsc(item.id) + '">' +
-                '<div class="cm-ball">' + commentaryEsc(item.ref || '•') + '</div>' +
                 '<div class="cm-body">' +
                 '<div class="cm-meta">' + (flagged ? '<span class="cm-heads-up-tag">HEADS-UP</span>' : '') + '<span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
                 '<div class="cm-text">' + commentaryMarkup(item.text) + '</div>' +
@@ -5213,12 +5221,14 @@
         commentaryView = data;
         var feed = document.getElementById('cm-feed');
         if (feed) {
+            var pinned = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
             feed.innerHTML = renderCommentaryHtml(commentaryView);
             // Lines already on screen at first load appear at once; only new arrivals type in.
             if (commentarySeen) { commentaryAnimateNew(feed, commentarySeen, 18); } else {
                 commentarySeen = {};
                 ((data && data.items) || []).forEach(function (i) { commentarySeen[i.id] = true; });
             }
+            if (pinned) feed.scrollTop = feed.scrollHeight;
         }
         var goal = document.getElementById('cm-goal-input');
         if (goal && document.activeElement !== goal) goal.value = (data && data.goal) || '';
@@ -5257,10 +5267,6 @@
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
         });
     }
-    function workersTokens(value) {
-        value = value || 0;
-        return value >= 1000 ? (value / 1000).toFixed(1) + 'K' : String(value);
-    }
     function workersDuration(ms) {
         var s = Math.round((ms || 0) / 1000);
         return s >= 60 ? Math.floor(s / 60) + 'm' + (s % 60) + 's' : s + 's';
@@ -5293,21 +5299,32 @@
         return '<span class="obs-worker-tag" data-worker-ref="' + workersEsc(refs.workerId) + '" title="Show this worker in the Workers tab">' +
             workersEsc(refs.workerId) + (refs.runId ? ' · ' + workersEsc(refs.runId) : '') + '</span> ';
     }
-    function renderWorkersHtml(state, filter, expanded, showExpired) {
+    // One trace for the worker's conversation: the Metrics rows, with a partition line per run.
+    function workerTraceHtml(worker, openIds, now) {
+        var rows = '';
+        (worker.runs || []).forEach(function (r) {
+            var ru = r.usage || {};
+            rows += '<tr class="worker-run-partition" data-run-id="' + workersEsc(r.runId) + '"><td colspan="7">' +
+                '<span class="worker-state worker-state-' + workersEsc(r.state).toLowerCase() + '">' + workersEsc(r.state) + (r.queuePosition ? ' #' + r.queuePosition : '') + '</span> ' +
+                '<span class="obs-req-id">' + workersEsc(r.runId) + '</span> · turn ' + workersEsc(r.dispatchTurnId) + ' · ' + workersDuration(r.elapsedMs) +
+                ' · $' + (ru.cost || 0).toFixed(4) + ' · ' + (ru.steps || 0) + ' req' + (r.reason ? ' · ' + workersEsc(r.reason) : '') + '</td></tr>';
+            rows += (r.events && r.events.length)
+                ? traceRowsHtml(r.events, { openIds: openIds, now: now })
+                : '<tr><td colspan="7" class="obs-na">' + (r.queuePosition ? 'Queued' : 'No events yet') + '</td></tr>';
+        });
+        return '<table class="observability-table observability-model-table obs-timeline-table worker-trace">' + TRACE_HEAD + '<tbody>' + rows + '</tbody></table>';
+    }
+    function renderWorkersHtml(state, filter, expanded, showExpired, openIds) {
         if (!state) return '<div class="workers-empty">Worker runtime not available.</div>';
         var server = state.server || { state: 'NOT_ATTACHED', endpoint: '' };
-        var html = '<div class="workers-server workers-server-' + workersEsc(server.state).toLowerCase() + '">Server: ' + workersEsc(server.state) +
-            (server.endpoint ? ' · ' + workersEsc(server.endpoint) : ' · each run hosts its own') + '</div>';
+        var html = '<div class="workers-server workers-server-' + workersEsc(server.state).toLowerCase() + '">' +
+            (server.state === 'ATTACHED' ? 'Shared OpenCode server · ' + workersEsc(server.endpoint) : 'Shared OpenCode server not running · starts with the first worker') + '</div>';
         var pending = workersPendingApprovals(state);
         if (pending) {
             html += '<div class="workers-approval-notice">' + pending + ' worker' + (pending > 1 ? 's' : '') + ' waiting for approval. Open the session in OpenCode to answer.</div>';
         }
         var shown = (state.workers || []).filter(function (w) { return (showExpired || !w.expired) && workersMatch(w, filter); });
         var hidden = (state.workers || []).filter(function (w) { return w.expired; }).length;
-        if (hidden) {
-            html += '<button class="workers-hidden-note" data-worker-action="toggle-expired">' +
-                (showExpired ? 'Hide ' + hidden + ' expired' : 'Show ' + hidden + ' expired worker' + (hidden > 1 ? 's' : '') + ' (cache cold or retired)') + '</button>';
-        }
         if (!shown.length) {
             return html + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>';
         }
@@ -5329,15 +5346,7 @@
                 '<button class="worker-trace-btn" data-worker-action="trace" data-worker-id="' + workersEsc(w.workerId) + '">' + (open ? 'Hide' : 'Trace') + ' (' + (w.runs || []).length + ')</button>' +
                 '</div>';
             if (open) {
-                html += '<table class="worker-trace"><tr><th>run</th><th>state</th><th>turn</th><th>elapsed</th><th>cost</th><th>in</th><th>out</th><th>cached</th></tr>';
-                (w.runs || []).forEach(function (r) {
-                    var ru = r.usage || {};
-                    html += '<tr data-run-id="' + workersEsc(r.runId) + '"><td>' + workersEsc(r.runId) + '</td><td>' + workersEsc(r.state) +
-                        (r.queuePosition ? ' #' + r.queuePosition : '') + '</td><td>' + workersEsc(r.dispatchTurnId) + '</td><td>' + workersDuration(r.elapsedMs) +
-                        '</td><td>$' + (ru.cost || 0).toFixed(4) + '</td><td>' + workersTokens(ru.input) + '</td><td>' + workersTokens(ru.output) +
-                        '</td><td>' + workersTokens(ru.cacheRead) + '</td></tr>';
-                });
-                html += '</table>';
+                html += workerTraceHtml(w, openIds || {}, state.generatedAt);
             }
             html += '</div>';
         });
@@ -5357,7 +5366,12 @@
         if (!list || !workersState) return;
         // Age ticks locally between polls; the skew keeps it on the extension host's clock.
         var ticking = Object.assign({}, workersState, { generatedAt: Date.now() - workersClockSkew });
-        list.innerHTML = renderWorkersHtml(ticking, workersFilterText, workersExpanded, workersShowExpired);
+        list.innerHTML = renderWorkersHtml(ticking, workersFilterText, workersExpanded, workersShowExpired, traceOpenIds(list));
+        var toggle = document.getElementById('workers-show-expired');
+        if (toggle) {
+            toggle.setAttribute('aria-checked', workersShowExpired ? 'true' : 'false');
+            toggle.classList.toggle('active', workersShowExpired);
+        }
     }
 
     function applyWorkersState(data) {
@@ -5386,6 +5400,14 @@
         if (filter) filter.addEventListener('input', function () { workersFilterText = filter.value; paintWorkers(); });
         var refresh = document.getElementById('workers-refresh-btn');
         if (refresh) refresh.addEventListener('click', function () { vscode.postMessage({ type: 'requestWorkersState' }); });
+        var showExpired = document.getElementById('workers-show-expired');
+        if (showExpired) {
+            var toggleExpired = function () { workersShowExpired = !workersShowExpired; paintWorkers(); };
+            showExpired.addEventListener('click', toggleExpired);
+            showExpired.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleExpired(); }
+            });
+        }
         var list = document.getElementById('workers-list');
         if (list) list.addEventListener('click', function (e) {
             var btn = e.target.closest('[data-worker-action]');
@@ -5393,9 +5415,6 @@
             var action = btn.getAttribute('data-worker-action');
             if (action === 'open' || action === 'open-external') {
                 vscode.postMessage({ type: 'openWorkerSession', sessionId: btn.getAttribute('data-session-id'), external: action === 'open-external' });
-            } else if (action === 'toggle-expired') {
-                workersShowExpired = !workersShowExpired;
-                paintWorkers();
             } else {
                 var id = btn.getAttribute('data-worker-id');
                 workersExpanded[id] = !workersExpanded[id];

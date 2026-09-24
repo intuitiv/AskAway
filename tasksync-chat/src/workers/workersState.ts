@@ -1,6 +1,11 @@
-import { OpenCodeWorkerRuntime, RunState, RunUsage } from './openCodeRuntime';
+import { LifecycleRecord, OpenCodeWorkerRuntime, RunState, RunUsage } from './openCodeRuntime';
 
 export type ProjectedWorkerState = RunState | 'RETIRED' | 'ORPHANED';
+
+/** One row of the Metrics turn trace: the single format both the chat's and the workers' traces render. */
+export type TraceEvent =
+    | { kind: 'request'; id: string; ts: number; model: string; inputTokens: number; outputTokens: number; cachedTokens: number; dollars: number }
+    | { kind: 'tool'; id: string; ts: number; tool: string; durMs: number; status: string; inputTokens: number; outputTokens: number; inputPreview: string; outputPreview: string };
 
 /** Per-run trace. cacheRead is the reused worker's historical input; elapsed and cost reset per run. */
 export interface WorkerRunTrace {
@@ -13,6 +18,7 @@ export interface WorkerRunTrace {
     elapsedMs: number;
     usage: RunUsage;
     reason: string;
+    events: TraceEvent[];
 }
 
 export interface WorkerRow {
@@ -63,8 +69,40 @@ function sumUsage(runs: WorkerRunTrace[]): RunUsage {
     return total;
 }
 
-/** Workers view state for one workspace. Carries identities, states, and numbers only, never packet or transcript text. */
+/** A short display ID like the Metrics trace's, stable for the same OpenCode part. */
+function shortId(value: string, fallback: string): string {
+    const tail = String(value || '').replace(/[^A-Za-z0-9]/g, '').slice(-5).toUpperCase();
+    return tail || fallback;
+}
+
+function traceEvents(runtime: OpenCodeWorkerRuntime, runId: string, facts: LifecycleRecord[]): TraceEvent[] {
+    const events: TraceEvent[] = [];
+    // A step's usage arrives after its tools ran; like the Metrics trace, the request row leads its tools.
+    let stepTools: TraceEvent[] = [];
+    for (const fact of facts) {
+        if (fact.type === 'checkpoint' && fact.usage) {
+            const u = fact.usage;
+            events.push({ kind: 'request', id: shortId(fact.callId ?? '', `S${events.length + 1}`), ts: fact.ts, model: fact.model.split('/').pop() || fact.model,
+                inputTokens: u.input + u.cacheRead + u.cacheWrite, outputTokens: u.output, cachedTokens: u.cacheRead, dollars: u.cost }, ...stepTools);
+            stepTools = [];
+        } else if (fact.type === 'after_tool') {
+            const preview = runtime.toolPreview(runId, fact.callId ?? '');
+            stepTools.push({ kind: 'tool', id: shortId(fact.callId ?? '', `T${events.length + stepTools.length + 1}`), ts: fact.ts, tool: fact.tool ?? 'unknown',
+                durMs: fact.durMs ?? 0, status: fact.status ?? 'ok', inputTokens: fact.toolTokens?.input ?? 0, outputTokens: fact.toolTokens?.output ?? 0,
+                inputPreview: preview?.input ?? '', outputPreview: preview?.output ?? '' });
+        }
+    }
+    return events.concat(stepTools);
+}
+
+/** Workers view state for one workspace. Packet, assistant text, and evidence never leave the runtime; tool previews are bounded. */
 export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePath: string, now: () => number = Date.now): WorkersState {
+    const factsByRun = new Map<string, LifecycleRecord[]>();
+    for (const fact of runtime.facts(workspacePath)) {
+        const list = factsByRun.get(fact.runId) ?? [];
+        list.push(fact);
+        factsByRun.set(fact.runId, list);
+    }
     const byWorker = new Map<string, ReturnType<OpenCodeWorkerRuntime['list']>>();
     for (const run of runtime.list(workspacePath)) {
         const runs = byWorker.get(run.workerId) ?? [];
@@ -88,6 +126,7 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
         const traces: WorkerRunTrace[] = runs.map((run) => ({
             runId: run.runId, state: run.state, dispatchTurnId: run.dispatchTurnId, queuePosition: run.queuePosition,
             startedAt: run.startedAt, endedAt: run.endedAt, elapsedMs: run.elapsedMs, usage: { ...run.usage }, reason: run.reason ?? '',
+            events: traceEvents(runtime, run.runId, factsByRun.get(run.runId) ?? []),
         }));
         const session = [...runs].reverse().find((run) => run.sessionId);
         const cacheExpiresAt = routed ? runtime.router.cacheExpiresAt(routed) : 0;

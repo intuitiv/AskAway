@@ -35,8 +35,10 @@ export function sharedWorkerRuntimeReady(workspacePath?: string): Promise<OpenCo
 
 /** For views: restores workers after a reload using a probe only, so opening a tab never starts a server. */
 export async function observeWorkers(workspacePath: string): Promise<void> {
-    const live = sharedWorkerRuntime().serverEndpoint !== '' || await defaultServerDeps.probe(serverUrl());
-    sharedWorkerRuntime().rehydrate(workspacePath, live);
+    const runtime = sharedWorkerRuntime();
+    const live = runtime.serverEndpoint !== '' || await defaultServerDeps.probe(serverUrl());
+    if (live && !runtime.serverEndpoint) { runtime.setServerEndpoint(serverUrl()); }
+    runtime.rehydrate(workspacePath, live);
 }
 
 function serverUrl(): string {

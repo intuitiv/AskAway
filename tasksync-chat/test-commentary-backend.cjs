@@ -46,7 +46,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     assert.equal(view.opener, [
         'Main goal: Finish CY-005: Workers tab usable end to end.',
         'Commentary since last clear (2):',
-        '- 19:14 A.1 Split T015: base tab now, swimlanes later, unblocks commentary work.',
+        '- 19:14 Split T015: base tab now, swimlanes later, unblocks commentary work.',
         '- 19:15 HEADS-UP: Commentary tab beside Workers, or replace it?',
         'Continue toward the main goal.',
     ].join('\n'));
@@ -56,9 +56,9 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     store.clear(workspace, 'feed');
     view = commentaryView(store.read(workspace));
     assert.deepEqual([view.items.length, view.archivedCount, view.goal !== ''], [0, 2, true], 'clear keeps audit history and the goal');
-    await call(commentary, { kind: 'update', ref: 'A.2', text: 'Track A: code worker editing workersState.ts, verify queued next.' });
-    assert.equal((await call(commentary, { kind: 'update', ref: 'A.3', text: 'A.2 accepted: verify worker saw EV-014 PASS line exactly.' })).status, 'POSTED');
-    assert.deepEqual(commentaryView(store.read(workspace)).items.map((i) => [i.ref, i.kind]), [['A.2', 'update'], ['A.3', 'update']], 'only posts after the clear are live');
+    await call(commentary, { kind: 'update', text: 'Track A: code worker editing workersState.ts, verify queued next.' });
+    assert.equal((await call(commentary, { kind: 'update', text: 'Accepted: verify worker saw the EV-014 PASS line exactly.' })).status, 'POSTED');
+    assert.deepEqual(commentaryView(store.read(workspace)).items.map((i) => [i.kind, 'ref' in i]), [['update', false], ['update', false]], 'only posts after the clear are live; an old caller\'s ref is dropped');
     assert.deepEqual(pushed, [2, 3, 4], 'every change is pushed to the tab');
     assert.equal((await call(commentary, { kind: 'update', text: `🚀 ${Array(20).fill('word').join(' ')} ✅` })).status, 'POSTED', 'emojis do not count as words');
 
@@ -95,7 +95,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     };
     const first = hook({ session_id: 'next-1', prompt: 'continue' });
     assert.match(first, /Ship the async worker runner/);
-    assert.match(first, /## Carry-over from the previous conversation[\s\S]*Main goal: Finish CY-005[\s\S]*A\.2 Track A: code worker/);
+    assert.match(first, /## Carry-over from the previous conversation[\s\S]*Main goal: Finish CY-005[\s\S]*\d\d:\d\d Track A: code worker/);
     assert.doesNotMatch(first, /Split T015/, 'cleared commentary is not carried over');
     const second = hook({ session_id: 'next-1', prompt: 'next step' });
     assert.doesNotMatch(second, /Ship the async worker runner|Carry-over/, 'Goal.md and carry-over are injected once');

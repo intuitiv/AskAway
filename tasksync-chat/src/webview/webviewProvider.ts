@@ -6772,6 +6772,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <div class="workers-shell">
                 <div class="workers-header">
                     <input class="workers-filter" id="workers-filter" type="text" placeholder="Filter: id, mode, model, state" aria-label="Filter workers">
+                    <div class="specs-toggle" title="Include workers whose cache went cold or that retired">
+                        <span>Show completed</span>
+                        <div class="toggle-switch specs-toggle-switch" id="workers-show-expired" role="switch" aria-checked="false" tabindex="0"></div>
+                    </div>
                     <button class="specs-refresh-btn" id="workers-refresh-btn" title="Refresh workers">
                         <span class="codicon codicon-refresh"></span>
                     </button>
