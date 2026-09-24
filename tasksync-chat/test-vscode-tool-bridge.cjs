@@ -15,7 +15,7 @@ fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(buildDir, { recursive: true });
 fs.writeFileSync(path.join(buildDir, 'vscodeToolBridge.js'), ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', 'workers', 'vscodeToolBridge.ts'), 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
-const { registerVsCodeToolBridge } = require(path.join(buildDir, 'vscodeToolBridge.js'));
+const { registerVsCodeToolBridge, registerWindow, readWindows } = require(path.join(buildDir, 'vscodeToolBridge.js'));
 
 (async () => {
     const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
@@ -40,7 +40,12 @@ const { registerVsCodeToolBridge } = require(path.join(buildDir, 'vscodeToolBrid
         },
     };
     const server = new McpServer({ name: 't', version: '1' });
-    const registered = registerVsCodeToolBridge((name, config, handler) => server.registerTool(name, config, handler), lm);
+    const forwarded = [];
+    const windows = [{ workspaces: ['/ws/a'], port: 1, pid: 11 }, { workspaces: ['/ws/b'], port: 2, pid: 22 }];
+    const registered = registerVsCodeToolBridge((name, config, handler) => server.registerTool(name, config, handler), {
+        lm, selfPort: 1, windows: () => windows,
+        forward: async (port, name, args) => { forwarded.push([port, name, args]); return { content: [{ type: 'text', text: `from window ${port}` }] }; },
+    });
     assert.deepEqual(registered, ['copilot_memory', 'copilot_getErrors'], 'only allowlisted tools that exist in this VS Code');
 
     const [a, b] = InMemoryTransport.createLinkedPair();
@@ -54,6 +59,7 @@ const { registerVsCodeToolBridge } = require(path.join(buildDir, 'vscodeToolBrid
     assert.deepEqual(memory.inputSchema.required, ['command'], 'required fields survive');
     assert.deepEqual(memory.inputSchema.properties.command.enum, ['view', 'create', 'str_replace', 'insert', 'delete', 'rename']);
     assert.equal(memory.inputSchema.properties.view_range.items.type, 'number');
+    assert.match(memory.inputSchema.properties.workspacePath.description, /working directory/, 'workers are asked for their workspace');
 
     const ok = await client.callTool({ name: 'copilot_memory', arguments: { command: 'view', path: '/memories/repo/' } });
     assert.deepEqual(ok.content, [{ type: 'text', text: 'copilot_memory:/memories/repo/\nline 2' }]);
@@ -90,10 +96,28 @@ const { registerVsCodeToolBridge } = require(path.join(buildDir, 'vscodeToolBrid
     }
     assert.equal(invoked.length, before, 'refused commands never reach VS Code');
 
+    // Routing: a worker's call goes to the VS Code window that has its workspace open.
+    const viaB = await client.callTool({ name: 'copilot_memory', arguments: { command: 'view', path: '/memories/repo/', workspacePath: '/ws/b/service' } });
+    assert.equal(viaB.content[0].text, 'from window 2');
+    assert.deepEqual(forwarded, [[2, 'copilot_memory', { command: 'view', path: '/memories/repo/', workspacePath: '/ws/b/service' }]], 'forwarded whole, so the target routes to itself');
+    const local = invoked.length;
+    const viaA = await client.callTool({ name: 'copilot_memory', arguments: { command: 'view', path: '/memories/repo/', workspacePath: '/ws/a' } });
+    assert.equal(viaA.content[0].text, 'view /memories/repo/', 'own workspace is handled here');
+    assert.deepEqual(invoked[local], ['copilot_memory', { command: 'view', path: '/memories/repo/' }], 'workspacePath never reaches VS Code');
+    await client.callTool({ name: 'copilot_memory', arguments: { command: 'view', path: '/memories/', workspacePath: '/elsewhere' } });
+    assert.equal(forwarded.length, 1, 'a workspace no window has open is handled here');
+
+    // The window registry: dead windows drop out.
+    const reg = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'askaway-windows-'));
+    registerWindow({ workspaces: ['/ws/a'], port: 3579, pid: process.pid }, reg);
+    registerWindow({ workspaces: ['/ws/b'], port: 60001, pid: 999999 }, reg);
+    assert.deepEqual(readWindows(reg, (pid) => pid === process.pid).map((w) => w.port), [3579]);
+    assert.equal(fs.readdirSync(reg).length, 1, 'the dead window\'s entry is removed');
+
     const config = JSON.parse(fs.readFileSync(path.join(require('node:os').homedir(), '.config', 'opencode', 'opencode.json'), 'utf8'));
     assert.equal(config.mcp.askaway?.url, 'http://127.0.0.1:3579/sse', 'OpenCode workers reach the AskAway MCP');
     for (const key of ['askaway_worker_*', 'askaway_ask_user', 'askaway_commentary']) { assert.equal(config.permission[key], 'deny', `${key} stays orchestrator-only`); }
     fs.rmSync(buildDir, { recursive: true, force: true });
-    console.log(`EV-039 VsCodeToolBridge: PASS bridged=${registered.join(',')} schema=vscode inputUnchanged=true invalidRefused=true errors=isError openCodeConfig=true`);
+    console.log(`EV-039 VsCodeToolBridge: PASS bridged=${registered.join(',')} schema=vscode inputUnchanged=true invalidRefused=true errors=isError writes=create+str_replace serialized=true routedByWorkspace=true openCodeConfig=true`);
     process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

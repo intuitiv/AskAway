@@ -16,7 +16,7 @@ import { OpenCodeWorkerRuntime } from '../workers/openCodeRuntime';
 import { fetchSessionMessages, observeWorkers, sharedWorkerRuntime, sharedWorkerRuntimeReady } from '../workers/workerHost';
 import { cancelQueuedRun, loadWorkerTrace, projectWorkersState } from '../workers/workersState';
 import { registerWorkerTools } from '../workers/workerTools';
-import { registerVsCodeToolBridge } from '../workers/vscodeToolBridge';
+import { registerVsCodeToolBridge, registerWindow } from '../workers/vscodeToolBridge';
 import { loadEvalScoreboard } from '../workers/evalScoreboard';
 export { createWorkerOperationFacade, type WorkerOperationFacade } from './workerOperationFacade';
 
@@ -287,7 +287,7 @@ export class McpServerManager {
             );
 
             registerWorkerTools((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), () => sharedWorkerRuntimeReady(gradleWorkspaceRoot), gradleWorkspaceRoot);
-            registerVsCodeToolBridge((name, config, handler) => (mcpServer as any).registerTool(name, config, handler));
+            registerVsCodeToolBridge((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), { selfPort: this.port });
                 return mcpServer;
             };
 
@@ -355,6 +355,11 @@ export class McpServerManager {
             });
 
             this._isRunning = true;
+            try {
+                registerWindow({ workspaces: (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath), port: this.port!, pid: process.pid });
+            } catch (error) {
+                console.error('[AskAway MCP] Could not record window route:', error);
+            }
 
             // Auto-register with supported clients
             const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
