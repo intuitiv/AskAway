@@ -5141,6 +5141,15 @@
     function commentaryOpenCount(view) {
         return view && view.items ? view.items.filter(function (i) { return i.kind === 'question' || i.kind === 'blocked'; }).length : 0;
     }
+    // Escape first, then add only our own tags: **bold**, _italic_, ++underline++, ==highlight==, `code`.
+    function commentaryMarkup(text) {
+        return commentaryEsc(text)
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/==([^=]+)==/g, '<mark>$1</mark>')
+            .replace(/\+\+([^+]+)\+\+/g, '<u>$1</u>')
+            .replace(/(^|[\s(])_([^_]+)_(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+    }
     function renderCommentaryHtml(view, filter) {
         if (!view) return '<div class="cm-empty">Commentary is not available for this workspace.</div>';
         var all = view.items || [];
@@ -5161,7 +5170,7 @@
                 '<div class="cm-ball">' + commentaryEsc(item.ref || '•') + '</div>' +
                 '<div class="cm-body">' +
                 '<div class="cm-meta"><span class="cm-kind">' + COMMENTARY_LABELS[kind] + '</span><span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
-                '<div class="cm-text">' + commentaryEsc(item.text) + '</div>' +
+                '<div class="cm-text">' + commentaryMarkup(item.text) + '</div>' +
                 '</div></div>';
         }
         return html;
@@ -5170,13 +5179,15 @@
 
     // ── Commentary typewriter (shared with Storybook) ──
     function commentaryTypewrite(el, text, msPerChar) {
+        var finalHtml = el.innerHTML;
         var i = 0;
         el.textContent = '';
         el.classList.add('cm-typing');
         var tick = function () {
             i += 1;
             el.textContent = text.slice(0, i);
-            if (i < text.length) { setTimeout(tick, msPerChar); } else { el.classList.remove('cm-typing'); }
+            // Type the plain words, then swap in the formatted line.
+            if (i < text.length) { setTimeout(tick, msPerChar); } else { el.innerHTML = finalHtml; el.classList.remove('cm-typing'); }
         };
         tick();
     }

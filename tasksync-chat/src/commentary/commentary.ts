@@ -93,7 +93,7 @@ export class CommentaryStore {
             return { status: 'REJECTED', reason: `kind must be one of ${COMMENTARY_KINDS.join(', ')}` };
         }
         const text = String(input.text ?? '').replace(/\s+/g, ' ').trim();
-        const words = text ? text.split(' ').length : 0;
+        const words = text ? text.split(' ').filter((word) => /[\p{L}\p{N}]/u.test(word)).length : 0;
         if (words > MAX_COMMENTARY_WORDS) { return { status: 'REJECTED', reason: `${words} words; shorten to ${MAX_COMMENTARY_WORDS} or fewer` }; }
         if (words < MIN_COMMENTARY_WORDS) { return { status: 'REJECTED', reason: `${words} words; say what and why in 10-20 words` }; }
         if (CREDENTIAL.test(text)) { return { status: 'REJECTED', reason: 'text contains a credential' }; }
@@ -135,9 +135,11 @@ export class CommentaryStore {
 export function commentaryToolDefinitions(store: () => CommentaryStore, defaultWorkspace: string): ToolDefinition[] {
     return [{
         name: 'commentary',
-        description: 'Live commentary for the reviewer\'s Commentary tab, like ball-by-ball cricket commentary: one line per step you take. '
-            + 'Mostly `progress` (what you are doing now and why), `milestone` when a packet is accepted, plus `decision`, `question`, `blocked` when they happen. '
-            + '10-20 plain words. `ref` is track.step, e.g. "A.3". Batch it with the step\'s real tool call so it never costs an extra request; do not repeat it in chat.',
+        description: 'Live commentary for the reviewer\'s Commentary tab, like cricket commentary for a fan: one line per significant stage, in plain words a non-engineer follows. '
+            + 'Say what happened and what it means, not how: no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. '
+            + 'Lead with one emoji; **bold** the outcome, ==highlight== the one number that matters, `code` only for a command the reviewer might run. '
+            + 'Kinds: `progress` (what is happening now), `milestone` (a piece of work accepted), `decision` (a choice you made and why), `question` (you need the reviewer), `blocked` (stuck, with the fix). '
+            + '10-20 words. `ref` is track.step, e.g. "A.3". Batch it with the step\'s real tool call; do not repeat it in chat.',
         inputSchema: z.object({
             kind: z.enum(COMMENTARY_KINDS),
             text: z.string().min(1).describe('10-20 plain words: what is happening and why.'),

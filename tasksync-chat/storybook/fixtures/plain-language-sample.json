@@ -1,0 +1,14 @@
+{
+  "source": "Style sample: the real sim-demo-2 run from orchestrator-demo-feed.json, rewritten in the plain-language format the orchestrator now uses. Not a live recording.",
+  "goal": "Deliver slugify + truncate string utils, each independently verified.",
+  "items": [
+    { "id": "p1", "ts": 1790341239000, "kind": "progress", "ref": "0.1", "text": "🏏 Plan: build **two small text helpers**, each checked by someone other than its builder." },
+    { "id": "p2", "ts": 1790341241000, "kind": "decision", "ref": "0.2", "text": "🤔 Running both jobs **at the same time**: they don't touch the same files." },
+    { "id": "p3", "ts": 1790341257000, "kind": "progress", "ref": "A.1", "text": "🚀 Started: a checker for **slugify** and a builder for **truncate**, using the ==cheapest== model." },
+    { "id": "p4", "ts": 1790341284000, "kind": "milestone", "ref": "A.2", "text": "✅ **Slugify accepted**: the independent check passed on its own." },
+    { "id": "p5", "ts": 1790341298000, "kind": "progress", "ref": "B.1", "text": "📦 Truncate is built and its own test passes. Now a **separate checker** confirms it." },
+    { "id": "p6", "ts": 1790341318000, "kind": "blocked", "ref": "B.2", "text": "🛑 The checker finished but **wrote no report**, so I can't trust it yet." },
+    { "id": "p7", "ts": 1790341331000, "kind": "decision", "ref": "B.3", "text": "🔁 Asking the checker **once more**, this time with a required report format." },
+    { "id": "p8", "ts": 1790341348000, "kind": "milestone", "ref": "B.3", "text": "🏆 **Both helpers accepted**, ==2 of 2==, in under two minutes for less than a cent." }
+  ]
+}

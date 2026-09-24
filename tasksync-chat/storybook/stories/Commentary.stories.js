@@ -2,6 +2,7 @@ import webviewSrc from '../../media/webview.js?raw';
 import cssText from '../../media/main.css?raw';
 import providerSrc from '../../src/webview/webviewProvider.ts?raw';
 import realFeed from '../fixtures/orchestrator-demo-feed.json';
+import plainFeed from '../fixtures/plain-language-sample.json';
 import { buildCommentaryKit, VSCODE_DARK_THEME } from '../kit.js';
 
 const kit = buildCommentaryKit({ webviewSrc, providerSrc });
@@ -45,16 +46,25 @@ export default {
 export const LiveSimulation = {
     args: { secondsBetweenLines: 2.5, msPerChar: 18 },
     render: () => mount({ goal: realFeed.goal }),
-    play: async ({ canvasElement, args }) => {
-        const { state, paint } = canvasElement.querySelector('.aa-sidebar').__commentary;
-        state.msPerChar = args.msPerChar;
-        for (const item of realFeed.items) {
-            state.items = [...state.items, item];
-            paint(true);
-            await sleep(args.secondsBetweenLines * 1000);
-        }
-    },
+    play: (context) => replay(context, realFeed.items),
 };
+
+/** The same run in the plain-language format (emoji, bold outcome, highlighted number). A style sample, not a recording. */
+export const PlainLanguage = {
+    args: { secondsBetweenLines: 2.5, msPerChar: 18 },
+    render: () => mount({ goal: plainFeed.goal }),
+    play: (context) => replay(context, plainFeed.items),
+};
+
+async function replay({ canvasElement, args }, items) {
+    const { state, paint } = canvasElement.querySelector('.aa-sidebar').__commentary;
+    state.msPerChar = args.msPerChar;
+    for (const item of items) {
+        state.items = [...state.items, item];
+        paint(true);
+        await sleep(args.secondsBetweenLines * 1000);
+    }
+}
 
 export const FullFeed = { render: () => mount({ goal: realFeed.goal, items: realFeed.items, archivedCount: 1 }) };
 

@@ -60,6 +60,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     assert.equal((await call(commentary, { kind: 'milestone', ref: 'A.3', text: 'A.2 accepted: verify worker saw EV-014 PASS line exactly.' })).status, 'POSTED');
     assert.deepEqual(commentaryView(store.read(workspace)).items.map((i) => [i.ref, i.kind]), [['A.2', 'progress'], ['A.3', 'milestone']], 'only posts after the clear are live');
     assert.deepEqual(pushed, [2, 3, 4], 'every change is pushed to the tab');
+    assert.equal((await call(commentary, { kind: 'progress', text: `🚀 ${Array(20).fill('word').join(' ')} ✅` })).status, 'POSTED', 'emojis do not count as words');
 
     // --- The worker tools as VS Code LM tools: same contract, validated input, bounded JSON ---
     const runtime = new OpenCodeWorkerRuntime([], { ledgerDir: path.join(home, 'ledger'), spawner: () => { throw new Error('no spawn'); } });

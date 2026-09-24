@@ -9,7 +9,13 @@ const from = webview.indexOf('// ── Commentary tab: pure render');
 const to = webview.indexOf('// ── end Commentary pure render ──');
 assert.ok(from > 0 && to > from, 'Commentary render block present');
 const ui = {};
-vm.runInNewContext(`${webview.slice(from, to)}\nout.render = renderCommentaryHtml; out.open = commentaryOpenCount;`, { out: ui });
+vm.runInNewContext(`${webview.slice(from, to)}\nout.render = renderCommentaryHtml; out.open = commentaryOpenCount; out.markup = commentaryMarkup;`, { out: ui });
+
+// Light formatting: our tags only, applied after escaping.
+assert.equal(ui.markup('✅ **Slugify accepted**, ==2 of 2==, ++once++, _really_, run `npm test`'),
+    '✅ <strong>Slugify accepted</strong>, <mark>2 of 2</mark>, <u>once</u>, <em>really</em>, run <code>npm test</code>');
+assert.equal(ui.markup('**<img src=x onerror=alert(1)>**'), '<strong>&lt;img src=x onerror=alert(1)&gt;</strong>', 'markup never un-escapes HTML');
+assert.equal(ui.markup('snake_case_name stays'), 'snake_case_name stays', 'underscores inside words are not italics');
 
 const t0 = new Date(2026, 8, 24, 19, 14, 5).getTime();
 const view = {
@@ -58,19 +64,19 @@ for (const selector of ['.cm-kind-milestone', '.cm-kind-question', '.cm-kind-blo
     assert.match(kit.panelHtml, /^<div class="tab-panel active" id="panel-commentary">[\s\S]*id="cm-feed"[\s\S]*<!-- End panel-commentary -->$/);
 
     // Typewriter: a new line types in character by character; lines already seen do not.
-    const node = (id, text) => {
-        const textEl = { textContent: text, classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); } } };
+    const node = (id, text, html) => {
+        const textEl = { textContent: text, innerHTML: html || text, classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); } } };
         return { id, textEl, classList: { add() {} }, getAttribute: () => id, querySelector: () => textEl };
     };
     const oldLine = node('c1', 'already on screen');
-    const newLine = node('c2', 'Accepted: A slugify.');
+    const newLine = node('c2', 'Accepted: A slugify.', '<strong>Accepted:</strong> A slugify.');
     const frames = [];
     const realTimeout = global.setTimeout;
     global.setTimeout = (fn) => { frames.push(newLine.textEl.textContent); fn(); };
     kit.commentaryAnimateNew({ querySelectorAll: () => [oldLine, newLine] }, { c1: true }, 5);
     global.setTimeout = realTimeout;
     assert.equal(oldLine.textEl.textContent, 'already on screen');
-    assert.equal(newLine.textEl.textContent, 'Accepted: A slugify.');
+    assert.equal(newLine.textEl.innerHTML, '<strong>Accepted:</strong> A slugify.', 'formatting is restored once typing ends');
     assert.deepEqual(frames.slice(0, 3), ['A', 'Ac', 'Acc'], 'types one character per frame');
     assert.equal(newLine.textEl.classList.set.has('cm-typing'), false, 'cursor removed when done');
 

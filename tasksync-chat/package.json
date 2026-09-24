@@ -738,7 +738,7 @@
         ],
         "toolReferenceName": "commentary",
         "displayName": "Commentary",
-        "modelDescription": "Live commentary for the reviewer's Commentary tab, like ball-by-ball cricket commentary: one line per step you take. Mostly `progress` (what you are doing now and why), `milestone` when a packet is accepted, plus `decision`, `question`, `blocked` when they happen. 10-20 plain words. `ref` is track.step, e.g. \"A.3\". Batch it with the step's real tool call so it never costs an extra request; do not repeat it in chat.",
+        "modelDescription": "Live commentary for the reviewer's Commentary tab, like cricket commentary for a fan: one line per significant stage, in plain words a non-engineer follows. Say what happened and what it means, not how: no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. Lead with one emoji; **bold** the outcome, ==highlight== the one number that matters, `code` only for a command the reviewer might run. Kinds: `progress` (what is happening now), `milestone` (a piece of work accepted), `decision` (a choice you made and why), `question` (you need the reviewer), `blocked` (stuck, with the fix). 10-20 words. `ref` is track.step, e.g. \"A.3\". Batch it with the step's real tool call; do not repeat it in chat.",
         "canBeReferencedInPrompt": true,
         "icon": "$(comment-discussion)",
         "inputSchema": {
