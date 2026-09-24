@@ -17,6 +17,7 @@ import { fetchSessionMessages, observeWorkers, sharedWorkerRuntime, sharedWorker
 import { cancelQueuedRun, loadWorkerTrace, projectWorkersState } from '../workers/workersState';
 import { registerWorkerTools } from '../workers/workerTools';
 import { registerVsCodeToolBridge } from '../workers/vscodeToolBridge';
+import { loadEvalScoreboard } from '../workers/evalScoreboard';
 export { createWorkerOperationFacade, type WorkerOperationFacade } from './workerOperationFacade';
 
 export const WORKER_RUNTIME_OPERATIONS = [
@@ -154,7 +155,7 @@ export class McpServerManager {
     ) {
         provider.setWorkersStateSource((workspacePath) => {
             void observeWorkers(workspacePath);
-            return projectWorkersState(this.getWorkerRuntime(), workspacePath);
+            return { ...projectWorkersState(this.getWorkerRuntime(), workspacePath), scoreboard: loadEvalScoreboard() };
         });
         provider.setWorkerTraceSource((workspacePath, workerId) =>
             loadWorkerTrace(projectWorkersState(this.getWorkerRuntime(), workspacePath), workerId, fetchSessionMessages));

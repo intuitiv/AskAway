@@ -8,7 +8,7 @@ const { PassThrough } = require('node:stream');
 const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 
 const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-workers-state-'));
-for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState']) {
+for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'evalScoreboard']) {
     fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
         fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
         { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText);
@@ -249,6 +249,28 @@ const packet = (overrides = {}) => ({
     assert.equal(cancelQueuedRun(runtime, wsA, run3.runId).status, 'CANCELLATION_REQUESTED');
     const afterCancel = projectWorkersState(runtime, wsA, now).workers.find((w) => w.workerId === run1.workerId);
     assert.deepEqual([afterCancel.state, afterCancel.runs.find((r) => r.runId === run3.runId).state], ['WAITING_APPROVAL', 'CANCELLED'], 'the queued run is cancelled; the worker keeps its state');
+
+    // Eval scoreboard: results ledger → mode × model rows in the Metrics table, collapsed until opened.
+    const { loadEvalScoreboard } = require(path.join(buildDir, 'evalScoreboard.js'));
+    const resultsFile = path.join(ledgerDir, 'results.jsonl');
+    const result = (mode, model, verdict, cost, durationMs, ts) => JSON.stringify({ ts, suite: 'workers', mode, model, variant: 'low', verdict, usage: { cost }, durationMs });
+    fs.writeFileSync(resultsFile, [
+        result('code', 'github-copilot/gpt-5.6-luna', 'PASS', 0.002, 10000, '2026-09-24T01:00:00Z'),
+        result('code', 'github-copilot/gpt-5.6-luna', 'FAIL', 0.004, 20000, '2026-09-24T02:00:00Z'),
+        '{corrupt',
+        result('verify', 'github-copilot/gpt-5.6-luna', 'PASS', 0.001, 5000, '2026-09-24T03:00:00Z'),
+    ].join('\n'));
+    const board = loadEvalScoreboard(resultsFile);
+    assert.deepEqual(board.map((r) => [r.mode, r.model, r.runs, r.passed, +r.avgCost.toFixed(4), r.avgMs]),
+        [['code', 'gpt-5.6-luna', 2, 1, 0.003, 15000], ['verify', 'gpt-5.6-luna', 1, 1, 0.001, 5000]], 'malformed lines skipped');
+    assert.deepEqual(loadEvalScoreboard(path.join(ledgerDir, 'missing.jsonl')), []);
+    const withBoard = ui.render({ ...state, scoreboard: board }, '', {});
+    assert.match(withBoard, /<details class="obs-tl-item workers-scoreboard" data-eid="evals">[\s\S]*?3 runs · 2 mode\/model pairs/);
+    assert.match(withBoard, /<td class="obs-scope">code<\/td><td>gpt-5\.6-luna · low<\/td><td>1\/2<\/td><td class="obs-cache-risk">50%<\/td><td>\$0\.0030<\/td><td>15\.0s<\/td>/, 'low pass rate is flagged like a cache miss');
+    assert.match(ui.render({ ...state, scoreboard: board }, '', {}, false, { evals: true }), /data-eid="evals" open>/, 'stays open across re-renders');
+    assert.match(ui.render({ ...state, workers: [], scoreboard: board }, '', {}), /No live workers[\s\S]*Eval scoreboard/, 'shown even with no workers');
+    assert.doesNotMatch(ui.render(state, '', {}), /Eval scoreboard/, 'hidden when there are no results');
+    console.log(`EV-015b WorkersQueueAndEvals: PASS cancelQueued=true refused=3 scoreboardRows=${board.length} malformedSkipped=1`);
     assert.equal((openA.match(/data-worker-action="open-external" data-session-id="ses_A"/g) || []).length, 1, 'terminal-app open targets the same session');
     assert.doesNotMatch(openA, /SECRET-OBJECTIVE|TRANSCRIPT-TEXT|<textarea/);
     const hostile = { ...state, workers: [{ ...state.workers[0], profile: '<img src=x onerror=alert(1)>' }] };

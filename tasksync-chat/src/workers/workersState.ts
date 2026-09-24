@@ -1,4 +1,5 @@
 import { LifecycleRecord, OpenCodeWorkerRuntime, RunState, RunUsage } from './openCodeRuntime';
+import type { ScoreRow } from './evalScoreboard';
 
 export type ProjectedWorkerState = RunState | 'RETIRED' | 'ORPHANED';
 
@@ -50,6 +51,8 @@ export interface WorkersState {
     generatedAt: number;
     server: { state: 'ATTACHED' | 'NOT_ATTACHED'; endpoint: string };
     workers: WorkerRow[];
+    /** Eval results by mode × model, from `~/.askaway/evals/results.jsonl`. */
+    scoreboard?: ScoreRow[];
 }
 
 const TERMINAL: RunState[] = ['COMPLETED', 'FAILED', 'CANCELLED'];

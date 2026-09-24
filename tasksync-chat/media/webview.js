@@ -5335,7 +5335,7 @@
         var shown = (state.workers || []).filter(function (w) { return (showExpired || !w.expired) && workersMatch(w, filter); });
         var hidden = (state.workers || []).filter(function (w) { return w.expired; }).length;
         if (!shown.length) {
-            return html + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>';
+            return html + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>' + workersScoreboardHtml(state.scoreboard, openIds);
         }
         shown.forEach(function (w) {
             var open = expanded && expanded[w.workerId];
@@ -5359,7 +5359,21 @@
             }
             html += '</div>';
         });
-        return html;
+        return html + workersScoreboardHtml(state.scoreboard, openIds);
+    }
+    // Eval results by mode × model: the evidence for picking a worker tier. Same expander and table as Metrics.
+    function workersScoreboardHtml(rows, openIds) {
+        if (!rows || !rows.length) return '';
+        var runs = rows.reduce(function (n, r) { return n + r.runs; }, 0);
+        var body = rows.map(function (r) {
+            var pct = Math.round(r.passed / r.runs * 100);
+            return '<tr><td class="obs-scope">' + workersEsc(r.mode) + '</td><td>' + workersEsc(r.model) + (r.variant ? ' · ' + workersEsc(r.variant) : '') + '</td>' +
+                '<td>' + r.passed + '/' + r.runs + '</td><td' + (pct < 80 ? ' class="obs-cache-risk"' : '') + '>' + pct + '%</td>' +
+                '<td>$' + r.avgCost.toFixed(4) + '</td><td>' + (r.avgMs / 1000).toFixed(1) + 's</td></tr>';
+        }).join('');
+        return '<details class="obs-tl-item workers-scoreboard" data-eid="evals"' + (openIds && openIds.evals ? ' open' : '') + '>' +
+            '<summary class="obs-tl-head"><span class="obs-tl-kind">evals</span><span class="obs-tl-name">Eval scoreboard</span><span class="obs-tl-metric">' + runs + ' runs · ' + rows.length + ' mode/model pairs</span></summary>' +
+            '<table class="observability-table observability-model-table"><thead><tr><th>Mode</th><th>Model</th><th>Pass</th><th>Rate</th><th>Avg $</th><th>Avg time</th></tr></thead><tbody>' + body + '</tbody></table></details>';
     }
     // ── end Workers pure render ──
 
