@@ -479,6 +479,7 @@ type FromWebviewMessage =
     | { type: 'requestModels' }
     | { type: 'requestWorkersState' }
     | { type: 'requestWorkerTrace'; workerId: string }
+    | { type: 'cancelQueuedWorkerRun'; runId: string }
     | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
     | { type: 'requestCommentary' }
     | { type: 'setCommentaryGoal'; goal: string }
@@ -1436,6 +1437,20 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root || !this._workerTraceSource || typeof workerId !== 'string') { return; }
         this._broadcast({ type: 'workerTrace', data: await this._workerTraceSource(root, workerId) });
+    }
+
+    private _workerCancelSource: ((workspacePath: string, runId: string) => { status: string; runId: string; reason?: string }) | undefined;
+
+    public setWorkerCancelSource(source: (workspacePath: string, runId: string) => { status: string; runId: string; reason?: string }): void {
+        this._workerCancelSource = source;
+    }
+
+    private _cancelQueuedWorkerRun(runId: string): void {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root || !this._workerCancelSource || typeof runId !== 'string') { return; }
+        const result = this._workerCancelSource(root, runId);
+        if (result.status !== 'CANCELLATION_REQUESTED') { void vscode.window.showWarningMessage(`Not cancelled: ${result.reason ?? result.status}`); }
+        this._refreshWorkersState();
     }
 
     private _commentarySubscribed = false;
@@ -4623,6 +4638,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'requestWorkerTrace':
                 void this._refreshWorkerTrace(message.workerId);
+                break;
+            case 'cancelQueuedWorkerRun':
+                this._cancelQueuedWorkerRun(message.runId);
                 break;
             case 'openWorkerSession':
                 this._openWorkerSession(message.sessionId, message.external === true);

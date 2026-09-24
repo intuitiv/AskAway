@@ -237,7 +237,18 @@ const packet = (overrides = {}) => ({
     assert.deepEqual([ageAt(0), ageAt(7000), ageAt(65_000)], ['0:00', '0:07', '1:05'], 'Age advances as time passes');
     assert.match(webview, /generatedAt: Date\.now\(\) - workersClockSkew/, 'the tab re-renders with the current clock every second');
     const actions = [...openA.matchAll(/data-worker-action="([^"]+)"/g)].map((m) => m[1]);
-    assert.deepEqual([...new Set(actions)].sort(), ['open', 'open-external', 'trace'], 'no approval or conversation controls');
+    assert.deepEqual([...new Set(actions)].sort(), ['cancel-run', 'open', 'open-external', 'trace'], 'no approval or conversation controls');
+    // Cancel-before-start from the tab: only the queued run offers it, and only this workspace's queued run is cancelled.
+    assert.deepEqual([...openA.matchAll(/data-worker-action="cancel-run" data-run-id="([^"]+)"/g)].map((m) => m[1]), [run3.runId]);
+    assert.match(webview, /type: 'cancelQueuedWorkerRun', runId: btn\.getAttribute\('data-run-id'\)/);
+    const { cancelQueuedRun } = require(path.join(buildDir, 'workersState.js'));
+    assert.equal(cancelQueuedRun(runtime, wsA, run1.runId).status, 'NOT_CANCELLABLE', 'a finished run cannot be cancelled');
+    assert.equal(cancelQueuedRun(runtime, wsA, run2.runId).status, 'NOT_CANCELLABLE', 'a started run is not cancelled from the tab');
+    const otherWs = runtime.list(wsB)[0].runId;
+    assert.equal(cancelQueuedRun(runtime, wsA, otherWs).status, 'NOT_CANCELLABLE', 'another workspace\'s run is out of reach');
+    assert.equal(cancelQueuedRun(runtime, wsA, run3.runId).status, 'CANCELLATION_REQUESTED');
+    const afterCancel = projectWorkersState(runtime, wsA, now).workers.find((w) => w.workerId === run1.workerId);
+    assert.deepEqual([afterCancel.state, afterCancel.runs.find((r) => r.runId === run3.runId).state], ['WAITING_APPROVAL', 'CANCELLED'], 'the queued run is cancelled; the worker keeps its state');
     assert.equal((openA.match(/data-worker-action="open-external" data-session-id="ses_A"/g) || []).length, 1, 'terminal-app open targets the same session');
     assert.doesNotMatch(openA, /SECRET-OBJECTIVE|TRANSCRIPT-TEXT|<textarea/);
     const hostile = { ...state, workers: [{ ...state.workers[0], profile: '<img src=x onerror=alert(1)>' }] };

@@ -5315,7 +5315,8 @@
             rows += '<tr class="worker-run-partition" data-run-id="' + workersEsc(r.runId) + '"><td colspan="7">' +
                 '<span class="worker-state worker-state-' + workersEsc(r.state).toLowerCase() + '">' + workersEsc(r.state) + (r.queuePosition ? ' #' + r.queuePosition : '') + '</span> ' +
                 '<span class="obs-req-id">' + workersEsc(r.runId) + '</span> · turn ' + workersEsc(r.dispatchTurnId) + ' · ' + workersDuration(r.elapsedMs) +
-                ' · $' + (ru.cost || 0).toFixed(4) + ' · ' + (ru.steps || 0) + ' req' + (r.reason ? ' · ' + workersEsc(r.reason) : '') + '</td></tr>';
+                ' · $' + (ru.cost || 0).toFixed(4) + ' · ' + (ru.steps || 0) + ' req' + (r.reason ? ' · ' + workersEsc(r.reason) : '') +
+                (r.queuePosition && r.state === 'STARTING' ? ' <button class="worker-cancel-run" data-worker-action="cancel-run" data-run-id="' + workersEsc(r.runId) + '" title="Cancel before it starts">Cancel</button>' : '') + '</td></tr>';
             rows += (events && events.length)
                 ? traceRowsHtml(events, { openIds: openIds, now: now })
                 : '<tr><td colspan="7" class="obs-na">' + (r.queuePosition ? 'Queued' : 'No events yet') + '</td></tr>';
@@ -5431,6 +5432,8 @@
             var action = btn.getAttribute('data-worker-action');
             if (action === 'open' || action === 'open-external') {
                 vscode.postMessage({ type: 'openWorkerSession', sessionId: btn.getAttribute('data-session-id'), external: action === 'open-external' });
+            } else if (action === 'cancel-run') {
+                vscode.postMessage({ type: 'cancelQueuedWorkerRun', runId: btn.getAttribute('data-run-id') });
             } else {
                 var id = btn.getAttribute('data-worker-id');
                 workersExpanded[id] = !workersExpanded[id];

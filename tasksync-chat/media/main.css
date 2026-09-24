@@ -5030,7 +5030,7 @@ button#send-btn:disabled {
     background: var(--vscode-charts-blue); color: #fff;
 }
 .worker-actions { display: flex; gap: 6px; }
-.worker-actions button {
+.worker-actions button, .worker-cancel-run {
     font-size: 11px; padding: 1px 8px; border: none; border-radius: 3px; cursor: pointer;
     background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
 }

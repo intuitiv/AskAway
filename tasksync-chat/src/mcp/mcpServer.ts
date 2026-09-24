@@ -14,7 +14,7 @@ import { dispatchGradle, GradleInput } from '../gradle/gradleEngine';
 import { createClaudeSpecEvent } from '../observability/claudeSpecAttribution';
 import { OpenCodeWorkerRuntime } from '../workers/openCodeRuntime';
 import { fetchSessionMessages, observeWorkers, sharedWorkerRuntime, sharedWorkerRuntimeReady } from '../workers/workerHost';
-import { loadWorkerTrace, projectWorkersState } from '../workers/workersState';
+import { cancelQueuedRun, loadWorkerTrace, projectWorkersState } from '../workers/workersState';
 import { registerWorkerTools } from '../workers/workerTools';
 import { registerVsCodeToolBridge } from '../workers/vscodeToolBridge';
 export { createWorkerOperationFacade, type WorkerOperationFacade } from './workerOperationFacade';
@@ -158,6 +158,7 @@ export class McpServerManager {
         });
         provider.setWorkerTraceSource((workspacePath, workerId) =>
             loadWorkerTrace(projectWorkersState(this.getWorkerRuntime(), workspacePath), workerId, fetchSessionMessages));
+        provider.setWorkerCancelSource((workspacePath, runId) => cancelQueuedRun(this.getWorkerRuntime(), workspacePath, runId));
     }
 
     /** One runtime per extension host: MCP servers are created per request, but worker state must outlive them. */

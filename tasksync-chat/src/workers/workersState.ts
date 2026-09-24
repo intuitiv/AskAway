@@ -63,6 +63,13 @@ export function sessionOpenCommand(state: WorkersState, sessionId: string): stri
 
 export interface WorkerTrace { workerId: string; source: 'opencode' | 'unavailable'; reason: string; runs: Record<string, TraceEvent[]> }
 
+/** The tab may cancel a run only before it starts, and only a run of this workspace's projection. */
+export function cancelQueuedRun(runtime: OpenCodeWorkerRuntime, workspacePath: string, runId: string): { status: string; runId: string; reason?: string } {
+    const run = projectWorkersState(runtime, workspacePath).workers.flatMap((w) => w.runs).find((r) => r.runId === runId);
+    if (!run || !run.queuePosition || TERMINAL.includes(run.state)) { return { status: 'NOT_CANCELLABLE', runId, reason: 'only a queued run of this workspace can be cancelled here' }; }
+    return runtime.cancel(runId);
+}
+
 /** A projected worker's full trace, read from its OpenCode session. */
 export async function loadWorkerTrace(state: WorkersState, workerId: string, fetchMessages: (sessionId: string) => Promise<SessionMessage[]>): Promise<WorkerTrace> {
     const worker = state.workers.find((w) => w.workerId === workerId);
