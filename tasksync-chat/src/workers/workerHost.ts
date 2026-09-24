@@ -17,15 +17,30 @@ export function sharedWorkerRuntime(): OpenCodeWorkerRuntime {
 }
 
 /** The runtime once it is attached to the shared OpenCode server (started on first worker use, not at activation). */
-export function sharedWorkerRuntimeReady(): Promise<OpenCodeWorkerRuntime> {
-    ready ??= ensureSharedOpenCodeServer(process.env.ASKAWAY_OPENCODE_SERVER_URL || DEFAULT_OPENCODE_SERVER_URL, defaultServerDeps)
+export function sharedWorkerRuntimeReady(workspacePath?: string): Promise<OpenCodeWorkerRuntime> {
+    ready ??= ensureSharedOpenCodeServer(serverUrl(), defaultServerDeps)
         .then((status) => {
             serverStatus = status;
-            // A failed attach is retried on the next worker call instead of being cached.
-            if (status.state === 'ATTACHED') { sharedWorkerRuntime().setServerEndpoint(status.endpoint); } else { ready = undefined; }
+            if (status.state === 'ATTACHED') { sharedWorkerRuntime().setServerEndpoint(status.endpoint); } else {
+                // Retry later instead of re-spawning on every call.
+                setTimeout(() => { ready = undefined; }, 60_000);
+            }
             return sharedWorkerRuntime();
         });
-    return ready;
+    return ready.then((runtime) => {
+        if (workspacePath) { runtime.rehydrate(workspacePath, serverStatus?.state === 'ATTACHED'); }
+        return runtime;
+    });
+}
+
+/** For views: restores workers after a reload using a probe only, so opening a tab never starts a server. */
+export async function observeWorkers(workspacePath: string): Promise<void> {
+    const live = sharedWorkerRuntime().serverEndpoint !== '' || await defaultServerDeps.probe(serverUrl());
+    sharedWorkerRuntime().rehydrate(workspacePath, live);
+}
+
+function serverUrl(): string {
+    return process.env.ASKAWAY_OPENCODE_SERVER_URL || DEFAULT_OPENCODE_SERVER_URL;
 }
 
 export function sharedServerStatus(): ServerStatus | undefined {

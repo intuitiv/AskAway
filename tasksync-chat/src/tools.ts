@@ -910,7 +910,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // Same definitions as the MCP surface, so the VS Code orchestrator reaches workers without the MCP server running.
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
     context.subscriptions.push(...registerLmToolDefinitions([
-        ...workerToolDefinitions(sharedWorkerRuntimeReady, workspaceRoot),
+        ...workerToolDefinitions(() => sharedWorkerRuntimeReady(workspaceRoot), workspaceRoot),
         ...commentaryToolDefinitions(sharedCommentaryStore, workspaceRoot),
     ]));
 

@@ -116,7 +116,7 @@
 **PAC P5**: `PAC-P5-RecoveryRetirementPruneAndE2EComplete` passes.  
 **CAC CY-006**: `CAC-CY-006-FeatureAcceptanceComplete` passes; feature is ready for review.
 
-- [ ] T018 [CY-006] [Recovery] `tasksync-chat/src/extension.ts` Reconnect registry records after reload only when the shared server remains live; otherwise mark workers orphaned with an explicit reason. Demo: `EV-018 ReloadRecovery`. AC: `AC-T018-ReloadRecovery`.
+- [x] T018 [CY-006] [Recovery] `tasksync-chat/src/extension.ts` Reconnect registry records after reload only when the shared server remains live; otherwise mark workers orphaned with an explicit reason. Demo: `EV-018 ReloadRecovery`. AC: `AC-T018-ReloadRecovery`.
 	- Reuse: resume through OpenCode's own `opencode --session <id>`; do not implement a bespoke session-restore mechanism.
 - [ ] T019 [CY-006] [Lifecycle] `tasksync-opencode/src/sessionManager.ts` Retire workers on expired cache or context tokens above 300000, reject reuse, and require fresh submission. Demo: `EV-019 RetirementBoundary`. AC: `AC-T019-RetirementBoundary`.
 - [ ] T020 [CY-006] [Lifecycle] `tasksync-chat/src/mcp/mcpServer.ts` Implement archive-only prune that accepts only inactive workers with empty serial queues and never cancels/deletes active work. Demo: `EV-020 InactiveOnlyArchivePrune`. AC: `AC-T020-InactiveOnlyArchivePrune`.

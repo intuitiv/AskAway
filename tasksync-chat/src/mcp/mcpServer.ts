@@ -13,7 +13,7 @@ import { CONFIG_NAMESPACE, MCP_SERVER_NAME } from '../constants/branding';
 import { dispatchGradle, GradleInput } from '../gradle/gradleEngine';
 import { createClaudeSpecEvent } from '../observability/claudeSpecAttribution';
 import { OpenCodeWorkerRuntime } from '../workers/openCodeRuntime';
-import { sharedWorkerRuntime, sharedWorkerRuntimeReady } from '../workers/workerHost';
+import { observeWorkers, sharedWorkerRuntime, sharedWorkerRuntimeReady } from '../workers/workerHost';
 import { projectWorkersState } from '../workers/workersState';
 import { registerWorkerTools } from '../workers/workerTools';
 export { createWorkerOperationFacade, type WorkerOperationFacade } from './workerOperationFacade';
@@ -151,7 +151,10 @@ export class McpServerManager {
     constructor(
         private provider: AskAwayWebviewProvider
     ) {
-        provider.setWorkersStateSource((workspacePath) => projectWorkersState(this.getWorkerRuntime(), workspacePath));
+        provider.setWorkersStateSource((workspacePath) => {
+            void observeWorkers(workspacePath);
+            return projectWorkersState(this.getWorkerRuntime(), workspacePath);
+        });
     }
 
     /** One runtime per extension host: MCP servers are created per request, but worker state must outlive them. */
@@ -278,7 +281,7 @@ export class McpServerManager {
                 }
             );
 
-            registerWorkerTools((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), sharedWorkerRuntimeReady, gradleWorkspaceRoot);
+            registerWorkerTools((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), () => sharedWorkerRuntimeReady(gradleWorkspaceRoot), gradleWorkspaceRoot);
                 return mcpServer;
             };
 

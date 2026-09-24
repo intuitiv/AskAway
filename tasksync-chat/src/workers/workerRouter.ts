@@ -168,6 +168,19 @@ export class WorkerRouter {
         worker.retiredReason = reason;
     }
 
+    /** Re-registers a worker known from the ledger after a reload. It keeps its identity and never re-runs work. */
+    adopt(record: Pick<RoutedWorker, 'workerId' | 'workspacePath' | 'profile' | 'model' | 'thinking' | 'contextTokens' | 'lastActivityAt'>,
+        state: 'IDLE' | 'ORPHANED', reason?: string): void {
+        const existing = this.workersById.get(record.workerId);
+        if (existing) {
+            if (existing.state === 'ORPHANED' || existing.state === 'IDLE') { existing.state = state; existing.retiredReason = reason; }
+            return;
+        }
+        this.workersById.set(record.workerId, {
+            ...record, registryKey: workerRegistryKey(record.workspacePath, record.profile, record), state, retiredReason: reason, queue: [],
+        });
+    }
+
     worker(workerId: string): RoutedWorker | undefined {
         return this.workersById.get(workerId);
     }

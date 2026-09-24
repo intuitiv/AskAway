@@ -76,7 +76,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
         assert.ok(declared.some((tool) => tool.name === name && tool.toolReferenceName), `package.json declares ${name}`);
     }
     const toolsSource = fs.readFileSync(path.join(__dirname, 'src', 'tools.ts'), 'utf8');
-    assert.match(toolsSource, /registerLmToolDefinitions\(\[\s*\.\.\.workerToolDefinitions\(sharedWorkerRuntimeReady, workspaceRoot\),\s*\.\.\.commentaryToolDefinitions\(sharedCommentaryStore, workspaceRoot\)/);
+    assert.match(toolsSource, /registerLmToolDefinitions\(\[\s*\.\.\.workerToolDefinitions\(\(\) => sharedWorkerRuntimeReady\(workspaceRoot\), workspaceRoot\),\s*\.\.\.commentaryToolDefinitions\(sharedCommentaryStore, workspaceRoot\)/);
     console.log(`EV-035 OrchestratorReachesWorkers: PASS lmTools=${Object.keys(workers).length + 1} manifestInSync=true invalidInputRefused=4`);
 
     // --- Next conversation: carry-over once, goal anchor every prompt, asides ---

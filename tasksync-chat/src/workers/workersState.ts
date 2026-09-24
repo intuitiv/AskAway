@@ -72,7 +72,7 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
         const current = active ?? latest;
         const state: ProjectedWorkerState = routed?.state === 'RETIRED' || routed?.state === 'ORPHANED' ? routed.state : current.state;
         const blocker = state === 'RETIRED' ? `retired: ${routed?.retiredReason ?? 'unknown reason'}`
-            : state === 'ORPHANED' ? 'orphaned: no owning runtime'
+            : state === 'ORPHANED' ? `orphaned: ${routed?.retiredReason ?? 'no owning runtime'}`
             : state === 'WAITING_APPROVAL' ? 'waiting for approval in OpenCode'
             : state === 'FAILED' ? current.reason ?? 'failed'
             : '';

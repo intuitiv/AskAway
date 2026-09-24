@@ -29,6 +29,8 @@ export interface LifecycleRecord {
     tool?: string;
     usage?: RunUsage;
     exitCode?: number;
+    state?: RunState;
+    reason?: string;
 }
 
 export interface WorkerPacket {
@@ -140,6 +142,8 @@ export class OpenCodeWorkerRuntime {
     readonly router: WorkerRouter;
     private readonly runs = new Map<string, RunRecord>();
     private readonly sessionsByWorker = new Map<string, string>();
+    private readonly rehydrated = new Set<string>();
+    private readonly adopted = new Map<string, { workspace: string; profile: string; model: string; thinking: string; sessionId: string; contextTokens: number; lastTs: number }>();
     private readonly ledgerDir: string;
     private readonly now: () => number;
     private readonly spawner: Spawner;
@@ -239,7 +243,9 @@ export class OpenCodeWorkerRuntime {
         const run = this.runs.get(runId);
         const worker = run ? this.router.worker(run.workerId) : undefined;
         if (!run || !worker) { return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: 'unknown run' }; }
-        if (worker.state === 'RETIRED') { return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: worker.retiredReason ?? 'worker retired' }; }
+        if (worker.state === 'RETIRED' || worker.state === 'ORPHANED') {
+            return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: worker.retiredReason ?? `worker ${worker.state.toLowerCase()}` };
+        }
         if (!run.sessionId) { return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: 'no OpenCode session to resume' }; }
         if (!this.terminal(run.state)) { return this.view(run); }
         if (run.state === 'COMPLETED') { return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: 'run already completed' }; }
@@ -255,6 +261,69 @@ export class OpenCodeWorkerRuntime {
         const run = this.runs.get(runId);
         if (!run) { return []; }
         return this.readLedger(run.workspace).filter((record) => record.runId === runId);
+    }
+
+    /**
+     * Restores this workspace's workers and runs from the ledger after a reload. A worker reconnects only when the
+     * shared server is live and it has a recorded session; otherwise it is ORPHANED with the reason. Safe to call again:
+     * once the server is up, server-orphaned workers reconnect.
+     */
+    rehydrate(workspacePath: string, serverLive: boolean): { reconnected: string[]; orphaned: Array<{ workerId: string; reason: string }> } {
+        const workspace = canonical(workspacePath);
+        if (!this.rehydrated.has(workspace)) {
+            this.rehydrated.add(workspace);
+            this.restoreRuns(workspace);
+        }
+        const result = { reconnected: [] as string[], orphaned: [] as Array<{ workerId: string; reason: string }> };
+        for (const [workerId, adopted] of this.adopted) {
+            if (adopted.workspace !== workspace) { continue; }
+            const reason = !serverLive ? 'shared OpenCode server not reachable after reload'
+                : !adopted.sessionId ? 'no OpenCode session was recorded before reload' : '';
+            this.router.adopt({ workerId, workspacePath: workspace, profile: adopted.profile, model: adopted.model, thinking: adopted.thinking,
+                contextTokens: adopted.contextTokens, lastActivityAt: adopted.lastTs }, reason ? 'ORPHANED' : 'IDLE', reason || undefined);
+            if (reason) { result.orphaned.push({ workerId, reason }); } else {
+                this.sessionsByWorker.set(workerId, adopted.sessionId);
+                result.reconnected.push(workerId);
+            }
+        }
+        return result;
+    }
+
+    private restoreRuns(workspace: string): void {
+        const byRun = new Map<string, LifecycleRecord[]>();
+        for (const record of this.readLedger(workspace)) {
+            // IDs without a host segment predate host-unique IDs and are ambiguous across reloads.
+            if (/^run-\d+$/.test(record.runId) || this.runs.has(record.runId)) { continue; }
+            const records = byRun.get(record.runId) ?? [];
+            records.push(record);
+            byRun.set(record.runId, records);
+        }
+        for (const [runId, records] of byRun) {
+            const first = records[0];
+            const last = records[records.length - 1];
+            const usage = emptyUsage();
+            let contextTokens = 0;
+            for (const record of records) {
+                if (record.type !== 'checkpoint' || !record.usage) { continue; }
+                for (const key of Object.keys(usage) as Array<keyof RunUsage>) { usage[key] += record.usage[key]; }
+                contextTokens = record.usage.input + record.usage.cacheRead + record.usage.cacheWrite;
+            }
+            const sessionId = [...records].reverse().find((record) => record.sessionId)?.sessionId ?? '';
+            const ended = last.exitCode !== undefined;
+            const state: RunState = ended ? last.state ?? (last.type === 'stop' ? 'COMPLETED' : 'FAILED') : 'FAILED';
+            const reason = ended ? last.reason ?? (state === 'COMPLETED' ? undefined : `exit code ${last.exitCode}`)
+                : 'interrupted by reload; worker_resume continues its session';
+            this.runs.set(runId, {
+                runId, workerId: first.workerId, sessionId, state, profile: first.profile, model: first.model, thinking: first.thinking,
+                dispatchTurnId: first.dispatchTurnId, startedAt: first.ts, endedAt: last.ts, updatedAt: last.ts, elapsedMs: last.ts - first.ts,
+                usage, queuePosition: 0, reason, workspace, packet: '', evidence: [], waiters: [],
+            });
+            const adopted = this.adopted.get(first.workerId);
+            if (!adopted || last.ts >= adopted.lastTs) {
+                this.adopted.set(first.workerId, { workspace, profile: first.profile, model: first.model, thinking: first.thinking,
+                    sessionId: sessionId || adopted?.sessionId || '', contextTokens: contextTokens || adopted?.contextTokens || 0, lastTs: last.ts });
+            }
+        }
     }
 
     /** Worker usage grouped by the main-agent turn that dispatched it. */
@@ -340,7 +409,7 @@ export class OpenCodeWorkerRuntime {
             const cancelled = run.reason === 'cancelled by caller';
             const state: RunState = cancelled ? 'CANCELLED' : code === 0 && !signal ? 'COMPLETED' : 'FAILED';
             if (state === 'FAILED' && !run.reason) { run.reason = signal ? `terminated by ${signal}` : `exit code ${code}`; }
-            this.record(run, { type: state === 'COMPLETED' ? 'stop' : 'error', exitCode: code ?? -1 });
+            this.record(run, { type: state === 'COMPLETED' ? 'stop' : 'error', exitCode: code ?? -1, state, reason: run.reason });
             this.finish(run, state, run.reason);
             const next = worker?.active;
             if (next) {
