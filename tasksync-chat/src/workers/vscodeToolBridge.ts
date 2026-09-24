@@ -6,15 +6,18 @@ import { z } from 'zod';
 
 /**
  * VS Code language-model tools that OpenCode workers reach through the AskAway MCP server.
- * Read-mostly tools whose value is the VS Code state workers cannot see: memories, language servers, diagnostics.
+ * Their value is VS Code state workers cannot see: memories, language servers, diagnostics, Sonar analysis, the profiler.
+ * Each entry matches a VS Code tool name; the match is the stable name workers see (VS Code prefixes MCP tools).
  */
-export const BRIDGED_VSCODE_TOOLS = [
-    'copilot_memory',
-    'vscode_listCodeUsages',
-    'copilot_searchWorkspaceSymbols',
-    'copilot_getErrors',
-    'code_nav',
-] as const;
+export const BRIDGED_VSCODE_TOOLS: readonly RegExp[] = [
+    /^copilot_memory$/,
+    /^vscode_listCodeUsages$/,
+    /^copilot_searchWorkspaceSymbols$/,
+    /^copilot_getErrors$/,
+    /^code_nav$/,
+    /^sonarqube_(analyze_file|list_potential_security_issues)$/,
+    /yourkit_(profiler|snapshot)$/,
+];
 
 type JsonSchema = { type?: string | string[]; enum?: unknown[]; items?: JsonSchema; properties?: Record<string, JsonSchema>; required?: string[]; description?: string };
 
@@ -136,9 +139,11 @@ export function registerVsCodeToolBridge(register: Register, options: BridgeOpti
     const windows = options.windows ?? (() => readWindows());
     const forward = options.forward ?? forwardToWindow;
     const registered: string[] = [];
-    for (const name of BRIDGED_VSCODE_TOOLS) {
-        const tool = lm.tools.find((t) => t.name === name);
+    for (const pattern of BRIDGED_VSCODE_TOOLS) {
+        const tool = lm.tools.find((t) => pattern.test(t.name));
         if (!tool) { continue; }
+        const name = (pattern.exec(tool.name) as RegExpExecArray)[0];
+        const vscodeName = tool.name;
         const schema = zodFromJsonSchema(tool.inputSchema as JsonSchema);
         const inputSchema = schema instanceof z.ZodObject ? schema.extend({ workspacePath: z.string().optional().describe(WORKSPACE_PARAM) }) : schema;
         register(name, { description: `[VS Code] ${tool.description}`, inputSchema }, async (args) => {
@@ -149,7 +154,7 @@ export function registerVsCodeToolBridge(register: Register, options: BridgeOpti
             const route = workspacePath ? routeFor(workspacePath, windows()) : undefined;
             try {
                 if (route && route.port !== options.selfPort) { return await forward(route.port, name, args); }
-                const invoke = async () => lm.invokeTool(name, { input, toolInvocationToken: undefined });
+                const invoke = async () => lm.invokeTool(vscodeName, { input, toolInvocationToken: undefined });
                 const result = name === 'copilot_memory' && input.command !== 'view' ? await serialized(String(input.path), invoke) : await invoke();
                 return { content: [{ type: 'text', text: toolResultText(result) }] };
             } catch (error) {

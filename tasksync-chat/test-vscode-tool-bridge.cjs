@@ -32,6 +32,8 @@ const { registerVsCodeToolBridge, registerWindow, readWindows } = require(path.j
             { name: 'copilot_memory', description: 'Manage memories', inputSchema: memorySchema },
             { name: 'copilot_getErrors', description: 'Diagnostics', inputSchema: { type: 'object', properties: { filePaths: { type: 'array', items: { type: 'string' } } } } },
             { name: 'copilot_runInTerminal', description: 'not bridged', inputSchema: { type: 'object' } },
+            { name: 'sonarqube_analyze_file', description: 'Analyze a file with SonarQube', inputSchema: { type: 'object', required: ['filePath'], properties: { filePath: { type: 'string' } } } },
+            { name: 'mcp_yourkit-profi_yourkit_profiler', description: 'YourKit profiler', inputSchema: { type: 'object', properties: { command: { type: 'string' }, pid: { type: 'number' } } } },
         ],
         invokeTool: async (name, options) => {
             invoked.push([name, options.input, options.toolInvocationToken]);
@@ -46,14 +48,14 @@ const { registerVsCodeToolBridge, registerWindow, readWindows } = require(path.j
         lm, selfPort: 1, windows: () => windows,
         forward: async (port, name, args) => { forwarded.push([port, name, args]); return { content: [{ type: 'text', text: `from window ${port}` }] }; },
     });
-    assert.deepEqual(registered, ['copilot_memory', 'copilot_getErrors'], 'only allowlisted tools that exist in this VS Code');
+    assert.deepEqual(registered, ['copilot_memory', 'copilot_getErrors', 'sonarqube_analyze_file', 'yourkit_profiler'], 'only allowlisted tools that exist in this VS Code; MCP-prefixed names are made stable');
 
     const [a, b] = InMemoryTransport.createLinkedPair();
     await server.connect(a);
     const client = new Client({ name: 'worker', version: '1' });
     await client.connect(b);
     const tools = (await client.listTools()).tools;
-    assert.deepEqual(tools.map((t) => t.name).sort(), ['copilot_getErrors', 'copilot_memory']);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ['copilot_getErrors', 'copilot_memory', 'sonarqube_analyze_file', 'yourkit_profiler']);
     const memory = tools.find((t) => t.name === 'copilot_memory');
     assert.match(memory.description, /^\[VS Code\] Manage memories/);
     assert.deepEqual(memory.inputSchema.required, ['command'], 'required fields survive');
@@ -69,6 +71,8 @@ const { registerVsCodeToolBridge, registerWindow, readWindows } = require(path.j
     assert.equal(invoked.length, 1);
     const failed = await client.callTool({ name: 'copilot_memory', arguments: { command: 'view', path: '/boom' } });
     assert.deepEqual([failed.isError, failed.content[0].text], [true, 'VS Code tool copilot_memory failed: no such memory']);
+    await client.callTool({ name: 'yourkit_profiler', arguments: { command: 'list' } });
+    assert.equal(invoked[invoked.length - 1][0], 'mcp_yourkit-profi_yourkit_profiler', 'the stable name calls VS Code\'s own tool');
 
     // Workers write memories: create and str_replace (both fail on a stale view), one writer per path at a time.
     let inFlight = 0, maxInFlight = 0;
@@ -116,7 +120,15 @@ const { registerVsCodeToolBridge, registerWindow, readWindows } = require(path.j
 
     const config = JSON.parse(fs.readFileSync(path.join(require('node:os').homedir(), '.config', 'opencode', 'opencode.json'), 'utf8'));
     assert.equal(config.mcp.askaway?.url, 'http://127.0.0.1:3579/sse', 'OpenCode workers reach the AskAway MCP');
-    for (const key of ['askaway_worker_*', 'askaway_ask_user', 'askaway_commentary']) { assert.equal(config.permission[key], 'deny', `${key} stays orchestrator-only`); }
+    for (const key of ['askaway_worker_*', 'askaway_ask_user', 'askaway_commentary', 'askaway_yourkit_*', 'askaway_sonarqube_*']) { assert.equal(config.permission[key], 'deny', `${key} is denied by default`); }
+    // T032/T033: the profiler and Sonar are open only to their own workers.
+    const agentsDir = path.join(require('node:os').homedir(), '.config', 'opencode', 'agents');
+    assert.match(fs.readFileSync(path.join(agentsDir, 'aa-perf.md'), 'utf8'), /"askaway_yourkit_\*": allow/);
+    assert.match(fs.readFileSync(path.join(agentsDir, 'aa-quality.md'), 'utf8'), /"askaway_sonarqube_\*": allow/);
+    for (const other of ['aa-code.md', 'aa-verify.md', 'aa-explore.md']) {
+        assert.doesNotMatch(fs.readFileSync(path.join(agentsDir, other), 'utf8'), /askaway_(yourkit|sonarqube)/, `${other} cannot reach the profiler or Sonar`);
+    }
+    assert.doesNotMatch(fs.readFileSync(path.join(agentsDir, 'aa-quality.md'), 'utf8'), /SONAR_TOKEN\s*=|sq[pau]_[A-Za-z0-9]{20,}/, 'no Sonar token in the agent');
     fs.rmSync(buildDir, { recursive: true, force: true });
     console.log(`EV-039 VsCodeToolBridge: PASS bridged=${registered.join(',')} schema=vscode inputUnchanged=true invalidRefused=true errors=isError writes=create+str_replace serialized=true routedByWorkspace=true openCodeConfig=true`);
     process.exit(0);
