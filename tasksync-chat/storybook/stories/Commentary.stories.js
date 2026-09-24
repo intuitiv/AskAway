@@ -8,26 +8,17 @@ import { buildCommentaryKit, VSCODE_DARK_THEME } from '../kit.js';
 const kit = buildCommentaryKit({ webviewSrc, providerSrc });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function mount({ goal = '', items = [], archivedCount = 0, filter = 'all' }) {
+function mount({ goal = '', items = [], archivedCount = 0 }) {
     const root = document.createElement('div');
     root.className = 'aa-sidebar';
     root.innerHTML = `<style>${cssText}\n${VSCODE_DARK_THEME}</style>${kit.panelHtml}`;
     root.querySelector('#cm-goal-input').value = goal;
-    const state = { goal, items, archivedCount, filter, seen: {} };
+    const state = { goal, items, archivedCount, seen: {} };
     const paint = (animate) => {
         const feed = root.querySelector('#cm-feed');
-        feed.innerHTML = kit.renderCommentaryHtml({ goal: state.goal, items: state.items, archivedCount: state.archivedCount }, state.filter);
+        feed.innerHTML = kit.renderCommentaryHtml({ goal: state.goal, items: state.items, archivedCount: state.archivedCount });
         if (animate) { kit.commentaryAnimateNew(feed, state.seen, state.msPerChar ?? 18); } else { state.items.forEach((i) => { state.seen[i.id] = true; }); }
     };
-    // Filters behave exactly as in the webview.
-    root.querySelector('#cm-filters').addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-cm-filter]');
-        if (!btn) { return; }
-        state.filter = btn.getAttribute('data-cm-filter');
-        root.querySelectorAll('[data-cm-filter]').forEach((b) => b.classList.toggle('active', b === btn));
-        paint(false);
-    });
-    root.querySelectorAll('[data-cm-filter]').forEach((b) => b.classList.toggle('active', b.getAttribute('data-cm-filter') === filter));
     root.__commentary = { state, paint };
     paint(false);
     return root;
@@ -68,6 +59,4 @@ async function replay({ canvasElement, args }, items) {
 
 export const FullFeed = { render: () => mount({ goal: realFeed.goal, items: realFeed.items, archivedCount: 1 }) };
 
-export const DecisionsOnly = { render: () => mount({ goal: realFeed.goal, items: realFeed.items, filter: 'decision' }) };
-
-export const WaitingForFirstBall = { render: () => mount({ goal: '' }) };
+export const WaitingForFirstUpdate = { render: () => mount({ goal: '' }) };

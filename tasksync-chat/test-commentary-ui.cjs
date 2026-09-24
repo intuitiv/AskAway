@@ -21,38 +21,38 @@ const t0 = new Date(2026, 8, 24, 19, 14, 5).getTime();
 const view = {
     goal: 'Ship slugify', archivedCount: 3, opener: 'x',
     items: [
-        { id: 'c1', ts: t0, kind: 'progress', ref: '0.1', text: 'Goal: slugify helper with tests. Track A implements, B verifies.' },
-        { id: 'c2', ts: t0 + 40_000, kind: 'progress', ref: 'A.1', text: 'Code worker done in 38s, $0.004; reports SLUG-TEST: PASS.' },
+        { id: 'c1', ts: t0, kind: 'update', ref: '0.1', text: 'Goal: slugify helper with tests. Track A implements, B verifies.' },
+        { id: 'c2', ts: t0 + 40_000, kind: 'update', ref: 'A.1', text: 'Code worker done in 38s, $0.004; reports SLUG-TEST: PASS.' },
         { id: 'c3', ts: t0 + 55_000, kind: 'milestone', ref: 'B.1', text: 'Independent verify reproduced SLUG-TEST: PASS in 9s. Accepted.' },
-        { id: 'c4', ts: t0 + 60_000, kind: 'question', ref: '0.2', text: 'Unicode edge cases in scope, or a follow-up?' },
-        { id: 'c5', ts: t0 + 61_000, kind: 'progress', ref: '', text: '<script>alert(1)</script> without a ref' },
+        { id: 'c4', ts: t0 + 60_000, kind: 'heads-up', ref: '0.2', text: 'Unicode edge cases in scope, or a follow-up?' },
+        { id: 'c5', ts: t0 + 61_000, kind: 'update', ref: '', text: '<script>alert(1)</script> without a ref' },
     ],
 };
-const html = ui.render(view, 'all');
-assert.match(html, /^<div class="cm-summary">5 lines · 1 milestone · 1 open · 3 archived<\/div>/);
+const html = ui.render(view);
+assert.match(html, /^<div class="cm-summary">5 lines · 1 heads-up · 3 archived<\/div>/);
 const ids = [...html.matchAll(/data-id="(c\d)"/g)].map((m) => m[1]);
 assert.deepEqual(ids, ['c5', 'c4', 'c3', 'c2', 'c1'], 'newest first, like a live match feed');
-assert.match(html, /<div class="cm-item cm-kind-milestone" data-id="c3"><div class="cm-ball">B\.1<\/div><div class="cm-body"><div class="cm-meta"><span class="cm-kind">MILESTONE<\/span><span class="cm-time">19:15:00<\/span>/);
+assert.match(html, /<div class="cm-item" data-id="c3"><div class="cm-ball">B\.1<\/div><div class="cm-body"><div class="cm-meta"><span class="cm-time">19:15:00<\/span><\/div>/, 'updates carry no category label, old kinds included');
+assert.match(html, /<div class="cm-item cm-heads-up" data-id="c4">[\s\S]*?<span class="cm-heads-up-tag">HEADS-UP<\/span>/, 'a heads-up stands out');
+assert.match(ui.render({ ...view, items: [{ id: 'q', ts: t0, kind: 'question', text: 'old feed' }] }), /cm-heads-up/, 'old question/blocked lines read as heads-up');
 assert.match(html, /data-id="c5"><div class="cm-ball">•<\/div>/, 'a line without ref gets a plain ball');
 assert.doesNotMatch(html, /<script>/, 'text is escaped');
-const onlyQuestions = ui.render(view, 'question');
-assert.deepEqual([...onlyQuestions.matchAll(/data-id="(c\d)"/g)].map((m) => m[1]), ['c4']);
-assert.match(ui.render(view, 'blocked'), /Nothing of this kind yet\./);
-assert.match(ui.render({ items: [], archivedCount: 0 }, 'all'), /Waiting for the orchestrator's first ball\./);
+assert.match(ui.render({ items: [], archivedCount: 0 }), /Waiting for the orchestrator's first update\./);
 assert.equal(ui.open(view), 1);
-console.log('EV-030a CommentaryFeedRender: PASS newestFirst=true kinds=5 filter=true escaped=true emptyStates=2');
+console.log('EV-030a CommentaryFeedRender: PASS newestFirst=true kinds=update+heads-up noFilters=true escaped=true');
 
 // Markup and wiring: the tab exists, its controls send the backend messages, pushes are rendered.
 const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
-for (const id of ['data-tab="commentary"', 'id="panel-commentary"', 'id="cm-goal-input"', 'id="cm-copy"', 'id="cm-clear"', 'id="cm-feed"']) {
+for (const id of ['data-tab="commentary" title="Live orchestrator commentary and the main goal">Commentary', 'id="panel-commentary"', 'id="cm-goal-input" rows="6"', 'id="cm-copy"', 'id="cm-clear"', 'id="cm-feed"']) {
     assert.ok(provider.includes(id), `panel has ${id}`);
 }
+assert.ok(!provider.includes('data-cm-filter') && !provider.includes('cm-goal-label'), 'no filters and no goal heading');
 assert.match(webview, /case 'commentaryState':\s*applyCommentaryState\(message\.data\)/);
 for (const message of ["type: 'setCommentaryGoal'", "type: 'clearCommentary', what: 'feed'", "type: 'copyToClipboard', text: commentaryView.opener", "type: 'requestCommentary'"]) {
     assert.ok(webview.includes(message), `webview sends ${message}`);
 }
 const css = fs.readFileSync(path.join(__dirname, 'media', 'main.css'), 'utf8');
-for (const selector of ['.cm-kind-milestone', '.cm-kind-question', '.cm-kind-blocked', '.cm-kind-decision', '.cm-ball', '.cm-goal-input']) {
+for (const selector of ['.cm-heads-up', '.cm-heads-up-tag', '.cm-ball', '.cm-goal-input', '.cm-icon-btn']) {
     assert.ok(css.includes(selector), `style for ${selector}`);
 }
 
@@ -60,7 +60,7 @@ for (const selector of ['.cm-kind-milestone', '.cm-kind-question', '.cm-kind-blo
 (async () => {
     const { buildCommentaryKit } = await import(path.join(__dirname, 'storybook', 'kit.js'));
     const kit = buildCommentaryKit({ webviewSrc: webview, providerSrc: provider });
-    assert.equal(kit.renderCommentaryHtml(view, 'all'), html, 'Storybook renders byte-identical feed HTML');
+    assert.equal(kit.renderCommentaryHtml(view), html, 'Storybook renders byte-identical feed HTML');
     assert.match(kit.panelHtml, /^<div class="tab-panel active" id="panel-commentary">[\s\S]*id="cm-feed"[\s\S]*<!-- End panel-commentary -->$/);
 
     // Typewriter: a new line types in character by character; lines already seen do not.

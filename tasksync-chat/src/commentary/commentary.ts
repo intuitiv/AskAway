@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { CREDENTIAL } from '../workers/openCodeRuntime';
 import type { ToolDefinition } from '../workers/workerTools';
 
-export const COMMENTARY_KINDS = ['progress', 'milestone', 'decision', 'question', 'blocked'] as const;
+export const COMMENTARY_KINDS = ['update', 'heads-up'] as const;
 export type CommentaryKind = typeof COMMENTARY_KINDS[number];
 export const MAX_COMMENTARY_WORDS = 20;
 export const MIN_COMMENTARY_WORDS = 3;
@@ -44,7 +44,7 @@ export function buildOpener(state: CommentaryState): string {
         lines.push(`Commentary since last clear (${items.length}):`);
         for (const item of items) {
             const time = new Date(item.ts).toISOString().slice(11, 16);
-            lines.push(`- ${time}${item.ref ? ` ${item.ref}` : ''} ${item.kind}: ${item.text}`);
+            lines.push(`- ${time}${item.ref ? ` ${item.ref}` : ''} ${item.kind === 'heads-up' ? 'HEADS-UP: ' : ''}${item.text}`);
         }
     }
     lines.push('Continue toward the main goal.');
@@ -135,10 +135,10 @@ export class CommentaryStore {
 export function commentaryToolDefinitions(store: () => CommentaryStore, defaultWorkspace: string): ToolDefinition[] {
     return [{
         name: 'commentary',
-        description: 'Live commentary for the reviewer\'s Commentary tab, like cricket commentary for a fan: one line per significant stage, in plain words a non-engineer follows. '
-            + 'Say what happened and what it means, not how: no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. '
-            + 'Lead with one emoji; **bold** the outcome, ==highlight== the one number that matters, `code` only for a command the reviewer might run. '
-            + 'Kinds: `progress` (what is happening now), `milestone` (a piece of work accepted), `decision` (a choice you made and why), `question` (you need the reviewer), `blocked` (stuck, with the fix). '
+        description: 'Live commentary: the trace of your execution for the reviewer, so they know what is happening, can guide you in time, and are prepared for questions coming their way. '
+            + 'One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. '
+            + 'Lead with one emoji; **bold** the outcome, ==highlight== the one number that matters. '
+            + 'kind `update` for everything that is just happening. kind `heads-up` when you will need something from the reviewer soon, or something is unclear to you, so they can prepare. '
             + '10-20 words. `ref` is track.step, e.g. "A.3". Batch it with the step\'s real tool call; do not repeat it in chat.',
         inputSchema: z.object({
             kind: z.enum(COMMENTARY_KINDS),

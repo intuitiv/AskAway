@@ -4959,33 +4959,19 @@ button#send-btn:disabled {
 }
 
 /* ===== Commentary tab (live orchestrator feed, newest first) ===== */
-.cm-shell { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-.cm-goal {
-    display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 6px;
-    border: 1px solid #8b5cf6; background: rgba(139, 92, 246, 0.12); box-shadow: inset 3px 0 0 #8b5cf6;
-}
-.cm-goal-head { display: flex; align-items: center; gap: 6px; }
-.cm-goal-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #a78bfa; }
-.cm-goal-saved { margin-right: auto; font-size: 10px; opacity: 0.7; }
+.cm-shell { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .cm-goal-input {
-    resize: vertical; min-height: 72px; padding: 6px 8px; font-family: inherit; font-size: 13px; line-height: 1.45;
+    resize: vertical; min-height: 110px; padding: 6px 8px; font-family: inherit; font-size: 13px; line-height: 1.45;
     background: var(--vscode-input-background); color: var(--vscode-input-foreground);
-    border: 1px solid rgba(139, 92, 246, 0.55); border-radius: 4px;
+    border: 1px solid #8b5cf6; border-radius: 4px;
 }
 .cm-goal-input:focus { outline: 1px solid #8b5cf6; }
-.cm-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.cm-filters { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
-.cm-filter, .cm-btn {
-    font-size: 11px; padding: 1px 8px; border: none; border-radius: 10px; cursor: pointer;
-    background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
-}
-.cm-btn { border-radius: 3px; }
+.cm-toolbar { display: flex; justify-content: flex-end; gap: 2px; }
 .cm-icon-btn {
     display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; padding: 0;
     border: none; border-radius: 4px; cursor: pointer; background: transparent; color: var(--vscode-foreground); opacity: 0.8;
 }
 .cm-icon-btn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1)); opacity: 1; }
-.cm-filter.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 .cm-feed { display: flex; flex-direction: column; overflow-y: auto; }
 .cm-summary { font-size: 11px; opacity: 0.7; padding: 0 2px 4px; border-bottom: 1px solid var(--vscode-panel-border); }
 .cm-empty { padding: 14px; text-align: center; opacity: 0.7; }
@@ -5002,22 +4988,15 @@ button#send-btn:disabled {
 }
 .cm-body { flex: 1; min-width: 0; }
 .cm-meta { display: flex; gap: 8px; align-items: baseline; font-size: 10px; }
-.cm-kind { font-weight: 700; letter-spacing: 0.04em; opacity: 0.8; }
 .cm-time { opacity: 0.55; font-family: var(--vscode-editor-font-family); }
 .cm-text { font-size: 12px; line-height: 1.45; }
 .cm-text strong { font-weight: 700; }
 .cm-text mark { background: rgba(204, 167, 0, 0.35); color: inherit; padding: 0 2px; border-radius: 2px; }
 .cm-text u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .cm-text code { font-family: var(--vscode-editor-font-family); font-size: 11px; padding: 0 3px; border-radius: 3px; background: var(--vscode-input-background); }
-.cm-kind-milestone .cm-ball { background: var(--vscode-charts-green); color: #fff; }
-.cm-kind-milestone .cm-kind { color: var(--vscode-charts-green); opacity: 1; }
-.cm-kind-milestone .cm-text { font-weight: 600; }
-.cm-kind-decision .cm-ball { background: var(--vscode-charts-blue); color: #fff; }
-.cm-kind-decision .cm-kind { color: var(--vscode-charts-blue); opacity: 1; }
-.cm-kind-question .cm-ball { background: var(--vscode-charts-yellow); color: #000; }
-.cm-kind-question .cm-kind { color: var(--vscode-charts-yellow); opacity: 1; }
-.cm-kind-blocked .cm-ball { background: var(--vscode-charts-red); color: #fff; }
-.cm-kind-blocked .cm-kind { color: var(--vscode-charts-red); opacity: 1; }
+.cm-heads-up { background: rgba(204, 167, 0, 0.08); }
+.cm-heads-up .cm-ball { background: var(--vscode-charts-yellow); color: #000; }
+.cm-heads-up-tag { font-weight: 700; letter-spacing: 0.04em; color: var(--vscode-charts-yellow); }
 
 /* ===== Workers tab (OpenCode control plane; no transcript or approval controls) ===== */
 .workers-shell { display: flex; flex-direction: column; gap: 6px; min-height: 0; }

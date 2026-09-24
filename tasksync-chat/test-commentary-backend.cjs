@@ -28,26 +28,26 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
 
 (async () => {
     // --- The commentary tool as the orchestrator calls it ---
-    assert.deepEqual((await call(commentary, { kind: 'decision', ref: 'A.1', text: 'Split T015: base tab now, swimlanes later, unblocks commentary work.' })).status, 'POSTED');
+    assert.deepEqual((await call(commentary, { kind: 'update', ref: 'A.1', text: 'Split T015: base tab now, swimlanes later, unblocks commentary work.' })).status, 'POSTED');
     clock += 60_000;
-    assert.equal((await call(commentary, { kind: 'question', text: 'Commentary tab beside Workers, or replace it?' })).status, 'POSTED');
-    const tooLong = await call(commentary, { kind: 'progress', text: Array(21).fill('word').join(' ') });
+    assert.equal((await call(commentary, { kind: 'heads-up', text: 'Commentary tab beside Workers, or replace it?' })).status, 'POSTED');
+    const tooLong = await call(commentary, { kind: 'update', text: Array(21).fill('word').join(' ') });
     assert.deepEqual([tooLong.status, tooLong.reason], ['REJECTED', '21 words; shorten to 20 or fewer']);
-    assert.equal((await call(commentary, { kind: 'progress', text: 'ok' })).status, 'REJECTED', 'too short to be useful');
-    assert.equal((await call(commentary, { kind: 'rant', text: 'this kind does not exist at all' })).status, 'INVALID_INPUT');
-    assert.equal((await call(commentary, { kind: 'blocked', text: 'token ghp_abcdefghijklmnopqrstuvwxyz0123 expired again today' })).reason, 'text contains a credential');
+    assert.equal((await call(commentary, { kind: 'update', text: 'ok' })).status, 'REJECTED', 'too short to be useful');
+    assert.equal((await call(commentary, { kind: 'milestone', text: 'old kinds are gone from the contract now' })).status, 'INVALID_INPUT');
+    assert.equal((await call(commentary, { kind: 'heads-up', text: 'token ghp_abcdefghijklmnopqrstuvwxyz0123 expired again today' })).reason, 'text contains a credential');
     assert.equal((await call(commentary, { text: 'missing kind here' })).status, 'INVALID_INPUT');
 
     // --- What the Commentary tab receives ---
     store.setGoal(workspace, 'Finish CY-005: Workers tab usable end to end.');
     let view = commentaryView(store.read(workspace));
     assert.equal(view.goal, 'Finish CY-005: Workers tab usable end to end.');
-    assert.deepEqual(view.items.map((i) => i.kind), ['decision', 'question']);
+    assert.deepEqual(view.items.map((i) => i.kind), ['update', 'heads-up']);
     assert.equal(view.opener, [
         'Main goal: Finish CY-005: Workers tab usable end to end.',
         'Commentary since last clear (2):',
-        '- 19:14 A.1 decision: Split T015: base tab now, swimlanes later, unblocks commentary work.',
-        '- 19:15 question: Commentary tab beside Workers, or replace it?',
+        '- 19:14 A.1 Split T015: base tab now, swimlanes later, unblocks commentary work.',
+        '- 19:15 HEADS-UP: Commentary tab beside Workers, or replace it?',
         'Continue toward the main goal.',
     ].join('\n'));
     const pushed = [];
@@ -56,11 +56,11 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     store.clear(workspace, 'feed');
     view = commentaryView(store.read(workspace));
     assert.deepEqual([view.items.length, view.archivedCount, view.goal !== ''], [0, 2, true], 'clear keeps audit history and the goal');
-    await call(commentary, { kind: 'progress', ref: 'A.2', text: 'Track A: code worker editing workersState.ts, verify queued next.' });
-    assert.equal((await call(commentary, { kind: 'milestone', ref: 'A.3', text: 'A.2 accepted: verify worker saw EV-014 PASS line exactly.' })).status, 'POSTED');
-    assert.deepEqual(commentaryView(store.read(workspace)).items.map((i) => [i.ref, i.kind]), [['A.2', 'progress'], ['A.3', 'milestone']], 'only posts after the clear are live');
+    await call(commentary, { kind: 'update', ref: 'A.2', text: 'Track A: code worker editing workersState.ts, verify queued next.' });
+    assert.equal((await call(commentary, { kind: 'update', ref: 'A.3', text: 'A.2 accepted: verify worker saw EV-014 PASS line exactly.' })).status, 'POSTED');
+    assert.deepEqual(commentaryView(store.read(workspace)).items.map((i) => [i.ref, i.kind]), [['A.2', 'update'], ['A.3', 'update']], 'only posts after the clear are live');
     assert.deepEqual(pushed, [2, 3, 4], 'every change is pushed to the tab');
-    assert.equal((await call(commentary, { kind: 'progress', text: `🚀 ${Array(20).fill('word').join(' ')} ✅` })).status, 'POSTED', 'emojis do not count as words');
+    assert.equal((await call(commentary, { kind: 'update', text: `🚀 ${Array(20).fill('word').join(' ')} ✅` })).status, 'POSTED', 'emojis do not count as words');
 
     // --- The worker tools as VS Code LM tools: same contract, validated input, bounded JSON ---
     const runtime = new OpenCodeWorkerRuntime([], { ledgerDir: path.join(home, 'ledger'), spawner: () => { throw new Error('no spawn'); } });
@@ -95,7 +95,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     };
     const first = hook({ session_id: 'next-1', prompt: 'continue' });
     assert.match(first, /Ship the async worker runner/);
-    assert.match(first, /## Carry-over from the previous conversation[\s\S]*Main goal: Finish CY-005[\s\S]*A\.2 progress: Track A: code worker/);
+    assert.match(first, /## Carry-over from the previous conversation[\s\S]*Main goal: Finish CY-005[\s\S]*A\.2 Track A: code worker/);
     assert.doesNotMatch(first, /Split T015/, 'cleared commentary is not carried over');
     const second = hook({ session_id: 'next-1', prompt: 'next step' });
     assert.doesNotMatch(second, /Ship the async worker runner|Carry-over/, 'Goal.md and carry-over are injected once');
@@ -104,7 +104,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     store.clear(workspace, 'all');
     assert.match(hook({ session_id: 'next-1', prompt: 'go' }), /^Main goal: finish CY-005 of 001-demo\./, 'without a goal box the anchor is the active cycle');
     assert.doesNotMatch(hook({ session_id: 'next-2', prompt: 'go' }), /Carry-over/, 'nothing to carry after a full clear');
-    console.log('EV-030 CommentaryBackend: PASS kinds=5 refs=true maxWords=20 rejections=5 clearKeepsAudit=true pushOnChange=true opener=exact');
+    console.log('EV-030 CommentaryBackend: PASS kinds=update+heads-up refs=true maxWords=20 rejections=5 clearKeepsAudit=true pushOnChange=true opener=exact');
     console.log('EV-031 GoalAnchor: PASS carryOverOnce=true anchorEveryPrompt=true aside=true cycleFallback=CY-005');
 
     fs.rmSync(buildDir, { recursive: true, force: true });

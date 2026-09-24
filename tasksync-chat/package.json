@@ -738,7 +738,7 @@
         ],
         "toolReferenceName": "commentary",
         "displayName": "Commentary",
-        "modelDescription": "Live commentary for the reviewer's Commentary tab, like cricket commentary for a fan: one line per significant stage, in plain words a non-engineer follows. Say what happened and what it means, not how: no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. Lead with one emoji; **bold** the outcome, ==highlight== the one number that matters, `code` only for a command the reviewer might run. Kinds: `progress` (what is happening now), `milestone` (a piece of work accepted), `decision` (a choice you made and why), `question` (you need the reviewer), `blocked` (stuck, with the fix). 10-20 words. `ref` is track.step, e.g. \"A.3\". Batch it with the step's real tool call; do not repeat it in chat.",
+        "modelDescription": "Live commentary: the trace of your execution for the reviewer, so they know what is happening, can guide you in time, and are prepared for questions coming their way. One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. Lead with one emoji; **bold** the outcome, ==highlight== the one number that matters. kind `update` for everything that is just happening. kind `heads-up` when you will need something from the reviewer soon, or something is unclear to you, so they can prepare. 10-20 words. `ref` is track.step, e.g. \"A.3\". Batch it with the step's real tool call; do not repeat it in chat.",
         "canBeReferencedInPrompt": true,
         "icon": "$(comment-discussion)",
         "inputSchema": {
@@ -747,11 +747,8 @@
             "kind": {
               "type": "string",
               "enum": [
-                "progress",
-                "milestone",
-                "decision",
-                "question",
-                "blocked"
+                "update",
+                "heads-up"
               ]
             },
             "text": {

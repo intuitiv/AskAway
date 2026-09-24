@@ -5128,8 +5128,7 @@
         'done': 'Done'
     };
 
-    // ── Commentary tab: pure render (tested in test-commentary-ui.cjs, played by tools/play-commentary.cjs) ──
-    var COMMENTARY_LABELS = { progress: 'PROGRESS', milestone: 'MILESTONE', decision: 'DECISION', question: 'QUESTION', blocked: 'BLOCKED' };
+    // ── Commentary tab: pure render (tested in test-commentary-ui.cjs, used by Storybook) ──
     function commentaryEsc(value) {
         return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -5140,8 +5139,12 @@
         var pad = function (n) { return (n < 10 ? '0' : '') + n; };
         return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
     }
+    // Lines that need the reviewer; older feeds used 'question' and 'blocked' for the same thing.
+    function commentaryIsHeadsUp(item) {
+        return item.kind === 'heads-up' || item.kind === 'question' || item.kind === 'blocked';
+    }
     function commentaryOpenCount(view) {
-        return view && view.items ? view.items.filter(function (i) { return i.kind === 'question' || i.kind === 'blocked'; }).length : 0;
+        return view && view.items ? view.items.filter(commentaryIsHeadsUp).length : 0;
     }
     // Escape first, then add only our own tags: **bold**, _italic_, ++underline++, ==highlight==, `code`.
     function commentaryMarkup(text) {
@@ -5152,26 +5155,24 @@
             .replace(/\+\+([^+]+)\+\+/g, '<u>$1</u>')
             .replace(/(^|[\s(])_([^_]+)_(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
     }
-    function renderCommentaryHtml(view, filter) {
+    function renderCommentaryHtml(view) {
         if (!view) return '<div class="cm-empty">Commentary is not available for this workspace.</div>';
         var all = view.items || [];
-        var count = function (kind) { return all.filter(function (i) { return i.kind === kind; }).length; };
+        var headsUp = commentaryOpenCount(view);
         var html = '<div class="cm-summary">' + all.length + ' line' + (all.length === 1 ? '' : 's') +
-            ' · ' + count('milestone') + ' milestone' + (count('milestone') === 1 ? '' : 's') +
-            ' · ' + commentaryOpenCount(view) + ' open' +
+            (headsUp ? ' · ' + headsUp + ' heads-up' : '') +
             (view.archivedCount ? ' · ' + view.archivedCount + ' archived' : '') + '</div>';
-        var shown = all.filter(function (i) { return !filter || filter === 'all' || i.kind === filter; });
-        if (!shown.length) {
-            return html + '<div class="cm-empty">' + (all.length ? 'Nothing of this kind yet.' : 'Waiting for the orchestrator\'s first ball.') + '</div>';
+        if (!all.length) {
+            return html + '<div class="cm-empty">Waiting for the orchestrator\'s first update.</div>';
         }
         // Newest first, like a live match feed.
-        for (var n = shown.length - 1; n >= 0; n--) {
-            var item = shown[n];
-            var kind = COMMENTARY_LABELS[item.kind] ? item.kind : 'progress';
-            html += '<div class="cm-item cm-kind-' + kind + '" data-id="' + commentaryEsc(item.id) + '">' +
+        for (var n = all.length - 1; n >= 0; n--) {
+            var item = all[n];
+            var flagged = commentaryIsHeadsUp(item);
+            html += '<div class="cm-item' + (flagged ? ' cm-heads-up' : '') + '" data-id="' + commentaryEsc(item.id) + '">' +
                 '<div class="cm-ball">' + commentaryEsc(item.ref || '•') + '</div>' +
                 '<div class="cm-body">' +
-                '<div class="cm-meta"><span class="cm-kind">' + COMMENTARY_LABELS[kind] + '</span><span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
+                '<div class="cm-meta">' + (flagged ? '<span class="cm-heads-up-tag">HEADS-UP</span>' : '') + '<span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
                 '<div class="cm-text">' + commentaryMarkup(item.text) + '</div>' +
                 '</div></div>';
         }
@@ -5207,13 +5208,12 @@
 
     var commentarySeen = null;
     var commentaryView = null;
-    var commentaryFilter = 'all';
 
     function applyCommentaryState(data) {
         commentaryView = data;
         var feed = document.getElementById('cm-feed');
         if (feed) {
-            feed.innerHTML = renderCommentaryHtml(commentaryView, commentaryFilter);
+            feed.innerHTML = renderCommentaryHtml(commentaryView);
             // Lines already on screen at first load appear at once; only new arrivals type in.
             if (commentarySeen) { commentaryAnimateNew(feed, commentarySeen, 18); } else {
                 commentarySeen = {};
@@ -5232,17 +5232,14 @@
 
     function initCommentaryTab() {
         var goal = document.getElementById('cm-goal-input');
-        var saved = document.getElementById('cm-goal-saved');
         var on = function (id, handler) { var el = document.getElementById(id); if (el) el.addEventListener('click', handler); };
         var goalTimer = null;
         var saveGoal = function () {
             if (goalTimer) { clearTimeout(goalTimer); goalTimer = null; }
             vscode.postMessage({ type: 'setCommentaryGoal', goal: goal ? goal.value : '' });
-            if (saved) saved.textContent = 'Saved';
         };
         if (goal) {
             goal.addEventListener('input', function () {
-                if (saved) saved.textContent = 'Saving…';
                 if (goalTimer) clearTimeout(goalTimer);
                 goalTimer = setTimeout(saveGoal, 700);
             });
@@ -5250,14 +5247,6 @@
         }
         on('cm-clear', function () { vscode.postMessage({ type: 'clearCommentary', what: 'feed' }); });
         on('cm-copy', function () { if (commentaryView) vscode.postMessage({ type: 'copyToClipboard', text: commentaryView.opener }); });
-        var filters = document.getElementById('cm-filters');
-        if (filters) filters.addEventListener('click', function (e) {
-            var btn = e.target.closest('[data-cm-filter]');
-            if (!btn) return;
-            commentaryFilter = btn.getAttribute('data-cm-filter');
-            filters.querySelectorAll('[data-cm-filter]').forEach(function (b) { b.classList.toggle('active', b === btn); });
-            applyCommentaryState(commentaryView);
-        });
         // Subscribes the provider to live pushes even while another tab is open.
         vscode.postMessage({ type: 'requestCommentary' });
     }
