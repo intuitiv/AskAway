@@ -79,6 +79,11 @@ function extractPlan(text) {
 
 const PACKET_FIELDS = ['id', 'mode', 'model', 'thinking', 'reason', 'objective', 'assertion', 'expected', 'command'];
 
+/** Which worker modes may judge each kind of work: by running it, never by reading it (reviewer, 2026-09-24). */
+const VERIFIERS_BY_WORK = { code: ['verify', 'gradle', 'test'], test: ['verify', 'gradle'], authoring: ['verify', 'devx'], devx: ['verify'] };
+/** A verify command that only looks at the change proves nothing about its behaviour. */
+const INSPECTION_ONLY = /^(cat|less|head|tail|grep|rg|ls|git\s+(diff|show|log|status))\b/;
+
 /** Grades an orchestrator's plan against decomposition, pairing, and cost-discipline rules. */
 function gradePlan(testCase, text, modes) {
     const g = testCase.grade || {};
@@ -113,12 +118,14 @@ function gradePlan(testCase, text, modes) {
         checks.push(check('noHeavyTier', heavy.length === 0, heavy.map((p) => p.id).join(',')));
     }
 
-    const mutating = packets.filter((p) => ['code', 'test', 'authoring', 'devx'].includes(p.mode));
+    // A packet that is itself the check for other work (e.g. a DevX end-to-end run) needs no verifier of its own.
+    const judges = new Set(packets.map((p) => p.verifyBy).filter(Boolean));
+    const mutating = packets.filter((p) => VERIFIERS_BY_WORK[p.mode] && !judges.has(p.id));
     const unverified = mutating.filter((p) => {
         const verifier = byId.get(p.verifyBy);
-        return !verifier || verifier.id === p.id || verifier.mode !== 'verify';
+        return !verifier || verifier.id === p.id || !VERIFIERS_BY_WORK[p.mode].includes(verifier.mode) || INSPECTION_ONLY.test(String(verifier.command).trim());
     });
-    checks.push(check('mutationsIndependentlyVerified', unverified.length === 0, unverified.map((p) => p.id).join(',')));
+    checks.push(check('mutationsVerifiedByBehaviour', unverified.length === 0, unverified.map((p) => p.id).join(',')));
 
     const danglingDeps = packets.filter((p) => (p.dependsOn || []).some((dep) => !byId.has(dep)));
     checks.push(check('dependenciesResolve', danglingDeps.length === 0, danglingDeps.map((p) => p.id).join(',')));

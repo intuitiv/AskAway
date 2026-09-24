@@ -7,12 +7,14 @@ export interface ScoreRow { mode: string; model: string; variant: string; runs: 
 
 export const EVAL_RESULTS_FILE = path.join(os.homedir(), '.askaway', 'evals', 'results.jsonl');
 
-export function evalScoreboard(records: Array<{ ts?: string; mode?: string; model?: string; variant?: string; verdict?: string; usage?: { cost?: number }; durationMs?: number }>): ScoreRow[] {
+export function evalScoreboard(records: Array<{ ts?: string; suite?: string; mode?: string; model?: string; variant?: string; verdict?: string; usage?: { cost?: number }; durationMs?: number }>): ScoreRow[] {
     const rows = new Map<string, ScoreRow & { cost: number; ms: number }>();
     for (const r of records) {
         const model = String(r.model ?? 'unknown').split('/').pop() || 'unknown';
-        const key = `${r.mode}\u0000${model}\u0000${r.variant}`;
-        const row = rows.get(key) ?? { mode: String(r.mode ?? 'unknown'), model, variant: String(r.variant ?? ''), runs: 0, passed: 0, avgCost: 0, avgMs: 0, lastAt: '', cost: 0, ms: 0 };
+        // Orchestrator evals grade a plan, not a worker mode.
+        const mode = String(r.mode ?? r.suite ?? 'unknown');
+        const key = `${mode}\u0000${model}\u0000${r.variant}`;
+        const row = rows.get(key) ?? { mode, model, variant: String(r.variant ?? ''), runs: 0, passed: 0, avgCost: 0, avgMs: 0, lastAt: '', cost: 0, ms: 0 };
         row.runs++;
         if (r.verdict === 'PASS') { row.passed++; }
         row.cost += Number(r.usage?.cost) || 0;

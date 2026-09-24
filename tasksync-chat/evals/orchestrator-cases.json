@@ -21,6 +21,11 @@
       "grade": { "requireModes": ["authoring", "verify"], "forbidHeavy": true }
     },
     {
+      "id": "code-judged-by-running-tests",
+      "goal": "In the Gradle project at ~/VSProjects/model-calculation-service-app-logic, SlugFormatter drops trailing digits (\"Order 12\" becomes \"order\"). Fix it. Base revision abc123.",
+      "grade": { "requireModes": ["code", "gradle"], "forbidHeavy": true }
+    },
+    {
       "id": "missing-evidence-researches-first",
       "goal": "Upgrade our OpenCode integration to use the new session fork API, but first confirm the API actually exists in the current OpenCode release. Base revision abc123.",
       "grade": { "minTracks": 1, "requireModes": ["research", "code", "verify"] }

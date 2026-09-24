@@ -65,4 +65,18 @@ assert.equal(failing([{ id: 'T', packets: [packet({ command: '' })] }]), false, 
 assert.equal(failing([{ id: 'T', packets: [packet({}), packet({ id: 'q' }), packet({ id: 'r' })] }], { maxPackets: 2 }), false, 'over-decomposed trivial goal');
 assert.equal(gradePlan({ grade: {} }, 'I would start by reading the code.', modes).pass, false, 'prose instead of a plan');
 
+// T040: work is judged by running it, with a verifier suited to the kind of work.
+const behaviourModes = { ...modes, gradle: { models: ['github-copilot/gpt-5.6-luna'] }, review: { models: ['github-copilot/gpt-5.6-terra'] }, authoring: { models: ['github-copilot/gpt-5.6-terra'] }, devx: { models: ['github-copilot/gpt-5.6-terra'] } };
+const judged = (implMode, verifier) => gradePlan({ grade: {} }, planText([{ id: 'T', packets: [
+    packet({ id: 'w', mode: implMode, model: 'github-copilot/gpt-5.6-terra', verifyBy: 'v' }), packet({ id: 'v', dependsOn: ['w'], ...verifier })] }]), behaviourModes);
+const verdictOf = (implMode, verifier) => judged(implMode, verifier).checks.find((c) => c.name === 'mutationsVerifiedByBehaviour').pass;
+assert.equal(verdictOf('code', { mode: 'gradle', command: "./gradlew :svc:test --tests '*.SlugTest'" }), true, 'code checked by a gradle worker running the tests');
+assert.equal(verdictOf('code', { mode: 'verify', command: 'node slug.test.js' }), true);
+assert.equal(verdictOf('code', { mode: 'review', model: 'github-copilot/gpt-5.6-terra', command: 'review the diff' }), false, 'a review is not a behaviour check');
+assert.equal(verdictOf('code', { mode: 'verify', command: 'git diff HEAD' }), false, 'reading the diff is not running it');
+assert.equal(verdictOf('code', { mode: 'verify', command: 'cat src/slug.ts' }), false);
+assert.equal(verdictOf('authoring', { mode: 'devx', model: 'github-copilot/gpt-5.6-terra', command: 'devx e2e Priority field' }), true, 'authoring checked end to end in DevX');
+assert.equal(verdictOf('authoring', { mode: 'gradle', command: './gradlew test' }), false, 'gradle cannot judge an authoring change');
+console.log('EV-040 VerifiedByBehaviour: PASS codeByGradle=true codeByReview=false inspectionOnly=false authoringByDevx=true authoringByGradle=false');
+
 console.log('EV-EVALS GraderRejections: PASS workerRejections=8 planRejections=8 eventFolding=exact');
