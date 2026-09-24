@@ -4960,14 +4960,19 @@ button#send-btn:disabled {
 
 /* ===== Commentary tab (live orchestrator feed, newest first) ===== */
 .cm-shell { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-.cm-goal { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; }
-.cm-goal-head { display: flex; align-items: center; gap: 6px; }
-.cm-goal-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-right: auto; opacity: 0.85; }
-.cm-goal-input {
-    resize: vertical; min-height: 34px; padding: 4px 6px; font-family: inherit; font-size: 12px;
-    background: var(--vscode-input-background); color: var(--vscode-input-foreground);
-    border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px;
+.cm-goal {
+    display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 6px;
+    border: 1px solid #8b5cf6; background: rgba(139, 92, 246, 0.12); box-shadow: inset 3px 0 0 #8b5cf6;
 }
+.cm-goal-head { display: flex; align-items: center; gap: 6px; }
+.cm-goal-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #a78bfa; }
+.cm-goal-saved { margin-right: auto; font-size: 10px; opacity: 0.7; }
+.cm-goal-input {
+    resize: vertical; min-height: 72px; padding: 6px 8px; font-family: inherit; font-size: 13px; line-height: 1.45;
+    background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+    border: 1px solid rgba(139, 92, 246, 0.55); border-radius: 4px;
+}
+.cm-goal-input:focus { outline: 1px solid #8b5cf6; }
 .cm-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .cm-filters { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
 .cm-filter, .cm-btn {
@@ -5040,9 +5045,8 @@ button#send-btn:disabled {
 .worker-id { margin-left: auto; font-size: 10px; opacity: 0.6; font-family: var(--vscode-editor-font-family); }
 .worker-selection, .worker-usage { font-size: 11px; opacity: 0.85; font-family: var(--vscode-editor-font-family); }
 .worker-blocker { font-size: 11px; color: var(--vscode-errorForeground); }
-.worker-next { display: flex; gap: 8px; font-size: 11px; font-family: var(--vscode-editor-font-family); }
-.worker-cache-timer { margin-left: auto; color: var(--vscode-charts-green); }
-.worker-cache-timer-low { color: var(--vscode-charts-yellow); }
+.worker-banner { display: flex; gap: 8px; align-items: baseline; font-size: 11px; }
+.worker-banner-metrics { flex: 1; min-width: 0; }
 .worker-knowledge { font-size: 11px; font-style: italic; opacity: 0.8; }
 .workers-hidden-note { font-size: 10px; opacity: 0.6; }
 .obs-worker-tag {

@@ -66,6 +66,9 @@ export interface RunView {
     reason?: string;
     /** What the worker's next model request will send: last prompt (input + cache) plus last output. */
     nextInputTokens: number;
+    /** Full prompt of the last model request (input + cache) and how much of it was a cache hit. */
+    lastPromptTokens: number;
+    lastCachedTokens: number;
     /** The worker's own one-line summary of the context it holds, for reuse decisions. */
     knowledge: string;
 }
@@ -307,10 +310,14 @@ export class OpenCodeWorkerRuntime {
             const last = records[records.length - 1];
             const usage = emptyUsage();
             let contextTokens = 0;
+            let lastPromptTokens = 0;
+            let lastCachedTokens = 0;
             for (const record of records) {
                 if (record.type !== 'checkpoint' || !record.usage) { continue; }
                 for (const key of Object.keys(usage) as Array<keyof RunUsage>) { usage[key] += record.usage[key]; }
-                contextTokens = record.usage.input + record.usage.cacheRead + record.usage.cacheWrite + record.usage.output;
+                lastPromptTokens = record.usage.input + record.usage.cacheRead + record.usage.cacheWrite;
+                lastCachedTokens = record.usage.cacheRead;
+                contextTokens = lastPromptTokens + record.usage.output;
             }
             const sessionId = [...records].reverse().find((record) => record.sessionId)?.sessionId ?? '';
             const ended = last.exitCode !== undefined;
@@ -321,6 +328,7 @@ export class OpenCodeWorkerRuntime {
                 runId, workerId: first.workerId, sessionId, state, profile: first.profile, model: first.model, thinking: first.thinking,
                 dispatchTurnId: first.dispatchTurnId, startedAt: first.ts, endedAt: last.ts, updatedAt: last.ts, elapsedMs: last.ts - first.ts,
                 usage, queuePosition: 0, reason, workspace, packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
+                lastPromptTokens, lastCachedTokens,
             });
             const adopted = this.adopted.get(first.workerId);
             if (!adopted || last.ts >= adopted.lastTs) {
@@ -349,7 +357,7 @@ export class OpenCodeWorkerRuntime {
             state: 'STARTING', profile: packet.profile, model: routed.model, thinking: routed.thinking,
             dispatchTurnId: packet.dispatchTurnId, startedAt: this.now(), updatedAt: this.now(), elapsedMs: 0, usage: emptyUsage(),
             queuePosition: routed.queuePosition, workspace, packet: renderPacket(packet), evidence: [], waiters: [],
-            nextInputTokens: this.router.worker(routed.workerId)?.contextTokens ?? 0, knowledge: '',
+            nextInputTokens: this.router.worker(routed.workerId)?.contextTokens ?? 0, knowledge: '', lastPromptTokens: 0, lastCachedTokens: 0,
         };
         this.runs.set(run.runId, run);
         if (routed.queuePosition === 0) { this.launch(run, run.packet); }
@@ -393,6 +401,8 @@ export class OpenCodeWorkerRuntime {
                         cacheRead: tokens.cache?.read ?? 0, cacheWrite: tokens.cache?.write ?? 0, cost: part.cost ?? 0, steps: 1 };
                     for (const key of Object.keys(usage) as Array<keyof RunUsage>) { run.usage[key] += usage[key]; }
                     run.nextInputTokens = usage.input + usage.cacheRead + usage.cacheWrite + usage.output;
+                    run.lastPromptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+                    run.lastCachedTokens = usage.cacheRead;
                     this.record(run, { type: 'checkpoint', usage });
                 } else if (/permission/i.test(String(event?.type))) {
                     run.state = 'WAITING_APPROVAL';
@@ -441,8 +451,8 @@ export class OpenCodeWorkerRuntime {
     }
 
     private view(run: RunRecord): RunView {
-        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge } = run;
-        return { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, startedAt, endedAt, updatedAt, nextInputTokens, knowledge,
+        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens } = run;
+        return { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, startedAt, endedAt, updatedAt, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens,
             elapsedMs: (endedAt ?? this.now()) - startedAt, usage: { ...usage }, queuePosition, reason };
     }
 

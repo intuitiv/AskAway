@@ -49,13 +49,13 @@ const bannerContext = {
 };
 vm.createContext(bannerContext);
 vm.runInContext(
-    between('function renderConversationHealth()', 'function updateObservabilityUI()') +
+    between('// ── Usage banner', 'function updateObservabilityUI()') +
     '\nrenderConversationHealth(); renderCacheAge();',
     bannerContext
 );
 assert.match(elements['common-turn-summary'].innerHTML, /3 req/);
 assert.match(elements['common-turn-summary'].innerHTML, /\$2\.50/);
-assert.match(elements['common-turn-summary'].innerHTML, /4\.00K last in \/ 2\.75K turn out/);
+assert.match(elements['common-turn-summary'].innerHTML, /4K last in \/ 2\.75K turn out/, 'the real shared formatter, not a test double');
 assert.match(elements['common-turn-summary'].innerHTML, /90% cache/);
 assert.match(elements['common-cache-age'].textContent, /^Age: 0:3\d warm$/);
 assert.equal(elements['cost-attribution-toggle'].textContent, 'Cost to: Spec 001');

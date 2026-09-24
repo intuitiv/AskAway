@@ -6786,10 +6786,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 <div class="cm-goal">
                     <div class="cm-goal-head">
                         <span class="cm-goal-label">Main goal</span>
-                        <button class="cm-btn" id="cm-goal-save" title="Save the main goal">Save</button>
+                        <span class="cm-goal-saved" id="cm-goal-saved"></span>
                         <button class="cm-btn" id="cm-goal-clear" title="Clear the main goal">Clear</button>
                     </div>
-                    <textarea class="cm-goal-input" id="cm-goal-input" rows="2" placeholder="What should the orchestrator focus on? Empty = the active spec cycle."></textarea>
+                    <textarea class="cm-goal-input" id="cm-goal-input" rows="4" placeholder="What should the orchestrator focus on? Saved as you type. Empty = the active spec cycle."></textarea>
                 </div>
                 <div class="cm-toolbar">
                     <div class="cm-filters" id="cm-filters">

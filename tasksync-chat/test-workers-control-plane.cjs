@@ -142,7 +142,10 @@ const packet = (overrides = {}) => ({
     const to = webview.indexOf('// ── end Workers pure render ──');
     assert.ok(from > 0 && to > from, 'Workers render block present');
     const ui = {};
-    require('node:vm').runInNewContext(`${webview.slice(from, to)}\nout.render = renderWorkersHtml; out.pending = workersPendingApprovals; out.refs = workerRefsFromPreview; out.badge = workerRefBadge;`, { out: ui });
+    const bannerFrom = webview.indexOf('// ── Usage banner');
+    const bannerTo = webview.indexOf('// ── end Usage banner ──');
+    assert.ok(bannerFrom > 0 && bannerTo > bannerFrom, 'shared usage banner block present');
+    require('node:vm').runInNewContext(`${webview.slice(bannerFrom, bannerTo)}\n${webview.slice(from, to)}\nout.render = renderWorkersHtml; out.pending = workersPendingApprovals; out.refs = workerRefsFromPreview; out.badge = workerRefBadge; out.chatBanner = usageBannerHtml;`, { out: ui });
 
     // Metrics turn trace: a worker tool's JSON output yields a worker/run badge that links to this tab.
     assert.deepEqual(JSON.parse(JSON.stringify(ui.refs('{"runId":"run-84lnfg-4","workerId":"worker-84lnfg-3","state":"STARTING"}'))), { workerId: 'worker-84lnfg-3', runId: 'run-84lnfg-4' });
@@ -153,8 +156,10 @@ const packet = (overrides = {}) => ({
     const all = ui.render(state, '', {});
     assert.equal((all.match(/class="worker-card"/g) || []).length, 2, 'the retired worker is hidden');
     assert.match(all, /1 expired worker hidden \(cache cold or retired\)/);
-    assert.match(all, /next input 1\.8K<\/span><\/div>/, 'running worker: next input, no timer');
-    assert.match(all, /next input 0<\/span><span class="worker-cache-timer" title="[^"]+">cache warm 5:00<\/span>/, 'idle worker: cache countdown');
+    assert.match(all, /<span class="worker-banner-metrics">1 req &middot; <strong class="health-cost">\$0\.0004<\/strong> &middot; 1\.80K last in \/ 20 turn out &middot; 83% cache<\/span><strong class="health-cache warm">Age: 0:00 warm<\/strong>/,
+        'running worker: the chat banner for its current run');
+    assert.ok(all.includes(ui.chatBanner(a.banner)), 'the card uses exactly the chat banner template');
+    assert.match(all, /0 reqs &middot; <strong class="health-cost">\$0\.00<\/strong> &middot; 0 last in \/ 0 turn out &middot; – cache/, 'idle worker with no requests');
     assert.match(all, /1 worker waiting for approval\. Open the session in OpenCode/);
     assert.match(all, /Server: NOT_ATTACHED/);
     assert.equal(ui.pending(state), 1);
@@ -171,7 +176,6 @@ const packet = (overrides = {}) => ({
     assert.match(openA, new RegExp(`data-run-id="${run1.runId}"><td>${run1.runId}</td><td>COMPLETED</td><td>turn-1</td><td>4s</td><td>\\$0\\.0021</td><td>1\\.2K</td><td>340</td><td>50</td>`));
     assert.match(openA, new RegExp(`data-run-id="${run3.runId}"><td>${run3.runId}</td><td>STARTING #1</td>`), 'queued run shows its position');
     assert.match(openA, /gpt-5\.6-terra · high/);
-    assert.match(openA, /\$0\.0025 · in 1\.5K · out 360 · cached 1\.6K<\/div>/);
     clock += 301_000;
     const later = JSON.parse(JSON.stringify(projectWorkersState(runtime, wsA, now)));
     assert.deepEqual(later.workers.filter((w) => !w.expired).map((w) => w.workerId), [run1.workerId], 'after 5 min idle the failed worker expires; the running one stays');
@@ -182,7 +186,7 @@ const packet = (overrides = {}) => ({
     assert.doesNotMatch(openA, /SECRET-OBJECTIVE|TRANSCRIPT-TEXT|<textarea/);
     const hostile = { ...state, workers: [{ ...state.workers[0], profile: '<img src=x onerror=alert(1)>' }] };
     assert.doesNotMatch(ui.render(hostile, '', {}), /<img/, 'worker fields are escaped');
-    console.log(`EV-015 WorkersViewInteraction: PASS cards=2 hiddenExpired=1 cacheTimer=5:00 nextInput=1.8K filtered=1 openTargets=${openButtons.length} traceRows=3 pendingApproval=1`);
+    console.log(`EV-015 WorkersViewInteraction: PASS cards=2 hiddenExpired=1 banner=sharedTemplate filtered=1 openTargets=${openButtons.length} traceRows=3 pendingApproval=1`);
 
     const css = fs.readFileSync(path.join(__dirname, 'media', 'main.css'), 'utf8');
     for (const selector of ['.workers-filter', '.worker-state-waiting_approval', '.worker-state-failed', '.worker-trace', '.workers-approval-notice', '.worker-open-btn']) {

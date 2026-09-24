@@ -2846,22 +2846,48 @@
         }
     }
 
+    // ── Usage banner: pure, shared by the chat banner and every worker card ──
+    function formatObservabilityCompact(value) {
+        var n = Number(value);
+        if (!isFinite(n)) {
+            return '0';
+        }
+        var sign = n < 0 ? '-' : '';
+        var abs = Math.abs(n);
+        var suffixed = function (v, suffix) { return v.toFixed(v >= 100 ? 0 : 2).replace(/\.0+$/, '') + suffix; };
+        if (abs >= 1000000) { return sign + suffixed(abs / 1000000, 'M'); }
+        if (abs >= 1000) { return sign + suffixed(abs / 1000, 'K'); }
+        return sign + Math.round(abs).toLocaleString();
+    }
+    // b: { requests, dollars, lastIn (full prompt of the last request), lastCached, turnOut }
+    function usageBannerHtml(b) {
+        var requests = Number(b.requests) || 0;
+        var dollars = Number(b.dollars) || 0;
+        var lastIn = Number(b.lastIn) || 0;
+        var hit = lastIn > 0 ? Math.round((Number(b.lastCached) || 0) / lastIn * 100) + '%' : '\u2013';
+        return requests + ' req' + (requests === 1 ? '' : 's') +
+            ' &middot; <strong class="health-cost">$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2) + '</strong>' +
+            ' &middot; ' + formatObservabilityCompact(lastIn) + ' last in / ' + formatObservabilityCompact(b.turnOut) + ' turn out' +
+            ' &middot; ' + hit + ' cache';
+    }
+    function cacheAgeLabel(secs) {
+        var capped = Math.min(Math.max(0, secs), 300);
+        var mm = Math.floor(capped / 60), ss = capped % 60;
+        var clock = mm + ':' + (ss < 10 ? '0' : '') + ss;
+        return { clock: clock, state: secs < 285 ? 'warm' : secs < 300 ? 'cooling' : 'cold', text: 'Age: ' + clock + (secs >= 300 ? ' cold' : ' warm') };
+    }
+    // ── end Usage banner ──
+
     function renderConversationHealth() {
         var summary = document.getElementById('common-turn-summary');
         var turn = observabilityMetrics.lastRequest || {};
         if (summary) {
-            var requests = Number(turn.requestCount) || 0;
-            var dollars = '$' + ((Number(turn.nanoAiu) || 0) / 1000000000 / 100).toFixed(2);
             var turnRequests = Array.isArray(observabilityMetrics.turnRequests) ? observabilityMetrics.turnRequests : [];
             var latest = turnRequests.length ? turnRequests[turnRequests.length - 1] : turn;
-            var latestInput = Number(latest.inputTokens) || 0;
-            var turnOutput = Number(turn.outputTokens) || 0;
-            var latestCached = Number(latest.cachedTokens) || 0;
-            var hit = latestInput > 0 ? Math.round(latestCached / latestInput * 100) + '%' : '\u2013';
-            summary.innerHTML = requests + ' req' + (requests === 1 ? '' : 's') +
-                ' &middot; <strong class="health-cost">' + dollars + '</strong>' +
-                ' &middot; ' + formatObservabilityCompact(latestInput) + ' last in / ' + formatObservabilityCompact(turnOutput) + ' turn out' +
-                ' &middot; ' + hit + ' cache';
+            summary.innerHTML = usageBannerHtml({
+                requests: turn.requestCount, dollars: (Number(turn.nanoAiu) || 0) / 1000000000 / 100,
+                lastIn: latest.inputTokens, lastCached: latest.cachedTokens, turnOut: turn.outputTokens,
+            });
         }
         var attribution = document.getElementById('cost-attribution-toggle');
         if (attribution) {
@@ -2883,9 +2909,8 @@
             return;
         }
         var secs = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-        var capped = Math.min(secs, 300); // never display beyond the 5:00 cache TTL
-        var mm = Math.floor(capped / 60), ss = capped % 60;
-        var clock = mm + ':' + (ss < 10 ? '0' : '') + ss;
+        var age = cacheAgeLabel(secs);
+        var clock = age.clock;
         var state, cls;
         if (secs < 285) { state = 'warm \u2014 a new message should hit cache'; cls = 'obs-cache-age obs-cache-warm'; }
         else if (secs < 300) { state = 'cooling \u2014 send within 15s to keep the cache hit'; cls = 'obs-cache-age obs-cache-cooling'; }
@@ -2895,8 +2920,8 @@
             el.innerHTML = 'Prompt cache age: <b>' + clock + '</b> / 5:00 \u00b7 ' + state;
         }
         if (common) {
-            common.className = 'health-cache ' + (secs < 285 ? 'warm' : secs < 300 ? 'cooling' : 'cold');
-            common.textContent = 'Age: ' + clock + (secs >= 300 ? ' cold' : ' warm');
+            common.className = 'health-cache ' + age.state;
+            common.textContent = age.text;
         }
         // Sound alert once per request-cycle when the cache is about to expire (~4:45), so the
         // user can hit Ping in time. Re-arms whenever a new request resets the clock (ts changes).
@@ -3424,29 +3449,6 @@
         return Math.round(n).toLocaleString();
     }
 
-    function formatObservabilityCompact(value) {
-        var n = Number(value);
-        if (!isFinite(n)) {
-            return '0';
-        }
-
-        var sign = n < 0 ? '-' : '';
-        var abs = Math.abs(n);
-
-        if (abs >= 1000000) {
-            return sign + compactWithSuffix(abs / 1000000, 'M');
-        }
-        if (abs >= 1000) {
-            return sign + compactWithSuffix(abs / 1000, 'K');
-        }
-        return sign + Math.round(abs).toLocaleString();
-    }
-
-    function compactWithSuffix(value, suffix) {
-        var decimals = value >= 100 ? 0 : 2;
-        var rounded = value.toFixed(decimals).replace(/\.0+$/, '');
-        return rounded + suffix;
-    }
 
     function formatPercent(value) {
         var n = Number(value);
@@ -5230,9 +5232,23 @@
 
     function initCommentaryTab() {
         var goal = document.getElementById('cm-goal-input');
+        var saved = document.getElementById('cm-goal-saved');
         var on = function (id, handler) { var el = document.getElementById(id); if (el) el.addEventListener('click', handler); };
-        on('cm-goal-save', function () { vscode.postMessage({ type: 'setCommentaryGoal', goal: goal ? goal.value : '' }); });
-        on('cm-goal-clear', function () { if (goal) goal.value = ''; vscode.postMessage({ type: 'clearCommentary', what: 'goal' }); });
+        var goalTimer = null;
+        var saveGoal = function () {
+            if (goalTimer) { clearTimeout(goalTimer); goalTimer = null; }
+            vscode.postMessage({ type: 'setCommentaryGoal', goal: goal ? goal.value : '' });
+            if (saved) saved.textContent = 'Saved';
+        };
+        if (goal) {
+            goal.addEventListener('input', function () {
+                if (saved) saved.textContent = 'Saving…';
+                if (goalTimer) clearTimeout(goalTimer);
+                goalTimer = setTimeout(saveGoal, 700);
+            });
+            goal.addEventListener('blur', function () { if (goalTimer) saveGoal(); });
+        }
+        on('cm-goal-clear', function () { if (goal) goal.value = ''; if (saved) saved.textContent = ''; vscode.postMessage({ type: 'clearCommentary', what: 'goal' }); });
         on('cm-clear', function () { vscode.postMessage({ type: 'clearCommentary', what: 'feed' }); });
         on('cm-copy', function () { if (commentaryView) vscode.postMessage({ type: 'copyToClipboard', text: commentaryView.opener }); });
         var filters = document.getElementById('cm-filters');
@@ -5269,12 +5285,13 @@
     function workersPendingApprovals(state) {
         return state && state.workers ? state.workers.filter(function (w) { return w.state === 'WAITING_APPROVAL'; }).length : 0;
     }
-    function workersCacheTimer(worker, now) {
-        if (!worker.cacheExpiresAt) return '';
-        var s = Math.max(0, Math.round((worker.cacheExpiresAt - now) / 1000));
-        var label = Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + (s % 60);
-        return '<span class="worker-cache-timer' + (s <= 60 ? ' worker-cache-timer-low' : '') +
-            '" title="Prompt cache stays warm this long; after that the worker is pruned and a new one is created">cache warm ' + label + '</span>';
+    // Same banner and Age label as the chat's own, for this worker's current run.
+    function workerBannerHtml(worker, now) {
+        var b = worker.banner || {};
+        var age = cacheAgeLabel(Math.floor((now - (b.lastActivityAt || now)) / 1000));
+        return '<div class="worker-banner" title="Requests, cost, full prompt of the last request / output this run, cache hit of the last request, time since last activity (cache is cold after 5:00)">' +
+            '<span class="worker-banner-metrics">' + usageBannerHtml(b) + '</span>' +
+            '<strong class="health-cache ' + age.state + '">' + age.text + '</strong></div>';
     }
     // Worker tools return JSON with workerId/runId; the turn trace shows them as a link to the Workers tab.
     function workerRefsFromPreview(text) {
@@ -5306,7 +5323,6 @@
             return html + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>';
         }
         shown.forEach(function (w) {
-            var u = w.usage || {};
             var open = expanded && expanded[w.workerId];
             html += '<div class="worker-card" data-worker-id="' + workersEsc(w.workerId) + '">' +
                 '<div class="worker-card-head">' +
@@ -5315,10 +5331,7 @@
                 '<span class="worker-id">' + workersEsc(w.workerId) + '</span>' +
                 '</div>' +
                 '<div class="worker-selection">' + workersEsc(w.adapter) + ' · ' + workersEsc(w.model) + ' · ' + workersEsc(w.thinking) + '</div>' +
-                '<div class="worker-usage">$' + (u.cost || 0).toFixed(4) + ' · in ' + workersTokens(u.input) + ' · out ' + workersTokens(u.output) +
-                ' · cached ' + workersTokens(u.cacheRead) + '</div>' +
-                '<div class="worker-next"><span title="What the next model request of this worker will send (last prompt + last output). Retires above 300K.">next input ' +
-                workersTokens(w.nextInputTokens) + '</span>' + workersCacheTimer(w, state.generatedAt) + '</div>' +
+                workerBannerHtml(w, state.generatedAt) +
                 (w.knowledge ? '<div class="worker-knowledge" title="What this worker says it knows; the orchestrator uses it to pick a worker to reuse">' + workersEsc(w.knowledge) + '</div>' : '') +
                 (w.blocker ? '<div class="worker-blocker">' + workersEsc(w.blocker) + '</div>' : '') +
                 '<div class="worker-actions">' +
