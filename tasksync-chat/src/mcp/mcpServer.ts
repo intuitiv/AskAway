@@ -12,6 +12,102 @@ import { getImageMimeType } from '../utils/imageUtils';
 import { CONFIG_NAMESPACE, MCP_SERVER_NAME } from '../constants/branding';
 import { dispatchGradle, GradleInput } from '../gradle/gradleEngine';
 import { createClaudeSpecEvent } from '../observability/claudeSpecAttribution';
+import { loadWorkerProfiles } from '../workers/workerProfiles';
+import { OpenCodeWorkerRuntime } from '../workers/openCodeRuntime';
+import { projectWorkersState } from '../workers/workersState';
+import { registerWorkerTools } from '../workers/workerTools';
+export { createWorkerOperationFacade, type WorkerOperationFacade } from './workerOperationFacade';
+
+export const WORKER_RUNTIME_OPERATIONS = [
+    'worker_start',
+    'worker_submit',
+    'worker_list',
+    'worker_status',
+    'worker_wait',
+    'worker_cancel',
+    'worker_resume',
+    'worker_logs',
+] as const;
+
+export type WorkerOperation = typeof WORKER_RUNTIME_OPERATIONS[number];
+export type WorkerState = 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'RETIRED' | 'ORPHANED';
+export type WorkerTerminalState = Exclude<WorkerState, 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL'>;
+export type WorkerDispatchState = Exclude<WorkerState, WorkerTerminalState>;
+
+export interface WorkerSelection {
+    adapterPlatform: string;
+    providerId: string;
+    modelId: string;
+    thinking: { kind: 'budget' | 'tier'; value: string | number };
+}
+
+export interface WorkerRequest {
+    baseRevision: string;
+    orchestratorTurnId: string;
+    graphId: string;
+    nodeId: string;
+    profileId: string;
+    objective: string;
+    contextSources: string[];
+    requiredInputs: string[];
+    constraints: string[];
+    allowedFiles: string[];
+    acceptanceCriteria: string[];
+    evidenceAssertions: string[];
+    validationCommands: string[];
+    stopCondition: string;
+    maxElapsedSeconds: number;
+    maxRuns: number;
+    maxProviderCost: number | 'not-applicable';
+}
+
+export interface WorkerHandle {
+    workerId: string;
+    runId: string;
+    openCodeSessionId: string;
+    effectiveAdapter: string;
+    effectiveModel: string;
+    effectiveThinking: WorkerSelection['thinking'];
+    state: WorkerDispatchState;
+}
+
+export type WorkerDispatchResult = WorkerHandle | {
+    status: 'UNAVAILABLE' | 'INELIGIBLE' | 'RETIRED';
+    reason: string;
+    workerId?: string;
+};
+
+export interface WorkerSummary {
+    workerId: string;
+    profileId: string;
+    openCodeSessionId: string;
+    state: WorkerState;
+    contextTokens: number;
+    sourceRevision: string;
+    lastUpdateAt: string;
+    sessionOpenAction: string;
+    retirementReason?: string;
+}
+
+export interface WorkerRunMetrics {
+    elapsedTime: number;
+    cost: number;
+    input: number;
+    output: number;
+}
+
+export interface WorkerRuntime {
+    worker_start(input: { canonicalWorkspacePath: string; selection: WorkerSelection; request: WorkerRequest }): Promise<WorkerDispatchResult>;
+    worker_submit(input: { workerId: string; selection: WorkerSelection; request: WorkerRequest }): Promise<WorkerDispatchResult>;
+    worker_list(input: { canonicalWorkspacePath: string }): Promise<{ canonicalWorkspacePath: string; workers: WorkerSummary[] }>;
+    worker_status(input: { workerId: string }): Promise<WorkerSummary & { metrics: WorkerRunMetrics }>;
+    worker_wait(input: { workerId: string }): Promise<{ status: 'COMPLETED'; evidence: string[] } | { status: WorkerTerminalState; reason: string }>;
+    worker_cancel(input: { workerId: string }): Promise<{ workerId: string; status: 'CANCELLATION_REQUESTED' }>;
+    worker_resume(input: { workerId: string }): Promise<WorkerHandle | { workerId: string; status: 'FRESH_SUBMISSION_REQUIRED'; reason: string }>;
+    worker_logs(input: { workerId: string }): Promise<{ workerId: string; events: WorkerLifecycleEvent[] }>;
+}
+
+export type WorkerLifecycleEvent = 'start' | 'message_update' | 'before_tool' | 'after_tool' | 'checkpoint' | 'stop' | 'error';
 
 
 async function tryReadImageAsMcpContent(uri: string): Promise<null | { type: 'image'; data: string; mimeType: string }> {
@@ -51,10 +147,21 @@ export class McpServerManager {
     private server: http.Server | undefined;
     private port: number | undefined;
     private _isRunning: boolean = false;
+    private workerRuntime: OpenCodeWorkerRuntime | undefined;
 
     constructor(
         private provider: AskAwayWebviewProvider
-    ) { }
+    ) {
+        provider.setWorkersStateSource((workspacePath) => projectWorkersState(this.getWorkerRuntime(), workspacePath));
+    }
+
+    /** One runtime per extension host: MCP servers are created per request, but worker state must outlive them. */
+    private getWorkerRuntime(): OpenCodeWorkerRuntime {
+        if (!this.workerRuntime) {
+            this.workerRuntime = new OpenCodeWorkerRuntime(loadWorkerProfiles(path.join(os.homedir(), '.askaway', 'worker-profiles')));
+        }
+        return this.workerRuntime;
+    }
 
     /**
      * Check if MCP server is currently running
@@ -174,6 +281,8 @@ export class McpServerManager {
                     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
                 }
             );
+
+            registerWorkerTools((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), () => this.getWorkerRuntime(), gradleWorkspaceRoot);
                 return mcpServer;
             };
 

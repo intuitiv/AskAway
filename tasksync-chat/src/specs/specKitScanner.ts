@@ -74,6 +74,7 @@ export interface SpecSummary {
     implementationRecords: number;
     completedTasksByDay: Array<{ day: string; taskIds: string[] }>;
     pullRequestUrl: string;
+    cost?: { requests: number; nanoAiu: number; turns: number; days: number };
 }
 
 export interface SpecScanResult {

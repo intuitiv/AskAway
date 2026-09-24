@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { CONFIG_NAMESPACE } from '../constants/branding';
 import type { AttachmentInfo } from '../webview/webviewProvider';
+import { isTelegramHandoffTaskId } from './telegramConversationReply';
 
 // ── Interfaces ─────────────────────────────────────────────────
 
@@ -24,12 +25,18 @@ interface TrackedTask {
 
 // ── Constants ──────────────────────────────────────────────────
 
-// Quick ramp-up schedule before switching to configurable steady interval.
-const INITIAL_POLL_BACKOFF_SCHEDULE_S = [2, 2, 5, 10, 30];
+const FAST_REPLY_WINDOW_MS = 5 * 60 * 1000;
+const FAST_REPLY_INTERVAL_SECONDS = 5;
 const LONG_WAIT_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 const LONG_WAIT_INTERVAL_SECONDS = 4 * 60; // 4 minutes
 const EXPIRY_MS = 36 * 60 * 60 * 1000;  // 36 hours
 const TELEGRAM_API = 'https://api.telegram.org/bot';
+
+export function getTelegramPollDelaySeconds(elapsedMs: number, steadyIntervalSeconds: number): number {
+    if (elapsedMs < FAST_REPLY_WINDOW_MS) { return FAST_REPLY_INTERVAL_SECONDS; }
+    if (elapsedMs >= LONG_WAIT_THRESHOLD_MS) { return LONG_WAIT_INTERVAL_SECONDS; }
+    return steadyIntervalSeconds;
+}
 
 // ── Service ────────────────────────────────────────────────────
 
@@ -48,7 +55,7 @@ export class TelegramService {
      * a foreign-topic message (which Telegram would delete globally for all bots).
      */
     private _myProcessedSet: Set<number> = new Set();
-    private _onResponseReceived: ((taskId: string, response: string, user: string, attachments?: AttachmentInfo[]) => void) | undefined;
+    private _onResponseReceived: ((taskId: string, response: string, user: string, attachments?: AttachmentInfo[]) => void | Promise<void>) | undefined;
     private _onHistoryRequested: (() => { prompt: string; response: string; timestamp: number; status: string }[]) | undefined;
 
     // ── Backoff polling state ──
@@ -159,7 +166,7 @@ export class TelegramService {
         return this._enabled;
     }
 
-    public setResponseCallback(callback: (taskId: string, response: string, user: string, attachments?: AttachmentInfo[]) => void) {
+    public setResponseCallback(callback: (taskId: string, response: string, user: string, attachments?: AttachmentInfo[]) => void | Promise<void>) {
         this._onResponseReceived = callback;
     }
 
@@ -987,14 +994,7 @@ export class TelegramService {
 
     private _getPollDelaySeconds(): number {
         const elapsedMs = this._pollingStartedAtMs > 0 ? (Date.now() - this._pollingStartedAtMs) : 0;
-        if (elapsedMs >= LONG_WAIT_THRESHOLD_MS) {
-            return LONG_WAIT_INTERVAL_SECONDS;
-        }
-
-        if (this._pollTickIndex < INITIAL_POLL_BACKOFF_SCHEDULE_S.length) {
-            return INITIAL_POLL_BACKOFF_SCHEDULE_S[this._pollTickIndex];
-        }
-        return this._steadyPollIntervalSeconds;
+        return getTelegramPollDelaySeconds(elapsedMs, this._steadyPollIntervalSeconds);
     }
 
     private _resetBackoff() {
@@ -1186,7 +1186,7 @@ export class TelegramService {
                                 });
 
                                 if (this._onResponseReceived) {
-                                    this._onResponseReceived(cbTaskId, answer, `${user} (via Telegram)`);
+                                    await this._onResponseReceived(cbTaskId, answer, `${user} (via Telegram)`);
                                 }
 
                                 // Update message to show resolved
@@ -1258,7 +1258,7 @@ export class TelegramService {
                                     }
                                 }
                                 if (this._onResponseReceived) {
-                                    this._onResponseReceived(topicTask.taskId, resolvedAnswer, `${user} (via Telegram)`, msgAttachments.length > 0 ? msgAttachments : undefined);
+                                    await this._onResponseReceived(topicTask.taskId, resolvedAnswer, `${user} (via Telegram)`, msgAttachments.length > 0 ? msgAttachments : undefined);
                                 }
                                 await this._markResolved(topicTask, resolvedAnswer, user);
                                 this._activeTasks.delete(topicTask.taskId);
@@ -1269,9 +1269,9 @@ export class TelegramService {
 
                     // Fallback B: if there is exactly one active task, accept plain chat
                     // messages even when Telegram doesn't include reply_to_message.
-                    if (!replyToMsgId && this._activeTasks.size === 1) {
+                    if (!replyToMsgId && msgThreadId === undefined && this._activeTasks.size === 1) {
                         const onlyTask = this._activeTasks.values().next().value as TrackedTask | undefined;
-                        if (onlyTask) {
+                        if (onlyTask && onlyTask.topicId === undefined) {
                             const answer = (msg.text || msg.caption || '').trim();
                             const user = msg.from?.username || msg.from?.first_name || 'unknown';
                             const msgAttachments = await this._downloadMessageMedia(msg);
@@ -1290,7 +1290,7 @@ export class TelegramService {
                             }
 
                             if (this._onResponseReceived) {
-                                this._onResponseReceived(onlyTask.taskId, resolvedAnswer, `${user} (via Telegram)`, msgAttachments.length > 0 ? msgAttachments : undefined);
+                                await this._onResponseReceived(onlyTask.taskId, resolvedAnswer, `${user} (via Telegram)`, msgAttachments.length > 0 ? msgAttachments : undefined);
                             }
 
                             await this._markResolved(onlyTask, resolvedAnswer, user);
@@ -1323,7 +1323,7 @@ export class TelegramService {
                             }
 
                             if (this._onResponseReceived) {
-                                this._onResponseReceived(taskId, resolvedAnswer, `${user} (via Telegram)`, msgAttachments.length > 0 ? msgAttachments : undefined);
+                                await this._onResponseReceived(taskId, resolvedAnswer, `${user} (via Telegram)`, msgAttachments.length > 0 ? msgAttachments : undefined);
                             }
 
                             await this._markResolved(task, resolvedAnswer, user);
@@ -1943,7 +1943,7 @@ export class TelegramService {
      * Reuses (edits) the same message to avoid spamming the chat.
      */
     /** Post a one-off markdown message (turn-end handoff). Unlike the heartbeat this is never throttled or edited in place. */
-    public async postText(markdown: string, fallback: string): Promise<boolean> {
+    public async postText(markdown: string, fallback: string, replyTaskId?: string): Promise<boolean> {
         if (!this.isConfigured()) { return false; }
         let html: string;
         try {
@@ -1966,8 +1966,35 @@ export class TelegramService {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             });
-            return resp.ok;
-        } catch {
+            if (!resp.ok) {
+                this._warn(`AskAway/Telegram: turn handoff send failed (${resp.status}): ${await resp.text()}`);
+                return false;
+            }
+            if (replyTaskId) {
+                const result = await resp.json() as any;
+                const messageId = result.result?.message_id;
+                if (typeof messageId !== 'number') {
+                    this._warn('AskAway/Telegram: turn handoff sent without a message_id; replies cannot be routed');
+                    return false;
+                }
+                for (const taskId of this._activeTasks.keys()) {
+                    if (isTelegramHandoffTaskId(taskId)) { this._activeTasks.delete(taskId); }
+                }
+                this._activeTasks.set(replyTaskId, {
+                    taskId: replyTaskId,
+                    messageId,
+                    topicId: threadId,
+                    question: markdown,
+                    timestamp: Date.now(),
+                    formattedText: body.text as string
+                });
+                this.stopPolling();
+                this.startPolling();
+                this._log(`AskAway/Telegram: tracking turn handoff reply — taskId=${replyTaskId}, msgId=${messageId}`);
+            }
+            return true;
+        } catch (error) {
+            this._warn(`AskAway/Telegram: turn handoff send error: ${error instanceof Error ? error.message : String(error)}`);
             return false;
         }
     }

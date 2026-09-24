@@ -284,7 +284,7 @@
         ],
         "toolReferenceName": "gradle",
         "displayName": "Gradle",
-        "modelDescription": "Async id-based Gradle build control. action=start spawns a build via ./gradlew and returns {buildId} immediately (the tool AUTO-OPTIMIZES with the Gradle daemon + --parallel + --build-cache + --configuration-cache, degraded to warnings if incompatible, echoed as 'optimizations'; pass optimize:false to disable). action=status returns live state (RUNNING/SUCCESS/FAILED/CANCELLED/TIMEOUT) with completedTasks, runningTasks, elapsedSec; on failure it also returns failedTasks (names of failed tasks — query logs with task:<name>), failedTaskLogsHint, whatWentWrong, exception, errors, testFailures, testFailureDetails ({test,className,message,location,stack} parsed from JUnit reports), and exitCode. action=wait blocks until the build finishes (or timeoutMs); pass readyPattern (regex) to return early with ready:true when that text appears even if the task keeps running (servers). action=logs returns output with pagination {fromLine,toLine,totalLines,nextFromLine,hasMore}: omit fromLine for a tail, or pass fromLine to stream forward; filter to one task with task. action=stop kills a running build. Multiple builds run in parallel.",
+        "modelDescription": "MANDATORY for every Gradle build, test, clean, or wrapper operation: call this tool, never a terminal or task command that runs ./gradlew. Async id-based Gradle build control. action=start spawns a build via ./gradlew and returns {buildId} immediately (the tool AUTO-OPTIMIZES with the Gradle daemon + --parallel + --build-cache + --configuration-cache, degraded to warnings if incompatible, echoed as 'optimizations'; pass optimize:false to disable). action=status returns live state (RUNNING/SUCCESS/FAILED/CANCELLED/TIMEOUT) with completedTasks, runningTasks, elapsedSec; on failure it also returns failedTasks (names of failed tasks — query logs with task:<name>), failedTaskLogsHint, whatWentWrong, exception, errors, testFailures, testFailureDetails ({test,className,message,location,stack} parsed from JUnit reports), and exitCode. action=wait blocks until the build finishes (or timeoutMs); pass readyPattern (regex) to return early with ready:true when that text appears even if the task keeps running (servers). action=logs returns output with pagination {fromLine,toLine,totalLines,nextFromLine,hasMore}: omit fromLine for a tail, or pass fromLine to stream forward; filter to one task with task. action=stop kills a running build. Multiple builds run in parallel.",
         "canBeReferencedInPrompt": true,
         "icon": "$(symbol-event)",
         "inputSchema": {
@@ -430,12 +430,12 @@
         "askaway.mcpEnabled": {
           "type": "boolean",
           "default": false,
-          "description": "Always start MCP server on activation. Enable this if you use AskAway with external clients like Claude Code, Kiro, Cursor, or Antigravity."
+          "description": "Always start MCP server on activation. Enable this if you use AskAway with external IDEs like Kiro, Cursor, or Antigravity."
         },
         "askaway.mcpAutoStartIfClients": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically start MCP server if external client configurations are detected (Claude Code, Kiro, Cursor, Antigravity)."
+          "description": "Automatically start MCP server if external client configurations are detected (Kiro, Cursor, Antigravity)."
         },
         "askaway.mcpPort": {
           "type": "number",
@@ -615,11 +615,6 @@
           "default": false,
           "description": "Post the agent's 'Response Handoff' section to the Webex room when a turn ends."
         },
-        "askaway.telegram.notifyOnTurnEnd": {
-          "type": "boolean",
-          "default": false,
-          "description": "Post the agent's 'Response Handoff' section to Telegram when a turn ends."
-        },
         "askaway.webex.clientId": {
           "type": "string",
           "default": "",
@@ -649,6 +644,11 @@
           "type": "string",
           "default": "",
           "description": "Telegram Chat ID where AskAway posts questions. Use the 'AskAway: Get Telegram Chat ID' command to auto-detect."
+        },
+        "askaway.telegram.notifyOnTurnEnd": {
+          "type": "boolean",
+          "default": false,
+          "description": "Post the agent's 'Response Handoff' section to the Telegram chat when a turn ends."
         },
         "askaway.telegram.retryIntervalSeconds": {
           "type": "number",
@@ -808,7 +808,8 @@
     "build": "node esbuild.js",
     "compile": "tsc -p ./",
     "watch": "node esbuild.js --watch",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "test:workers": "node test-worker-selection.cjs && node test-worker-observability.cjs && node test-worker-mcp-tools.cjs && node test-worker-runtime-contract.cjs && node test-workers-control-plane.cjs && node test-conversation-hooks.cjs && node test-eval-graders.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",

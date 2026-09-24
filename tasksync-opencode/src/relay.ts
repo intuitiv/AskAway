@@ -18,6 +18,54 @@ let sessionId: string | null = null;
 let pendingRequests = new Map<string, { resolve: (val: any) => void; reject: (err: any) => void }>();
 let requestCounter = 0;
 
+const LIFECYCLE_EVENT_TYPES = new Set([
+    'start',
+    'message_update',
+    'before_tool',
+    'after_tool',
+    'checkpoint',
+    'stop',
+    'error',
+]);
+
+export interface WorkerLifecycleIdentity {
+    canonicalWorkspace: string;
+    workerId: string;
+    runId: string;
+    sessionId: string;
+}
+
+export interface WorkerLifecycleFact extends WorkerLifecycleIdentity {
+    type: string;
+    payload: Record<string, unknown>;
+}
+
+function containsExcludedLifecycleContent(value: unknown): boolean {
+    if (Array.isArray(value)) {
+        return value.some(containsExcludedLifecycleContent);
+    }
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+    return Object.entries(value as Record<string, unknown>).some(([key, nestedValue]) =>
+        /token|credential|secret|approval|transcript|body/i.test(key) || containsExcludedLifecycleContent(nestedValue)
+    );
+}
+
+export function translateLifecycleEvent(event: unknown, identity: WorkerLifecycleIdentity): WorkerLifecycleFact {
+    if (!event || typeof event !== 'object' || Array.isArray(event)) {
+        throw new Error('Lifecycle event must be an object');
+    }
+    const payload = event as Record<string, unknown>;
+    if (typeof payload.type !== 'string' || !LIFECYCLE_EVENT_TYPES.has(payload.type)) {
+        throw new Error('Unsupported lifecycle event type');
+    }
+    if (containsExcludedLifecycleContent(payload)) {
+        throw new Error('Lifecycle event contains excluded content');
+    }
+    return { ...identity, type: payload.type, payload: { ...payload } };
+}
+
 function connectToServer(): Promise<void> {
     return new Promise((resolve, reject) => {
         const url = `${SERVER_URL}/relay?name=${encodeURIComponent(SESSION_NAME)}`;
@@ -243,7 +291,9 @@ async function main(): Promise<void> {
     console.error('[AskAway Relay] MCP server ready (stdio transport)');
 }
 
-main().catch((err) => {
-    console.error('[AskAway Relay] Fatal error:', err);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch((err) => {
+        console.error('[AskAway Relay] Fatal error:', err);
+        process.exit(1);
+    });
+}

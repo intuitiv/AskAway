@@ -29,6 +29,7 @@ export interface HistoryEntry {
 export interface Session {
     id: string;
     name: string;           // workspace name or label
+    workspacePath: string;  // canonical workspace path; workers are filtered by this, not by server
     connectedAt: number;
     lastActivity: number;
     pending: PendingQuestion | null;
@@ -40,11 +41,12 @@ export class SessionManager extends EventEmitter {
     private sessions = new Map<string, Session>();
     private nextId = 1;
 
-    createSession(name?: string): Session {
+    createSession(name?: string, workspacePath?: string): Session {
         const id = `session_${this.nextId++}_${Date.now()}`;
         const session: Session = {
             id,
             name: name || `OpenCode-${this.nextId - 1}`,
+            workspacePath: workspacePath || '',
             connectedAt: Date.now(),
             lastActivity: Date.now(),
             pending: null,
@@ -54,6 +56,10 @@ export class SessionManager extends EventEmitter {
         this.sessions.set(id, session);
         this.emit('session-created', session);
         return session;
+    }
+
+    getSessionsForWorkspace(workspacePath: string): Session[] {
+        return this.getAllSessions().filter((session) => session.workspacePath === workspacePath);
     }
 
     removeSession(sessionId: string): void {

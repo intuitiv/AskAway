@@ -19,8 +19,8 @@
  */
 
 // ── Configuration ──────────────────────────────────────────────
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8503887192:AAE2_zgGayrGab7ysfGPqM0q704QO-nxUQg';
-const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '2041101252';
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const CHAT_ID   = process.env.TELEGRAM_CHAT_ID || '';
 
 const QUESTION  = process.argv[2] || 'Hello from the AskAway test script!\n\n**Bold test**, *italic test*, `code test`.\n\n### A Heading\n\n- Bullet one\n- Bullet two\n- [ ] Unchecked task\n- [x] Checked task\n\n1. First item\n2. Second item\n\n| Name | Role |\n| --- | --- |\n| Alice | Dev |\n| Bob | PM |\n\n> This is a blockquote\n\nSee [example](https://example.com) for details.\n\n---\n\n```python\nx = 10 ** 2\n```\n\nPlease reply to confirm.';
 const CHOICES   = ['Yes', 'No', 'Skip'];   // set to [] for no inline buttons
@@ -158,8 +158,8 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // ── Main ───────────────────────────────────────────────────────
 async function main() {
     // Validate config
-    if (BOT_TOKEN.startsWith('<') || CHAT_ID.startsWith('<')) {
-        console.error('ERROR: Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables (or edit the script).');
+    if (!BOT_TOKEN || !CHAT_ID) {
+        console.error('ERROR: Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables.');
         process.exit(1);
     }
 

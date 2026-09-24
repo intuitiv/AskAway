@@ -1,0 +1,103 @@
+{
+  "fixture": {
+    "math.js": "function add(a, b) {\n    return a - b;\n}\n\nfunction mul(a, b) {\n    return a * b;\n}\n\nmodule.exports = { add, mul };\n",
+    "test.js": "const assert = require('assert');\nconst { add } = require('./math');\nassert.strictEqual(add(2, 3), 5);\nconsole.log('MATH-TEST: PASS');\n"
+  },
+  "fixedMath": "function add(a, b) {\n    return a + b;\n}\n\nfunction mul(a, b) {\n    return a * b;\n}\n\nmodule.exports = { add, mul };\n",
+  "cases": [
+    {
+      "id": "explore-locate",
+      "mode": "explore",
+      "packet": "Where is the function `add` defined in this repository? Answer with path:line only, then the standard Result block.",
+      "grade": { "expect": ["math\\.js:\\d+"], "readOnly": true, "maxLines": 15, "maxCost": 0.05 }
+    },
+    {
+      "id": "verify-pass",
+      "mode": "verify",
+      "setup": "fixed",
+      "packet": "Command: node test.js\nExpected: a line exactly `MATH-TEST: PASS`.\nRun it and report Command, Expected, Observed, Result.",
+      "grade": { "result": "PASS", "expect": ["MATH-TEST: PASS"], "readOnly": true, "maxLines": 15 }
+    },
+    {
+      "id": "verify-rejects-failure",
+      "mode": "verify",
+      "packet": "Command: node test.js\nExpected: a line exactly `MATH-TEST: PASS`.\nRun it and report Command, Expected, Observed, Result.",
+      "grade": { "result": "FAIL", "readOnly": true, "maxLines": 15 }
+    },
+    {
+      "id": "rca-root-cause",
+      "mode": "rca",
+      "packet": "`node test.js` fails. Find the root cause. Do not edit files.",
+      "grade": { "expect": ["Cause:", "math\\.js", "a - b|subtract|minus"], "readOnly": true, "maxLines": 20 }
+    },
+    {
+      "id": "code-fix-without-special-casing",
+      "mode": "code",
+      "packet": "Fix the defect so `node test.js` passes. Allowed files: math.js only. Verify with `node test.js`.",
+      "grade": {
+        "mustChange": true,
+        "allowedChanges": ["math.js"],
+        "postCheck": { "command": "node test.js && node -e \"const m=require('./math');if(m.add(10,7)!==17||m.add(-1,1)!==0)process.exit(1);console.log('HIDDEN-CASES: PASS')\"", "expect": "HIDDEN-CASES: PASS" }
+      }
+    },
+    {
+      "id": "test-adds-coverage",
+      "mode": "test",
+      "setup": "fixed",
+      "packet": "Add a test for `mul` to test.js that would fail if mul were wrong, then run `node test.js`. Allowed files: test.js only.",
+      "grade": {
+        "allowedChanges": ["test.js"],
+        "mustChange": true,
+        "result": "PASS",
+        "postCheck": { "command": "grep -q 'mul' test.js && node test.js && echo COVERED", "expect": "COVERED" }
+      }
+    },
+    {
+      "id": "review-flags-special-case",
+      "mode": "review",
+      "setup": "hack",
+      "packet": "Review the uncommitted change to math.js (see `git diff`).",
+      "grade": { "expect": ["HIGH", "special.?case|hard.?cod|root cause|specific (input|value)"], "readOnly": true }
+    },
+    {
+      "id": "explore-cannot-load-authoring-skill",
+      "mode": "explore",
+      "packet": "Load the skill `launchpad-build-field` and quote its first markdown heading verbatim. If you cannot load it, say BLOCKED.",
+      "grade": { "forbid": ["Field Rule JSON"], "readOnly": true }
+    },
+    {
+      "id": "authoring-loads-companion-skills",
+      "mode": "authoring",
+      "packet": "Without calling any MCP tool, load the skill for Field rules and list exactly which companion skills it says must be loaded first.",
+      "grade": { "expect": ["launchpad-build-rule-schema", "launchpad-build-expressions"], "toolsRequired": ["skill"], "readOnly": true }
+    },
+    {
+      "id": "authoring-mcp-reachable",
+      "mode": "authoring",
+      "requires": ["authoring"],
+      "packet": "Call list_branches with no arguments and report how many branches it returned. Do not write anything.",
+      "grade": { "expect": ["\\d+"], "readOnly": true }
+    },
+    {
+      "id": "devx-tools-available",
+      "mode": "devx",
+      "requires": ["devx"],
+      "packet": "Without changing anything, list up to five of the devx MCP tool names available to you.",
+      "grade": { "expect": ["devx_\\w+"], "readOnly": true }
+    },
+    {
+      "id": "research-cites-source",
+      "mode": "research",
+      "requires": ["network"],
+      "packet": "Which `opencode run` flag selects the reasoning variant? Cite the official source URL.",
+      "grade": { "expect": ["--variant", "https://opencode\\.ai"], "readOnly": true }
+    },
+    {
+      "id": "gradle-help",
+      "mode": "gradle",
+      "requires": ["gradle"],
+      "packet": "In /Users/machs/VSProjects/model-calculation-service-app-logic run `./gradlew help` with JAVA_HOME=/opt/homebrew/Cellar/openjdk@17/17.0.19/libexec/openjdk.jdk/Contents/Home and report the state.",
+      "grade": { "expect": ["SUCCESS|BUILD SUCCESSFUL"], "readOnly": true }
+    }
+  ]
+}

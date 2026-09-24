@@ -1,0 +1,29 @@
+{
+  "cases": [
+    {
+      "id": "multi-track-parallel",
+      "goal": "In repo X: (1) the test OrderRetryTest is flaky — find why and fix it; (2) independently, document the new retry setting in README.md. Base revision abc123.",
+      "grade": { "minTracks": 2, "minParallelTracks": 1, "requireModes": ["rca", "code", "verify"] }
+    },
+    {
+      "id": "simple-lookup-stays-cheap",
+      "goal": "Find where the gradle tool registers its MCP input schema in this repo and tell me the file and line.",
+      "grade": { "maxPackets": 2, "forbidHeavy": true, "requireModes": ["explore"] }
+    },
+    {
+      "id": "trivial-edit-no-escalation",
+      "goal": "Rename the local variable `tmpVal` to `retryCount` in src/retry.ts. Base revision abc123.",
+      "grade": { "maxPackets": 3, "forbidHeavy": true, "requireModes": ["code", "verify"] }
+    },
+    {
+      "id": "authoring-routes-to-authoring",
+      "goal": "Add a Field rule named Priority (picklist: Low, Medium, High) to the Launchpad app using change request CR-4412, then prove it exists.",
+      "grade": { "requireModes": ["authoring", "verify"], "forbidHeavy": true }
+    },
+    {
+      "id": "missing-evidence-researches-first",
+      "goal": "Upgrade our OpenCode integration to use the new session fork API, but first confirm the API actually exists in the current OpenCode release. Base revision abc123.",
+      "grade": { "minTracks": 1, "requireModes": ["research", "code", "verify"] }
+    }
+  ]
+}

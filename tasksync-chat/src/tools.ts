@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
 import { getImageMimeType } from './utils/imageUtils';
+import { withTimeout } from './utils/operationDeadline';
 import { PlanTaskStatus } from './plan/planTypes';
 import { dispatchGradle, GradleInput } from './gradle/gradleEngine';
 
@@ -114,6 +115,9 @@ export interface AskUserToolResult {
 
 type LspBridgeOperation = 'definition' | 'references' | 'implementation' | 'type_definition' | 'hover' | 'document_symbols' | 'workspace_symbols' | 'diagnostics';
 
+const DEFAULT_CODE_NAV_TIMEOUT_SECONDS = 90;
+const MAX_CODE_NAV_TIMEOUT_SECONDS = 120;
+
 interface LspBridgeInput {
     operation: LspBridgeOperation;
     filePath?: string;
@@ -121,6 +125,29 @@ interface LspBridgeInput {
     character?: number;
     query?: string;
     maxResults?: number;
+}
+
+async function executeLspCommand<T>(
+    token: vscode.CancellationToken,
+    operation: LspBridgeOperation,
+    command: string,
+    ...args: unknown[]
+): Promise<T | undefined> {
+    const configured = vscode.workspace.getConfiguration('askaway').get<number>('codeNavTimeoutSeconds', DEFAULT_CODE_NAV_TIMEOUT_SECONDS);
+    const timeoutSeconds = Math.max(1, Math.min(MAX_CODE_NAV_TIMEOUT_SECONDS, Number(configured) || DEFAULT_CODE_NAV_TIMEOUT_SECONDS));
+    const cancellation = createCancellationPromise(token);
+    try {
+        return await withTimeout(
+            Promise.race([
+                vscode.commands.executeCommand<T>(command, ...args),
+                cancellation.promise
+            ]),
+            timeoutSeconds * 1000,
+            `code_nav ${operation}`
+        );
+    } finally {
+        cancellation.dispose();
+    }
 }
 
 function clampMaxResults(value: unknown): number {
@@ -243,7 +270,7 @@ async function runLspBridge(input: LspBridgeInput, token: vscode.CancellationTok
                     : input.operation === 'implementation'
                         ? 'vscode.executeImplementationProvider'
                         : 'vscode.executeTypeDefinitionProvider';
-            const locations = await vscode.commands.executeCommand<Array<vscode.Location | vscode.LocationLink>>(command, target.uri, target.position);
+            const locations = await executeLspCommand<Array<vscode.Location | vscode.LocationLink>>(token, input.operation, command, target.uri, target.position);
             return {
                 operation: input.operation,
                 file: formatUri(target.uri),
@@ -258,7 +285,7 @@ async function runLspBridge(input: LspBridgeInput, token: vscode.CancellationTok
             if (typeof target === 'string') {
                 return { error: target };
             }
-            const hovers = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', target.uri, target.position);
+            const hovers = await executeLspCommand<vscode.Hover[]>(token, input.operation, 'vscode.executeHoverProvider', target.uri, target.position);
             return {
                 operation: input.operation,
                 file: formatUri(target.uri),
@@ -276,7 +303,7 @@ async function runLspBridge(input: LspBridgeInput, token: vscode.CancellationTok
                 return { error: 'filePath is required for document_symbols' };
             }
             const uri = resolveWorkspaceUri(input.filePath);
-            const symbols = await vscode.commands.executeCommand<Array<vscode.DocumentSymbol | vscode.SymbolInformation>>('vscode.executeDocumentSymbolProvider', uri);
+            const symbols = await executeLspCommand<Array<vscode.DocumentSymbol | vscode.SymbolInformation>>(token, input.operation, 'vscode.executeDocumentSymbolProvider', uri);
             return {
                 operation: input.operation,
                 file: formatUri(uri),
@@ -286,7 +313,7 @@ async function runLspBridge(input: LspBridgeInput, token: vscode.CancellationTok
         }
 
         case 'workspace_symbols': {
-            const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>('vscode.executeWorkspaceSymbolProvider', input.query ?? '');
+            const symbols = await executeLspCommand<vscode.SymbolInformation[]>(token, input.operation, 'vscode.executeWorkspaceSymbolProvider', input.query ?? '');
             return {
                 operation: input.operation,
                 query: input.query ?? '',

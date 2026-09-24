@@ -13,6 +13,31 @@ import { TelegramBot } from './telegram.js';
 
 const DEFAULT_PORT = 4350;
 
+let globalServer: CentralServer | undefined;
+let globalServerStart: Promise<GlobalServerHandle> | undefined;
+let globalServerSequence = 0;
+
+export interface GlobalServerHandle {
+    serverId: string;
+    endpoint: string;
+    server: CentralServer;
+}
+
+export async function ensureGlobalServer(port: number = DEFAULT_PORT): Promise<GlobalServerHandle> {
+    if (globalServer?.isRunning()) {
+        return globalServer.toHandle();
+    }
+    if (!globalServerStart) {
+        globalServer = new CentralServer();
+        globalServerStart = globalServer.start(port).then(() => globalServer!.toHandle()).catch((error) => {
+            globalServer = undefined;
+            globalServerStart = undefined;
+            throw error;
+        });
+    }
+    return globalServerStart;
+}
+
 interface RelayConnection {
     ws: WebSocket;
     sessionId: string;
@@ -25,6 +50,8 @@ export class CentralServer {
     private telegramBot: TelegramBot;
     private relays = new Map<string, RelayConnection>();  // sessionId → relay
     private uiClients = new Set<WebSocket>();              // web UI connections
+    private port: number | undefined;
+    private readonly serverId = `askaway-server-${++globalServerSequence}`;
 
     constructor() {
         this.sessionManager = new SessionManager();
@@ -40,6 +67,7 @@ export class CentralServer {
             this.httpServer.listen(port, '127.0.0.1', () => {
                 const addr = this.httpServer.address();
                 const actualPort = typeof addr === 'object' && addr ? addr.port : port;
+                this.port = actualPort;
                 console.log(`[AskAway] Server running at http://127.0.0.1:${actualPort}`);
                 console.log(`[AskAway] Web dashboard: http://127.0.0.1:${actualPort}`);
                 console.log(`[AskAway] Relay endpoint: ws://127.0.0.1:${actualPort}/relay`);
@@ -55,10 +83,35 @@ export class CentralServer {
         this.telegramBot.stop();
         this.wss.close();
         this.httpServer.close();
+        this.port = undefined;
+        if (globalServer === this) {
+            globalServer = undefined;
+            globalServerStart = undefined;
+        }
+    }
+
+    isRunning(): boolean {
+        return this.httpServer.listening && this.port !== undefined;
+    }
+
+    toHandle(): GlobalServerHandle {
+        if (!this.isRunning()) {
+            throw new Error('AskAway global server is not running');
+        }
+        return { serverId: this.serverId, endpoint: `ws://127.0.0.1:${this.port}/relay`, server: this };
     }
 
     getSessionManager(): SessionManager {
         return this.sessionManager;
+    }
+
+    /** Exact viewer target for one session on this shared server. */
+    getSessionOpenTarget(sessionId: string): { sessionId: string; endpoint: string; workspacePath: string } | undefined {
+        const session = this.sessionManager.getSession(sessionId);
+        if (!session) {
+            return undefined;
+        }
+        return { sessionId: session.id, endpoint: this.toHandle().endpoint, workspacePath: session.workspacePath };
     }
 
     // ── HTTP handler ──
@@ -143,6 +196,11 @@ export class CentralServer {
     // Plugin stats from OpenCode plugin — stores real token data from LLM
     private pluginStats: any[] = [];
 
+    /** Real provider usage records, optionally narrowed to one session. */
+    getPluginStats(sessionId?: string): any[] {
+        return sessionId ? this.pluginStats.filter((entry) => entry.sessionId === sessionId) : [...this.pluginStats];
+    }
+
     private apiPluginStats(req: http.IncomingMessage, res: http.ServerResponse): void {
         let body = '';
         req.on('data', (chunk: Buffer) => {
@@ -196,7 +254,8 @@ export class CentralServer {
 
         // Relay connection (from OpenCode instances)
         const sessionName = url.searchParams.get('name') || undefined;
-        const session = this.sessionManager.createSession(sessionName);
+        const workspacePath = url.searchParams.get('workspace') || undefined;
+        const session = this.sessionManager.createSession(sessionName, workspacePath);
 
         const relay: RelayConnection = { ws, sessionId: session.id };
         this.relays.set(session.id, relay);

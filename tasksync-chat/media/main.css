@@ -4958,6 +4958,46 @@ button#send-btn:disabled {
     animation: planPulse 2s ease-in-out infinite;
 }
 
+/* ===== Workers tab (OpenCode control plane; no transcript or approval controls) ===== */
+.workers-shell { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.workers-header { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.workers-filter {
+    flex: 1; min-width: 0; padding: 3px 6px;
+    background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px;
+}
+.workers-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+.workers-server { font-size: 11px; opacity: 0.8; }
+.workers-server-not_attached { color: var(--vscode-editorWarning-foreground); }
+.workers-approval-notice {
+    padding: 4px 8px; border-radius: 3px; font-size: 12px;
+    background: var(--vscode-inputValidation-warningBackground); border: 1px solid var(--vscode-inputValidation-warningBorder);
+}
+.workers-empty { padding: 12px; text-align: center; opacity: 0.7; }
+.worker-card {
+    display: flex; flex-direction: column; gap: 3px; padding: 6px 8px;
+    border: 1px solid var(--vscode-panel-border); border-radius: 4px;
+}
+.worker-card-head { display: flex; align-items: center; gap: 6px; }
+.worker-state { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+.worker-state-running, .worker-state-starting { background: var(--vscode-charts-blue); color: #fff; }
+.worker-state-waiting_approval { background: var(--vscode-charts-yellow); color: #000; }
+.worker-state-completed { background: var(--vscode-charts-green); color: #fff; }
+.worker-state-failed, .worker-state-orphaned { background: var(--vscode-charts-red); color: #fff; }
+.worker-state-retired, .worker-state-cancelled { opacity: 0.7; }
+.worker-mode { font-weight: 600; }
+.worker-id { margin-left: auto; font-size: 10px; opacity: 0.6; font-family: var(--vscode-editor-font-family); }
+.worker-selection, .worker-usage { font-size: 11px; opacity: 0.85; font-family: var(--vscode-editor-font-family); }
+.worker-blocker { font-size: 11px; color: var(--vscode-errorForeground); }
+.worker-actions { display: flex; gap: 6px; }
+.worker-actions button {
+    font-size: 11px; padding: 1px 8px; border: none; border-radius: 3px; cursor: pointer;
+    background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
+}
+.worker-actions .worker-open-btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.worker-trace { width: 100%; border-collapse: collapse; font-size: 10px; font-family: var(--vscode-editor-font-family); }
+.worker-trace th, .worker-trace td { text-align: left; padding: 1px 4px; border-bottom: 1px solid var(--vscode-panel-border); }
+
 /* ===== Spec Kit overview tab ===== */
 .specs-shell {
     display: flex;
@@ -5170,6 +5210,9 @@ button#send-btn:disabled {
     line-height: 1.4;
     color: var(--vscode-foreground);
 }
+.spec-work-context { display: block; margin: 3px 0 5px 19px; font-size: 9px; line-height: 1.35; color: var(--vscode-descriptionForeground); }
+.spec-task-why { display: block; margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 9px; }
+.spec-task-unblocks { display: block; margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 9px; }
 .spec-work { margin-top: 8px; }
 .spec-work-phase { margin: 2px 0; border-left: 2px solid transparent; }
 .spec-work-phase[open] { border-left-color: var(--vscode-focusBorder); padding-left: 6px; }

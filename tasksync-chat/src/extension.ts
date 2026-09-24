@@ -4,7 +4,6 @@ import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
-import { CLAUDE_ASKAWAY_BUILD_AGENT, CLAUDE_SPEC_KIT_COMMANDS, SPEC_KIT_PROMPTS } from './specs/specKitPromptAssets';
 import { registerTools } from './tools';
 import { McpServerManager } from './mcp/mcpServer';
 import { killAllGradleRuns } from './gradle/gradleEngine';
@@ -36,38 +35,6 @@ function formatError(error: unknown): string {
     return String(error);
 }
 
-async function ensureSpecKitPromptsInstalled(): Promise<void> {
-    const promptsDir = path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User', 'prompts');
-    const claudeCommandsDir = path.join(os.homedir(), '.claude', 'commands');
-    const claudeAgentsDir = path.join(os.homedir(), '.claude', 'agents');
-    try {
-        await fs.promises.mkdir(promptsDir, { recursive: true });
-        for (const [name, content] of Object.entries(SPEC_KIT_PROMPTS)) {
-            const target = path.join(promptsDir, name);
-            const existing = await fs.promises.readFile(target, 'utf8').catch(() => undefined);
-            if (existing === undefined) { await fs.promises.writeFile(target, content, 'utf8'); }
-        }
-        await fs.promises.mkdir(claudeCommandsDir, { recursive: true });
-        for (const [name, content] of Object.entries(CLAUDE_SPEC_KIT_COMMANDS)) {
-            const target = path.join(claudeCommandsDir, name);
-            const existing = await fs.promises.readFile(target, 'utf8').catch(() => undefined);
-            if (existing === undefined) { await fs.promises.writeFile(target, content, 'utf8'); }
-        }
-        await fs.promises.mkdir(claudeAgentsDir, { recursive: true });
-        const claudeAgentPath = path.join(claudeAgentsDir, 'askaway-build.md');
-        if (await fs.promises.readFile(claudeAgentPath, 'utf8').catch(() => undefined) === undefined) {
-            await fs.promises.writeFile(claudeAgentPath, CLAUDE_ASKAWAY_BUILD_AGENT, 'utf8');
-        }
-        logRuntime('Installed missing Spec Kit commands', {
-            copilot: Object.keys(SPEC_KIT_PROMPTS).length,
-            claude: Object.keys(CLAUDE_SPEC_KIT_COMMANDS).length,
-            claudeAgent: claudeAgentPath
-        });
-    } catch (err) {
-        logRuntime('Warning: Could not install AskAway Spec Kit prompts', formatError(err));
-    }
-}
-
 function logRuntime(message: string, details?: unknown): void {
     const timestamp = new Date().toISOString();
     const suffix = details !== undefined
@@ -81,17 +48,17 @@ const ASKWAY_BUILD_AGENT_CONTENT = `---
 description: "Use when: acting as the main AskAway build agent, orchestrating implementation work, RTK command optimization, observability fixes, builds, tests, and production-readiness tasks."
 name: "AskAway Build"
 tools: [vscode/extensions, vscode/memory, vscode/newWorkspace, vscode/resolveMemoryFileUri, vscode/runCommand, vscode/toolSearch, execute, read, agent, edit, search, todo]
-model: "GPT-5.6 Luna (copilot)"
 user-invocable: true
 ---
 
 You are the main AskAway Build Agent. Your job is to orchestrate implementation work with strong token discipline, accurate observability, and safe delegation.
 
+**At the end of conversation update AGENT_AUDIT.md with summary of work done, so that i can review in future. Template is timestamp  followed by summary.**
+
 ## Core Role
 - Act as the primary build/orchestration agent for AskAway work.
 - Plan briefly, execute decisively, verify changes, and report concise proof.
 - Keep user-facing responses short, direct, and evidence-based.
-- Treat any request to change repository code, configuration, tests, documentation, task artifacts, or generated artifacts as implementation intent and internally route it through the same pipeline as \`/sk.implement\`, even when the user does not type the command. Resolve the active feature and exact task/cycle before editing. If no executable task exists, route through \`/sk.check\`, \`/sk.plan\`, and \`/sk.tasks\` as needed; never bypass acceptance gates with direct conversational edits. This routing does not require the user to retype a slash command.
 
 ## RTK Policy
 - Resolve RTK mode once at session start: if \`~/.askaway-rtk-enabled\` exists, set RTK mode on for this chat session.
@@ -124,15 +91,6 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - Keep edits narrow and consistent with existing code style.
 - Compile/build after TypeScript changes.
 - Deploy AskAway locally by copying the built bundle to \`~/.vscode/extensions/intuitiv.askaway-1.0.35/dist/extension.js\` when requested or when validating installed behavior.
-- Group two or more approved tasks into a cycle when that gives the agent useful independent work during Gradle runs, delegated research, or other waiting periods. A cycle is a work batch, not a day, sprint, or deadline.
-- Tasks remain the smallest execution and evidence unit. \`/implement T014\` runs one task; \`/implement CY-002\` runs the unchecked tasks tagged \`[CY-002]\`, sharing scheduling, verification, and one commit without merging task status.
-- Next-task selection reads the implementation log before task order, excludes manual/reviewer-owned/blocked/moved/deferred work, requires completed prerequisites, prefers non-mesh work, and uses file order only as a tie-breaker. The Specs tab shows open inventory, not an authoritative recommendation.
-- Cycle execution resolves the exact tagged tasks across specs, pitches membership once, invokes one implementation worker per ready task, and preserves one writer per ownership area. A failed task blocks its dependents while proven-independent tasks may continue; every task keeps separate evidence and log state.
-- When generating tasks for a new spec, automatically group related work into cycles using dependencies, shared ownership/context, shared verification, or useful waiting-time overlap. On reruns, group only newly added tasks; never retrofit an existing task list unless requested. Leave unrelated tasks ungrouped. Each cycle description must state the exact behavior, artifact, and evidence produced when it completes.
-- Keep tasks.md as a compact executable index: every row retains ID, labels, action, primary file path and short demo reference. Put long rationale, alternatives and evidence in task-details.md under stable \`## TNNN — title\` headings; implementations read only the selected section with read_doc.
-- Review and demo each item clearly, but batch repeated setup, shared verification, and one git commit for the cycle. Example: while task A's Gradle test runs, analyze task B or collect task C's evidence instead of polling.
-- Only overlap independent work. Never let two workers edit the same ownership area, and never invent busywork just to avoid waiting.
-- Start a known Gradle build early enough to overlap it with independent work from another approved task. Never poll while useful analysis or editing remains.
 - **Gradle builds/tests → use the \`gradle\` tool, never the terminal.**
   - \`action:start\` with \`tasks\`, \`arguments\`, \`projectDir\`, \`env\` (e.g. \`{"JAVA_HOME":"/path/to/jdk"}\`) → returns \`{buildId}\` immediately.
   - Poll \`action:status\` for live state (\`RUNNING/SUCCESS/FAILED\`). On FAILED the response includes \`failedTasks\`, \`whatWentWrong\`, \`exception[]\`, \`errors[]\`, \`testFailures[]\`, \`exitCode\`.
@@ -152,37 +110,17 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - Do NOT read entire files to locate a symbol when \`code_nav\` (definition/references/document_symbols) or \`rg_search\` can locate it in one call.
 
 ## Turn Budget
-- The banner (\`Budget: X spent so far in N AIU\`) is a RUNNING TOTAL for this session against a soft cap. It is advisory and never blocks.
-- It is injected at prompt submit, so it counts everything up to the end of the previous turn and does not move while you work. Earlier copies in the conversation are older, smaller totals — the LAST one is current.
-- Call the \`turn_budget\` tool for live spend when a turn runs long. That is the only source of in-turn spend; the banner cannot tell you.
-- As X approaches N, tighten up; past N, do the minimum that completes the task and stop exploring.
+- A per-turn budget banner (\`Turn budget: N AIU · last turn …\`) reports the soft AIU limit and the previous turn's spend. It is advisory and never blocks.
 - Work within it: prefer targeted searches (\`rg_search\`/\`code_nav\`) over broad scans and full-file reads, batch independent tool calls in one step, avoid re-reading large files, delegate heavy exploration to a cheaper sub-agent, and finalize as soon as the task is done.
+- Call the \`turn_budget\` tool to check live in-turn spend when a turn runs long.
 
 ## Communication
-- Write the way you would explain it to a colleague sitting next to you: normal sentences, natural language, a real explanation. Do NOT write in clipped fragments or telegraphic notes.
-- The goal is that the user understands it on ONE read. Short is good only when it is also clear — never compress to the point where the reader has to decode it.
-- Lead with the answer, then explain the reasoning in plain prose. Do not turn an explanation into a grid of bullets; bullets are for lists of comparable things, sentences are for reasoning.
-- Explain with simple words and one small example when it helps. Keep technical names only where they carry meaning.
-- Never make the user decode identifiers. Say "the artifact-ordering task (T001)" rather than bare "T001", and name what a file or setting actually does before referring to it by path or key.
-- Skip preamble, restating the question, filler, and narrating what you are about to do.
-- Keep the Response Handoff genuinely short and skimmable. It is the part the user relies on most; it must never become a wall of prose.
+- BE CRISP. Default to the shortest correct answer (1–3 sentences). Lead with the result first; add detail only when asked or essential.
+- No preamble, no restating the question, no filler, no narrating what you are about to do. Never pad the final response.
+- Prefer a tight summary + concrete proof (numbers, file:line) over prose. Use short bullets, not paragraphs. Cut every sentence that does not add information.
 - Be honest about boundaries: you cannot rewrite GitHub Copilot's closed system prompt. You can guide behavior through this custom agent, tool descriptions, tool results, and worker prompts.
 - Explain credit math plainly when asked.
 - When user says today is RTK work, prioritize RTK setup, RTK command routing, RTK observability, and proof of savings.
-
-## Delegation
-- Before doing work, separate decisions that need the main agent's context from outputs derivable from files, diffs, logs, or test results.
-- Delegate read-only exploration and mechanical artifact work to a cheaper subagent. Keep architecture choices, reviewer-facing tradeoffs, and final integration in the main agent.
-- Use GPT-5.6 Luna for delegated searches, summaries, task-file updates, diff analysis, log parsing, and other disposable work. Use a stronger model only when the task needs cross-cutting design judgment and Luna cannot handle it.
-- Give each child one explicit deliverable and a hard four-minute instruction. Run children in parallel only when their work is independent.
-- During a Gradle run, use the time for another approved task or a delegated artifact job. Do not invent busywork merely to avoid waiting.
-
-## Conclude
-Every final response ends with a \`## Response Handoff\` containing exactly four short lines:
-- \`Status:\` where the active spec or current work stands.
-- \`Impact:\` what changed or what was learned that affects the next response.
-- \`Summary:\` the result in plain words.
-- \`Next:\` exactly one question.
 `;
 
 const RTK_GATE_COMMAND = '$HOME/.askaway/hooks/rtk-gate.sh';
@@ -272,16 +210,19 @@ try {
     let nano = 0;
     for (const f of files) {
         let data; try { data = fs.readFileSync(f, 'utf8'); } catch (e) { continue; }
-        for (const l of data.split('\\n')) { if (l.indexOf('llm_request') === -1) { continue; } let p; try { p = JSON.parse(l); } catch (e) { continue; } nano += (p.attrs && typeof p.attrs.copilotUsageNanoAiu === 'number') ? p.attrs.copilotUsageNanoAiu : 0; }
+        for (const l of data.split('\\n')) { if (l.indexOf('llm_request') === -1) { continue; } let p; try { p = JSON.parse(l); } catch (e) { continue; } const ts = typeof p.ts === 'number' ? p.ts : 0; if (ts < lastSubmit) { continue; } nano += (p.attrs && typeof p.attrs.copilotUsageNanoAiu === 'number') ? p.attrs.copilotUsageNanoAiu : 0; }
     }
-    // Cumulative spend for the WHOLE session, not the last turn: a running total against the cap is
-    // what the agent can act on, and it makes every banner copy in the conversation consistent
-    // (each one was true when written, and they increase monotonically).
+    // At UserPromptSubmit the NEW turn's user_message is not yet in the log, so the newest
+    // user_message ts is the PREVIOUS turn's — and \`nano\` below is the previous turn's total.
+    // The current turn is genuinely fresh (0 spent) at this instant, so present it that way
+    // and expose the previous turn as context. Live in-turn spend comes from the turn_budget tool.
     // One line of NUMBERS only. The how-to guidance is static and lives in the cached
     // AskAway Build agent instructions (## Turn Budget), so it costs ~0 per turn here.
-    const spent = nano / 1e9;
-    const ctx = 'Budget: ' + spent.toFixed(0) + ' spent so far in ' + limit + ' AIU'
-        + (spent >= limit ? ' — OVER, be frugal' : '');
+    const prevSpent = nano / 1e9;
+    const pctPrev = Math.round(prevSpent / limit * 100);
+    const ctx = lastSubmit === 0
+        ? 'Turn budget: ' + limit + ' AIU'
+        : 'Turn budget: ' + limit + ' AIU · last turn ' + prevSpent.toFixed(0) + ' (' + pctPrev + '%' + (pctPrev >= 100 ? ', OVER — be frugal' : '') + ')';
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: ctx } }));
 } catch (e) {}
 process.exit(0);
@@ -320,12 +261,11 @@ const CACHE_TIMER_INJECT_SCRIPT = `// AskAway prompt-cache activity timer. Stamp
 // separate subagent-cache-activity-ts instead.
 const fs = require('fs'), path = require('path'), os = require('os');
 try {
-    let ev = '', tool = '', transcript = '';
+    let ev = '', tool = '';
     try {
         const p = JSON.parse(fs.readFileSync(0, 'utf8'));
         ev = p.hook_event_name || p.hookEventName || '';
         tool = p.tool_name || p.toolName || '';
-        transcript = p.transcript_path || p.transcriptPath || '';
     } catch (e) {}
     const cfg = path.join(os.homedir(), '.askaway');
     try { fs.mkdirSync(cfg, { recursive: true }); } catch (e) {}
@@ -334,13 +274,83 @@ try {
     const now = String(Date.now());
     const isChild = inflight > 0 && ev === 'PostToolUse' && tool !== 'runSubagent';
     fs.writeFileSync(path.join(cfg, isChild ? 'subagent-cache-activity-ts' : 'cache-activity-ts'), now, 'utf8');
-    if (ev === 'Stop') {
-        fs.writeFileSync(path.join(cfg, 'turn-complete-ts'), now, 'utf8');
-        if (transcript) { fs.writeFileSync(path.join(cfg, 'turn-complete-transcript'), transcript, 'utf8'); }
-    }
+    if (ev === 'Stop') { fs.writeFileSync(path.join(cfg, 'turn-complete-ts'), now, 'utf8'); }
 } catch (e) {}
 process.exit(0);
 `;
+
+// ── Sub-agent cache-window timer ────────────────────────────────────────────
+// Tracks each child independently so the parent can enforce the four-minute
+// delegation budget without confusing parent and child tool calls.
+const SUBAGENT_TIMER_GATE_COMMAND = '$HOME/.askaway/hooks/subagent-timer-gate.sh';
+const SUBAGENT_TIMER_GATE_SCRIPT = `#!/bin/sh
+# AskAway sub-agent cache-window timer. Passes stdin to node (it reads hook_event_name and
+# tool_name). No-op if node is missing.
+CFG="$HOME/.askaway"
+NODE="$(command -v node 2>/dev/null)"
+if [ -z "$NODE" ]; then
+    for p in /opt/homebrew/bin/node /usr/local/bin/node "$HOME/.local/bin/node"; do
+        [ -x "$p" ] && NODE="$p" && break
+    done
+fi
+[ -n "$NODE" ] || { cat >/dev/null 2>&1; exit 0; }
+"$NODE" "$CFG/hooks/subagent-timer.js"
+exit 0
+`;
+const SUBAGENT_TIMER_INJECT_SCRIPT = `const fs = require('fs'), path = require('path'), os = require('os');
+const SOFT_MS = 150000, HARD_MS = 240000, STALE_MS = 900000;
+const cfg = path.join(os.homedir(), '.askaway');
+const stateFile = path.join(cfg, 'subagent-inflight.json');
+function load() { try { const s = JSON.parse(fs.readFileSync(stateFile, 'utf8')); return { pending: Array.isArray(s.pending) ? s.pending : [], bySession: s.bySession || {} }; } catch (e) { return { pending: [], bySession: {} }; } }
+function save(s) { try { fs.mkdirSync(cfg, { recursive: true }); } catch (e) {} try { fs.writeFileSync(stateFile, JSON.stringify(s), 'utf8'); } catch (e) {} }
+function fmt(ms) { const sec = Math.round(ms / 1000); return Math.floor(sec / 60) + 'm' + String(sec % 60).padStart(2, '0') + 's'; }
+function emit(text) { process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } })); }
+try {
+    let p = {}; try { p = JSON.parse(fs.readFileSync(0, 'utf8')); } catch (e) { process.exit(0); }
+    const event = p.hook_event_name || p.hookEventName || '', tool = p.tool_name || p.toolName || '';
+    const useId = p.tool_use_id || p.toolUseId || '', sid = p.session_id || p.sessionId || '', now = Date.now();
+    const s = load(), before = s.pending.length; s.pending = s.pending.filter(e => now - e.startedAt < STALE_MS); let dirty = s.pending.length !== before;
+    if (event === 'PreToolUse') { if (tool !== 'runSubagent') { if (dirty) { save(s); } process.exit(0); } s.pending.push({ id: useId, startedAt: now }); save(s); process.exit(0); }
+    if (event !== 'PostToolUse') { if (dirty) { save(s); } process.exit(0); }
+    if (tool === 'runSubagent') { let idx = useId ? s.pending.findIndex(e => e.id === useId) : -1; if (idx === -1) { idx = 0; } const done = s.pending.splice(idx, 1)[0]; if (done) { for (const k of Object.keys(s.bySession)) { if (s.bySession[k] === done.startedAt) { delete s.bySession[k]; } } } save(s); if (done && now - done.startedAt >= HARD_MS) { emit('That sub-agent ran ' + fmt(now - done.startedAt) + ' — past the ~5m prompt-cache window, so it was re-billed at full price. Split the next delegation of this kind into smaller single-deliverable tasks, or run it in the main thread.'); } process.exit(0); }
+    if (s.pending.length === 0) { if (dirty) { save(s); } process.exit(0); }
+    let startedAt = 0;
+    if (sid) { if (s.bySession[sid]) { startedAt = s.bySession[sid]; } else { const claimed = Object.keys(s.bySession).map(k => s.bySession[k]); const free = s.pending.filter(e => claimed.indexOf(e.startedAt) === -1); if (free.length) { startedAt = free[0].startedAt; s.bySession[sid] = startedAt; dirty = true; } } } else if (s.pending.length === 1) { startedAt = s.pending[0].startedAt; }
+    if (dirty) { save(s); } if (!startedAt) { process.exit(0); }
+    const elapsed = now - startedAt;
+    if (elapsed >= HARD_MS) { emit('CACHE WINDOW EXPIRED (' + fmt(elapsed) + ' into your 4m budget). Stop all new work now. Do not start another tool call, search, or edit. Write your final report from what you already have, and state explicitly what you did NOT finish so the caller can re-delegate it.'); } else if (elapsed >= SOFT_MS) { emit('Elapsed ' + fmt(elapsed) + ' of your 4m sub-agent budget. Finish the current step and start writing your report — do not open a new line of investigation.'); }
+} catch (e) {}
+process.exit(0);
+`;
+
+async function ensureSubagentTimerHookInstalled(): Promise<void> {
+    const gatePath = path.join(os.homedir(), '.askaway', 'hooks', 'subagent-timer-gate.sh');
+    const timerPath = path.join(os.homedir(), '.askaway', 'hooks', 'subagent-timer.js');
+    try {
+        await fs.promises.mkdir(path.dirname(gatePath), { recursive: true });
+        if (await fs.promises.readFile(gatePath, 'utf8').catch(() => undefined) !== SUBAGENT_TIMER_GATE_SCRIPT) {
+            await fs.promises.writeFile(gatePath, SUBAGENT_TIMER_GATE_SCRIPT, 'utf8');
+        }
+        await fs.promises.chmod(gatePath, 0o755);
+        if (await fs.promises.readFile(timerPath, 'utf8').catch(() => undefined) !== SUBAGENT_TIMER_INJECT_SCRIPT) {
+            await fs.promises.writeFile(timerPath, SUBAGENT_TIMER_INJECT_SCRIPT, 'utf8');
+        }
+
+        const copilotHookPath = path.join(os.homedir(), '.copilot', 'hooks', 'subagent-timer.json');
+        const cfg = {
+            version: 1,
+            hooks: {
+                PreToolUse: [{ type: 'command', command: gatePath, cwd: '.', timeout: 5 }],
+                PostToolUse: [{ type: 'command', command: gatePath, cwd: '.', timeout: 5 }],
+            },
+        };
+        await fs.promises.mkdir(path.dirname(copilotHookPath), { recursive: true });
+        await fs.promises.writeFile(copilotHookPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
+        logRuntime('Installed AskAway sub-agent timer hook', { gatePath, timerPath });
+    } catch (err) {
+        logRuntime('Warning: Could not install AskAway sub-agent timer hook', formatError(err));
+    }
+}
 
 /** Install the prompt-cache activity timer hook (UserPromptSubmit / PostToolUse / Stop). */
 async function ensureCacheTimerHookInstalled(): Promise<void> {
@@ -393,40 +403,6 @@ async function ensureCacheTimerHookInstalled(): Promise<void> {
         logRuntime('Installed AskAway cache-timer hook', { gatePath, injectPath });
     } catch (err) {
         logRuntime('Warning: Could not install AskAway cache-timer hook', formatError(err));
-    }
-}
-
-/** Install non-model Claude lifecycle hooks that attribute prompts and usage to shared specs. */
-async function ensureClaudeSpecHooksInstalled(port: number): Promise<void> {
-    const hookUrl = `http://127.0.0.1:${port}/hooks/claude-spec`;
-    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
-    try {
-        await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true });
-        let settings: any = {};
-        try { settings = JSON.parse(await fs.promises.readFile(settingsPath, 'utf8')); } catch (err) {
-            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') { throw err; }
-        }
-        if (!settings || typeof settings !== 'object' || Array.isArray(settings)) { settings = {}; }
-        if (!settings.hooks || typeof settings.hooks !== 'object' || Array.isArray(settings.hooks)) { settings.hooks = {}; }
-        let changed = false;
-        for (const event of ['UserPromptSubmit', 'Stop']) {
-            if (!Array.isArray(settings.hooks[event])) { settings.hooks[event] = []; }
-            const before = settings.hooks[event].length;
-            settings.hooks[event] = settings.hooks[event].filter((group: any) =>
-                !Array.isArray(group?.hooks) || !group.hooks.some((hook: any) =>
-                    hook?.type === 'http' && /^http:\/\/127\.0\.0\.1:\d+\/hooks\/claude-spec$/.test(hook?.url || '') && hook.url !== hookUrl));
-            if (settings.hooks[event].length !== before) { changed = true; }
-            const exists = settings.hooks[event].some((group: any) =>
-                Array.isArray(group?.hooks) && group.hooks.some((hook: any) => hook?.type === 'http' && hook?.url === hookUrl));
-            if (!exists) {
-                settings.hooks[event].push({ hooks: [{ type: 'http', url: hookUrl, timeout: 5 }] });
-                changed = true;
-            }
-        }
-        if (changed) { await fs.promises.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8'); }
-        logRuntime('Installed Claude spec attribution hooks', { url: hookUrl });
-    } catch (err) {
-        logRuntime('Warning: Could not install Claude spec attribution hooks', formatError(err));
     }
 }
 
@@ -597,7 +573,7 @@ async function writeSubagentModelSentinel(): Promise<void> {
     }
 }
 
-/** Install the Copilot sub-agent model PreToolUse hook. Claude model aliases are provider-specific. */
+/** Install the sub-agent model PreToolUse hook (Copilot hooks + Claude settings, best-effort). */
 async function ensureSubagentModelHookInstalled(): Promise<void> {
     const gatePath = path.join(os.homedir(), '.askaway', 'hooks', 'subagent-model-gate.sh');
     const injectPath = path.join(os.homedir(), '.askaway', 'hooks', 'subagent-model.js');
@@ -624,6 +600,23 @@ async function ensureSubagentModelHookInstalled(): Promise<void> {
         };
         await fs.promises.writeFile(copilotHookPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
 
+        // Claude Code: ~/.claude/settings.json hooks.PreToolUse with a runSubagent matcher.
+        const claudeSettingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+        await fs.promises.mkdir(path.dirname(claudeSettingsPath), { recursive: true });
+        let settings: any = {};
+        try { settings = JSON.parse(await fs.promises.readFile(claudeSettingsPath, 'utf8')); } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') { throw err; }
+        }
+        if (!settings || typeof settings !== 'object' || Array.isArray(settings)) { settings = {}; }
+        if (!settings.hooks || typeof settings.hooks !== 'object' || Array.isArray(settings.hooks)) { settings.hooks = {}; }
+        if (!Array.isArray(settings.hooks.PreToolUse)) { settings.hooks.PreToolUse = []; }
+        const hasEntry = settings.hooks.PreToolUse.some((e: any) =>
+            Array.isArray(e?.hooks) && e.hooks.some((h: any) => h?.command === SUBAGENT_MODEL_GATE_COMMAND));
+        if (!hasEntry) {
+            settings.hooks.PreToolUse.push({ matcher: 'runSubagent', hooks: [{ type: 'command', command: SUBAGENT_MODEL_GATE_COMMAND }] });
+            await fs.promises.writeFile(claudeSettingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+        }
+
         logRuntime('Installed AskAway sub-agent model hook', { gatePath, injectPath });
     } catch (err) {
         logRuntime('Warning: Could not install AskAway sub-agent model hook', formatError(err));
@@ -648,7 +641,7 @@ async function writeBudgetSentinels(context: vscode.ExtensionContext): Promise<v
     }
 }
 
-/** Install the Copilot turn-budget UserPromptSubmit hook. Claude usage has a separate provider. */
+/** Install the turn-budget UserPromptSubmit hook (Claude settings + Copilot hooks). */
 async function ensureBudgetHookInstalled(): Promise<void> {
     const gatePath = path.join(os.homedir(), '.askaway', 'hooks', 'budget-gate.sh');
     const injectPath = path.join(os.homedir(), '.askaway', 'hooks', 'budget-inject.js');
@@ -660,6 +653,23 @@ async function ensureBudgetHookInstalled(): Promise<void> {
         await fs.promises.chmod(gatePath, 0o755);
         if (await fs.promises.readFile(injectPath, 'utf8').catch(() => undefined) !== BUDGET_INJECT_SCRIPT) {
             await fs.promises.writeFile(injectPath, BUDGET_INJECT_SCRIPT, 'utf8');
+        }
+
+        // Claude Code: ~/.claude/settings.json hooks.UserPromptSubmit
+        const claudeSettingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+        await fs.promises.mkdir(path.dirname(claudeSettingsPath), { recursive: true });
+        let settings: any = {};
+        try { settings = JSON.parse(await fs.promises.readFile(claudeSettingsPath, 'utf8')); } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') { throw err; }
+        }
+        if (!settings || typeof settings !== 'object' || Array.isArray(settings)) { settings = {}; }
+        if (!settings.hooks || typeof settings.hooks !== 'object' || Array.isArray(settings.hooks)) { settings.hooks = {}; }
+        if (!Array.isArray(settings.hooks.UserPromptSubmit)) { settings.hooks.UserPromptSubmit = []; }
+        const hasBudget = settings.hooks.UserPromptSubmit.some((e: any) =>
+            Array.isArray(e?.hooks) && e.hooks.some((h: any) => h?.command === BUDGET_GATE_COMMAND));
+        if (!hasBudget) {
+            settings.hooks.UserPromptSubmit.push({ hooks: [{ type: 'command', command: BUDGET_GATE_COMMAND }] });
+            await fs.promises.writeFile(claudeSettingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
         }
 
         // VS Code Copilot: ~/.copilot/hooks/budget-inject.json (best-effort — event support may vary).
@@ -955,8 +965,7 @@ async function hasExternalMcpClientsAsync(): Promise<boolean> {
     const configPaths = [
         path.join(os.homedir(), '.kiro', 'settings', 'mcp.json'),
         path.join(os.homedir(), '.cursor', 'mcp.json'),
-        path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json'),
-        path.join(os.homedir(), '.claude.json')
+        path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json')
     ];
 
     for (const configPath of configPaths) {
@@ -964,8 +973,7 @@ async function hasExternalMcpClientsAsync(): Promise<boolean> {
             const content = await fs.promises.readFile(configPath, 'utf8');
             const config = JSON.parse(content);
             // Check if askaway is registered
-            const claudeProjects = Object.values(config.projects || {}) as Array<{ mcpServers?: Record<string, unknown> }>;
-            if (config.mcpServers?.[MCP_SERVER_NAME] || claudeProjects.some(project => project.mcpServers?.[MCP_SERVER_NAME])) {
+            if (config.mcpServers?.[MCP_SERVER_NAME]) {
                 _hasExternalMcpClientsResult = true;
                 return true;
             }
@@ -1009,7 +1017,6 @@ export function activate(context: vscode.ExtensionContext) {
     activationOutputChannel = outputChannel;
     context.subscriptions.push(outputChannel);
     outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Extension activating...`);
-    void ensureSpecKitPromptsInstalled();
 
     void ensureAskAwayBuildAgentInstalled(context);
     void ensureCoworkInstalled(context);
@@ -1018,6 +1025,7 @@ export function activate(context: vscode.ExtensionContext) {
     void writeBudgetSentinels(context);
     void ensureBudgetHookInstalled();
     void ensureCacheTimerHookInstalled();
+    void ensureSubagentTimerHookInstalled();
     void ensureToolIoHookInstalled();
     void writeSubagentModelSentinel();
     void ensureSubagentModelHookInstalled();
@@ -1116,7 +1124,6 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.commands.registerCommand('askaway.startMcp', async () => {
                 if (mcpServer && !mcpServer.isRunning()) {
                     await mcpServer.start();
-                    if (mcpServer.getPort()) { await ensureClaudeSpecHooksInstalled(mcpServer.getPort()!); }
                     vscode.window.showInformationMessage('AskAway MCP Server started');
                 } else if (mcpServer?.isRunning()) {
                     vscode.window.showInformationMessage('AskAway MCP Server is already running');
@@ -1384,24 +1391,21 @@ export function activate(context: vscode.ExtensionContext) {
                 });
             }
 
-            // Turn-end handoff → Webex/Telegram. Registered after BOTH services so neither one's
-            // failure can take it down; the debug-logs dir is a sibling of our own workspaceStorage
-            // folder, which keeps this scoped to THIS workspace.
-            try {
-                const storagePath = context.storageUri?.fsPath;
-                if (storagePath) {
-                    const { HandoffNotifier } = await import('./services/handoffNotifier');
-                    const debugLogsDir = path.join(path.dirname(storagePath), 'GitHub.copilot-chat', 'debug-logs');
-                    const notifier = new HandoffNotifier([
-                        { name: 'Webex', setting: 'webex.notifyOnTurnEnd', get: () => webexService },
-                        { name: 'Telegram', setting: 'telegram.notifyOnTurnEnd', get: () => telegramService }
-                    ], debugLogsDir, logRuntime);
-                    notifier.start();
-                    context.subscriptions.push(notifier);
-                    logRuntime('Handoff notifier watching turn-complete stamp', { debugLogsDir });
-                }
-            } catch (err) {
-                logRuntime('Handoff notifier init failed', formatError(err));
+            // Turn-end handoffs are independent of either transport. Initialize once both
+            // optional services have had a chance to load so Telegram-only setups work.
+            const storagePath = context.storageUri?.fsPath;
+            if (storagePath) {
+                const { HandoffNotifier, createHandoffTargets } = await import('./services/handoffNotifier');
+                const debugLogsDir = path.join(path.dirname(storagePath), 'GitHub.copilot-chat', 'debug-logs');
+                const notifier = new HandoffNotifier(
+                    createHandoffTargets(() => webexService, () => telegramService),
+                    debugLogsDir,
+                    logRuntime,
+                    () => provider.getTurnMetricsSnapshot()
+                );
+                notifier.start();
+                context.subscriptions.push(notifier);
+                logRuntime('Handoff notifier watching turn-complete stamp', { debugLogsDir });
             }
 
             // File change tracker for Webex/Telegram
@@ -1425,18 +1429,10 @@ export function activate(context: vscode.ExtensionContext) {
                 const mcpEnabled = config.get<boolean>('mcpEnabled', false);
                 const autoStartIfClients = config.get<boolean>('mcpAutoStartIfClients', true);
                 if (mcpEnabled) {
-                    mcpServer.start().then(async () => {
-                        const port = mcpServer?.getPort();
-                        if (port) { await ensureClaudeSpecHooksInstalled(port); }
-                    }).catch(() => {});
+                    mcpServer.start();
                 } else if (autoStartIfClients) {
                     hasExternalMcpClientsAsync().then(hasClients => {
-                        if (hasClients && mcpServer) {
-                            mcpServer.start().then(async () => {
-                                const port = mcpServer?.getPort();
-                                if (port) { await ensureClaudeSpecHooksInstalled(port); }
-                            }).catch(() => {});
-                        }
+                        if (hasClients && mcpServer) { mcpServer.start(); }
                     }).catch(() => {});
                 }
 

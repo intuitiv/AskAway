@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CONFIG_NAMESPACE } from '../constants/branding';
+import { createTelegramHandoffTaskId } from './telegramConversationReply';
 
 /**
  * Posts the agent's `Response Handoff` section to Webex and/or Telegram when a turn ends.
@@ -23,37 +24,60 @@ const DETAILS_MAX_CHARS = 2800;
 /** The mandatory handoff, plus everything that came before it in the same message. */
 export interface HandoffParts { handoff: string; details: string; }
 
-interface Poster { isConfigured(): boolean; postText(markdown: string, fallback: string): Promise<boolean>; }
+export interface TurnMetricsSnapshot {
+    latestInputTokens: number;
+    turnOutputTokens: number;
+    turnNanoAiu: number;
+}
+
+export interface HandoffPoster {
+    isConfigured(): boolean;
+    postText(markdown: string, fallback: string, replyTaskId?: string): Promise<boolean>;
+}
 
 export interface HandoffTarget {
     name: string;
     /** Settings key under the AskAway namespace that gates this target. */
     setting: string;
     /** Resolved at turn-end, not at construction: the services activate asynchronously. */
-    get(): Poster | undefined;
+    get(): HandoffPoster | undefined;
+}
+
+export function createHandoffTargets(
+    getWebex: () => HandoffPoster | undefined,
+    getTelegram: () => HandoffPoster | undefined
+): HandoffTarget[] {
+    return [
+        { name: 'Webex', setting: 'webex.notifyOnTurnEnd', get: getWebex },
+        { name: 'Telegram', setting: 'telegram.notifyOnTurnEnd', get: getTelegram }
+    ];
 }
 
 export class HandoffNotifier implements vscode.Disposable {
     private _lastPostedTs = 0;
     private _lastPostedHandoff = '';
-    private _watching = false;
+    private _watchTimer: NodeJS.Timeout | undefined;
+    private _processing = false;
 
     constructor(
         private readonly _targets: HandoffTarget[],
         private readonly _debugLogsDir: string | undefined,
-        private readonly _log: (msg: string, data?: unknown) => void
+        private readonly _log: (msg: string, data?: unknown) => void,
+        private readonly _getTurnMetrics?: () => TurnMetricsSnapshot | Promise<TurnMetricsSnapshot>
     ) { }
 
     public start(): void {
-        if (this._watching) { return; }
-        this._watching = true;
+        if (this._watchTimer) { return; }
         // Seed with the current stamp so activation never replays the previous turn.
         this._lastPostedTs = this._readStamp();
-        fs.watchFile(STAMP, { interval: WATCH_INTERVAL_MS }, () => { void this._onTurnEnd(); });
+        this._watchTimer = setInterval(() => { void this._onTurnEnd(); }, WATCH_INTERVAL_MS);
     }
 
     public dispose(): void {
-        if (this._watching) { fs.unwatchFile(STAMP); this._watching = false; }
+        if (this._watchTimer) {
+            clearInterval(this._watchTimer);
+            this._watchTimer = undefined;
+        }
     }
 
     private _readStamp(): number {
@@ -61,14 +85,15 @@ export class HandoffNotifier implements vscode.Disposable {
     }
 
     private async _onTurnEnd(): Promise<void> {
+        if (this._processing) { return; }
         const ts = this._readStamp();
         if (!ts || ts <= this._lastPostedTs) { return; }
-        this._lastPostedTs = ts;
 
         const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         const enabled = this._targets.filter(t => cfg.get<boolean>(t.setting, false));
-        if (!enabled.length) { return; }
+        if (!enabled.length) { this._lastPostedTs = ts; return; }
 
+        this._processing = true;
         try {
             // Only accept a handoff produced by the turn that just ended.
             const parts = this._findHandoff(ts - TURN_LOOKBACK_MS);
@@ -77,26 +102,40 @@ export class HandoffNotifier implements vscode.Disposable {
             // real identity, so posting the same text twice is always a duplicate.
             if (parts.handoff === this._lastPostedHandoff) {
                 this._log('Handoff notifier: same handoff already posted, skipping duplicate');
+                this._lastPostedTs = ts;
                 return;
             }
-            this._lastPostedHandoff = parts.handoff;
+            let configuredTargets = 0;
+            let postedTargets = 0;
+            const turnMetrics = await this._getTurnMetrics?.();
             for (const target of enabled) {
                 const poster = target.get();
                 if (!poster?.isConfigured()) {
                     this._log(`Handoff notifier: ${target.name} is enabled but not configured`);
                     continue;
                 }
+                configuredTargets++;
                 const markdown = target.name === 'Telegram'
-                    ? telegramHandoffUpdate(parts)
+                    ? telegramHandoffUpdate(parts, turnMetrics)
                     : detailedHandoffUpdate(parts);
                 const ok = await poster.postText(
                     markdown,
-                    `AskAway — turn complete: ${parts.handoff.slice(0, 200)}`
+                    `AskAway — turn complete: ${parts.handoff.slice(0, 200)}`,
+                    target.name === 'Telegram' ? createTelegramHandoffTaskId(ts) : undefined
                 );
+                if (ok) { postedTargets++; }
                 this._log(`Handoff notifier: posted to ${target.name} = ${ok}`, { chars: markdown.length });
+            }
+            if (configuredTargets === 0 || postedTargets > 0) {
+                this._lastPostedTs = ts;
+                this._lastPostedHandoff = parts.handoff;
+            } else {
+                this._log('Handoff notifier: all configured targets failed; retrying current turn');
             }
         } catch (err) {
             this._log('Handoff notifier failed', err instanceof Error ? err.message : String(err));
+        } finally {
+            this._processing = false;
         }
     }
 
@@ -156,25 +195,22 @@ function detailedHandoffUpdate(parts: HandoffParts): string {
     return markdown;
 }
 
-export function telegramHandoffUpdate(parts: HandoffParts): string {
-    const source = `${parts.details}\n${parts.handoff}`;
-    const field = (name: string): string => {
-        const match = new RegExp(`^(?:\\*\\*)?${name}(?:\\*\\*)?:\\s*(.+)$`, 'im').exec(source);
-        return match?.[1]?.trim() || '';
+export function telegramHandoffUpdate(parts: HandoffParts, metrics?: TurnMetricsSnapshot): string {
+    const compactTokens = (value: number): string => {
+        const n = Math.max(0, Number(value) || 0);
+        if (n >= 1_000_000) { return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 1 : 2)}M`; }
+        if (n >= 1_000) { return `${(n / 1_000).toFixed(n >= 10_000 ? 1 : 2)}K`; }
+        return String(Math.round(n));
     };
-    const lines = [
-        ['Status', field('Status')],
-        ['Goal', field('Goal')],
-        ['Why', field('Why')],
-        ['Unlocks', field('Unlocks')],
-        ['Acceptance', field('Acceptance')],
-        ['Next', field('Next')],
-        ['Summary', field('Summary')]
-    ].filter((entry): entry is [string, string] => !!entry[1]);
-    const text = lines.length > 0
-        ? `**AskAway**\n\n${lines.map(([name, value]) => `**${name}:** ${value}`).join('\n')}`
-        : `**AskAway**\n\n${parts.handoff || parts.details}`;
-    return text.slice(0, 2200);
+    const banner = metrics
+        ? `**${compactTokens(metrics.latestInputTokens)} last in · ${compactTokens(metrics.turnOutputTokens)} turn out · $${(metrics.turnNanoAiu / 1_000_000_000 / 100).toFixed(2)} turn**`
+        : '**Turn metrics unavailable**';
+    const handoff = parts.handoff.trim() || 'No Response Handoff provided.';
+    const prefix = `**AskAway**\n\n${banner}\n\n**Handoff**\n${handoff}\n\n**Details**\n`;
+    const remaining = Math.max(0, 3500 - prefix.length);
+    const details = parts.details.trim();
+    const boundedDetails = details.length > remaining ? `${details.slice(0, Math.max(0, remaining - 1))}…` : details;
+    return `${prefix}${boundedDetails || 'No additional details.'}`;
 }
 
 export function compactHandoffUpdate(handoff: string): string {
