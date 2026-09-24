@@ -69,6 +69,8 @@ const call = async (name, args) => {
     assert.equal((await call('worker_cancel', { runId: queued.runId })).status, 'CANCELLATION_REQUESTED');
     assert.equal((await call('worker_status', { runId: queued.runId })).state, 'CANCELLED');
 
+    children[0].stdout.write(`${JSON.stringify({ type: 'text', sessionID: 'ses_T', part: { type: 'text', text: 'Result: PASS\nEvidence: ok' } })}\n`);
+    await new Promise((resolve) => setImmediate(resolve));
     children[0].emit('exit', 0, null);
     assert.equal((await call('worker_wait', { runId: started.runId, timeoutSeconds: 1 })).status, 'COMPLETED');
     const facts = await call('worker_logs', { runId: started.runId, limit: 1 });

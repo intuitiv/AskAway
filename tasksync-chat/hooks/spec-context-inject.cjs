@@ -50,7 +50,7 @@ function carryOver(commentary) {
     const lines = ['\n## Carry-over from the previous conversation (goal box + uncleared commentary)'];
     lines.push(`Main goal: ${commentary.goal || '(none set; use the active spec cycle)'}`);
     for (const item of commentary.items.slice(-30)) {
-        lines.push(`- ${new Date(item.ts).toISOString().slice(11, 16)} ${item.kind}: ${item.text}`);
+        lines.push(`- ${new Date(item.ts).toISOString().slice(11, 16)}${item.ref ? ` ${item.ref}` : ''} ${item.kind}: ${item.text}`);
     }
     return lines.join('\n');
 }

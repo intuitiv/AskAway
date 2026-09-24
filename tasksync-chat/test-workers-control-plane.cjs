@@ -115,7 +115,7 @@ const packet = (overrides = {}) => ({
     assert.deepEqual([d.state, d.blocker, d.thinking], ['RETIRED', 'retired: context 300001 > 300000', 'low']);
 
     const serialized = JSON.stringify(state);
-    assert.doesNotMatch(serialized, /SECRET-OBJECTIVE|TRANSCRIPT-TEXT|MATH-TEST|Objective|evidence|packet/i, 'no packet or transcript text');
+    assert.doesNotMatch(serialized, /SECRET-OBJECTIVE|TRANSCRIPT-TEXT|MATH-TEST|Objective:|"evidence"|"packet"/i, 'no packet or transcript text');
     assert.doesNotMatch(serialized, /"(approve|reject|allow|deny|respond)\w*"\s*:/i, 'no approval-command keys');
 
     // The shared server endpoint is reported when workers attach to it.

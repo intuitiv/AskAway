@@ -157,6 +157,7 @@ const packet = (overrides = {}) => ({
     assert.equal(resumed.state, 'STARTING');
     assert.equal(children[4].args[children[4].args.indexOf('--session') + 1], 'ses_B');
     children[4].emitEvent(finish('ses_B', 100, 10, 0.0002));
+    children[4].emitEvent(text('ses_B', 'Result: PASS\nEvidence: resumed and finished'));
     await children[4].finish(0);
     assert.equal((await runtime.wait(run5.runId, 5)).status, 'COMPLETED');
     assert.equal(runtime.resume(run5.runId).status, 'FRESH_SUBMISSION_REQUIRED', 'a completed run cannot be resumed');

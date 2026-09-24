@@ -5,6 +5,7 @@ import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
 import { registerTools } from './tools';
+import { SUBAGENT_TIMER_INJECT_SCRIPT } from './hooks/subagentTimerScript';
 import { McpServerManager } from './mcp/mcpServer';
 import { killAllGradleRuns } from './gradle/gradleEngine';
 import { ContextManager } from './context';
@@ -297,32 +298,6 @@ fi
 "$NODE" "$CFG/hooks/subagent-timer.js"
 exit 0
 `;
-const SUBAGENT_TIMER_INJECT_SCRIPT = `const fs = require('fs'), path = require('path'), os = require('os');
-const SOFT_MS = 150000, HARD_MS = 240000, STALE_MS = 900000;
-const cfg = path.join(os.homedir(), '.askaway');
-const stateFile = path.join(cfg, 'subagent-inflight.json');
-function load() { try { const s = JSON.parse(fs.readFileSync(stateFile, 'utf8')); return { pending: Array.isArray(s.pending) ? s.pending : [], bySession: s.bySession || {} }; } catch (e) { return { pending: [], bySession: {} }; } }
-function save(s) { try { fs.mkdirSync(cfg, { recursive: true }); } catch (e) {} try { fs.writeFileSync(stateFile, JSON.stringify(s), 'utf8'); } catch (e) {} }
-function fmt(ms) { const sec = Math.round(ms / 1000); return Math.floor(sec / 60) + 'm' + String(sec % 60).padStart(2, '0') + 's'; }
-function emit(text) { process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } })); }
-try {
-    let p = {}; try { p = JSON.parse(fs.readFileSync(0, 'utf8')); } catch (e) { process.exit(0); }
-    const event = p.hook_event_name || p.hookEventName || '', tool = p.tool_name || p.toolName || '';
-    const useId = p.tool_use_id || p.toolUseId || '', sid = p.session_id || p.sessionId || '', now = Date.now();
-    const s = load(), before = s.pending.length; s.pending = s.pending.filter(e => now - e.startedAt < STALE_MS); let dirty = s.pending.length !== before;
-    if (event === 'PreToolUse') { if (tool !== 'runSubagent') { if (dirty) { save(s); } process.exit(0); } s.pending.push({ id: useId, startedAt: now }); save(s); process.exit(0); }
-    if (event !== 'PostToolUse') { if (dirty) { save(s); } process.exit(0); }
-    if (tool === 'runSubagent') { let idx = useId ? s.pending.findIndex(e => e.id === useId) : -1; if (idx === -1) { idx = 0; } const done = s.pending.splice(idx, 1)[0]; if (done) { for (const k of Object.keys(s.bySession)) { if (s.bySession[k] === done.startedAt) { delete s.bySession[k]; } } } save(s); if (done && now - done.startedAt >= HARD_MS) { emit('That sub-agent ran ' + fmt(now - done.startedAt) + ' — past the ~5m prompt-cache window, so it was re-billed at full price. Split the next delegation of this kind into smaller single-deliverable tasks, or run it in the main thread.'); } process.exit(0); }
-    if (s.pending.length === 0) { if (dirty) { save(s); } process.exit(0); }
-    let startedAt = 0;
-    if (sid) { if (s.bySession[sid]) { startedAt = s.bySession[sid]; } else { const claimed = Object.keys(s.bySession).map(k => s.bySession[k]); const free = s.pending.filter(e => claimed.indexOf(e.startedAt) === -1); if (free.length) { startedAt = free[0].startedAt; s.bySession[sid] = startedAt; dirty = true; } } } else if (s.pending.length === 1) { startedAt = s.pending[0].startedAt; }
-    if (dirty) { save(s); } if (!startedAt) { process.exit(0); }
-    const elapsed = now - startedAt;
-    if (elapsed >= HARD_MS) { emit('CACHE WINDOW EXPIRED (' + fmt(elapsed) + ' into your 4m budget). Stop all new work now. Do not start another tool call, search, or edit. Write your final report from what you already have, and state explicitly what you did NOT finish so the caller can re-delegate it.'); } else if (elapsed >= SOFT_MS) { emit('Elapsed ' + fmt(elapsed) + ' of your 4m sub-agent budget. Finish the current step and start writing your report — do not open a new line of investigation.'); }
-} catch (e) {}
-process.exit(0);
-`;
-
 async function ensureSubagentTimerHookInstalled(): Promise<void> {
     const gatePath = path.join(os.homedir(), '.askaway', 'hooks', 'subagent-timer-gate.sh');
     const timerPath = path.join(os.homedir(), '.askaway', 'hooks', 'subagent-timer.js');

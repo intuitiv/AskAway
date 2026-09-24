@@ -407,7 +407,10 @@ export class OpenCodeWorkerRuntime {
             const worker = this.router.worker(run.workerId);
             this.router.complete(run.workerId, run.runId, { contextTokens: lastContext || worker?.contextTokens || 0 });
             const cancelled = run.reason === 'cancelled by caller';
-            const state: RunState = cancelled ? 'CANCELLED' : code === 0 && !signal ? 'COMPLETED' : 'FAILED';
+            // The packet contract requires a Result/Evidence report; a silent exit 0 proves nothing.
+            const silent = code === 0 && !signal && !cancelled && run.evidence.join('').trim() === '';
+            if (silent) { run.reason = 'worker ended without a report (no Result/Evidence text)'; }
+            const state: RunState = cancelled ? 'CANCELLED' : code === 0 && !signal && !silent ? 'COMPLETED' : 'FAILED';
             if (state === 'FAILED' && !run.reason) { run.reason = signal ? `terminated by ${signal}` : `exit code ${code}`; }
             this.record(run, { type: state === 'COMPLETED' ? 'stop' : 'error', exitCode: code ?? -1, state, reason: run.reason });
             this.finish(run, state, run.reason);

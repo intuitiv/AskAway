@@ -6469,6 +6469,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <button class="widget-tab active" data-tab="chat" title="Main chat">Chat</button>
             <button class="widget-tab hidden" data-tab="specs" id="tab-specs" title="Spec Kit features: progress, next task, active feature">Specs</button>
             <button class="widget-tab" data-tab="workers" title="OpenCode workers in this workspace: state, cost, session links">Workers <span class="tab-badge hidden" id="tab-badge-workers"></span></button>
+            <button class="widget-tab" data-tab="commentary" title="Live orchestrator commentary and the main goal">Live <span class="tab-badge hidden" id="tab-badge-commentary"></span></button>
             <button class="widget-tab" data-tab="observability" title="Observability metrics, RTK/Gradle savings, requests and memories">Metrics</button>
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
         </div>
@@ -6776,6 +6777,32 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 <div class="workers-list" id="workers-list"></div>
             </div>
         </div><!-- End panel-workers -->
+
+        <!-- Commentary Panel (goal box + live orchestrator feed) -->
+        <div class="tab-panel" id="panel-commentary">
+            <div class="cm-shell">
+                <div class="cm-goal">
+                    <div class="cm-goal-head">
+                        <span class="cm-goal-label">Main goal</span>
+                        <button class="cm-btn" id="cm-goal-save" title="Save the main goal">Save</button>
+                        <button class="cm-btn" id="cm-goal-clear" title="Clear the main goal">Clear</button>
+                    </div>
+                    <textarea class="cm-goal-input" id="cm-goal-input" rows="2" placeholder="What should the orchestrator focus on? Empty = the active spec cycle."></textarea>
+                </div>
+                <div class="cm-toolbar">
+                    <div class="cm-filters" id="cm-filters">
+                        <button class="cm-filter active" data-cm-filter="all">All</button>
+                        <button class="cm-filter" data-cm-filter="milestone">Milestones</button>
+                        <button class="cm-filter" data-cm-filter="decision">Decisions</button>
+                        <button class="cm-filter" data-cm-filter="question">Questions</button>
+                        <button class="cm-filter" data-cm-filter="blocked">Blocked</button>
+                    </div>
+                    <button class="cm-btn" id="cm-copy" title="Copy goal + uncleared feed as the next conversation's opener">Copy opener</button>
+                    <button class="cm-btn" id="cm-clear" title="Clear the feed (kept as audit history)">Clear feed</button>
+                </div>
+                <div class="cm-feed" id="cm-feed"></div>
+            </div>
+        </div><!-- End panel-commentary -->
 
         <!-- Settings Panel -->
         <div class="tab-panel" id="panel-settings">

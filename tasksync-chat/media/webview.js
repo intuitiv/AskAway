@@ -210,6 +210,7 @@
             initWorkerTabs();
             initSpecsTab();
             initWorkersTab();
+            initCommentaryTab();
             unlockAudioOnInteraction(); // Enable audio after first user interaction
             console.log('[TaskSync Webview] Event listeners bound, pendingMessage element:', !!pendingMessage);
             renderQueue();
@@ -1461,6 +1462,9 @@
                 break;
             case 'workersState':
                 applyWorkersState(message.data);
+                break;
+            case 'commentaryState':
+                applyCommentaryState(message.data);
                 break;
             case 'updateQueue':
                 promptQueue = message.queue || [];
@@ -5122,6 +5126,84 @@
         'done': 'Done'
     };
 
+    // ── Commentary tab: pure render (tested in test-commentary-ui.cjs, played by tools/play-commentary.cjs) ──
+    var COMMENTARY_LABELS = { progress: 'PROGRESS', milestone: 'MILESTONE', decision: 'DECISION', question: 'QUESTION', blocked: 'BLOCKED' };
+    function commentaryEsc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function commentaryClock(ts) {
+        var d = new Date(ts);
+        var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+        return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    }
+    function commentaryOpenCount(view) {
+        return view && view.items ? view.items.filter(function (i) { return i.kind === 'question' || i.kind === 'blocked'; }).length : 0;
+    }
+    function renderCommentaryHtml(view, filter) {
+        if (!view) return '<div class="cm-empty">Commentary is not available for this workspace.</div>';
+        var all = view.items || [];
+        var count = function (kind) { return all.filter(function (i) { return i.kind === kind; }).length; };
+        var html = '<div class="cm-summary">' + all.length + ' line' + (all.length === 1 ? '' : 's') +
+            ' · ' + count('milestone') + ' milestone' + (count('milestone') === 1 ? '' : 's') +
+            ' · ' + commentaryOpenCount(view) + ' open' +
+            (view.archivedCount ? ' · ' + view.archivedCount + ' archived' : '') + '</div>';
+        var shown = all.filter(function (i) { return !filter || filter === 'all' || i.kind === filter; });
+        if (!shown.length) {
+            return html + '<div class="cm-empty">' + (all.length ? 'Nothing of this kind yet.' : 'Waiting for the orchestrator\'s first ball.') + '</div>';
+        }
+        // Newest first, like a live match feed.
+        for (var n = shown.length - 1; n >= 0; n--) {
+            var item = shown[n];
+            var kind = COMMENTARY_LABELS[item.kind] ? item.kind : 'progress';
+            html += '<div class="cm-item cm-kind-' + kind + '" data-id="' + commentaryEsc(item.id) + '">' +
+                '<div class="cm-ball">' + commentaryEsc(item.ref || '•') + '</div>' +
+                '<div class="cm-body">' +
+                '<div class="cm-meta"><span class="cm-kind">' + COMMENTARY_LABELS[kind] + '</span><span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
+                '<div class="cm-text">' + commentaryEsc(item.text) + '</div>' +
+                '</div></div>';
+        }
+        return html;
+    }
+    // ── end Commentary pure render ──
+
+    var commentaryView = null;
+    var commentaryFilter = 'all';
+
+    function applyCommentaryState(data) {
+        commentaryView = data;
+        var feed = document.getElementById('cm-feed');
+        if (feed) feed.innerHTML = renderCommentaryHtml(commentaryView, commentaryFilter);
+        var goal = document.getElementById('cm-goal-input');
+        if (goal && document.activeElement !== goal) goal.value = (data && data.goal) || '';
+        var badge = document.getElementById('tab-badge-commentary');
+        if (badge) {
+            var open = commentaryOpenCount(commentaryView);
+            badge.textContent = String(open);
+            badge.classList.toggle('hidden', open === 0);
+        }
+    }
+
+    function initCommentaryTab() {
+        var goal = document.getElementById('cm-goal-input');
+        var on = function (id, handler) { var el = document.getElementById(id); if (el) el.addEventListener('click', handler); };
+        on('cm-goal-save', function () { vscode.postMessage({ type: 'setCommentaryGoal', goal: goal ? goal.value : '' }); });
+        on('cm-goal-clear', function () { if (goal) goal.value = ''; vscode.postMessage({ type: 'clearCommentary', what: 'goal' }); });
+        on('cm-clear', function () { vscode.postMessage({ type: 'clearCommentary', what: 'feed' }); });
+        on('cm-copy', function () { if (commentaryView) vscode.postMessage({ type: 'copyToClipboard', text: commentaryView.opener }); });
+        var filters = document.getElementById('cm-filters');
+        if (filters) filters.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-cm-filter]');
+            if (!btn) return;
+            commentaryFilter = btn.getAttribute('data-cm-filter');
+            filters.querySelectorAll('[data-cm-filter]').forEach(function (b) { b.classList.toggle('active', b === btn); });
+            applyCommentaryState(commentaryView);
+        });
+        // Subscribes the provider to live pushes even while another tab is open.
+        vscode.postMessage({ type: 'requestCommentary' });
+    }
+
     // ── Workers tab: pure render (tested in test-workers-control-plane.cjs) ──
     function workersEsc(value) {
         return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
@@ -5592,6 +5674,9 @@
         if (tab === 'workers') {
             vscode.postMessage({ type: 'requestWorkersState' });
             workersPollTimer = setInterval(function () { vscode.postMessage({ type: 'requestWorkersState' }); }, 3000);
+        }
+        if (tab === 'commentary') {
+            vscode.postMessage({ type: 'requestCommentary' });
         }
     }
 

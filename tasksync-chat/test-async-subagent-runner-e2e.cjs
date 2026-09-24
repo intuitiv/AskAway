@@ -42,6 +42,7 @@ const finish = (id, input, cost) => ({ type: 'step_finish', sessionID: id, part:
     const done = before.start(packet('code', 'first'));
     children[0].emitEvent({ type: 'step_start', sessionID: 'ses_X', part: {} });
     children[0].emitEvent(finish('ses_X', 800, 0.003));
+    children[0].emitEvent({ type: 'text', sessionID: 'ses_X', part: { type: 'text', text: 'Result: PASS\nEvidence: done' } });
     await tick();
     children[0].emit('exit', 0, null);
     const interrupted = before.submit(done.workerId, packet('code', 'second'));
@@ -87,5 +88,18 @@ const finish = (id, input, cost) => ({ type: 'step_finish', sessionID: id, part:
     assert.deepEqual([back.reconnected, back.orphaned.map((o) => o.workerId)], [[done.workerId], [noSession.workerId]]);
 
     console.log('EV-018 ReloadRecovery: PASS reconnected=1 orphaned=1 orphanReason=nonempty sessionLinkKept=true resumeSameSession=true serverDown=allOrphaned serverBack=reconnect');
+
+    // Seen live in the commentary demo: a verify run exited 0 with no report and was treated as done.
+    const silentHost = new OpenCodeWorkerRuntime(profiles, { ledgerDir: fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-silent-')), spawner });
+    const silent = silentHost.start(packet('verify', 'silent run'));
+    const child = children[children.length - 1];
+    child.emitEvent({ type: 'step_start', sessionID: 'ses_Q', part: {} });
+    child.emitEvent({ type: 'tool_use', sessionID: 'ses_Q', part: { tool: 'bash', state: { status: 'completed' } } });
+    await tick();
+    child.emit('exit', 0, null);
+    const outcome = await silentHost.wait(silent.runId, 1);
+    assert.deepEqual([outcome.status, outcome.reason], ['FAILED', 'worker ended without a report (no Result/Evidence text)']);
+    assert.equal(silentHost.resume(silent.runId).state, 'STARTING', 'the same session can be asked to finish its report');
+    console.log('EV-037 SilentRunIsNotSuccess: PASS exit0NoReport=FAILED reason=explicit resumable=true');
     process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

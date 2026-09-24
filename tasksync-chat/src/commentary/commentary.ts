@@ -5,14 +5,14 @@ import { z } from 'zod';
 import { CREDENTIAL } from '../workers/openCodeRuntime';
 import type { ToolDefinition } from '../workers/workerTools';
 
-export const COMMENTARY_KINDS = ['decision', 'question', 'progress', 'blocked'] as const;
+export const COMMENTARY_KINDS = ['progress', 'milestone', 'decision', 'question', 'blocked'] as const;
 export type CommentaryKind = typeof COMMENTARY_KINDS[number];
 export const MAX_COMMENTARY_WORDS = 20;
 export const MIN_COMMENTARY_WORDS = 3;
 const MAX_GOAL_CHARS = 2000;
 const OPENER_ITEMS = 30;
 
-export interface CommentaryItem { id: string; ts: number; kind: CommentaryKind; text: string; turnId: string }
+export interface CommentaryItem { id: string; ts: number; kind: CommentaryKind; text: string; turnId: string; ref: string }
 
 /** Persisted per workspace so the next conversation's hook can carry goal and feed over. */
 export interface CommentaryState {
@@ -44,7 +44,7 @@ export function buildOpener(state: CommentaryState): string {
         lines.push(`Commentary since last clear (${items.length}):`);
         for (const item of items) {
             const time = new Date(item.ts).toISOString().slice(11, 16);
-            lines.push(`- ${time} ${item.kind}: ${item.text}`);
+            lines.push(`- ${time}${item.ref ? ` ${item.ref}` : ''} ${item.kind}: ${item.text}`);
         }
     }
     lines.push('Continue toward the main goal.');
@@ -88,7 +88,7 @@ export class CommentaryStore {
         this.listeners.push(listener);
     }
 
-    post(workspacePath: string, input: { kind: string; text: string; turnId?: string }): PostResult {
+    post(workspacePath: string, input: { kind: string; text: string; turnId?: string; ref?: string }): PostResult {
         if (!COMMENTARY_KINDS.includes(input.kind as CommentaryKind)) {
             return { status: 'REJECTED', reason: `kind must be one of ${COMMENTARY_KINDS.join(', ')}` };
         }
@@ -99,7 +99,8 @@ export class CommentaryStore {
         if (CREDENTIAL.test(text)) { return { status: 'REJECTED', reason: 'text contains a credential' }; }
         const state = this.read(workspacePath);
         const ts = Math.max(this.now(), (state.items[state.items.length - 1]?.ts ?? 0) + 1, state.clearedAt + 1);
-        const item: CommentaryItem = { id: `c-${ts.toString(36)}-${++this.sequence}`, ts, kind: input.kind as CommentaryKind, text, turnId: input.turnId ?? '' };
+        const item: CommentaryItem = { id: `c-${ts.toString(36)}-${++this.sequence}`, ts, kind: input.kind as CommentaryKind, text,
+            turnId: input.turnId ?? '', ref: String(input.ref ?? '').trim().slice(0, 12) };
         state.items.push(item);
         this.write(state);
         return { status: 'POSTED', id: item.id };
@@ -134,11 +135,13 @@ export class CommentaryStore {
 export function commentaryToolDefinitions(store: () => CommentaryStore, defaultWorkspace: string): ToolDefinition[] {
     return [{
         name: 'commentary',
-        description: 'Post one live-commentary line to the reviewer\'s Commentary tab: a decision, question, progress, or blocker in 10-20 plain words. '
-            + 'Call it in the same parallel batch as the step\'s real tool call so it never costs an extra request. Do not repeat the text in chat.',
+        description: 'Live commentary for the reviewer\'s Commentary tab, like ball-by-ball cricket commentary: one line per step you take. '
+            + 'Mostly `progress` (what you are doing now and why), `milestone` when a packet is accepted, plus `decision`, `question`, `blocked` when they happen. '
+            + '10-20 plain words. `ref` is track.step, e.g. "A.3". Batch it with the step\'s real tool call so it never costs an extra request; do not repeat it in chat.',
         inputSchema: z.object({
             kind: z.enum(COMMENTARY_KINDS),
-            text: z.string().min(1).describe('10-20 plain words: what and why.'),
+            text: z.string().min(1).describe('10-20 plain words: what is happening and why.'),
+            ref: z.string().max(12).optional().describe('Track and step, e.g. "A.3" for track A, step 3.'),
             turnId: z.string().optional(),
         }),
         run: (args) => store().post(defaultWorkspace, args),

@@ -738,7 +738,7 @@
         ],
         "toolReferenceName": "commentary",
         "displayName": "Commentary",
-        "modelDescription": "Post one live-commentary line to the reviewer's Commentary tab: a decision, question, progress, or blocker in 10-20 plain words. Call it in the same parallel batch as the step's real tool call so it never costs an extra request. Do not repeat the text in chat.",
+        "modelDescription": "Live commentary for the reviewer's Commentary tab, like ball-by-ball cricket commentary: one line per step you take. Mostly `progress` (what you are doing now and why), `milestone` when a packet is accepted, plus `decision`, `question`, `blocked` when they happen. 10-20 plain words. `ref` is track.step, e.g. \"A.3\". Batch it with the step's real tool call so it never costs an extra request; do not repeat it in chat.",
         "canBeReferencedInPrompt": true,
         "icon": "$(comment-discussion)",
         "inputSchema": {
@@ -747,16 +747,22 @@
             "kind": {
               "type": "string",
               "enum": [
+                "progress",
+                "milestone",
                 "decision",
                 "question",
-                "progress",
                 "blocked"
               ]
             },
             "text": {
               "type": "string",
               "minLength": 1,
-              "description": "10-20 plain words: what and why."
+              "description": "10-20 plain words: what is happening and why."
+            },
+            "ref": {
+              "type": "string",
+              "maxLength": 12,
+              "description": "Track and step, e.g. \"A.3\" for track A, step 3."
             },
             "turnId": {
               "type": "string"
@@ -1188,7 +1194,7 @@
     "compile": "tsc -p ./",
     "watch": "node esbuild.js --watch",
     "lint": "eslint src --ext ts",
-    "test:workers": "node test-worker-selection.cjs && node test-worker-observability.cjs && node test-worker-mcp-tools.cjs && node test-worker-runtime-contract.cjs && node test-workers-control-plane.cjs && node test-commentary-backend.cjs && node test-shared-server-attach.cjs && node test-async-subagent-runner-e2e.cjs && node test-conversation-hooks.cjs && node test-eval-graders.cjs"
+    "test:workers": "node test-worker-selection.cjs && node test-worker-observability.cjs && node test-worker-mcp-tools.cjs && node test-worker-runtime-contract.cjs && node test-workers-control-plane.cjs && node test-commentary-backend.cjs && node test-commentary-ui.cjs && node test-subagent-timer.cjs && node test-shared-server-attach.cjs && node test-async-subagent-runner-e2e.cjs && node test-conversation-hooks.cjs && node test-eval-graders.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",

@@ -4958,6 +4958,49 @@ button#send-btn:disabled {
     animation: planPulse 2s ease-in-out infinite;
 }
 
+/* ===== Commentary tab (live orchestrator feed, newest first) ===== */
+.cm-shell { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.cm-goal { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; }
+.cm-goal-head { display: flex; align-items: center; gap: 6px; }
+.cm-goal-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-right: auto; opacity: 0.85; }
+.cm-goal-input {
+    resize: vertical; min-height: 34px; padding: 4px 6px; font-family: inherit; font-size: 12px;
+    background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px;
+}
+.cm-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cm-filters { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
+.cm-filter, .cm-btn {
+    font-size: 11px; padding: 1px 8px; border: none; border-radius: 10px; cursor: pointer;
+    background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
+}
+.cm-btn { border-radius: 3px; }
+.cm-filter.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.cm-feed { display: flex; flex-direction: column; overflow-y: auto; }
+.cm-summary { font-size: 11px; opacity: 0.7; padding: 0 2px 4px; border-bottom: 1px solid var(--vscode-panel-border); }
+.cm-empty { padding: 14px; text-align: center; opacity: 0.7; }
+.cm-item { display: flex; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--vscode-panel-border); animation: cmArrive 0.35s ease-out; }
+@keyframes cmArrive { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.cm-ball {
+    flex: 0 0 34px; height: 22px; line-height: 22px; text-align: center; border-radius: 11px;
+    font-size: 11px; font-weight: 700; font-family: var(--vscode-editor-font-family);
+    background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
+}
+.cm-body { flex: 1; min-width: 0; }
+.cm-meta { display: flex; gap: 8px; align-items: baseline; font-size: 10px; }
+.cm-kind { font-weight: 700; letter-spacing: 0.04em; opacity: 0.8; }
+.cm-time { opacity: 0.55; font-family: var(--vscode-editor-font-family); }
+.cm-text { font-size: 12px; line-height: 1.45; }
+.cm-kind-milestone .cm-ball { background: var(--vscode-charts-green); color: #fff; }
+.cm-kind-milestone .cm-kind { color: var(--vscode-charts-green); opacity: 1; }
+.cm-kind-milestone .cm-text { font-weight: 600; }
+.cm-kind-decision .cm-ball { background: var(--vscode-charts-blue); color: #fff; }
+.cm-kind-decision .cm-kind { color: var(--vscode-charts-blue); opacity: 1; }
+.cm-kind-question .cm-ball { background: var(--vscode-charts-yellow); color: #000; }
+.cm-kind-question .cm-kind { color: var(--vscode-charts-yellow); opacity: 1; }
+.cm-kind-blocked .cm-ball { background: var(--vscode-charts-red); color: #fff; }
+.cm-kind-blocked .cm-kind { color: var(--vscode-charts-red); opacity: 1; }
+
 /* ===== Workers tab (OpenCode control plane; no transcript or approval controls) ===== */
 .workers-shell { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .workers-header { display: flex; align-items: center; gap: 8px; min-height: 28px; }
