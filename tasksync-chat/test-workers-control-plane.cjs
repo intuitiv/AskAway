@@ -223,6 +223,7 @@ const packet = (overrides = {}) => ({
     const down = JSON.parse(JSON.stringify(await loadWorkerTrace(state, run1.workerId, async () => { throw new Error('ECONNREFUSED'); })));
     assert.match(ui.render(state, '', { [run1.workerId]: true }, false, {}, { [run1.workerId]: down }), /Tool input and output unavailable: OpenCode server did not answer \(ECONNREFUSED\)/);
     assert.match(webview, /type: 'requestWorkerTrace', workerId: id/, 'expanding a trace requests it');
+    assert.match(webview, /if \(workersPointerDown\) return;/, 'a re-render never lands between pointerdown and click, so rows collapse on click');
     assert.match(fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8'), /case 'requestWorkerTrace':/);
     console.log('EV-038 SharedTraceRows: PASS metricsBlock=traceRowsHtml workerRowsContainMetricsRows=true partitionsPerRun=3 expandKept=true toolText=fromOpenCodeSession ledgerText=0');
     assert.match(openA, /gpt-5\.6-terra · high/);

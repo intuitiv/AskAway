@@ -5365,6 +5365,7 @@
     var workersState = null;
     var workersFilterText = '';
     var workersExpanded = {};
+    var workersPointerDown = false;
     var workersTraces = {};
     var workersShowExpired = false;
     var workersClockSkew = 0;
@@ -5375,6 +5376,8 @@
         if (!list || !workersState) return;
         // Age ticks locally between polls; the skew keeps it on the extension host's clock.
         var ticking = Object.assign({}, workersState, { generatedAt: Date.now() - workersClockSkew });
+        // Re-rendering between pointerdown and click drops the click, so the row never toggles.
+        if (workersPointerDown) return;
         list.innerHTML = renderWorkersHtml(ticking, workersFilterText, workersExpanded, workersShowExpired, traceOpenIds(list), workersTraces);
         var toggle = document.getElementById('workers-show-expired');
         if (toggle) {
@@ -5418,6 +5421,10 @@
             });
         }
         var list = document.getElementById('workers-list');
+        if (list) {
+            list.addEventListener('pointerdown', function () { workersPointerDown = true; });
+            document.addEventListener('pointerup', function () { setTimeout(function () { workersPointerDown = false; }, 0); });
+        }
         if (list) list.addEventListener('click', function (e) {
             var btn = e.target.closest('[data-worker-action]');
             if (!btn) return;
