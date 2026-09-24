@@ -480,6 +480,7 @@ type FromWebviewMessage =
     | { type: 'requestWorkersState' }
     | { type: 'requestWorkerTrace'; workerId: string }
     | { type: 'cancelQueuedWorkerRun'; runId: string }
+    | { type: 'archiveWorkers' }
     | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
     | { type: 'requestCommentary' }
     | { type: 'setCommentaryGoal'; goal: string }
@@ -1437,6 +1438,20 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root || !this._workerTraceSource || typeof workerId !== 'string') { return; }
         this._broadcast({ type: 'workerTrace', data: await this._workerTraceSource(root, workerId) });
+    }
+
+    private _workerArchiveSource: ((workspacePath: string) => { archived: string[]; kept: Array<{ workerId: string; reason: string }> }) | undefined;
+
+    public setWorkerArchiveSource(source: (workspacePath: string) => { archived: string[]; kept: Array<{ workerId: string; reason: string }> }): void {
+        this._workerArchiveSource = source;
+    }
+
+    private _archiveWorkers(): void {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root || !this._workerArchiveSource) { return; }
+        const result = this._workerArchiveSource(root);
+        void vscode.window.showInformationMessage(`Archived ${result.archived.length} worker(s); kept ${result.kept.length} still running, queued, or reusable.`);
+        this._refreshWorkersState();
     }
 
     private _workerCancelSource: ((workspacePath: string, runId: string) => { status: string; runId: string; reason?: string }) | undefined;
@@ -4642,6 +4657,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'cancelQueuedWorkerRun':
                 this._cancelQueuedWorkerRun(message.runId);
                 break;
+            case 'archiveWorkers':
+                this._archiveWorkers();
+                break;
             case 'openWorkerSession':
                 this._openWorkerSession(message.sessionId, message.external === true);
                 break;
@@ -6811,6 +6829,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                         <span>Show completed</span>
                         <div class="toggle-switch specs-toggle-switch" id="workers-show-expired" role="switch" aria-checked="false" tabindex="0"></div>
                     </div>
+                    <button class="specs-refresh-btn" id="workers-archive-btn" title="Archive completed workers (not running, nothing queued, cache cold or retired). Their cost history is kept.">
+                        <span class="codicon codicon-archive"></span>
+                    </button>
                     <button class="specs-refresh-btn" id="workers-refresh-btn" title="Refresh workers">
                         <span class="codicon codicon-refresh"></span>
                     </button>

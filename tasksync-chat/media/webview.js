@@ -5427,6 +5427,8 @@
         if (filter) filter.addEventListener('input', function () { workersFilterText = filter.value; paintWorkers(); });
         var refresh = document.getElementById('workers-refresh-btn');
         if (refresh) refresh.addEventListener('click', function () { vscode.postMessage({ type: 'requestWorkersState' }); });
+        var archive = document.getElementById('workers-archive-btn');
+        if (archive) archive.addEventListener('click', function () { vscode.postMessage({ type: 'archiveWorkers' }); });
         var showExpired = document.getElementById('workers-show-expired');
         if (showExpired) {
             var toggleExpired = function () { workersShowExpired = !workersShowExpired; paintWorkers(); };

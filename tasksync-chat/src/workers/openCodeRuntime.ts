@@ -9,7 +9,7 @@ export const MAX_WAIT_SECONDS = 240;
 const MAX_EVIDENCE_LINES = 25;
 
 export type RunState = 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-export type LifecycleType = 'start' | 'message_update' | 'before_tool' | 'after_tool' | 'checkpoint' | 'approval' | 'stop' | 'error';
+export type LifecycleType = 'start' | 'message_update' | 'before_tool' | 'after_tool' | 'checkpoint' | 'approval' | 'stop' | 'error' | 'archive';
 
 export interface RunUsage { input: number; output: number; reasoning: number; cacheRead: number; cacheWrite: number; cost: number; steps: number }
 
@@ -307,11 +307,42 @@ export class OpenCodeWorkerRuntime {
         return result;
     }
 
+    /**
+     * Archive-only prune. Takes only workers that are not running, have an empty queue, and can no longer be reused
+     * (retired, orphaned, or cache cold). Their ledger facts stay (cost history is never deleted); live views drop them.
+     */
+    archive(workspacePath: string): { archived: string[]; kept: Array<{ workerId: string; reason: string }> } {
+        const workspace = canonical(workspacePath);
+        const byWorker = new Map<string, RunRecord[]>();
+        for (const run of this.runs.values()) {
+            if (run.workspace !== workspace) { continue; }
+            byWorker.set(run.workerId, [...(byWorker.get(run.workerId) ?? []), run]);
+        }
+        const result = { archived: [] as string[], kept: [] as Array<{ workerId: string; reason: string }> };
+        for (const [workerId, runs] of byWorker) {
+            const routed = this.router.worker(workerId);
+            const busy = runs.some((run) => !this.terminal(run.state)) || !!routed?.active || (routed?.queue.length ?? 0) > 0;
+            const expires = routed ? this.router.cacheExpiresAt(routed) : 0;
+            const reusable = !!routed && routed.state !== 'RETIRED' && routed.state !== 'ORPHANED' && expires > 0 && this.now() < expires;
+            if (busy || reusable) { result.kept.push({ workerId, reason: busy ? 'running or queued work' : 'still reusable (cache warm)' }); continue; }
+            const latest = runs.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a));
+            this.record(latest, { type: 'archive' });
+            for (const run of runs) { this.runs.delete(run.runId); }
+            this.router.forget(workerId);
+            this.sessionsByWorker.delete(workerId);
+            this.adopted.delete(workerId);
+            result.archived.push(workerId);
+        }
+        return result;
+    }
+
     private restoreRuns(workspace: string): void {
         const byRun = new Map<string, LifecycleRecord[]>();
-        for (const record of this.readLedger(workspace)) {
+        const ledger = this.readLedger(workspace);
+        const archived = new Set(ledger.filter((record) => record.type === 'archive').map((record) => record.workerId));
+        for (const record of ledger) {
             // IDs without a host segment predate host-unique IDs and are ambiguous across reloads.
-            if (/^run-\d+$/.test(record.runId) || this.runs.has(record.runId)) { continue; }
+            if (/^run-\d+$/.test(record.runId) || this.runs.has(record.runId) || archived.has(record.workerId)) { continue; }
             const records = byRun.get(record.runId) ?? [];
             records.push(record);
             byRun.set(record.runId, records);

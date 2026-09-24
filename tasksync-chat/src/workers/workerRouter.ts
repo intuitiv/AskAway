@@ -122,6 +122,11 @@ export class WorkerRouter {
         if (!worker) { return { status: 'INELIGIBLE', workerId, reason: 'unknown worker' }; }
         if (worker.state === 'RETIRED') { return { status: 'RETIRED', workerId, reason: worker.retiredReason || 'retired' }; }
         const reason = this.ineligibility(worker);
+        // A cold cache or an oversized context never recovers: retire so no later caller reuses it either.
+        if (reason && worker.state !== 'ORPHANED') {
+            this.retire(workerId, reason);
+            return { status: 'RETIRED', workerId, reason: `${reason}; start a fresh worker (worker_start)` };
+        }
         if (reason) { return { status: 'INELIGIBLE', workerId, reason }; }
         const estimatedWaitSeconds = this.estimatedWaitSeconds(worker);
         const entry: QueueEntry = { runId: this.nextId('run'), packetId, estimatedSeconds, enqueuedAt: this.now() };
@@ -183,6 +188,11 @@ export class WorkerRouter {
 
     worker(workerId: string): RoutedWorker | undefined {
         return this.workersById.get(workerId);
+    }
+
+    /** Drops an archived worker from routing; it can never be selected or submitted to again. */
+    forget(workerId: string): void {
+        this.workersById.delete(workerId);
     }
 
     /** When an idle worker's prompt cache goes cold and it stops being reusable; 0 while running or when never reusable. */

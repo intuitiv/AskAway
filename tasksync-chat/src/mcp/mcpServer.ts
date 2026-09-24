@@ -160,6 +160,7 @@ export class McpServerManager {
         provider.setWorkerTraceSource((workspacePath, workerId) =>
             loadWorkerTrace(projectWorkersState(this.getWorkerRuntime(), workspacePath), workerId, fetchSessionMessages));
         provider.setWorkerCancelSource((workspacePath, runId) => cancelQueuedRun(this.getWorkerRuntime(), workspacePath, runId));
+        provider.setWorkerArchiveSource((workspacePath) => this.getWorkerRuntime().archive(workspacePath));
     }
 
     /** One runtime per extension host: MCP servers are created per request, but worker state must outlive them. */

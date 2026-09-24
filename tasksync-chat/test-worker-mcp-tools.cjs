@@ -82,6 +82,58 @@ const call = async (name, args) => {
     assert.deepEqual(Object.keys(facts[0]).sort().filter((k) => facts[0][k] !== undefined), ['exitCode', 'ts', 'type']);
     assert.equal((await call('worker_resume', { runId: started.runId })).status, 'FRESH_SUBMISSION_REQUIRED');
 
+    // T019 retirement boundary, as the orchestrator sees it: a cold cache or an oversized context retires the worker for good.
+    let clock = 1_000_000;
+    const agedChildren = [];
+    const aged = new OpenCodeWorkerRuntime([profile], { ledgerDir, now: () => clock, spawner: (args) => { const c = spawner(args); agedChildren.push(c); return c; } });
+    const agedTools = new Map();
+    registerWorkerTools((name, config, handler) => agedTools.set(name, { config, handler }), () => aged, workspace);
+    const agedCall = async (name, args) => JSON.parse((await agedTools.get(name).handler(agedTools.get(name).config.inputSchema.parse(args))).content[0].text);
+    const finishRun = async (child, input) => {
+        child.stdout.write(`${JSON.stringify({ type: 'step_finish', sessionID: 'ses_R', part: { tokens: { input, output: 5 }, cost: 0.001 } })}\n`);
+        child.stdout.write(`${JSON.stringify({ type: 'text', sessionID: 'ses_R', part: { type: 'text', text: 'Result: PASS\nEvidence: ok' } })}\n`);
+        await new Promise((resolve) => setImmediate(resolve));
+        child.emit('exit', 0, null);
+    };
+    const cold = await agedCall('worker_start', packet);
+    await finishRun(agedChildren[0], 100);
+    clock += 299_000;
+    assert.equal((await agedCall('worker_submit', { workerId: cold.workerId, ...packet })).queuePosition, 0, 'still warm: reused');
+    await finishRun(agedChildren[1], 100);
+    clock += 301_000;
+    const refused = await agedCall('worker_submit', { workerId: cold.workerId, ...packet });
+    assert.deepEqual([refused.status, refused.reason], ['RETIRED', 'cache expired; start a fresh worker (worker_start)']);
+    assert.deepEqual((await agedCall('worker_submit', { workerId: cold.workerId, ...packet })).status, 'RETIRED', 'stays retired');
+    assert.ok(!(await agedCall('worker_list', {})).some((w) => w.workerId === cold.workerId), 'a retired worker is not offered for reuse');
+    assert.equal(agedChildren.length, 2, 'no run was started on the retired worker');
+
+    const big = await agedCall('worker_start', packet);
+    assert.notEqual(big.workerId, cold.workerId, 'a fresh start gets a new worker');
+    await finishRun(agedChildren[2], 300_001);
+    const tooBig = await agedCall('worker_submit', { workerId: big.workerId, ...packet });
+    assert.equal(tooBig.status, 'RETIRED');
+    assert.match(tooBig.reason, /context 300006/);
+    const { projectWorkersState } = require(path.join(buildDir, 'workersState.js'));
+    const shown = projectWorkersState(aged, workspace, () => clock).workers.find((w) => w.workerId === cold.workerId);
+    assert.deepEqual([shown.state, shown.blocker, shown.expired], ['RETIRED', 'retired: cache expired', true], 'the tab shows why, under Show completed');
+    console.log('EV-019 RetirementBoundary: PASS coldCache=RETIRED context300k=RETIRED reuseRefused=true freshStart=newWorker');
+
+    // T020 archive-only prune: only inactive, empty-queue, non-reusable workers go; active work is never touched.
+    const busy = await agedCall('worker_start', { ...packet, dispatchTurnId: 'turn-busy' });
+    const busyQueued = await agedCall('worker_submit', { workerId: busy.workerId, ...packet });
+    assert.equal(busyQueued.queuePosition, 1);
+    const pruned = aged.archive(workspace);
+    assert.deepEqual(pruned.archived.sort(), [big.workerId, cold.workerId].sort());
+    assert.deepEqual(pruned.kept, [{ workerId: busy.workerId, reason: 'running or queued work' }]);
+    assert.deepEqual([(await agedCall('worker_status', { runId: busy.runId })).state, (await agedCall('worker_status', { runId: busyQueued.runId })).state], ['STARTING', 'STARTING'], 'nothing cancelled');
+    assert.deepEqual(projectWorkersState(aged, workspace, () => clock).workers.map((w) => w.workerId), [busy.workerId], 'archived workers leave the tab');
+    assert.equal((await agedCall('worker_submit', { workerId: cold.workerId, ...packet })).status, 'INELIGIBLE', 'an archived worker cannot be reused');
+    const reloaded = new OpenCodeWorkerRuntime([profile], { ledgerDir, now: () => clock, spawner });
+    reloaded.rehydrate(workspace, true);
+    assert.ok(!reloaded.list(workspace).some((run) => [cold.workerId, big.workerId].includes(run.workerId)), 'a reload does not bring them back');
+    assert.ok(reloaded.usageByTurn(workspace)['turn-9'].cost >= 0.003, 'their measured cost stays in the ledger');
+    console.log(`EV-020 InactiveOnlyArchivePrune: PASS archived=${pruned.archived.length} keptActive=1 cancelled=0 reloadRestores=0 costKept=true`);
+
     for (const dir of [buildDir, ledgerDir, workspace]) { fs.rmSync(dir, { recursive: true, force: true }); }
     console.log('EV-012 WorkerMcpSurface: PASS tools=8 askRespond=0 waitSchemaMax=240 boundedReplies=true');
 })().catch((error) => { console.error(error); process.exit(1); });

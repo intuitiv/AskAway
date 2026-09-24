@@ -17,6 +17,6 @@ Let one strong-model orchestrator run for a long time at low cost by delegating 
 - **More worker modes.** `perf` (performance analysis with the YourKit MCP tools) and `quality` (Sonar violations via the SonarQube MCP).
 
 ## Current position
-- Done: P0 contract (CY-001), shared server and live two-session proof (CY-002), profiles/routing/serial queues (CY-003), real OpenCode runtime with lifecycle ledger, dispatch-turn attribution, and the eight `worker_*` MCP tools (CY-004), piecewise live lifecycle tests (T029).
-- Next: the Workers tab (CY-005), then recovery/retirement/prune (CY-006), then orchestrator policy and evals completion (CY-007).
+- Done: P0 contract (CY-001), shared server and live two-session proof (CY-002), profiles/routing/serial queues (CY-003), real OpenCode runtime with lifecycle ledger, dispatch-turn attribution, and the eight `worker_*` MCP tools (CY-004), piecewise live lifecycle tests (T029), the Workers and Commentary tabs (CY-005), reload recovery, retirement, archive-only prune (CY-006 except T021), VS Code tool bridge for workers (T039).
+- Next: T021 end-to-end flow (closes CY-006), then orchestrator policy, verification by behaviour (T040), and evals (CY-007).
 - Deferred: Herdr, as a possible second adapter later. Side channel belongs to Spec 003.

@@ -86,7 +86,7 @@
 **CAC CY-005**: `CAC-CY-005-OperatorsCanObserveAndOpenSessions` passes; unlocks CY-006.
 
 - [x] T014 [CY-005] [ControlPlane] `tasksync-chat/src/webview/webviewProvider.ts` Supply Workers view state for server health, worker state, last update, blockers/retirement, session-open target, effective adapter/model/thinking, and per-worker/per-run trace metrics. Demo: `EV-014 WorkersStateProjection`. AC: `AC-T014-WorkersStateProjection`.
-- [ ] T015 [CY-005] [UI] `tasksync-chat/media/webview.js` Render worker filter, server/worker status, per-worker usage, expandable trace elapsed/cost/input/output values, pending-approval notification, and an action that opens the exact OpenCode session. Demo: `EV-015 WorkersViewInteraction`. AC: `AC-T015-WorkersViewInteraction`.
+- [x] T015 [CY-005] [UI] (done 2026-09-24: EV-015, EV-015b queue cancel-before-start + eval scoreboard, EV-038 shared trace; swimlanes deferred until packets carry a track) `tasksync-chat/media/webview.js` Render worker filter, server/worker status, per-worker usage, expandable trace elapsed/cost/input/output values, pending-approval notification, and an action that opens the exact OpenCode session. Demo: `EV-015 WorkersViewInteraction`. AC: `AC-T015-WorkersViewInteraction`.
 	- Progress 2026-09-24: base tab shipped (filter, status, usage, trace, approval notice, open session; EV-015 PASS). The bar below is still open.
 	- Lists every worker in the current workspace by default, each with a navigate action to its exact OpenCode session on the shared endpoint.
 	- Shows each worker's serial queue with position, and allows queueing a new task and cancelling a not-yet-started queued entry.
@@ -118,8 +118,8 @@
 
 - [x] T018 [CY-006] [Recovery] `tasksync-chat/src/extension.ts` Reconnect registry records after reload only when the shared server remains live; otherwise mark workers orphaned with an explicit reason. Demo: `EV-018 ReloadRecovery`. AC: `AC-T018-ReloadRecovery`.
 	- Reuse: resume through OpenCode's own `opencode --session <id>`; do not implement a bespoke session-restore mechanism.
-- [ ] T019 [CY-006] [Lifecycle] `tasksync-opencode/src/sessionManager.ts` Retire workers on expired cache or context tokens above 300000, reject reuse, and require fresh submission. Demo: `EV-019 RetirementBoundary`. AC: `AC-T019-RetirementBoundary`.
-- [ ] T020 [CY-006] [Lifecycle] `tasksync-chat/src/mcp/mcpServer.ts` Implement archive-only prune that accepts only inactive workers with empty serial queues and never cancels/deletes active work. Demo: `EV-020 InactiveOnlyArchivePrune`. AC: `AC-T020-InactiveOnlyArchivePrune`.
+- [x] T019 [CY-006] [Lifecycle] (done 2026-09-24 in `workerRouter.ts`: EV-019) `tasksync-opencode/src/sessionManager.ts` Retire workers on expired cache or context tokens above 300000, reject reuse, and require fresh submission. Demo: `EV-019 RetirementBoundary`. AC: `AC-T019-RetirementBoundary`.
+- [x] T020 [CY-006] [Lifecycle] (done 2026-09-24: `runtime.archive`, Workers-tab archive button, not an MCP tool so the surface stays eight; EV-020) `tasksync-chat/src/mcp/mcpServer.ts` Implement archive-only prune that accepts only inactive workers with empty serial queues and never cancels/deletes active work. Demo: `EV-020 InactiveOnlyArchivePrune`. AC: `AC-T020-InactiveOnlyArchivePrune`.
 - [ ] T021 [CY-006] [E2E] `tasksync-chat/test-async-subagent-runner-e2e.cjs` Execute the exactly-eight-operation bounded start/submit workflow, parent-progress observation, live session opening, per-mode selection/refusal and cache-boundary checks, lifecycle/ledger/trace verification, reload recovery, retirement, and protected prune behavior without worker ask/respond. Demo: `EV-021 EndToEndAsyncWorkerFlow`. AC: `AC-T021-EndToEndAsyncWorkerFlow`.
 
 ## Dependencies and Parallel Work
