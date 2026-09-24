@@ -74,8 +74,9 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
             + 'next-request input size, and seconds until its cache goes cold. Prefer worker_submit to a warm worker whose knowledge fits the packet.',
         inputSchema: z.object({ workspacePath: z.string().optional() }),
     }, async (args) => {
-        const now = Date.now();
-        return projectWorkersState(await runtime(), args.workspacePath || defaultWorkspace, () => now).workers
+        const live = await runtime();
+        const now = live.now();
+        return projectWorkersState(live, args.workspacePath || defaultWorkspace, () => now).workers
             .filter((worker) => !worker.expired)
             .map((worker) => ({
                 workerId: worker.workerId, profile: worker.profile, model: worker.model, thinking: worker.thinking, state: worker.state,

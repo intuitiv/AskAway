@@ -27,6 +27,9 @@ dist/**
 # production
 /build
 
+# test transpile output (removed by each test; left behind only when a test fails)
+/.*-build/
+
 # misc
 .DS_Store
 *.pem

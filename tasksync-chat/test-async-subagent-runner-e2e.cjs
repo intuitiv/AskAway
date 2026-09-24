@@ -101,5 +101,138 @@ const finish = (id, input, cost) => ({ type: 'step_finish', sessionID: id, part:
     assert.deepEqual([outcome.status, outcome.reason], ['FAILED', 'worker ended without a report (no Result/Evidence text)']);
     assert.equal(silentHost.resume(silent.runId).state, 'STARTING', 'the same session can be asked to finish its report');
     console.log('EV-037 SilentRunIsNotSuccess: PASS exit0NoReport=FAILED reason=explicit resumable=true');
+
+    await endToEndFlow();
     process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });
+
+// T021 (CY-006): the orchestrator's whole flow through the eight worker tools, with OpenCode faked at the process boundary.
+async function endToEndFlow() {
+    const toolsDir = path.join(__dirname, '.e2e-flow-build');
+    fs.rmSync(toolsDir, { recursive: true, force: true });
+    fs.mkdirSync(toolsDir);
+    for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) {
+        fs.writeFileSync(path.join(toolsDir, `${name}.js`), ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
+            { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
+    }
+    const W = (name) => require(path.join(toolsDir, `${name}.js`));
+    const { registerWorkerTools, WORKER_TOOL_NAMES } = W('workerTools');
+    const { projectWorkersState: project, sessionOpenCommand } = W('workersState');
+    const Runtime = W('openCodeRuntime').OpenCodeWorkerRuntime;
+    const parse = W('workerProfiles').parseWorkerProfile;
+    const code = parse('---\nname: code\ndescription: "c"\ntier: mid\nmodel: github-copilot/gpt-5.6-luna\nthinking: low\nmodels: [github-copilot/gpt-5.6-luna, github-copilot/gpt-5.6-terra]\nthinkingOptions: [low, high]\n---\nBody.\n');
+    const verify = parse('---\nname: verify\ndescription: "v"\ntier: light\nmodel: github-copilot/gpt-5.6-luna\nthinking: low\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [low]\nedit: deny\n---\nBody.\n');
+
+    let clock = 5_000_000;
+    const now = () => clock;
+    const spawned = [];
+    const fakeOpenCode = (args) => { const c = spawner(args); spawned.push(c); return c; };
+    const ledger = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-flow-ledger-'));
+    const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-flow-ws-')));
+    const host = (runtime) => {
+        const tools = new Map();
+        registerWorkerTools((name, config, handler) => tools.set(name, { config, handler }), () => runtime, ws);
+        return { tools, call: async (name, args) => JSON.parse((await tools.get(name).handler(tools.get(name).config.inputSchema.parse(args))).content[0].text) };
+    };
+    const runtime = new Runtime([code, verify], { ledgerDir: ledger, spawner: fakeOpenCode, now, attachUrl: url });
+    const { tools, call } = host(runtime);
+    const pkt = (profileName, objective, extra = {}) => ({ profile: profileName, dispatchTurnId: 'turn-flow', baseRevision: 'HEAD', objective,
+        allowedFiles: ['slug.js'], acceptance: 'slug("A B")==="a-b"', expected: 'SLUG: PASS', command: 'node slug.test.js', ...extra });
+    const step = async (child, sid, { input = 1000, cached = 0, cost = 0.001, tool, text } = {}) => {
+        child.emitEvent({ type: 'step_start', sessionID: sid, part: {} });
+        if (tool) { child.emitEvent({ type: 'tool_use', sessionID: sid, part: { id: `prt_${tool}`, callID: `call_${tool}`, tool, state: { status: 'completed', input: { file: 'slug.js' }, output: 'ok', time: { start: 1, end: 41 } } } }); }
+        child.emitEvent({ type: 'step_finish', sessionID: sid, part: { id: `prt_step${spawned.length}`, tokens: { input, output: 20, reasoning: 0, cache: { read: cached, write: 0 } }, cost } });
+        if (text) { child.emitEvent({ type: 'text', sessionID: sid, part: { type: 'text', text } }); }
+        await tick();
+    };
+    const exit = async (child, codeValue = 0) => { child.emit('exit', codeValue, null); await tick(); };
+
+    // 1. Exactly the eight operations; no worker ask/respond (Spec 003).
+    assert.deepEqual([...tools.keys()], [...WORKER_TOOL_NAMES]);
+    assert.equal(tools.size, 8);
+    assert.ok(![...tools.keys()].some((n) => /ask|respond/.test(n)));
+
+    // 2. Per-mode selection: only the mode's declared models and thinking, refused explicitly otherwise.
+    const badModel = await call('worker_start', pkt('code', 'x', { model: 'github-copilot/gpt-6-sol' }));
+    assert.equal(badModel.status, 'SELECTION_UNAVAILABLE');
+    assert.ok(badModel.reason);
+    assert.equal((await call('worker_start', pkt('verify', 'x', { thinking: 'high' }))).status, 'SELECTION_UNAVAILABLE', 'verify has no high thinking');
+    assert.equal(spawned.length, 0, 'refusals never spawn OpenCode');
+
+    // 3. Parallel tracks start immediately and return handles; the parent keeps working.
+    const a = await call('worker_start', pkt('code', 'implement slug', { track: 'A' }));
+    const b = await call('worker_start', pkt('verify', 'review slug tests', { track: 'B' }));
+    assert.deepEqual([a.state, b.state], ['STARTING', 'STARTING']);
+    assert.notEqual(a.workerId, b.workerId);
+    assert.deepEqual(spawned[0].args.slice(spawned[0].args.indexOf('--agent'), spawned[0].args.indexOf('--agent') + 6), ['--agent', 'aa-code', '--model', 'github-copilot/gpt-5.6-luna', '--variant', 'low']);
+    assert.ok(spawned.every((c) => c.args.includes('--attach') && c.args[c.args.indexOf('--attach') + 1] === url), 'every worker attaches to the one shared server');
+
+    // 4. Parent progress without blocking: status and a bounded wait.
+    await step(spawned[0], 'ses_A', { input: 2000, tool: 'edit' });
+    const progress = await call('worker_status', { runId: a.runId });
+    assert.deepEqual([progress.state, progress.usage.steps, progress.usage.cost], ['RUNNING', 1, 0.001]);
+    assert.equal((await call('worker_wait', { runId: a.runId, timeoutSeconds: 0 })).status, 'STILL_RUNNING');
+
+    // 5. Serial queue on one worker; cancel before start; the queued run reuses the same session (cache boundary kept).
+    const a2 = await call('worker_submit', { workerId: a.workerId, ...pkt('code', 'add unicode case', { track: 'A' }) });
+    const a3 = await call('worker_submit', { workerId: a.workerId, ...pkt('code', 'dropped', { track: 'A' }) });
+    assert.deepEqual([a2.queuePosition, a3.queuePosition], [1, 2]);
+    assert.equal((await call('worker_cancel', { runId: a3.runId })).status, 'CANCELLATION_REQUESTED');
+    await step(spawned[0], 'ses_A', { input: 100, cached: 2000, text: 'Result: PASS\nEvidence: SLUG: PASS\nKnowledge: knows slug.js and its test' });
+    await exit(spawned[0]);
+    assert.equal((await call('worker_wait', { runId: a.runId, timeoutSeconds: 1 })).status, 'COMPLETED');
+    const a2Child = spawned[2];
+    assert.equal(a2Child.args[a2Child.args.indexOf('--session') + 1], 'ses_A', 'the queued packet continues the warm session');
+    assert.equal((await call('worker_status', { runId: a3.runId })).state, 'CANCELLED');
+
+    // 6. Cache boundary: a different thinking variant is a different worker, never the warm one.
+    const hi = await call('worker_start', pkt('code', 'hard case', { thinking: 'high', track: 'A' }));
+    assert.notEqual(hi.workerId, a.workerId);
+    assert.ok(!spawned[spawned.length - 1].args.includes('--session'), 'no session crosses a model/thinking boundary');
+
+    // 7. Verify track fails; resume continues its own session.
+    await step(spawned[1], 'ses_B', { input: 800 });
+    await exit(spawned[1], 3);
+    assert.deepEqual([(await call('worker_status', { runId: b.runId })).state], ['FAILED']);
+    const resumed = await call('worker_resume', { runId: b.runId });
+    assert.equal(resumed.state, 'STARTING');
+    assert.equal(spawned[spawned.length - 1].args[spawned[spawned.length - 1].args.indexOf('--session') + 1], 'ses_B');
+    await step(spawned[spawned.length - 1], 'ses_B', { input: 50, cached: 800, text: 'Result: PASS\nEvidence: 4 tests' });
+    await exit(spawned[spawned.length - 1]);
+
+    // 8. Ledger, trace, and the operator's view.
+    const facts = await call('worker_logs', { runId: a.runId, limit: 50 });
+    assert.deepEqual([...new Set(facts.map((f) => f.type))].sort(), ['after_tool', 'checkpoint', 'message_update', 'start', 'stop']);
+    assert.doesNotMatch(fs.readFileSync(path.join(ledger, fs.readdirSync(ledger)[0]), 'utf8'), /SLUG: PASS|implement slug|slug\.js/, 'the ledger holds facts, not text');
+    const view = project(runtime, ws, now);
+    const workerA = view.workers.find((w) => w.workerId === a.workerId);
+    const openCmd = `opencode attach ${url} --session ses_A`;
+    assert.deepEqual([workerA.track, workerA.knowledge, workerA.sessionOpenAction], ['A', 'knows slug.js and its test', openCmd], 'the viewer attaches to the same shared server');
+    assert.equal(sessionOpenCommand(view, 'ses_A'), openCmd, 'the tab opens exactly this session');
+    assert.deepEqual(workerA.runs[0].events.map((e) => [e.kind, e.tool || e.model]), [['request', 'gpt-5.6-luna'], ['tool', 'edit'], ['request', 'gpt-5.6-luna']]);
+    const turnCost = runtime.usageByTurn(ws)['turn-flow'];
+    assert.deepEqual([+turnCost.cost.toFixed(6), turnCost.steps], [0.004, 4], 'every step of every run is billed to the dispatching turn');
+
+    // 9. Reload: a new host reconnects the worker from the ledger and can keep using it.
+    const reloaded = new Runtime([code, verify], { ledgerDir: ledger, spawner: fakeOpenCode, now, attachUrl: url });
+    const after = reloaded.rehydrate(ws, true);
+    assert.ok(after.reconnected.includes(a.workerId));
+    const reHost = host(reloaded);
+    assert.ok((await reHost.call('worker_list', {})).some((w) => w.workerId === a.workerId), 'the warm worker is offered for reuse after reload');
+
+    // 10. Retirement: once its cache is cold the worker retires on the next submit and a fresh start is required.
+    clock += 301_000;
+    const cold = await reHost.call('worker_submit', { workerId: a.workerId, ...pkt('code', 'too late') });
+    assert.deepEqual([cold.status, cold.reason], ['RETIRED', 'cache expired; start a fresh worker (worker_start)']);
+
+    // 11. Protected prune: running work is kept, finished non-reusable workers are archived, costs stay.
+    const running = await reHost.call('worker_start', pkt('verify', 'still going', { track: 'B' }));
+    const pruned = reloaded.archive(ws);
+    assert.ok(pruned.archived.includes(a.workerId));
+    assert.ok(pruned.kept.some((k) => k.workerId === running.workerId));
+    assert.equal((await reHost.call('worker_status', { runId: running.runId })).state, 'STARTING', 'prune never cancels');
+    assert.ok(reloaded.usageByTurn(ws)['turn-flow'].cost >= turnCost.cost, 'archived cost history is kept');
+
+    fs.rmSync(toolsDir, { recursive: true, force: true });
+    console.log('EV-021 EndToEndAsyncWorkerFlow: PASS ops=8 askRespond=0 selectionRefused=2 parallelTracks=2 sharedServer=true progress=nonBlocking queue+cancel=true sessionReuse=true cacheBoundary=true resume=sameSession ledgerText=0 trace=metricsEvents reload=reconnect retire=coldCache prune=protected');
+}

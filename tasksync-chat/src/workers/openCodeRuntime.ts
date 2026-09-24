@@ -162,7 +162,7 @@ export class OpenCodeWorkerRuntime {
     private readonly rehydrated = new Set<string>();
     private readonly adopted = new Map<string, { workspace: string; profile: string; model: string; thinking: string; sessionId: string; contextTokens: number; lastTs: number }>();
     private readonly ledgerDir: string;
-    private readonly now: () => number;
+    readonly now: () => number;
     private readonly spawner: Spawner;
     private attachUrl?: string;
 
