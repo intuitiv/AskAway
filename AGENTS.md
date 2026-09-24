@@ -1,5 +1,15 @@
 # AskAway and OpenCode Compatibility
 
+## Ownership (reviewer, 2026-09-24)
+
+The agent owns this entire repo: code organisation, maintenance, tests, skills, prompts, and docs.
+The reviewer uses what is built here every day to make their own edits, so a regression here breaks
+their work elsewhere. Be careful:
+- Keep the tree organised and consistent; remove dead code you introduce; no stray scratch files.
+- Every feature ships a test from the caller's view; `npm run test:workers` (in `tasksync-chat/`) must stay green.
+- UI pieces are testable as pure render blocks and reviewable in Storybook (`tasksync-chat/storybook/`).
+- Deploy only after tests pass; commit focused checkpoints.
+
 ## Worker Runtime Boundary
 
 AskAway's main orchestrator runs in native VS Code Copilot Chat. Async workers may run as named

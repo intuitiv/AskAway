@@ -4979,8 +4979,12 @@ button#send-btn:disabled {
 .cm-feed { display: flex; flex-direction: column; overflow-y: auto; }
 .cm-summary { font-size: 11px; opacity: 0.7; padding: 0 2px 4px; border-bottom: 1px solid var(--vscode-panel-border); }
 .cm-empty { padding: 14px; text-align: center; opacity: 0.7; }
-.cm-item { display: flex; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--vscode-panel-border); animation: cmArrive 0.35s ease-out; }
+.cm-item { display: flex; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--vscode-panel-border); }
 @keyframes cmArrive { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.cm-item.cm-new { animation: cmArrive 0.35s ease-out, cmGlow 2.4s ease-out; }
+@keyframes cmGlow { from { background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06)); } to { background: transparent; } }
+.cm-typing::after { content: '\258D'; margin-left: 1px; opacity: 0.7; animation: cmBlink 0.9s steps(2) infinite; }
+@keyframes cmBlink { 50% { opacity: 0; } }
 .cm-ball {
     flex: 0 0 34px; height: 22px; line-height: 22px; text-align: center; border-radius: 11px;
     font-size: 11px; font-weight: 700; font-family: var(--vscode-editor-font-family);

@@ -13,6 +13,7 @@ import { PlanEditorProvider } from '../plan/planEditorProvider';
 import { getUserMemoryDir, summarizeAndStoreMemory, listMemories } from '../memory/memoryStore';
 import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
 import { sessionOpenCommand, WorkersState } from '../workers/workersState';
+import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
 import { sharedCommentaryStore } from '../workers/workerHost';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
@@ -476,7 +477,7 @@ type FromWebviewMessage =
     | { type: 'changeWorkerModel'; role: 'command' | 'subagent' }
     | { type: 'requestModels' }
     | { type: 'requestWorkersState' }
-    | { type: 'openWorkerSession'; sessionId: string }
+    | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
     | { type: 'requestCommentary' }
     | { type: 'setCommentaryGoal'; goal: string }
     | { type: 'clearCommentary'; what: 'feed' | 'goal' | 'all' }
@@ -1441,11 +1442,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /** Opens the exact OpenCode session in a terminal; only sessions of this workspace's workers are accepted. */
-    private _openWorkerSession(sessionId: string): void {
+    private _openWorkerSession(sessionId: string, external: boolean): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root || !this._workersStateSource) { return; }
         const command = sessionOpenCommand(this._workersStateSource(root), sessionId);
         if (!command) { return; }
+        if (external) { openInTerminalApp(command, root); return; }
         const terminal = vscode.window.createTerminal({ name: `OpenCode ${sessionId}`, cwd: root });
         terminal.show();
         terminal.sendText(command);
@@ -4606,7 +4608,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 this._refreshWorkersState();
                 break;
             case 'openWorkerSession':
-                this._openWorkerSession(message.sessionId);
+                this._openWorkerSession(message.sessionId, message.external === true);
                 break;
             case 'requestCommentary':
                 this._handleCommentary('request');

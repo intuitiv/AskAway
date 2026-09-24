@@ -163,7 +163,8 @@ const packet = (overrides = {}) => ({
     assert.match(openA, /gpt-5\.6-terra · high/);
     assert.match(openA, /\$0\.0025 · in 1\.5K · out 360 · cached 1\.6K · ctx 1\.3K/);
     const actions = [...openA.matchAll(/data-worker-action="([^"]+)"/g)].map((m) => m[1]);
-    assert.deepEqual([...new Set(actions)].sort(), ['open', 'trace'], 'no approval or conversation controls');
+    assert.deepEqual([...new Set(actions)].sort(), ['open', 'open-external', 'trace'], 'no approval or conversation controls');
+    assert.equal((openA.match(/data-worker-action="open-external" data-session-id="ses_A"/g) || []).length, 1, 'terminal-app open targets the same session');
     assert.doesNotMatch(openA, /SECRET-OBJECTIVE|TRANSCRIPT-TEXT|<textarea/);
     const hostile = { ...state, workers: [{ ...state.workers[0], profile: '<img src=x onerror=alert(1)>' }] };
     assert.doesNotMatch(ui.render(hostile, '', {}), /<img/, 'worker fields are escaped');
@@ -179,6 +180,17 @@ const packet = (overrides = {}) => ({
     assert.match(provider, /data-tab="workers"/);
     assert.match(provider, /id="panel-workers"/);
     assert.match(provider, /sessionOpenCommand\(this\._workersStateSource\(root\), sessionId\)/, 'open-session goes through the allowlist');
+    assert.match(provider, /if \(external\) \{ openInTerminalApp\(command, root\); return; \}/, 'terminal-app open uses the same allowlisted command');
+    const terminalJs = ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', 'workers', 'terminalApp.ts'), 'utf8'),
+        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+    fs.writeFileSync(path.join(buildDir, 'terminalApp.js'), terminalJs);
+    const { terminalAppLaunch } = require(path.join(buildDir, 'terminalApp.js'));
+    const mac = terminalAppLaunch('opencode --session ses_A', "/work/it's here", 'darwin', '/tmp/x');
+    assert.equal(mac.file, 'open');
+    assert.equal(mac.args[0], mac.script.path);
+    assert.match(mac.script.path, /^\/tmp\/x\/opencode-session-\d+\.command$/);
+    assert.equal(mac.script.content, "#!/bin/zsh -l\ncd '/work/it'\\''s here'\nopencode --session ses_A\n", 'cwd is shell-quoted');
+    assert.deepEqual(terminalAppLaunch('opencode --session ses_A', '/w', 'linux').args, ['-e', 'sh', '-c', "cd '/w' && opencode --session ses_A; exec sh"]);
     assert.match(webview, /case 'workersState':\s*applyWorkersState\(message\.data\)/);
     console.log('EV-017 WorkersUiBoundary: PASS transcriptKeys=0 approvalActions=0 sessionAllowlist=true');
     process.exit(0);

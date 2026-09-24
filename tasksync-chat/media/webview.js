@@ -5168,13 +5168,45 @@
     }
     // ── end Commentary pure render ──
 
+    // ── Commentary typewriter (shared with Storybook) ──
+    function commentaryTypewrite(el, text, msPerChar) {
+        var i = 0;
+        el.textContent = '';
+        el.classList.add('cm-typing');
+        var tick = function () {
+            i += 1;
+            el.textContent = text.slice(0, i);
+            if (i < text.length) { setTimeout(tick, msPerChar); } else { el.classList.remove('cm-typing'); }
+        };
+        tick();
+    }
+    function commentaryAnimateNew(container, seenIds, msPerChar) {
+        container.querySelectorAll('.cm-item').forEach(function (node) {
+            var id = node.getAttribute('data-id');
+            if (seenIds[id]) return;
+            seenIds[id] = true;
+            node.classList.add('cm-new');
+            var textEl = node.querySelector('.cm-text');
+            if (textEl) commentaryTypewrite(textEl, textEl.textContent, msPerChar);
+        });
+    }
+    // ── end Commentary typewriter ──
+
+    var commentarySeen = null;
     var commentaryView = null;
     var commentaryFilter = 'all';
 
     function applyCommentaryState(data) {
         commentaryView = data;
         var feed = document.getElementById('cm-feed');
-        if (feed) feed.innerHTML = renderCommentaryHtml(commentaryView, commentaryFilter);
+        if (feed) {
+            feed.innerHTML = renderCommentaryHtml(commentaryView, commentaryFilter);
+            // Lines already on screen at first load appear at once; only new arrivals type in.
+            if (commentarySeen) { commentaryAnimateNew(feed, commentarySeen, 18); } else {
+                commentarySeen = {};
+                ((data && data.items) || []).forEach(function (i) { commentarySeen[i.id] = true; });
+            }
+        }
         var goal = document.getElementById('cm-goal-input');
         if (goal && document.activeElement !== goal) goal.value = (data && data.goal) || '';
         var badge = document.getElementById('tab-badge-commentary');
@@ -5253,7 +5285,8 @@
                 ' · cached ' + workersTokens(u.cacheRead) + ' · ctx ' + workersTokens(w.contextTokens) + '</div>' +
                 (w.blocker ? '<div class="worker-blocker">' + workersEsc(w.blocker) + '</div>' : '') +
                 '<div class="worker-actions">' +
-                (w.sessionId ? '<button class="worker-open-btn" data-worker-action="open" data-session-id="' + workersEsc(w.sessionId) + '" title="' + workersEsc(w.sessionOpenAction) + '">Open session</button>' : '') +
+                (w.sessionId ? '<button class="worker-open-btn" data-worker-action="open" data-session-id="' + workersEsc(w.sessionId) + '" title="' + workersEsc(w.sessionOpenAction) + '">Open in VS Code</button>' +
+                    '<button class="worker-open-ext-btn" data-worker-action="open-external" data-session-id="' + workersEsc(w.sessionId) + '" title="Open in your default terminal app">Terminal app</button>' : '') +
                 '<button class="worker-trace-btn" data-worker-action="trace" data-worker-id="' + workersEsc(w.workerId) + '">' + (open ? 'Hide' : 'Trace') + ' (' + (w.runs || []).length + ')</button>' +
                 '</div>';
             if (open) {
@@ -5299,8 +5332,9 @@
         if (list) list.addEventListener('click', function (e) {
             var btn = e.target.closest('[data-worker-action]');
             if (!btn) return;
-            if (btn.getAttribute('data-worker-action') === 'open') {
-                vscode.postMessage({ type: 'openWorkerSession', sessionId: btn.getAttribute('data-session-id') });
+            var action = btn.getAttribute('data-worker-action');
+            if (action === 'open' || action === 'open-external') {
+                vscode.postMessage({ type: 'openWorkerSession', sessionId: btn.getAttribute('data-session-id'), external: action === 'open-external' });
             } else {
                 var id = btn.getAttribute('data-worker-id');
                 workersExpanded[id] = !workersExpanded[id];

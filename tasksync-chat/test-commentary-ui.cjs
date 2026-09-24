@@ -1,8 +1,6 @@
 // Commentary tab UI (T030): the real render block, panel markup, and message wiring, plus the play harness. Run: node test-commentary-ui.cjs
 const assert = require('node:assert/strict');
-const childProcess = require('node:child_process');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 
@@ -52,15 +50,31 @@ for (const selector of ['.cm-kind-milestone', '.cm-kind-question', '.cm-kind-blo
     assert.ok(css.includes(selector), `style for ${selector}`);
 }
 
-// The play harness builds a page from the same real code and feeds it item by item.
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-play-'));
-const feed = path.join(dir, 'state.json');
-fs.writeFileSync(feed, JSON.stringify({ goal: 'Ship slugify', clearedAt: t0 - 1, items: view.items }));
-const out = path.join(dir, 'play.html');
-const result = childProcess.execFileSync(process.execPath, [path.join(__dirname, 'tools', 'play-commentary.cjs'), '--feed', feed, '--out', out], { encoding: 'utf8' });
-assert.match(result, /COMMENTARY-PLAY WRITTEN .* items=5/);
-const page = fs.readFileSync(out, 'utf8');
-assert.ok(page.includes('function renderCommentaryHtml'), 'page runs the real render code');
-assert.ok(page.includes('id="cm-feed"') && page.includes('.cm-kind-milestone'), 'page uses the real markup and CSS');
-fs.rmSync(dir, { recursive: true, force: true });
-console.log('EV-030b CommentaryTabWiring: PASS controls=5 pushRendered=true styles=6 playHarness=realCode');
+// Storybook builds its stories from the same real sources through storybook/kit.js.
+(async () => {
+    const { buildCommentaryKit } = await import(path.join(__dirname, 'storybook', 'kit.js'));
+    const kit = buildCommentaryKit({ webviewSrc: webview, providerSrc: provider });
+    assert.equal(kit.renderCommentaryHtml(view, 'all'), html, 'Storybook renders byte-identical feed HTML');
+    assert.match(kit.panelHtml, /^<div class="tab-panel active" id="panel-commentary">[\s\S]*id="cm-feed"[\s\S]*<!-- End panel-commentary -->$/);
+
+    // Typewriter: a new line types in character by character; lines already seen do not.
+    const node = (id, text) => {
+        const textEl = { textContent: text, classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); } } };
+        return { id, textEl, classList: { add() {} }, getAttribute: () => id, querySelector: () => textEl };
+    };
+    const oldLine = node('c1', 'already on screen');
+    const newLine = node('c2', 'Accepted: A slugify.');
+    const frames = [];
+    const realTimeout = global.setTimeout;
+    global.setTimeout = (fn) => { frames.push(newLine.textEl.textContent); fn(); };
+    kit.commentaryAnimateNew({ querySelectorAll: () => [oldLine, newLine] }, { c1: true }, 5);
+    global.setTimeout = realTimeout;
+    assert.equal(oldLine.textEl.textContent, 'already on screen');
+    assert.equal(newLine.textEl.textContent, 'Accepted: A slugify.');
+    assert.deepEqual(frames.slice(0, 3), ['A', 'Ac', 'Acc'], 'types one character per frame');
+    assert.equal(newLine.textEl.classList.set.has('cm-typing'), false, 'cursor removed when done');
+
+    const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'storybook', 'fixtures', 'orchestrator-demo-feed.json'), 'utf8'));
+    assert.ok(fixture.items.length >= 5 && fixture.items.every((i) => i.id && i.ts && i.kind && i.text), 'real recorded feed fixture');
+    console.log(`EV-030b CommentaryTabWiring: PASS controls=5 pushRendered=true styles=6 storybookIdentical=true typewriter=true fixtureItems=${fixture.items.length}`);
+})().catch((error) => { console.error(error); process.exit(1); });
