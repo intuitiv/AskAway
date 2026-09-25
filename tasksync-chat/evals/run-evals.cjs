@@ -143,7 +143,7 @@ async function runWorkers(opts, profiles, totals) {
     }
 }
 
-const PLAN_SCHEMA = `{"goal":"...","tracks":[{"id":"T1","name":"...","parallel":true,"packets":[{"id":"p1","mode":"<mode>","model":"<provider/model>","thinking":"<variant>","reason":"<why this tier>","objective":"...","assertion":"...","expected":"<exact result>","command":"<verification command>","dependsOn":[],"verifyBy":"<id of the verify packet, required for code/test/authoring/devx>"}]}]}`;
+const PLAN_SCHEMA = `{"goal":"...","tracks":[{"id":"T1","name":"...","parallel":true,"packets":[{"id":"p1","mode":"<mode>","model":"<provider/model>","thinking":"<variant>","reason":"<why this tier>","objective":"...","assertion":"...","expected":"<exact result>","command":"<verification command>","dependsOn":[],"verifyBy":"<id of the verify packet, required for code/test/authoring/devx>"}]}],"commentary":[{"kind":"update|heads-up","text":"<each commentary line you would post up to dispatching, in order>"}]}`;
 
 function installOrchestratorEvalAgent(model) {
     const source = fs.readFileSync(ORCHESTRATOR_PROMPT, 'utf8').replace(/^---[\s\S]*?---\n/, '');

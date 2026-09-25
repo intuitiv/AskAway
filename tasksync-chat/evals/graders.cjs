@@ -79,6 +79,34 @@ function extractPlan(text) {
 
 const PACKET_FIELDS = ['id', 'mode', 'model', 'thinking', 'reason', 'objective', 'assertion', 'expected', 'command'];
 
+/** The same limits the `commentary` tool enforces in src/commentary/commentary.ts. */
+const COMMENTARY_KINDS = ['update', 'heads-up'];
+const COMMENTARY_WORDS = { min: 3, max: 20 };
+/** Plain words for a fan: no run/worker IDs, model names, or step labels like `A.1`. */
+const COMMENTARY_JARGON = /\b(run|worker)-[a-z0-9]+-\d+\b|\b(gpt|claude|gemini)-|\b(opus|luna|terra)\b|^\W*[A-Z0-9]\.\d\b/i;
+
+function commentaryWords(text) {
+    return String(text).replace(/\s+/g, ' ').trim().split(' ').filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+}
+
+/** Commentary is mandatory: the reviewer traces the run, steers it in time, and prepares for questions. */
+function commentaryChecks(items, g) {
+    const lines = Array.isArray(items) ? items : [];
+    const checks = [check('commentaryPresent', lines.some((c) => c && c.kind === 'update'), `lines=${lines.length}`)];
+    const badKind = lines.filter((c) => !COMMENTARY_KINDS.includes(c && c.kind));
+    checks.push(check('commentaryKinds', badKind.length === 0, badKind.map((c) => c && c.kind).join(',')));
+    const badLength = lines.filter((c) => { const n = commentaryWords(c && c.text); return n < COMMENTARY_WORDS.min || n > COMMENTARY_WORDS.max; });
+    checks.push(check(`commentaryWords ${COMMENTARY_WORDS.min}-${COMMENTARY_WORDS.max}`, badLength.length === 0, badLength.map((c) => commentaryWords(c && c.text)).join(',')));
+    const jargon = lines.filter((c) => COMMENTARY_JARGON.test(String(c && c.text)));
+    checks.push(check('commentaryPlain', jargon.length === 0, jargon.map((c) => String(c.text).slice(0, 40)).join(' | ')));
+    if (g.requireHeadsUp) {
+        // A heads-up names the decision and its options, never just "something is unclear".
+        const named = lines.filter((c) => c && c.kind === 'heads-up' && /\?|\bor\b/i.test(String(c.text)));
+        checks.push(check('headsUpNamesDecision', named.length > 0));
+    }
+    return checks;
+}
+
 /** Which worker modes may judge each kind of work: by running it, never by reading it (reviewer, 2026-09-24). */
 const VERIFIERS_BY_WORK = { code: ['verify', 'gradle', 'test'], test: ['verify', 'gradle'], authoring: ['verify', 'devx'], devx: ['verify'] };
 /** A verify command that only looks at the change proves nothing about its behaviour. */
@@ -132,7 +160,8 @@ function gradePlan(testCase, text, modes) {
     for (const mode of g.requireModes || []) {
         checks.push(check(`usesMode ${mode}`, packets.some((p) => p.mode === mode)));
     }
+    checks.push(...commentaryChecks(plan.commentary, g));
     return { pass: checks.every((c) => c.pass), checks, plan };
 }
 
-module.exports = { modelTier, parseEvents, gradeWorker, gradePlan, extractPlan };
+module.exports = { modelTier, parseEvents, gradeWorker, gradePlan, extractPlan, COMMENTARY_KINDS, COMMENTARY_WORDS };

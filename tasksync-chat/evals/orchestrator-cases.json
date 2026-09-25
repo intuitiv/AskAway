@@ -29,6 +29,11 @@
       "id": "missing-evidence-researches-first",
       "goal": "Upgrade our OpenCode integration to use the new session fork API, but first confirm the API actually exists in the current OpenCode release. Base revision abc123.",
       "grade": { "minTracks": 1, "requireModes": ["research", "code", "verify"] }
+    },
+    {
+      "id": "reviewer-decision-gets-heads-up",
+      "goal": "OrderRetryTest in repo X is flaky. Find why and fix it. If the fix changes the retry policy's behaviour (max attempts or backoff), that is my decision, not yours. Base revision abc123.",
+      "grade": { "requireModes": ["rca", "code"], "requireHeadsUp": true, "forbidHeavy": true }
     }
   ]
 }

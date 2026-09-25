@@ -1,6 +1,6 @@
 // Offline proof that eval graders reject the behaviors they exist to catch. Run: node test-eval-graders.cjs
 const assert = require('node:assert/strict');
-const { parseEvents, gradeWorker, gradePlan, modelTier } = require('./evals/graders.cjs');
+const { parseEvents, gradeWorker, gradePlan, modelTier, COMMENTARY_KINDS, COMMENTARY_WORDS } = require('./evals/graders.cjs');
 
 // Event folding uses the real `opencode run --format json` shape.
 const events = [
@@ -44,7 +44,11 @@ const modes = {
 };
 const packet = (overrides) => ({ id: 'p', mode: 'explore', model: 'github-copilot/gpt-5.6-luna', thinking: 'low', reason: 'cheap lookup',
     objective: 'o', assertion: 'a', expected: 'e', command: 'c', dependsOn: [], ...overrides });
-const planText = (tracks) => `Plan:\n\`\`\`json\n${JSON.stringify({ goal: 'g', tracks })}\n\`\`\``;
+const FEED = [
+    { kind: 'update', text: '🏏 Plan: **find the lookup and fix the helper**, each checked by someone else.' },
+    { kind: 'update', text: '🚀 Both jobs started at once; they touch ==different== files.' },
+];
+const planText = (tracks, commentary = FEED) => `Plan:\n\`\`\`json\n${JSON.stringify({ goal: 'g', tracks, commentary })}\n\`\`\``;
 const good = planText([
     { id: 'T1', parallel: true, packets: [packet({ id: 'e1' })] },
     { id: 'T2', parallel: true, packets: [
@@ -78,5 +82,27 @@ assert.equal(verdictOf('code', { mode: 'verify', command: 'cat src/slug.ts' }), 
 assert.equal(verdictOf('authoring', { mode: 'devx', model: 'github-copilot/gpt-5.6-terra', command: 'devx e2e Priority field' }), true, 'authoring checked end to end in DevX');
 assert.equal(verdictOf('authoring', { mode: 'gradle', command: './gradlew test' }), false, 'gradle cannot judge an authoring change');
 console.log('EV-040 VerifiedByBehaviour: PASS codeByGradle=true codeByReview=false inspectionOnly=false authoringByDevx=true authoringByGradle=false');
+
+// T034: an orchestrator plan without the reviewer's commentary fails, whatever its packets.
+const tinyPlan = [{ id: 'T', packets: [packet({ id: 'e1' })] }];
+const commentaryVerdict = (commentary, grade = {}) => gradePlan({ grade }, planText(tinyPlan, commentary), modes);
+const failedChecks = (result) => result.checks.filter((c) => !c.pass).map((c) => c.name);
+assert.equal(commentaryVerdict(FEED).pass, true, JSON.stringify(failedChecks(commentaryVerdict(FEED))));
+assert.deepEqual(failedChecks(commentaryVerdict(null)), ['commentaryPresent'], 'no commentary fails');
+assert.deepEqual(failedChecks(commentaryVerdict([{ kind: 'heads-up', text: 'Need your call on keeping three attempts or two?' }])), ['commentaryPresent'], 'only questions, no trace');
+assert.deepEqual(failedChecks(commentaryVerdict([...FEED, { kind: 'progress', text: 'Waiting on the checker for about a minute now.' }])), ['commentaryKinds'], 'only update and heads-up exist');
+assert.deepEqual(failedChecks(commentaryVerdict([...FEED, { kind: 'update', text: 'Started.' }])), ['commentaryWords 3-20']);
+assert.deepEqual(failedChecks(commentaryVerdict([...FEED, { kind: 'update', text: 'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone' }])), ['commentaryWords 3-20']);
+for (const jargon of ['Started run-84lnfg-4 for the slug helper now.', 'Using gpt-5.6-luna because the task is tiny.', 'A.1 progress both jobs started at once.', 'Checker worker-ctwpb5-3 reused because it is warm.']) {
+    assert.deepEqual(failedChecks(commentaryVerdict([...FEED, { kind: 'update', text: jargon }])), ['commentaryPlain'], jargon);
+}
+const vagueHeadsUp = [...FEED, { kind: 'heads-up', text: 'Something about the retry policy is unclear to me.' }];
+assert.deepEqual(failedChecks(commentaryVerdict(vagueHeadsUp, { requireHeadsUp: true })), ['headsUpNamesDecision'], 'a heads-up must name the decision');
+const namedHeadsUp = [...FEED, { kind: 'heads-up', text: '❓ The fix may change retries: **keep 3 attempts or allow 5?** Your call.' }];
+assert.equal(commentaryVerdict(namedHeadsUp, { requireHeadsUp: true }).pass, true);
+const tool = require('node:fs').readFileSync(require('node:path').join(__dirname, 'src', 'commentary', 'commentary.ts'), 'utf8');
+assert.deepEqual([Number(/MIN_COMMENTARY_WORDS = (\d+)/.exec(tool)[1]), Number(/MAX_COMMENTARY_WORDS = (\d+)/.exec(tool)[1])], [COMMENTARY_WORDS.min, COMMENTARY_WORDS.max], 'eval uses the tool\'s own limits');
+assert.deepEqual(/COMMENTARY_KINDS = \[([^\]]*)\]/.exec(tool)[1].match(/'[^']+'/g).map((k) => k.slice(1, -1)), COMMENTARY_KINDS);
+console.log('EV-034 OrchestratorCommentary: PASS missing=FAIL kinds=update+heads-up words=3-20 jargonRejected=4 vagueHeadsUp=FAIL namedHeadsUp=PASS limitsMatchTool=true');
 
 console.log('EV-EVALS GraderRejections: PASS workerRejections=8 planRejections=8 eventFolding=exact');
