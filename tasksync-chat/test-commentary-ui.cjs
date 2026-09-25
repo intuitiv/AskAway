@@ -39,6 +39,27 @@ assert.doesNotMatch(html, /cm-ball|A\.1|B\.1|0\.1/, 'no track.step refs, even fo
 assert.doesNotMatch(html, /<script>/, 'text is escaped');
 assert.match(ui.render({ items: [], archivedCount: 0 }), /Waiting for the orchestrator's first update\./);
 assert.equal(ui.open(view), 1);
+assert.doesNotMatch(html, /cm-day/, 'a one-day feed needs no divider');
+
+// Regression (reviewer, 2026-09-25): the feed looked newest-on-top because yesterday's 20:52 sat above today's 17:45.
+const yesterday = new Date(2026, 8, 24, 20, 52, 0).getTime();
+const today = new Date(2026, 8, 25, 17, 45, 0).getTime();
+const twoDays = ui.render({ items: [
+    { id: 'y1', ts: yesterday, kind: 'update', text: 'Yesterday: word counter accepted by a separate checker.' },
+    { id: 'y2', ts: yesterday + 60_000, kind: 'update', text: 'Yesterday: done, two of two accepted.' },
+    { id: 't1', ts: today, kind: 'update', text: 'Today: plan two tracks with independent checks.' },
+    { id: 't2', ts: today + 60_000, kind: 'update', text: 'Today: both tracks accepted, the newest line.' },
+], archivedCount: 0 });
+const order = [...twoDays.matchAll(/class="cm-day">([^<]+)<|data-id="(\w+)"/g)].map((m) => m[1] || m[2]);
+assert.deepEqual(order, ['Thu 24 Sep', 'y1', 'y2', 'Fri 25 Sep', 't1', 't2'], 'oldest first, newest line last, and each day is labelled');
+const feedCss = fs.readFileSync(path.join(__dirname, 'media', 'main.css'), 'utf8');
+const feedRules = feedCss.match(/\.cm-(feed|item|body)\b[^{]*\{[^}]*\}/g) || [];
+assert.ok(feedRules.length >= 3, 'the feed rules were found');
+for (const rule of feedRules) {
+    assert.doesNotMatch(rule, /column-reverse|\border\s*:/, `CSS never re-orders the feed: ${rule.slice(0, 40)}`);
+}
+assert.match(webview, /if \(pinned\) feed\.scrollTop = feed\.scrollHeight;/, 'a live push keeps the newest line in view at the bottom');
+console.log('EV-030c CommentaryNewestAtBottom: PASS order=chronological dayDividers=true cssReorder=none scrollPinsBottom=true');
 console.log('EV-030a CommentaryFeedRender: PASS newestAtBottom=true refs=none kinds=update+heads-up noFilters=true escaped=true');
 
 // Markup and wiring: the tab exists, its controls send the backend messages, pushes are rendered.

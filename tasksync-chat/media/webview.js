@@ -5151,6 +5151,11 @@
         var pad = function (n) { return (n < 10 ? '0' : '') + n; };
         return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
     }
+    function commentaryDay(ts) {
+        var d = new Date(ts);
+        return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()] + ' ' + d.getDate() + ' ' +
+            ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
+    }
     // Lines that need the reviewer; older feeds used 'question' and 'blocked' for the same thing.
     function commentaryIsHeadsUp(item) {
         return item.kind === 'heads-up' || item.kind === 'question' || item.kind === 'blocked';
@@ -5178,9 +5183,14 @@
             return html + '<div class="cm-empty">Waiting for the orchestrator\'s first update.</div>';
         }
         // Oldest first, newest at the bottom, like the chat and every other feed here.
+        // A clock without a day made yesterday's 20:52 look newer than today's 17:45, so each new day gets a divider.
+        var multiDay = commentaryDay(all[0].ts) !== commentaryDay(all[all.length - 1].ts);
         for (var n = 0; n < all.length; n++) {
             var item = all[n];
             var flagged = commentaryIsHeadsUp(item);
+            if (multiDay && (n === 0 || commentaryDay(item.ts) !== commentaryDay(all[n - 1].ts))) {
+                html += '<div class="cm-day">' + commentaryDay(item.ts) + '</div>';
+            }
             html += '<div class="cm-item' + (flagged ? ' cm-heads-up' : '') + '" data-id="' + commentaryEsc(item.id) + '">' +
                 '<div class="cm-body">' +
                 '<div class="cm-meta">' + (flagged ? '<span class="cm-heads-up-tag">HEADS-UP</span>' : '') + '<span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
@@ -5338,22 +5348,17 @@
             ' &middot; ' + running + ' running &middot; ' + queued + ' queued &middot; ' + warm + ' warm &middot; ' + (all.length - live.length) + ' completed' +
             ' &middot; <strong class="health-cost">$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2) + '</strong> spent</div>';
     }
-    // Concrete ways to spend less, from the same data the cards show plus the eval scoreboard.
+    // Only what the cards cannot show: context bloat, cache misses, and a cheaper model per the eval scoreboard.
     function workerCostTips(state) {
-        var now = state.generatedAt;
         var tips = [];
         var live = (state.workers || []).filter(function (w) { return !w.expired; });
         live.forEach(function (w) {
             var b = w.banner || {};
-            if (workerIsWarm(w, now)) {
-                tips.push('Reuse ' + w.profile + ' worker ' + w.workerId + ' for the next ' + w.profile + ' packet: its cache is warm for ' +
-                    cacheAgeLabel(Math.floor((w.cacheExpiresAt - now) / 1000)).clock + ', so its ' + formatObservabilityCompact(w.nextInputTokens) + ' tokens of context bill at the cached rate.');
-            }
             if (w.nextInputTokens > 200000) {
-                tips.push(w.workerId + ' re-sends ' + formatObservabilityCompact(w.nextInputTokens) + ' tokens per request; start a fresh worker for unrelated work (it retires at 300K).');
+                tips.push(w.workerId + ': ' + formatObservabilityCompact(w.nextInputTokens) + ' context per request \u2014 start fresh for unrelated work.');
             }
             if ((b.requests || 0) > 1 && b.lastIn > 0 && (b.lastCached || 0) / b.lastIn < 0.5) {
-                tips.push(w.workerId + '\u2019s last request hit only ' + Math.round((b.lastCached || 0) / b.lastIn * 100) + '% cache: send its packets back to back, within 5 minutes.');
+                tips.push(w.workerId + ': ' + Math.round((b.lastCached || 0) / b.lastIn * 100) + '% cache hit \u2014 send its packets within 5 min.');
             }
         });
         var board = state.scoreboard || [];
@@ -5367,8 +5372,8 @@
                 return r.mode === m.mode && r.model !== m.model && r.runs >= 2 && r.avgCost < mine.avgCost * 0.7 && r.passed / r.runs >= mine.passed / mine.runs;
             }).sort(function (a, b) { return a.avgCost - b.avgCost; })[0];
             if (cheaper) {
-                tips.push('For ' + m.mode + ', ' + cheaper.model + ' passed ' + cheaper.passed + '/' + cheaper.runs + ' evals at $' + cheaper.avgCost.toFixed(4) +
-                    ' vs ' + m.model + ' at $' + mine.avgCost.toFixed(4) + ': try ' + cheaper.model + ' first.');
+                tips.push(m.mode + ': ' + cheaper.model + ' passes ' + cheaper.passed + '/' + cheaper.runs + ' at $' + cheaper.avgCost.toFixed(4) +
+                    ' vs ' + m.model + ' $' + mine.avgCost.toFixed(4) + ' \u2014 try it first.');
             }
         });
         return tips;
