@@ -107,9 +107,40 @@ function commentaryChecks(items, g) {
     return checks;
 }
 
+/** Each durable lesson has exactly one home; an ADR needs the reviewer's own words (reviewer, 2026-08-23). */
+const CAPTURE_DESTINATIONS = ['skill', 'memory', 'adr', 'docs', 'refused'];
+
+function captureChecks(captures, expected, goal) {
+    const items = Array.isArray(captures) ? captures : [];
+    const checks = [];
+    const unknown = items.filter((c) => !CAPTURE_DESTINATIONS.includes(c && c.destination));
+    checks.push(check('captureDestinationsKnown', unknown.length === 0, unknown.map((c) => c && c.destination).join(',')));
+    for (const [lesson, destination] of Object.entries(expected)) {
+        const routed = items.filter((c) => c && c.lesson === lesson);
+        checks.push(check(`capture ${lesson}→${destination}`, routed.length === 1 && routed[0].destination === destination, routed.map((c) => c.destination).join(',') || 'missing'));
+    }
+    const stated = [...String(goal).matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    const unquoted = items.filter((c) => {
+        const quote = String((c && c.quote) || '').trim();
+        return c && c.destination === 'adr' && !(quote.length >= 8 && stated.some((words) => words.includes(quote)));
+    });
+    checks.push(check('adrQuotesReviewer', unquoted.length === 0, unquoted.map((c) => c.lesson).join(',')));
+    return checks;
+}
+
+/** True when `packet` waits, directly or through others, on a packet in one of `modes`. */
+function dependsOnMode(packet, byId, modes, seen = new Set()) {
+    return (packet.dependsOn || []).some((dep) => {
+        const parent = byId.get(dep);
+        if (!parent || seen.has(dep)) { return false; }
+        seen.add(dep);
+        return modes.includes(parent.mode) || dependsOnMode(parent, byId, modes, seen);
+    });
+}
+
 /** Which worker modes may judge each kind of work: by running it, never by reading it (reviewer, 2026-09-24). */
 const VERIFIERS_BY_WORK = { code: ['verify', 'gradle', 'test'], test: ['verify', 'gradle'], authoring: ['verify', 'devx'], devx: ['verify'] };
-/** A verify command that only looks at the change proves nothing about its behaviour. */
+/** A verify command that only looks at the change proves nothing about its behaviour; for a docs-only write, the text IS the result. */
 const INSPECTION_ONLY = /^(cat|less|head|tail|grep|rg|ls|git\s+(diff|show|log|status))\b/;
 
 /** Grades an orchestrator's plan against decomposition, pairing, and cost-discipline rules. */
@@ -151,7 +182,8 @@ function gradePlan(testCase, text, modes) {
     const mutating = packets.filter((p) => VERIFIERS_BY_WORK[p.mode] && !judges.has(p.id));
     const unverified = mutating.filter((p) => {
         const verifier = byId.get(p.verifyBy);
-        return !verifier || verifier.id === p.id || !VERIFIERS_BY_WORK[p.mode].includes(verifier.mode) || INSPECTION_ONLY.test(String(verifier.command).trim());
+        return !verifier || verifier.id === p.id || !VERIFIERS_BY_WORK[p.mode].includes(verifier.mode)
+            || (p.writes !== 'docs' && INSPECTION_ONLY.test(String(verifier.command).trim()));
     });
     checks.push(check('mutationsVerifiedByBehaviour', unverified.length === 0, unverified.map((p) => p.id).join(',')));
 
@@ -160,8 +192,14 @@ function gradePlan(testCase, text, modes) {
     for (const mode of g.requireModes || []) {
         checks.push(check(`usesMode ${mode}`, packets.some((p) => p.mode === mode)));
     }
+    if (g.researchBeforeWork) {
+        // Missing evidence is researched first, and the change waits for that answer.
+        const blind = packets.filter((p) => ['code', 'test', 'authoring'].includes(p.mode) && !dependsOnMode(p, byId, ['research', 'explore']));
+        checks.push(check('researchBeforeWork', packets.some((p) => p.mode === 'research' || p.mode === 'explore') && blind.length === 0, blind.map((p) => p.id).join(',')));
+    }
+    if (g.captures) { checks.push(...captureChecks(plan.captures, g.captures, testCase.goal)); }
     checks.push(...commentaryChecks(plan.commentary, g));
     return { pass: checks.every((c) => c.pass), checks, plan };
 }
 
-module.exports = { modelTier, parseEvents, gradeWorker, gradePlan, extractPlan, COMMENTARY_KINDS, COMMENTARY_WORDS };
+module.exports = { modelTier, parseEvents, gradeWorker, gradePlan, extractPlan, COMMENTARY_KINDS, COMMENTARY_WORDS, CAPTURE_DESTINATIONS };

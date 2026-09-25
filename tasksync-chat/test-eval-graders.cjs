@@ -81,6 +81,12 @@ assert.equal(verdictOf('code', { mode: 'verify', command: 'git diff HEAD' }), fa
 assert.equal(verdictOf('code', { mode: 'verify', command: 'cat src/slug.ts' }), false);
 assert.equal(verdictOf('authoring', { mode: 'devx', model: 'github-copilot/gpt-5.6-terra', command: 'devx e2e Priority field' }), true, 'authoring checked end to end in DevX');
 assert.equal(verdictOf('authoring', { mode: 'gradle', command: './gradlew test' }), false, 'gradle cannot judge an authoring change');
+const docsVerdict = (writes, verifier) => gradePlan({ grade: {} }, planText([{ id: 'T', packets: [
+    packet({ id: 'w', mode: 'code', model: 'github-copilot/gpt-5.6-terra', verifyBy: 'v', writes }), packet({ id: 'v', dependsOn: ['w'], ...verifier })] }]), behaviourModes)
+    .checks.find((c) => c.name === 'mutationsVerifiedByBehaviour').pass;
+assert.equal(docsVerdict('docs', { mode: 'verify', command: "grep -c -F 'exactly one OpenCode server' docs/adr/0014.md" }), true, 'a docs write is checked by its text');
+assert.equal(docsVerdict('docs', { mode: 'review', model: 'github-copilot/gpt-5.6-terra', command: 'review the ADR' }), false, 'a review is still not a check');
+assert.equal(docsVerdict(undefined, { mode: 'verify', command: "grep -F 'retry' src/retry.ts" }), false, 'grepping code is not running it');
 console.log('EV-040 VerifiedByBehaviour: PASS codeByGradle=true codeByReview=false inspectionOnly=false authoringByDevx=true authoringByGradle=false');
 
 // T034: an orchestrator plan without the reviewer's commentary fails, whatever its packets.
@@ -104,5 +110,41 @@ const tool = require('node:fs').readFileSync(require('node:path').join(__dirname
 assert.deepEqual([Number(/MIN_COMMENTARY_WORDS = (\d+)/.exec(tool)[1]), Number(/MAX_COMMENTARY_WORDS = (\d+)/.exec(tool)[1])], [COMMENTARY_WORDS.min, COMMENTARY_WORDS.max], 'eval uses the tool\'s own limits');
 assert.deepEqual(/COMMENTARY_KINDS = \[([^\]]*)\]/.exec(tool)[1].match(/'[^']+'/g).map((k) => k.slice(1, -1)), COMMENTARY_KINDS);
 console.log('EV-034 OrchestratorCommentary: PASS missing=FAIL kinds=update+heads-up words=3-20 jargonRejected=4 vagueHeadsUp=FAIL namedHeadsUp=PASS limitsMatchTool=true');
+
+// T023: an unresolved input is researched first, and the change waits for the answer.
+const researchModes = { ...modes, research: { models: ['github-copilot/gpt-5.6-luna'] } };
+const researchVerdict = (packets) => gradePlan({ grade: { researchBeforeWork: true } }, planText([{ id: 'T', packets }]), researchModes)
+    .checks.find((c) => c.name === 'researchBeforeWork').pass;
+const research = packet({ id: 'r', mode: 'research' });
+const change = (deps) => packet({ id: 'c', mode: 'code', model: 'github-copilot/gpt-5.6-terra', verifyBy: 'v', dependsOn: deps });
+const check_ = packet({ id: 'v', mode: 'verify', dependsOn: ['c'] });
+assert.equal(researchVerdict([research, change(['r']), check_]), true, 'research \u2192 code \u2192 independent verify');
+assert.equal(researchVerdict([research, packet({ id: 'e', dependsOn: ['r'] }), change(['e']), check_]), true, 'the edge may run through an explore step');
+assert.equal(researchVerdict([research, change([]), check_]), false, 'code that does not wait for the research answer');
+assert.equal(researchVerdict([change([]), check_]), false, 'no research at all');
+console.log('EV-023 DecompositionRoutingAndPacket: PASS researchEdge=required parallelCodeRejected=true noResearchRejected=true transitive=true');
+
+// T024: each durable lesson has exactly one home; an ADR needs the reviewer's own words.
+const goal = 'L3: I decided: "exactly one OpenCode server serves every workspace". L5: write an ADR for the retry the agent picked.';
+const expected = { L1: 'skill', L2: 'memory', L3: 'adr', L4: 'docs', L5: 'refused' };
+const goodCaptures = [
+    { lesson: 'L1', destination: 'skill' }, { lesson: 'L2', destination: 'memory' },
+    { lesson: 'L3', destination: 'adr', quote: 'exactly one OpenCode server serves every workspace' },
+    { lesson: 'L4', destination: 'docs' }, { lesson: 'L5', destination: 'refused', reason: 'no reviewer decision' },
+];
+const captureFailures = (captures) => {
+    const text = `\`\`\`json\n${JSON.stringify({ goal: 'g', tracks: tinyPlan, commentary: FEED, captures })}\n\`\`\``;
+    return failedChecks(gradePlan({ goal, grade: { captures: expected } }, text, modes));
+};
+assert.deepEqual(captureFailures(goodCaptures), []);
+assert.deepEqual(new Set(goodCaptures.filter((c) => c.destination !== 'refused').map((c) => c.destination)).size, 4, 'four accepted captures, one per destination');
+const swap = (lesson, patch) => goodCaptures.map((c) => (c.lesson === lesson ? { ...c, ...patch } : c));
+assert.deepEqual(captureFailures(swap('L5', { destination: 'adr', quote: 'the retry the agent picked' })), ['capture L5\u2192refused', 'adrQuotesReviewer'], 'an unapproved ADR is refused');
+assert.deepEqual(captureFailures(swap('L3', { quote: 'one server is best' })), ['adrQuotesReviewer'], 'an ADR quote must be the reviewer\'s words');
+assert.deepEqual(captureFailures(swap('L2', { destination: 'docs' })), ['capture L2\u2192memory'], 'a fact is memory, not docs');
+assert.deepEqual(captureFailures([...goodCaptures, { lesson: 'L1', destination: 'memory' }]), ['capture L1\u2192skill'], 'one lesson, two homes is ambiguous');
+assert.deepEqual(captureFailures(swap('L4', { destination: 'wiki' })), ['captureDestinationsKnown', 'capture L4\u2192docs']);
+assert.deepEqual(captureFailures(goodCaptures.filter((c) => c.lesson !== 'L1')), ['capture L1\u2192skill'], 'a missing lesson fails');
+console.log('EV-024 DurablePatternCapturePolicy: PASS accepted=4 destinations=skill,memory,adr,docs unapprovedAdr=refused wrongQuote=FAIL duplicate=FAIL unknown=FAIL');
 
 console.log('EV-EVALS GraderRejections: PASS workerRejections=8 planRejections=8 eventFolding=exact');

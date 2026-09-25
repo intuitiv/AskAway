@@ -28,7 +28,12 @@
     {
       "id": "missing-evidence-researches-first",
       "goal": "Upgrade our OpenCode integration to use the new session fork API, but first confirm the API actually exists in the current OpenCode release. Base revision abc123.",
-      "grade": { "minTracks": 1, "requireModes": ["research", "code", "verify"] }
+      "grade": { "minTracks": 1, "requireModes": ["research", "code", "verify"], "researchBeforeWork": true }
+    },
+    {
+      "id": "lessons-go-to-one-home",
+      "goal": "Last run taught us five things; record each where it belongs. L1: the six-step procedure to refresh adoption auth, restart the authoring MCP and re-run a DevX check, which every authoring worker needs. L2: the shared OpenCode server caches MCP tool lists at start. L3: I decided: \"exactly one OpenCode server serves every workspace, never one per worker\". L4: how to press the Workers restart icon, for the product README. L5: write an ADR for the 3-second port retry the agent picked while fixing a bug. Base revision abc123.",
+      "grade": { "captures": { "L1": "skill", "L2": "memory", "L3": "adr", "L4": "docs", "L5": "refused" } }
     },
     {
       "id": "reviewer-decision-gets-heads-up",
