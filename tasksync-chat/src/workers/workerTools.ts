@@ -41,11 +41,15 @@ export async function invokeDefinition(definition: ToolDefinition, input: unknow
     return JSON.stringify(await definition.run(parsed.data));
 }
 
-export function registerWorkerTools(register: Register, runtime: () => RuntimeSource, defaultWorkspace: string): void {
-    for (const definition of workerToolDefinitions(runtime, defaultWorkspace)) {
+export function registerToolDefinitions(register: Register, definitions: ToolDefinition[]): void {
+    for (const definition of definitions) {
         register(definition.name, { description: definition.description, inputSchema: definition.inputSchema },
             async (args) => reply(await definition.run(args)));
     }
+}
+
+export function registerWorkerTools(register: Register, runtime: () => RuntimeSource, defaultWorkspace: string): void {
+    registerToolDefinitions(register, workerToolDefinitions(runtime, defaultWorkspace));
 }
 
 type RuntimeSource = OpenCodeWorkerRuntime | Promise<OpenCodeWorkerRuntime>;
