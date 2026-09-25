@@ -5471,6 +5471,13 @@
             toggle.setAttribute('aria-checked', workersShowExpired ? 'true' : 'false');
             toggle.classList.toggle('active', workersShowExpired);
         }
+        var serverBtn = document.getElementById('workers-server-btn');
+        if (serverBtn) {
+            var up = !!(workersState.server && workersState.server.state === 'ATTACHED');
+            serverBtn.title = up ? 'Restart the shared OpenCode server (reloads OpenCode config; interrupts running workers in every workspace)' : 'Start the shared OpenCode server';
+            var icon = serverBtn.querySelector('.codicon');
+            if (icon) icon.className = 'codicon ' + (up ? 'codicon-debug-restart' : 'codicon-play');
+        }
     }
 
     function applyWorkersState(data) {
@@ -5501,6 +5508,8 @@
         if (refresh) refresh.addEventListener('click', function () { vscode.postMessage({ type: 'requestWorkersState' }); });
         var archive = document.getElementById('workers-archive-btn');
         if (archive) archive.addEventListener('click', function () { vscode.postMessage({ type: 'archiveWorkers' }); });
+        var serverBtn = document.getElementById('workers-server-btn');
+        if (serverBtn) serverBtn.addEventListener('click', function () { vscode.postMessage({ type: 'restartOpenCodeServer' }); });
         var showExpired = document.getElementById('workers-show-expired');
         if (showExpired) {
             var toggleExpired = function () { workersShowExpired = !workersShowExpired; paintWorkers(); };

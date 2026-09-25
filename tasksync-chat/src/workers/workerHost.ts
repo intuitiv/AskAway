@@ -2,7 +2,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { CommentaryStore } from '../commentary/commentary';
 import { OpenCodeWorkerRuntime } from './openCodeRuntime';
-import { defaultServerDeps, DEFAULT_OPENCODE_SERVER_URL, ensureSharedOpenCodeServer, ServerStatus } from './sharedServer';
+import { defaultRestartDeps, defaultServerDeps, DEFAULT_OPENCODE_SERVER_URL, ensureSharedOpenCodeServer, restartSharedOpenCodeServer, RestartDeps, ServerStatus } from './sharedServer';
 import { loadWorkerProfiles } from './workerProfiles';
 import { SessionMessage } from './workersState';
 
@@ -37,9 +37,22 @@ export function sharedWorkerRuntimeReady(workspacePath?: string): Promise<OpenCo
 /** For views: restores workers after a reload using a probe only, so opening a tab never starts a server. */
 export async function observeWorkers(workspacePath: string): Promise<void> {
     const runtime = sharedWorkerRuntime();
-    const live = runtime.serverEndpoint !== '' || await defaultServerDeps.probe(serverUrl());
-    if (live && !runtime.serverEndpoint) { runtime.setServerEndpoint(serverUrl()); }
+    // Probe every time: a server that stopped must not keep showing as attached.
+    const live = await defaultServerDeps.probe(serverUrl());
+    runtime.setServerEndpoint(live ? serverUrl() : '');
+    if (!live) { ready = undefined; }
     runtime.rehydrate(workspacePath, live);
+}
+
+/** Starts the shared OpenCode server, or restarts it so it reloads its config; reconnects this workspace's workers. */
+export async function restartSharedServer(workspacePath: string, deps: RestartDeps = defaultRestartDeps): Promise<ServerStatus & { stopped: number[] }> {
+    const status = await restartSharedOpenCodeServer(serverUrl(), deps);
+    serverStatus = status;
+    const runtime = sharedWorkerRuntime();
+    runtime.setServerEndpoint(status.endpoint);
+    ready = status.state === 'ATTACHED' ? Promise.resolve(runtime) : undefined;
+    runtime.rehydrate(workspacePath, status.state === 'ATTACHED');
+    return status;
 }
 
 function serverUrl(): string {

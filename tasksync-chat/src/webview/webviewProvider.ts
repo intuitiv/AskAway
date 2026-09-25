@@ -481,6 +481,7 @@ type FromWebviewMessage =
     | { type: 'requestWorkerTrace'; workerId: string }
     | { type: 'cancelQueuedWorkerRun'; runId: string }
     | { type: 'archiveWorkers' }
+    | { type: 'restartOpenCodeServer' }
     | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
     | { type: 'requestCommentary' }
     | { type: 'setCommentaryGoal'; goal: string }
@@ -1438,6 +1439,32 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root || !this._workerTraceSource || typeof workerId !== 'string') { return; }
         this._broadcast({ type: 'workerTrace', data: await this._workerTraceSource(root, workerId) });
+    }
+
+    private _serverRestartSource: ((workspacePath: string) => Promise<{ state: string; endpoint: string; reason: string; stopped: number[] }>) | undefined;
+
+    public setServerRestartSource(source: (workspacePath: string) => Promise<{ state: string; endpoint: string; reason: string; stopped: number[] }>): void {
+        this._serverRestartSource = source;
+    }
+
+    private async _restartOpenCodeServer(): Promise<void> {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root || !this._serverRestartSource || !this._workersStateSource) { return; }
+        const state = this._workersStateSource(root);
+        if (state.server.state === 'ATTACHED') {
+            const running = state.workers.filter((w) => ['RUNNING', 'STARTING', 'WAITING_APPROVAL'].includes(w.state)).length;
+            const choice = await vscode.window.showWarningMessage(
+                `Restart the shared OpenCode server? It serves every workspace${running ? `; ${running} worker(s) here are running and will be interrupted` : ''}.`,
+                { modal: true }, 'Restart');
+            if (choice !== 'Restart') { return; }
+        }
+        const status = await this._serverRestartSource(root);
+        if (status.state === 'ATTACHED') {
+            void vscode.window.showInformationMessage(`Shared OpenCode server ${status.stopped.length ? 'restarted' : 'started'} at ${status.endpoint}.`);
+        } else {
+            void vscode.window.showErrorMessage(`OpenCode server not started: ${status.reason}. Details: /tmp/aa/opencode-serve.err`);
+        }
+        this._refreshWorkersState();
     }
 
     private _workerArchiveSource: ((workspacePath: string) => { archived: string[]; kept: Array<{ workerId: string; reason: string }> }) | undefined;
@@ -4660,6 +4687,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'archiveWorkers':
                 this._archiveWorkers();
                 break;
+            case 'restartOpenCodeServer':
+                void this._restartOpenCodeServer();
+                break;
             case 'openWorkerSession':
                 this._openWorkerSession(message.sessionId, message.external === true);
                 break;
@@ -6829,6 +6859,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                         <span>Show completed</span>
                         <div class="toggle-switch specs-toggle-switch" id="workers-show-expired" role="switch" aria-checked="false" tabindex="0"></div>
                     </div>
+                    <button class="specs-refresh-btn" id="workers-server-btn" title="Start the shared OpenCode server">
+                        <span class="codicon codicon-play"></span>
+                    </button>
                     <button class="specs-refresh-btn" id="workers-archive-btn" title="Archive completed workers (not running, nothing queued, cache cold or retired). Their cost history is kept.">
                         <span class="codicon codicon-archive"></span>
                     </button>

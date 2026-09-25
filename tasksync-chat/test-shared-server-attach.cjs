@@ -46,6 +46,33 @@ function machine(answersAfterSpawn) {
     assert.deepEqual([failed.state, failed.endpoint, broken.state.spawns], ['NOT_ATTACHED', '', 1]);
     assert.match(failed.reason, /no OpenCode server answered at http:\/\/127\.0\.0\.1:4096/);
 
+    // Restart (the Workers-tab button): stop only the opencode listener, then start fresh so OpenCode reloads its config.
+    const { restartSharedOpenCodeServer } = require(path.join(buildDir, 'sharedServer.js'));
+    const restartable = (listenerPids) => {
+        const m = machine(8);
+        m.state.alive = listenerPids.length > 0;
+        m.state.stops = [];
+        m.deps.listeners = () => listenerPids;
+        m.deps.stop = (pid) => { m.state.stops.push(pid); setTimeout(() => { m.state.alive = false; }, 6); };
+        return m;
+    };
+    const up = restartable([4242]);
+    const restarted = await restartSharedOpenCodeServer(url, up.deps, 20, 5);
+    assert.deepEqual([restarted.state, restarted.stopped, up.state.stops, up.state.spawns], ['ATTACHED', [4242], [4242], 1], 'old server stopped, one new server started');
+    const down = restartable([]);
+    const fresh = await restartSharedOpenCodeServer(url, down.deps, 20, 5);
+    assert.deepEqual([fresh.state, fresh.stopped, down.state.spawns], ['ATTACHED', [], 1], 'the same button starts a stopped server');
+    const squatter = restartable([]);
+    squatter.state.alive = true;
+    const blocked = await restartSharedOpenCodeServer(url, squatter.deps, 3, 5);
+    assert.deepEqual([blocked.state, blocked.reason, squatter.state.spawns], ['NOT_ATTACHED', 'port 4096 is held by a program that is not opencode', 0], 'never kills another program');
+    const webview = fs.readFileSync(path.join(__dirname, 'media', 'webview.js'), 'utf8');
+    assert.match(webview, /type: 'restartOpenCodeServer'/);
+    const providerText = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
+    assert.match(providerText, /id="workers-server-btn"/);
+    assert.match(providerText, /\{ modal: true \}, 'Restart'/, 'restarting a live server asks first');
+    console.log('EV-036b SharedServerRestart: PASS stopsOnlyOpencode=true startsWhenDown=true squatterUntouched=true confirmFirst=true');
+
     // The real probe: an HTTP listener counts as alive, a closed port does not.
     const server = http.createServer((req, res) => { res.statusCode = 404; res.end(); });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

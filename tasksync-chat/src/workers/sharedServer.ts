@@ -46,3 +46,33 @@ export const defaultServerDeps: ServerDeps = {
     },
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
+
+export interface RestartDeps extends ServerDeps {
+    /** PIDs of `opencode` processes listening on the port; never another program's. */
+    listeners: (port: number) => number[];
+    stop: (pid: number) => void;
+}
+
+/** Stops the OpenCode server on the shared port, if any, and starts a fresh one (which reloads OpenCode config). */
+export async function restartSharedOpenCodeServer(url: string, deps: RestartDeps, attempts = 20, intervalMs = 250): Promise<ServerStatus & { stopped: number[] }> {
+    const stopped = deps.listeners(Number(new URL(url).port));
+    for (const pid of stopped) { deps.stop(pid); }
+    for (let i = 0; i < attempts && stopped.length && await deps.probe(url); i++) { await deps.sleep(intervalMs); }
+    if (await deps.probe(url)) {
+        return { state: 'NOT_ATTACHED', endpoint: '', started: false, stopped,
+            reason: stopped.length ? 'the old OpenCode server did not stop' : `port ${new URL(url).port} is held by a program that is not opencode` };
+    }
+    return { ...(await ensureSharedOpenCodeServer(url, deps, attempts * 2, intervalMs)), stopped };
+}
+
+function run(command: string, args: string[]): string {
+    try { return childProcess.execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return ''; }
+}
+
+export const defaultRestartDeps: RestartDeps = {
+    ...defaultServerDeps,
+    listeners: (port) => run('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN']).split('\n').map(Number).filter((pid) => pid > 0)
+        .filter((pid) => /opencode/.test(run('ps', ['-p', String(pid), '-o', 'command='])))
+        .filter((pid, i, all) => all.indexOf(pid) === i),
+    stop: (pid) => { try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ } },
+};
