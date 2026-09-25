@@ -33,6 +33,7 @@ const { registerVsCodeToolBridge, registerWindow, readWindows } = require(path.j
             { name: 'copilot_getErrors', description: 'Diagnostics', inputSchema: { type: 'object', properties: { filePaths: { type: 'array', items: { type: 'string' } } } } },
             { name: 'copilot_runInTerminal', description: 'not bridged', inputSchema: { type: 'object' } },
             { name: 'sonarqube_analyze_file', description: 'Analyze a file with SonarQube', inputSchema: { type: 'object', required: ['filePath'], properties: { filePath: { type: 'string' } } } },
+            { name: 'sonarqube_list_potential_security_issues', description: 'Security issues', inputSchema: { type: 'object', properties: { filePath: { type: 'string' } } } },
             { name: 'mcp_yourkit-profi_yourkit_profiler', description: 'YourKit profiler', inputSchema: { type: 'object', properties: { command: { type: 'string' }, pid: { type: 'number' } } } },
         ],
         invokeTool: async (name, options) => {
@@ -48,14 +49,14 @@ const { registerVsCodeToolBridge, registerWindow, readWindows } = require(path.j
         lm, selfPort: 1, windows: () => windows,
         forward: async (port, name, args) => { forwarded.push([port, name, args]); return { content: [{ type: 'text', text: `from window ${port}` }] }; },
     });
-    assert.deepEqual(registered, ['copilot_memory', 'copilot_getErrors', 'sonarqube_analyze_file', 'yourkit_profiler'], 'only allowlisted tools that exist in this VS Code; MCP-prefixed names are made stable');
+    assert.deepEqual(registered, ['copilot_memory', 'copilot_getErrors', 'sonarqube_analyze_file', 'sonarqube_list_potential_security_issues', 'yourkit_profiler'], 'every allowlisted tool this VS Code has, even two behind one pattern; MCP-prefixed names are made stable');
 
     const [a, b] = InMemoryTransport.createLinkedPair();
     await server.connect(a);
     const client = new Client({ name: 'worker', version: '1' });
     await client.connect(b);
     const tools = (await client.listTools()).tools;
-    assert.deepEqual(tools.map((t) => t.name).sort(), ['copilot_getErrors', 'copilot_memory', 'sonarqube_analyze_file', 'yourkit_profiler']);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ['copilot_getErrors', 'copilot_memory', 'sonarqube_analyze_file', 'sonarqube_list_potential_security_issues', 'yourkit_profiler']);
     const memory = tools.find((t) => t.name === 'copilot_memory');
     assert.match(memory.description, /^\[VS Code\] Manage memories/);
     assert.deepEqual(memory.inputSchema.required, ['command'], 'required fields survive');

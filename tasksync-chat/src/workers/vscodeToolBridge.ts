@@ -139,10 +139,12 @@ export function registerVsCodeToolBridge(register: Register, options: BridgeOpti
     const windows = options.windows ?? (() => readWindows());
     const forward = options.forward ?? forwardToWindow;
     const registered: string[] = [];
-    for (const pattern of BRIDGED_VSCODE_TOOLS) {
-        const tool = lm.tools.find((t) => pattern.test(t.name));
-        if (!tool) { continue; }
-        const name = (pattern.exec(tool.name) as RegExpExecArray)[0];
+    const matches = lm.tools.flatMap((tool) => {
+        const hit = BRIDGED_VSCODE_TOOLS.map((pattern) => pattern.exec(tool.name)).find(Boolean);
+        return hit ? [{ tool, name: hit[0], order: BRIDGED_VSCODE_TOOLS.findIndex((pattern) => pattern.test(tool.name)) }] : [];
+    }).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+    for (const { tool, name } of matches) {
+        if (registered.includes(name)) { continue; }
         const vscodeName = tool.name;
         const schema = zodFromJsonSchema(tool.inputSchema as JsonSchema);
         const inputSchema = schema instanceof z.ZodObject ? schema.extend({ workspacePath: z.string().optional().describe(WORKSPACE_PARAM) }) : schema;
