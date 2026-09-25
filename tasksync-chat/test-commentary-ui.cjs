@@ -60,6 +60,28 @@ for (const rule of feedRules) {
 }
 assert.match(webview, /if \(pinned\) feed\.scrollTop = feed\.scrollHeight;/, 'a live push keeps the newest line in view at the bottom');
 console.log('EV-030c CommentaryNewestAtBottom: PASS order=chronological dayDividers=true cssReorder=none scrollPinsBottom=true');
+
+// Reviewer, 2026-09-25: one collapsible pane per turn; a new turn collapses the older ones.
+const turnView = { archivedCount: 0, items: [
+    { id: 'a1', ts: today, kind: 'update', turnId: 'turn-1', text: '🏏 Plan: **two tracks**, each checked by another worker.' },
+    { id: 'a2', ts: today + 5_000, kind: 'heads-up', turnId: 'turn-1', text: 'Keep three retries or allow five? Your call.' },
+    { id: 'a3', ts: today + 60_000, kind: 'update', turnId: 'turn-1', text: '🏆 Both tracks accepted, two of two.' },
+    { id: 'b1', ts: today + 600_000, kind: 'update', turnId: 'turn-2', text: '🏏 Plan: fix the flaky retry test.' },
+    { id: 'b2', ts: today + 660_000, kind: 'update', turnId: 'turn-2', text: '🚀 Root-cause worker started on the cheapest model.' },
+] };
+const panes = (h) => [...h.matchAll(/<details class="cm-turn" data-turn="([^"]+)"( open)?>[\s\S]*?<\/details>/g)]
+    .map((m) => ({ key: m[1], open: Boolean(m[2]), ids: [...m[0].matchAll(/data-id="(\w+)"/g)].map((x) => x[1]), head: /<summary[\s\S]*?<\/summary>/.exec(m[0])[0] }));
+const byTurn = panes(ui.render(turnView));
+assert.deepEqual(byTurn.map((p) => [p.ids, p.open]), [[['a1', 'a2', 'a3'], false], [['b1', 'b2'], true]], 'one pane per turn, oldest first; only the newest is open');
+assert.match(byTurn[0].head, /17:45–17:46[\s\S]*<strong>two tracks<\/strong>[\s\S]*3 · 1 heads-up/, 'a collapsed pane still shows its time, first line, and heads-up count');
+assert.match(byTurn[1].head, /cm-turn-count">2</);
+const reviewerChoice = { [byTurn[0].key]: true, [byTurn[1].key]: false };
+assert.deepEqual(panes(ui.render(turnView, reviewerChoice)).map((p) => p.open), [true, false], 'the reviewer\'s own open/close wins');
+const nextTurn = { ...turnView, items: [...turnView.items, { id: 'c1', ts: today + 900_000, kind: 'update', turnId: 'turn-3', text: '🏏 Plan: write the demo story.' }] };
+assert.deepEqual(panes(ui.render(nextTurn)).map((p) => p.open), [false, false, true], 'a new turn collapses the previous one');
+assert.equal(panes(ui.render(view)).length, 1, 'lines without a turn id stay together');
+assert.match(webview, /closest\('\.cm-turn-head'\)[\s\S]{0,160}commentaryOpenTurns\[/, 'only the reviewer\'s clicks are remembered');
+console.log('EV-030e CommentaryTurnPanes: PASS panesPerTurn=true newestOpen=true olderCollapsed=true headShowsHeadsUp=true reviewerChoiceKept=true');
 console.log('EV-030a CommentaryFeedRender: PASS newestAtBottom=true refs=none kinds=update+heads-up noFilters=true escaped=true');
 
 // Markup and wiring: the tab exists, its controls send the backend messages, pushes are rendered.

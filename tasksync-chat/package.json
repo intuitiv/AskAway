@@ -418,7 +418,8 @@
               "description": "10-20 plain words: what is happening and why."
             },
             "turnId": {
-              "type": "string"
+              "type": "string",
+              "description": "The dispatchTurnId you pass to the worker tool; one turn's lines share a collapsible pane."
             }
           },
           "required": [

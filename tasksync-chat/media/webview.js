@@ -5172,7 +5172,27 @@
             .replace(/\+\+([^+]+)\+\+/g, '<u>$1</u>')
             .replace(/(^|[\s(])_([^_]+)_(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
     }
-    function renderCommentaryHtml(view) {
+    // One pane per orchestrator turn: consecutive lines with the same turnId (a new day also starts a pane).
+    function commentaryTurns(items) {
+        var turns = [];
+        items.forEach(function (item) {
+            var last = turns[turns.length - 1];
+            var turnId = item.turnId || '';
+            if (last && last.turnId === turnId && commentaryDay(last.items[0].ts) === commentaryDay(item.ts)) { last.items.push(item); return; }
+            turns.push({ key: turnId ? 'turn:' + turnId + ':' + item.id : 'line:' + item.id, turnId: turnId, items: [item] });
+        });
+        return turns;
+    }
+    function commentaryItemHtml(item) {
+        var flagged = commentaryIsHeadsUp(item);
+        return '<div class="cm-item' + (flagged ? ' cm-heads-up' : '') + '" data-id="' + commentaryEsc(item.id) + '">' +
+            '<div class="cm-body">' +
+            '<div class="cm-meta">' + (flagged ? '<span class="cm-heads-up-tag">HEADS-UP</span>' : '') + '<span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
+            '<div class="cm-text">' + commentaryMarkup(item.text) + '</div>' +
+            '</div></div>';
+    }
+    // `openTurns[key]` is the reviewer's own choice; otherwise only the newest turn is open.
+    function renderCommentaryHtml(view, openTurns) {
         if (!view) return '<div class="cm-empty">Commentary is not available for this workspace.</div>';
         var all = view.items || [];
         var headsUp = commentaryOpenCount(view);
@@ -5185,18 +5205,23 @@
         // Oldest first, newest at the bottom, like the chat and every other feed here.
         // A clock without a day made yesterday's 20:52 look newer than today's 17:45, so each new day gets a divider.
         var multiDay = commentaryDay(all[0].ts) !== commentaryDay(all[all.length - 1].ts);
-        for (var n = 0; n < all.length; n++) {
-            var item = all[n];
-            var flagged = commentaryIsHeadsUp(item);
-            if (multiDay && (n === 0 || commentaryDay(item.ts) !== commentaryDay(all[n - 1].ts))) {
-                html += '<div class="cm-day">' + commentaryDay(item.ts) + '</div>';
+        var turns = commentaryTurns(all);
+        turns.forEach(function (turn, n) {
+            var first = turn.items[0];
+            var last = turn.items[turn.items.length - 1];
+            if (multiDay && (n === 0 || commentaryDay(first.ts) !== commentaryDay(turns[n - 1].items[0].ts))) {
+                html += '<div class="cm-day">' + commentaryDay(first.ts) + '</div>';
             }
-            html += '<div class="cm-item' + (flagged ? ' cm-heads-up' : '') + '" data-id="' + commentaryEsc(item.id) + '">' +
-                '<div class="cm-body">' +
-                '<div class="cm-meta">' + (flagged ? '<span class="cm-heads-up-tag">HEADS-UP</span>' : '') + '<span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
-                '<div class="cm-text">' + commentaryMarkup(item.text) + '</div>' +
-                '</div></div>';
-        }
+            var chosen = openTurns && Object.prototype.hasOwnProperty.call(openTurns, turn.key) ? openTurns[turn.key] : undefined;
+            var open = chosen === undefined ? n === turns.length - 1 : chosen;
+            var flagged = turn.items.filter(commentaryIsHeadsUp).length;
+            var clock = commentaryClock(first.ts).slice(0, 5) + (turn.items.length > 1 ? '–' + commentaryClock(last.ts).slice(0, 5) : '');
+            html += '<details class="cm-turn" data-turn="' + commentaryEsc(turn.key) + '"' + (open ? ' open' : '') + '>' +
+                '<summary class="cm-turn-head"><span class="cm-turn-time">' + clock + '</span>' +
+                '<span class="cm-turn-title">' + commentaryMarkup(first.text) + '</span>' +
+                '<span class="cm-turn-count">' + turn.items.length + (flagged ? ' · ' + flagged + ' heads-up' : '') + '</span></summary>' +
+                turn.items.map(commentaryItemHtml).join('') + '</details>';
+        });
         return html;
     }
     // ── end Commentary pure render ──
@@ -5229,13 +5254,14 @@
 
     var commentarySeen = null;
     var commentaryView = null;
+    var commentaryOpenTurns = {};
 
     function applyCommentaryState(data) {
         commentaryView = data;
         var feed = document.getElementById('cm-feed');
         if (feed) {
             var pinned = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
-            feed.innerHTML = renderCommentaryHtml(commentaryView);
+            feed.innerHTML = renderCommentaryHtml(commentaryView, commentaryOpenTurns);
             // Lines already on screen at first load appear at once; only new arrivals type in.
             if (commentarySeen) { commentaryAnimateNew(feed, commentarySeen, 18); } else {
                 commentarySeen = {};
@@ -5270,6 +5296,14 @@
         }
         on('cm-clear', function () { vscode.postMessage({ type: 'clearCommentary', what: 'feed' }); });
         on('cm-copy', function () { if (commentaryView) vscode.postMessage({ type: 'copyToClipboard', text: commentaryView.opener }); });
+        // Record only the reviewer's clicks: `toggle` also fires when a re-render sets `open`.
+        var feed = document.getElementById('cm-feed');
+        if (feed) {
+            feed.addEventListener('click', function (event) {
+                var head = event.target && event.target.closest ? event.target.closest('.cm-turn-head') : null;
+                if (head && head.parentElement) commentaryOpenTurns[head.parentElement.getAttribute('data-turn')] = !head.parentElement.open;
+            });
+        }
         // Subscribes the provider to live pushes even while another tab is open.
         vscode.postMessage({ type: 'requestCommentary' });
     }

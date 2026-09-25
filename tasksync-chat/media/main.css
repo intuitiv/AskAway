@@ -4975,6 +4975,17 @@ button#send-btn:disabled {
 .cm-feed { display: flex; flex-direction: column; overflow-y: auto; }
 .cm-summary { font-size: 11px; opacity: 0.7; padding: 0 2px 4px; border-bottom: 1px solid var(--vscode-panel-border); }
 .cm-day { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; padding: 8px 2px 2px; }
+.cm-turn { border-bottom: 1px solid var(--vscode-panel-border); }
+.cm-turn-head { display: flex; align-items: baseline; gap: 8px; padding: 6px 2px; cursor: pointer; font-size: 12px; list-style: none; }
+.cm-turn-head::-webkit-details-marker { display: none; }
+.cm-turn-head::before { content: '\25B8'; opacity: 0.6; }
+.cm-turn[open] > .cm-turn-head::before { content: '\25BE'; }
+.cm-turn-time { opacity: 0.7; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cm-turn-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-turn[open] > .cm-turn-head .cm-turn-title { opacity: 0.6; }
+.cm-turn-count { opacity: 0.6; white-space: nowrap; }
+.cm-turn > .cm-item { padding-left: 14px; }
+.cm-turn > .cm-item:last-child { border-bottom: none; }
 .cm-empty { padding: 14px; text-align: center; opacity: 0.7; }
 .cm-item { display: flex; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--vscode-panel-border); }
 @keyframes cmArrive { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

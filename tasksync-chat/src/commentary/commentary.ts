@@ -144,7 +144,7 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
         inputSchema: z.object({
             kind: z.enum(COMMENTARY_KINDS),
             text: z.string().min(1).describe('10-20 plain words: what is happening and why.'),
-            turnId: z.string().optional(),
+            turnId: z.string().optional().describe('The dispatchTurnId you pass to the worker tool; one turn\'s lines share a collapsible pane.'),
         }),
         run: (args) => store().post(defaultWorkspace, args),
     }];
