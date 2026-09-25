@@ -13,6 +13,7 @@ import { PlanEditorProvider } from '../plan/planEditorProvider';
 import { getUserMemoryDir, summarizeAndStoreMemory, listMemories } from '../memory/memoryStore';
 import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
 import { sessionOpenCommand, WorkersState, WorkerTrace } from '../workers/workersState';
+import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
 import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
 import { sharedCommentaryStore } from '../workers/workerHost';
@@ -2192,6 +2193,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             const ledger = await this._loadObservabilityLedger(workspaceKey);
             await this._loadLogOffsets();
             const logFiles = await this._findWorkspaceCopilotDebugLogFiles();
+            await this._rewindToCurrentTurnOnce(logFiles);
             const currentMonth = this._getMonthKey(Date.now());
 
             if (logFiles.length === 0) {
@@ -2371,12 +2373,15 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                                 ? tAttrs.result
                                 : (tAttrs.result != null ? JSON.stringify(tAttrs.result) : '');
                             const group = this._toolInputGroup(toolName, argsStr);
-                            toolRows.push(JSON.stringify({
-                                ts: tTs, sid: sessionId, li: lineIndex, tool: toolName,
-                                dur: durMs, status: tStatus,
-                                inChars: argsStr.length, outChars: resultStr.length,
-                                group, workspaceKey
-                            }));
+                            // A line replayed to rebuild the turn after a restart was logged already.
+                            if (lineIndex >= (this._replayFloors.get(logFile) ?? 0)) {
+                                toolRows.push(JSON.stringify({
+                                    ts: tTs, sid: sessionId, li: lineIndex, tool: toolName,
+                                    dur: durMs, status: tStatus,
+                                    inChars: argsStr.length, outChars: resultStr.length,
+                                    group, workspaceKey
+                                }));
+                            }
                             // The parent runSubagent tool_call (in main.jsonl) is the group anchor:
                             // fold its authoritative total duration/output into the sub-agent header
                             // instead of showing it as a flat timeline row (its nested requests/tools
@@ -3045,6 +3050,34 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private _getLogOffsetsPath(): string {
         return path.join(this._context.globalStorageUri.fsPath, 'observability-logoffsets.json');
+    }
+
+    private _turnReplayDone = false;
+    /** Per log file: first line index not yet counted before this restart (lines below it are replayed turn state only). */
+    private readonly _replayFloors = new Map<string, number>();
+
+    /**
+     * The persisted cursors survive a reload but the current turn's state does not. Once per start, rewind the
+     * newest session to its last user message so the banner, timeline, and cache age come back.
+     */
+    private async _rewindToCurrentTurnOnce(logFiles: string[]): Promise<void> {
+        if (this._turnReplayDone) { return; }
+        this._turnReplayDone = true;
+        let newest: { file: string; mtime: number } | undefined;
+        for (const file of logFiles.filter((f) => path.basename(f) === 'main.jsonl')) {
+            try {
+                const mtime = (await fs.promises.stat(file)).mtimeMs;
+                if (!newest || mtime > newest.mtime) { newest = { file, mtime }; }
+            } catch { /* unreadable: skip */ }
+        }
+        if (!newest) { return; }
+        let turn: ReturnType<typeof lastUserMessage>;
+        try { turn = lastUserMessage(await fs.promises.readFile(newest.file)); } catch { return; }
+        if (!turn) { return; }
+        const dir = path.dirname(newest.file);
+        const plan = rewindPlan(logFiles.filter((f) => path.dirname(f) === dir), newest.file, turn, this._logFileReadOffsets);
+        for (const [file, cursor] of plan.cursors) { this._logFileReadOffsets.set(file, cursor); }
+        for (const [file, floor] of plan.floors) { this._replayFloors.set(file, floor); }
     }
 
     /**
