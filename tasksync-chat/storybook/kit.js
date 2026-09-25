@@ -15,6 +15,19 @@ export function buildCommentaryKit({ webviewSrc, providerSrc }) {
     return { ...fns, panelHtml };
 }
 
+/** The Workers tab exactly as the webview renders it: the shared usage-banner and trace blocks plus the Workers block. */
+export function buildWorkersKit({ webviewSrc, providerSrc }) {
+    const code = [
+        slice(webviewSrc, '// ── Usage banner', '// ── end Usage banner ──', 'usage banner block'),
+        slice(webviewSrc, '// ── Turn trace rows: pure render', '// ── end Turn trace rows ──', 'trace rows block'),
+        slice(webviewSrc, '// ── Workers tab: pure render', '// ── end Workers pure render ──', 'workers block'),
+    ].join('\n');
+    const fns = new Function(`${code}\nreturn { renderWorkersHtml };`)();
+    const panelHtml = slice(providerSrc, '<div class="tab-panel" id="panel-workers">', '</div><!-- End panel-workers -->', 'workers panel markup')
+        .replace('class="tab-panel"', 'class="tab-panel active"');
+    return { ...fns, panelHtml };
+}
+
 // VS Code Dark Modern values, so stories look like the real sidebar.
 export const VSCODE_DARK_THEME = `:root{--vscode-font-family:-apple-system,BlinkMacSystemFont,sans-serif;--vscode-editor-font-family:Menlo,monospace;
 --vscode-foreground:#cccccc;--vscode-panel-border:#2b2b2b;--vscode-input-background:#313131;--vscode-input-foreground:#cccccc;--vscode-input-border:#3c3c3c;

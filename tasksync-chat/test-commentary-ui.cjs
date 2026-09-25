@@ -126,4 +126,24 @@ for (const selector of ['.cm-heads-up', '.cm-heads-up-tag', '.cm-goal-input', '.
     const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'storybook', 'fixtures', 'orchestrator-demo-feed.json'), 'utf8'));
     assert.ok(fixture.items.length >= 5 && fixture.items.every((i) => i.id && i.ts && i.kind && i.text), 'real recorded feed fixture');
     console.log(`EV-030b CommentaryTabWiring: PASS controls=5 pushRendered=true styles=6 storybookIdentical=true typewriter=true fixtureItems=${fixture.items.length}`);
+
+    // Storybook "Sample conversation": frames recorded through the real runtime, rendered by the real Workers and Commentary blocks.
+    const { buildWorkersKit } = await import(path.join(__dirname, 'storybook', 'kit.js'));
+    const workersKit = buildWorkersKit({ webviewSrc: webview, providerSrc: provider });
+    const bannerFrom = webview.indexOf('// ── Usage banner');
+    const traceFrom = webview.indexOf('// ── Turn trace rows: pure render');
+    const workersFrom = webview.indexOf('// ── Workers tab: pure render');
+    const real = {};
+    vm.runInNewContext(`${webview.slice(bannerFrom, webview.indexOf('// ── end Usage banner ──'))}\n${webview.slice(traceFrom, webview.indexOf('// ── end Turn trace rows ──'))}\n`
+        + `${webview.slice(workersFrom, webview.indexOf('// ── end Workers pure render ──'))}\nout.render = renderWorkersHtml;`, { out: real });
+    const sample = JSON.parse(fs.readFileSync(path.join(__dirname, 'storybook', 'fixtures', 'sample-conversation.json'), 'utf8'));
+    const last = sample.frames[sample.frames.length - 1];
+    assert.equal(workersKit.renderWorkersHtml(last.workers, '', {}, false, {}, {}), real.render(last.workers, '', {}, false, {}, {}), 'Storybook renders byte-identical Workers HTML');
+    assert.match(workersKit.panelHtml, /^<div class="tab-panel active" id="panel-workers">[\s\S]*id="workers-list"[\s\S]*<!-- End panel-workers -->$/);
+    const lastPanes = panes(kit.renderCommentaryHtml(last.commentary));
+    assert.deepEqual(lastPanes.map((p) => p.open), [false, true], 'the sample shows turn 1 collapsed under turn 2');
+    assert.ok(last.commentary.items.some((i) => i.kind === 'heads-up'), 'the sample includes a heads-up');
+    assert.ok(last.workers.workers.some((w) => w.runs.length > 1), 'the sample reuses a warm worker');
+    assert.ok(sample.frames.every((f) => f.caption && f.chat.length && f.workers.workers), 'every frame has a caption, chat, and workers state');
+    console.log(`EV-SB-SAMPLE SampleConversationStory: PASS frames=${sample.frames.length} workersIdentical=true turnPanes=collapsed+open headsUp=true warmReuse=true`);
 })().catch((error) => { console.error(error); process.exit(1); });
