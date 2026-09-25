@@ -12,6 +12,7 @@ import { getImageMimeType } from '../utils/imageUtils';
 import { CONFIG_NAMESPACE, MCP_SERVER_NAME } from '../constants/branding';
 import { dispatchGradle, GradleInput } from '../gradle/gradleEngine';
 import { createClaudeSpecEvent } from '../observability/claudeSpecAttribution';
+import { listenWhenFree } from './sharedPort';
 import { OpenCodeWorkerRuntime } from '../workers/openCodeRuntime';
 import { fetchSessionMessages, observeWorkers, restartSharedServer, sharedWorkerRuntime, sharedWorkerRuntimeReady } from '../workers/workerHost';
 import { cancelQueuedRun, loadWorkerTrace, projectWorkersState } from '../workers/workersState';
@@ -148,6 +149,7 @@ async function tryReadImageAsMcpContent(uri: string): Promise<null | { type: 'im
 export class McpServerManager {
     private server: http.Server | undefined;
     private port: number | undefined;
+    private stopReclaim: (() => void) | undefined;
     private _isRunning: boolean = false;
 
     constructor(
@@ -294,7 +296,7 @@ export class McpServerManager {
             };
 
             // Create HTTP server
-            this.server = http.createServer(async (req, res) => {
+            const handler: http.RequestListener = async (req, res) => {
                 try {
                     const url = req.url || '/';
 
@@ -350,24 +352,35 @@ export class McpServerManager {
                         res.end('Internal Server Error');
                     }
                 }
-            });
+            };
+            this.server = http.createServer(handler);
 
             await new Promise<void>((resolve) => {
                 this.server?.listen(this.port, '127.0.0.1', () => resolve());
             });
 
             this._isRunning = true;
-            try {
-                registerWindow({ workspaces: (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath), port: this.port!, pid: process.pid });
-            } catch (error) {
-                console.error('[AskAway MCP] Could not record window route:', error);
-            }
+            this.recordWindowRoute();
 
             // Auto-register with supported clients
             const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
             if (config.get<boolean>('autoRegisterMcp', true)) {
                 await this.autoRegisterMcp();
             }
+
+            // Workers are wired to the configured port; a reloading window's old host may still hold it for a moment.
+            const configuredPort = config.get<number>('mcpPort', 3579);
+            this.stopReclaim?.();
+            this.stopReclaim = configuredPort > 0 && this.port !== configuredPort
+                ? listenWhenFree(configuredPort, handler, (claimed) => {
+                    const previous = this.server;
+                    this.server = claimed;
+                    this.port = configuredPort;
+                    previous?.close();
+                    this.recordWindowRoute();
+                    void this.autoRegisterMcp();
+                })
+                : undefined;
 
         } catch (error) {
             console.error('[AskAway MCP] Failed to start:', error);
@@ -486,8 +499,18 @@ export class McpServerManager {
         vscode.window.showInformationMessage('AskAway MCP Server restarted.');
     }
 
+    private recordWindowRoute(): void {
+        try {
+            registerWindow({ workspaces: (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath), port: this.port!, pid: process.pid });
+        } catch (error) {
+            console.error('[AskAway MCP] Could not record window route:', error);
+        }
+    }
+
     async dispose() {
         this._isRunning = false;
+        this.stopReclaim?.();
+        this.stopReclaim = undefined;
         try {
             if (this.server) {
                 this.server.close();

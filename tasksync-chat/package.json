@@ -1196,7 +1196,7 @@
     "compile": "tsc -p ./",
     "watch": "node esbuild.js --watch",
     "lint": "eslint src --ext ts",
-    "test:workers": "node test-worker-selection.cjs && node test-worker-observability.cjs && node test-worker-mcp-tools.cjs && node test-worker-runtime-contract.cjs && node test-workers-control-plane.cjs && node test-commentary-backend.cjs && node test-vscode-tool-bridge.cjs && node test-commentary-ui.cjs && node test-subagent-timer.cjs && node test-shared-server-attach.cjs && node test-async-subagent-runner-e2e.cjs && node test-conversation-hooks.cjs && node test-orchestrator-policy.cjs && node test-turn-replay.cjs && node test-eval-graders.cjs"
+    "test:workers": "node test-worker-selection.cjs && node test-worker-observability.cjs && node test-worker-mcp-tools.cjs && node test-worker-runtime-contract.cjs && node test-workers-control-plane.cjs && node test-commentary-backend.cjs && node test-vscode-tool-bridge.cjs && node test-commentary-ui.cjs && node test-subagent-timer.cjs && node test-shared-server-attach.cjs && node test-async-subagent-runner-e2e.cjs && node test-conversation-hooks.cjs && node test-orchestrator-policy.cjs && node test-turn-replay.cjs && node test-mcp-port-reclaim.cjs && node test-eval-graders.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
