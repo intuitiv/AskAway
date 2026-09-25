@@ -18,7 +18,9 @@ export function sharedWorkerRuntime(): OpenCodeWorkerRuntime {
 }
 
 /** The runtime once it is attached to the shared OpenCode server (started on first worker use, not at activation). */
-export function sharedWorkerRuntimeReady(workspacePath?: string): Promise<OpenCodeWorkerRuntime> {
+export async function sharedWorkerRuntimeReady(workspacePath?: string): Promise<OpenCodeWorkerRuntime> {
+    // A server that stopped since it was attached must be started again, not attached to.
+    if (ready && serverStatus?.state === 'ATTACHED' && !(await defaultServerDeps.probe(serverUrl()))) { ready = undefined; }
     ready ??= ensureSharedOpenCodeServer(serverUrl(), defaultServerDeps)
         .then((status) => {
             serverStatus = status;
