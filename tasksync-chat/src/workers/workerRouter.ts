@@ -125,7 +125,7 @@ export class WorkerRouter {
         // A cold cache or an oversized context never recovers: retire so no later caller reuses it either.
         if (reason && worker.state !== 'ORPHANED') {
             this.retire(workerId, reason);
-            return { status: 'RETIRED', workerId, reason: `${reason}; start a fresh worker (worker_start)` };
+            return { status: 'RETIRED', workerId, reason: `${reason}; start a fresh worker (action start)` };
         }
         if (reason) { return { status: 'INELIGIBLE', workerId, reason }; }
         const estimatedWaitSeconds = this.estimatedWaitSeconds(worker);

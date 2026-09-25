@@ -16,7 +16,7 @@ for (const name of ['workers/workerProfiles', 'workers/workerRouter', 'workers/o
         { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
 }
 const { CommentaryStore, commentaryToolDefinitions, commentaryView } = require(path.join(buildDir, 'commentary', 'commentary.js'));
-const { invokeDefinition, workerToolDefinitions } = require(path.join(buildDir, 'workers', 'workerTools.js'));
+const { invokeDefinition, workerTool } = require(path.join(buildDir, 'workers', 'workerTools.js'));
 const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'workers', 'openCodeRuntime.js'));
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-commentary-home-'));
@@ -62,13 +62,15 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     assert.deepEqual(pushed, [2, 3, 4], 'every change is pushed to the tab');
     assert.equal((await call(commentary, { kind: 'update', text: `🚀 ${Array(20).fill('word').join(' ')} ✅` })).status, 'POSTED', 'emojis do not count as words');
 
-    // --- The worker tools as VS Code LM tools: same contract, validated input, bounded JSON ---
+    // --- The worker tool as a VS Code LM tool: one tool, same contract, validated input, bounded JSON ---
     const runtime = new OpenCodeWorkerRuntime([], { ledgerDir: path.join(home, 'ledger'), spawner: () => { throw new Error('no spawn'); } });
-    const workers = Object.fromEntries(workerToolDefinitions(() => runtime, workspace).map((d) => [d.name, d]));
-    assert.deepEqual(await call(workers.worker_list, {}), []);
-    assert.equal((await call(workers.worker_status, {})).status, 'INVALID_INPUT', 'missing runId is refused before the runtime');
-    assert.equal((await call(workers.worker_wait, { runId: 'r', timeoutSeconds: 999 })).status, 'INVALID_INPUT', 'wait above 240s is refused');
-    assert.equal((await call(workers.worker_start, { profile: 'code' })).status, 'INVALID_INPUT');
+    const worker = workerTool(() => runtime, workspace);
+    const workers = { worker };
+    assert.deepEqual(await call(worker, { action: 'list' }), []);
+    assert.equal((await call(worker, { action: 'status' })).status, 'INVALID_INPUT', 'missing runId is refused before the runtime');
+    assert.equal((await call(worker, { action: 'wait', runId: 'r', timeoutSeconds: 999 })).status, 'INVALID_INPUT', 'wait above 240s is refused');
+    assert.equal((await call(worker, { action: 'start', profile: 'code' })).status, 'INVALID_INPUT');
+    assert.equal((await call(worker, { runId: 'r' })).status, 'INVALID_INPUT', 'no action, no call');
 
     // --- package.json declares exactly these tools (VS Code only exposes declared LM tools) ---
     const check = childProcess.spawnSync(process.execPath, [path.join(__dirname, 'tools', 'gen-lm-tool-manifest.cjs'), '--check'], { encoding: 'utf8' });
@@ -78,7 +80,8 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
         assert.ok(declared.some((tool) => tool.name === name && tool.toolReferenceName), `package.json declares ${name}`);
     }
     const toolsSource = fs.readFileSync(path.join(__dirname, 'src', 'tools.ts'), 'utf8');
-    assert.match(toolsSource, /registerLmToolDefinitions\(\[\s*\.\.\.workerToolDefinitions\(\(\) => sharedWorkerRuntimeReady\(workspaceRoot\), workspaceRoot\),\s*\.\.\.commentaryToolDefinitions\(sharedCommentaryStore, workspaceRoot\)/);
+    assert.match(toolsSource, /registerLmToolDefinitions\(\[\s*workerTool\(\(\) => sharedWorkerRuntimeReady\(workspaceRoot\), workspaceRoot\),\s*\.\.\.commentaryToolDefinitions\(sharedCommentaryStore, workspaceRoot\)/);
+    assert.ok(!JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).contributes.languageModelTools.some((t) => /^worker_/.test(t.name)), 'the eight per-operation tools are gone');
     console.log(`EV-035 OrchestratorReachesWorkers: PASS lmTools=${Object.keys(workers).length + 1} manifestInSync=true invalidInputRefused=4`);
 
     // --- The same commentary tool on the AskAway MCP, as a scripted client or OpenCode host calls it ---

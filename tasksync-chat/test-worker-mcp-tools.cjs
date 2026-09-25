@@ -18,7 +18,7 @@ for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'worker
 }
 const { parseWorkerProfile } = require(path.join(buildDir, 'workerProfiles.js'));
 const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'openCodeRuntime.js'));
-const { registerWorkerTools, WORKER_TOOL_NAMES } = require(path.join(buildDir, 'workerTools.js'));
+const { registerWorkerTools, WORKER_TOOL_NAMES, WORKER_ACTIONS } = require(path.join(buildDir, 'workerTools.js'));
 
 const profile = parseWorkerProfile('---\nname: verify\ndescription: "v"\ntier: light\nmodel: github-copilot/gpt-5.6-luna\nthinking: low\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [low]\nedit: deny\n---\nBody.\n');
 const children = [];
@@ -36,19 +36,26 @@ const runtime = new OpenCodeWorkerRuntime([profile], { ledgerDir, spawner });
 
 const tools = new Map();
 registerWorkerTools((name, config, handler) => tools.set(name, { config, handler }), () => runtime, workspace);
-const call = async (name, args) => {
-    const tool = tools.get(name);
-    const parsed = tool.config.inputSchema.parse(args);
+// Operations are named as in the contract (`worker_start`); on the wire they are actions of the one `worker` tool.
+const viaWorkerTool = (registry) => async (name, args) => {
+    const tool = registry.get('worker');
+    const parsed = tool.config.inputSchema.parse({ action: name.slice('worker_'.length), ...args });
     return JSON.parse((await tool.handler(parsed)).content[0].text);
 };
+const call = viaWorkerTool(tools);
 
 (async () => {
-    assert.deepEqual([...tools.keys()], [...WORKER_TOOL_NAMES]);
-    assert.equal(tools.size, 8);
-    assert.ok(![...tools.keys()].some((name) => /ask|respond/.test(name)), 'no Spec 003 messaging tools');
-    assert.match(tools.get('worker_wait').config.description, /240s/);
-    assert.throws(() => tools.get('worker_wait').config.inputSchema.parse({ runId: 'r', timeoutSeconds: 241 }), 'wait above 240s is rejected by the schema');
-    assert.throws(() => tools.get('worker_start').config.inputSchema.parse({ profile: 'verify' }), 'incomplete packet rejected by the schema');
+    assert.deepEqual([...tools.keys()], ['worker'], 'one tool, not eight');
+    assert.deepEqual(tools.get('worker').config.inputSchema.shape.action.options, WORKER_ACTIONS);
+    assert.deepEqual(WORKER_ACTIONS.map((a) => `worker_${a}`), [...WORKER_TOOL_NAMES], 'the eight contract operations are its actions');
+    assert.ok(!WORKER_ACTIONS.some((name) => /ask|respond/.test(name)), 'no Spec 003 messaging actions');
+    assert.match(tools.get('worker').config.description, /240s/);
+    assert.throws(() => tools.get('worker').config.inputSchema.parse({ action: 'wait', runId: 'r', timeoutSeconds: 241 }), 'wait above 240s is rejected by the schema');
+    assert.throws(() => tools.get('worker').config.inputSchema.parse({ action: 'fly' }), 'unknown action rejected by the schema');
+    const incomplete = await call('worker_start', { profile: 'verify' });
+    assert.equal(incomplete.status, 'INVALID_INPUT', 'incomplete packet refused before the runtime');
+    assert.match(incomplete.reason, /dispatchTurnId/);
+    assert.equal((await call('worker_status', {})).status, 'INVALID_INPUT', 'each action validates its own required fields');
 
     const packet = { profile: 'verify', dispatchTurnId: 'turn-9', baseRevision: 'abc', objective: 'Check', allowedFiles: [], acceptance: 'a', expected: 'e', command: 'true' };
     const started = await call('worker_start', packet);
@@ -88,7 +95,7 @@ const call = async (name, args) => {
     const aged = new OpenCodeWorkerRuntime([profile], { ledgerDir, now: () => clock, spawner: (args) => { const c = spawner(args); agedChildren.push(c); return c; } });
     const agedTools = new Map();
     registerWorkerTools((name, config, handler) => agedTools.set(name, { config, handler }), () => aged, workspace);
-    const agedCall = async (name, args) => JSON.parse((await agedTools.get(name).handler(agedTools.get(name).config.inputSchema.parse(args))).content[0].text);
+    const agedCall = viaWorkerTool(agedTools);
     const finishRun = async (child, input) => {
         child.stdout.write(`${JSON.stringify({ type: 'step_finish', sessionID: 'ses_R', part: { tokens: { input, output: 5 }, cost: 0.001 } })}\n`);
         child.stdout.write(`${JSON.stringify({ type: 'text', sessionID: 'ses_R', part: { type: 'text', text: 'Result: PASS\nEvidence: ok' } })}\n`);
@@ -102,7 +109,7 @@ const call = async (name, args) => {
     await finishRun(agedChildren[1], 100);
     clock += 301_000;
     const refused = await agedCall('worker_submit', { workerId: cold.workerId, ...packet });
-    assert.deepEqual([refused.status, refused.reason], ['RETIRED', 'cache expired; start a fresh worker (worker_start)']);
+    assert.deepEqual([refused.status, refused.reason], ['RETIRED', 'cache expired; start a fresh worker (action start)']);
     assert.deepEqual((await agedCall('worker_submit', { workerId: cold.workerId, ...packet })).status, 'RETIRED', 'stays retired');
     assert.ok(!(await agedCall('worker_list', {})).some((w) => w.workerId === cold.workerId), 'a retired worker is not offered for reuse');
     assert.equal(agedChildren.length, 2, 'no run was started on the retired worker');
@@ -135,5 +142,5 @@ const call = async (name, args) => {
     console.log(`EV-020 InactiveOnlyArchivePrune: PASS archived=${pruned.archived.length} keptActive=1 cancelled=0 reloadRestores=0 costKept=true`);
 
     for (const dir of [buildDir, ledgerDir, workspace]) { fs.rmSync(dir, { recursive: true, force: true }); }
-    console.log('EV-012 WorkerMcpSurface: PASS tools=8 askRespond=0 waitSchemaMax=240 boundedReplies=true');
+    console.log('EV-012 WorkerMcpSurface: PASS tools=1 actions=8 askRespond=0 waitSchemaMax=240 perActionValidation=true boundedReplies=true');
 })().catch((error) => { console.error(error); process.exit(1); });

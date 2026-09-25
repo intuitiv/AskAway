@@ -3,6 +3,8 @@ import { MAX_WAIT_SECONDS, OpenCodeWorkerRuntime, WorkerPacket } from './openCod
 import { projectWorkersState } from './workersState';
 
 export const WORKER_TOOL_NAMES = ['worker_start', 'worker_submit', 'worker_list', 'worker_status', 'worker_wait', 'worker_cancel', 'worker_resume', 'worker_logs'] as const;
+/** Hosts see ONE `worker` tool; `action` selects the operation, like the `gradle` tool (reviewer, 2026-09-25). */
+export const WORKER_ACTIONS = WORKER_TOOL_NAMES.map((name) => name.slice('worker_'.length)) as ['start', 'submit', 'list', 'status', 'wait', 'cancel', 'resume', 'logs'];
 
 type Register = (name: string, config: { description: string; inputSchema: z.ZodTypeAny }, handler: (args: any) => Promise<{ content: Array<{ type: 'text'; text: string }> }>) => unknown;
 
@@ -49,7 +51,32 @@ export function registerToolDefinitions(register: Register, definitions: ToolDef
 }
 
 export function registerWorkerTools(register: Register, runtime: () => RuntimeSource, defaultWorkspace: string): void {
-    registerToolDefinitions(register, workerToolDefinitions(runtime, defaultWorkspace));
+    registerToolDefinitions(register, [workerTool(runtime, defaultWorkspace)]);
+}
+
+/** The eight operations behind one tool: the host schema merges every field, then each action validates its own. */
+export function workerTool(source: () => RuntimeSource, defaultWorkspace: string): ToolDefinition {
+    const operations = new Map(workerToolDefinitions(source, defaultWorkspace).map((d) => [d.name.slice('worker_'.length), d]));
+    const shape: Record<string, z.ZodTypeAny> = {};
+    for (const operation of operations.values()) {
+        for (const [field, schema] of Object.entries(operation.inputSchema.shape as Record<string, z.ZodTypeAny>)) {
+            shape[field] = shape[field] ?? schema.optional();
+        }
+    }
+    return {
+        name: 'worker',
+        description: 'Control async OpenCode workers. Pick `action`:\n'
+            + '- start: run one self-contained packet (profile, dispatchTurnId, baseRevision, objective, allowedFiles, acceptance, expected, command; optional model, thinking, track). Returns a handle at once.\n'
+            + '- submit: same packet plus workerId, queued on a warm worker (reuses its session, ~4x cheaper).\n'
+            + '- list: live workers with knowledge, nextInputTokens, warmForSeconds; check before start.\n'
+            + `- status | wait | cancel | resume | logs: by runId. wait blocks at most ${MAX_WAIT_SECONDS}s (timeoutSeconds), then STILL_RUNNING: end your turn. logs: facts only (limit).\n`
+            + 'Replies are bounded JSON facts, never transcripts.',
+        inputSchema: z.object({ action: z.enum(WORKER_ACTIONS).describe('Which operation to run.'), ...shape }),
+        run: async ({ action, ...args }) => {
+            const operation = operations.get(action);
+            return operation ? JSON.parse(await invokeDefinition(operation, args)) : { status: 'INVALID_INPUT', reason: `action: one of ${WORKER_ACTIONS.join(', ')}` };
+        },
+    };
 }
 
 type RuntimeSource = OpenCodeWorkerRuntime | Promise<OpenCodeWorkerRuntime>;
@@ -75,7 +102,7 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
 
     register('worker_list', {
         description: 'List this workspace\'s live workers (running or still warm) so you can reuse one: mode, model, state, what it knows, '
-            + 'next-request input size, and seconds until its cache goes cold. Prefer worker_submit to a warm worker whose knowledge fits the packet.',
+            + 'next-request input size, and seconds until its cache goes cold. Prefer submit to a warm worker whose knowledge fits the packet.',
         inputSchema: z.object({ workspacePath: z.string().optional() }),
     }, async (args) => {
         const live = await runtime();

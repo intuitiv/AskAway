@@ -121,7 +121,7 @@ const { registerVsCodeToolBridge, registerWindow, readWindows } = require(path.j
 
     const config = JSON.parse(fs.readFileSync(path.join(require('node:os').homedir(), '.config', 'opencode', 'opencode.json'), 'utf8'));
     assert.equal(config.mcp.askaway?.url, 'http://127.0.0.1:3579/sse', 'OpenCode workers reach the AskAway MCP');
-    for (const key of ['askaway_worker_*', 'askaway_ask_user', 'askaway_commentary', 'askaway_yourkit_*', 'askaway_sonarqube_*']) { assert.equal(config.permission[key], 'deny', `${key} is denied by default`); }
+    for (const key of ['askaway_worker', 'askaway_ask_user', 'askaway_commentary', 'askaway_yourkit_*', 'askaway_sonarqube_*']) { assert.equal(config.permission[key], 'deny', `${key} is denied by default`); }
     // T032/T033: the profiler and Sonar are open only to their own workers.
     const agentsDir = path.join(require('node:os').homedir(), '.config', 'opencode', 'agents');
     assert.match(fs.readFileSync(path.join(agentsDir, 'aa-perf.md'), 'utf8'), /"askaway_yourkit_\*": allow/);

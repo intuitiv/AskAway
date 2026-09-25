@@ -11,7 +11,7 @@ import { dispatchGradle, GradleInput } from './gradle/gradleEngine';
 import { commentaryToolDefinitions } from './commentary/commentary';
 import { registerLmToolDefinitions } from './workers/lmTools';
 import { sharedCommentaryStore, sharedWorkerRuntimeReady } from './workers/workerHost';
-import { workerToolDefinitions } from './workers/workerTools';
+import { workerTool } from './workers/workerTools';
 
 /**
  * Append a per-invocation record for an AskAway LM tool to
@@ -910,7 +910,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // Same definitions as the MCP surface, so the VS Code orchestrator reaches workers without the MCP server running.
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
     context.subscriptions.push(...registerLmToolDefinitions([
-        ...workerToolDefinitions(() => sharedWorkerRuntimeReady(workspaceRoot), workspaceRoot),
+        workerTool(() => sharedWorkerRuntimeReady(workspaceRoot), workspaceRoot),
         ...commentaryToolDefinitions(sharedCommentaryStore, workspaceRoot),
     ]));
 

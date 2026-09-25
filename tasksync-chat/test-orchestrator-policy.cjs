@@ -18,14 +18,14 @@ const denied = [/^execute\b/, /^edit\b/, /^read\b/, /^search\/(codebase|textSear
 const leaks = tools.filter((tool) => denied.some((pattern) => pattern.test(tool)));
 assert.deepEqual(leaks, [], 'no code read/edit, terminal, or sub-agent tools');
 
-// Allowed and required: planning memory, the eight worker operations, commentary, budget, and the internet.
+// Allowed and required: planning memory, the one worker tool (eight actions), commentary, budget, and the internet.
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).contributes.languageModelTools.map((t) => t.toolReferenceName);
-const required = ['vscode/memory', 'web', 'intuitiv.askaway/commentary', 'intuitiv.askaway/turnBudget',
-    ...['Start', 'Submit', 'List', 'Status', 'Wait', 'Cancel', 'Resume', 'Logs'].map((op) => `intuitiv.askaway/worker${op}`)];
+const required = ['vscode/memory', 'web', 'intuitiv.askaway/commentary', 'intuitiv.askaway/turnBudget', 'intuitiv.askaway/worker'];
 for (const tool of required) { assert.ok(tools.includes(tool), `orchestrator has ${tool}`); }
+assert.ok(!tools.some((t) => /^intuitiv\.askaway\/worker[A-Z]/.test(t)), 'no per-operation worker tools');
 for (const tool of tools.filter((t) => t.startsWith('intuitiv.askaway/'))) {
     assert.ok(manifest.includes(tool.split('/')[1]), `${tool} is a tool this extension declares`);
 }
 assert.doesNotMatch(text, /opencode run --print-logs/, 'no terminal fallback that would dispatch around the Workers tab');
 assert.match(text, /no terminal and no code read\/edit tools, by design/);
-console.log(`EV-022 OrchestratorToolPolicy: PASS tools=${tools.length} denied=0 workerOps=8 terminalFallback=none`);
+console.log(`EV-022 OrchestratorToolPolicy: PASS tools=${tools.length} denied=0 workerTool=1 terminalFallback=none`);

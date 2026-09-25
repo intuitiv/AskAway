@@ -63,7 +63,7 @@ const finish = (id, input, cost) => ({ type: 'step_finish', sessionID: id, part:
     const x = state.workers.find((w) => w.workerId === done.workerId);
     assert.deepEqual([x.state, x.sessionId, x.sessionOpenAction], ['FAILED', 'ses_X', `opencode attach ${url} --session ses_X`], 'exact session link kept');
     assert.deepEqual(x.runs.map((r) => [r.runId, r.state]), [[done.runId, 'COMPLETED'], [interrupted.runId, 'FAILED']]);
-    assert.equal(x.runs[1].reason, 'interrupted by reload; worker_resume continues its session');
+    assert.equal(x.runs[1].reason, 'interrupted by reload; action resume continues its session');
     assert.deepEqual([x.runs[0].usage.cost, x.runs[1].usage.cost, x.usage.cost], [0.003, 0.001, 0.004], 'measured cost survives the reload');
     const y = state.workers.find((w) => w.workerId === noSession.workerId);
     assert.deepEqual([y.state, y.blocker], ['ORPHANED', 'orphaned: no OpenCode session was recorded before reload']);
@@ -118,7 +118,7 @@ async function endToEndFlow() {
             { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
     }
     const W = (name) => require(path.join(toolsDir, `${name}.js`));
-    const { registerWorkerTools, WORKER_TOOL_NAMES } = W('workerTools');
+    const { registerWorkerTools, WORKER_TOOL_NAMES, WORKER_ACTIONS } = W('workerTools');
     const { projectWorkersState: project, sessionOpenCommand } = W('workersState');
     const Runtime = W('openCodeRuntime').OpenCodeWorkerRuntime;
     const parse = W('workerProfiles').parseWorkerProfile;
@@ -134,7 +134,7 @@ async function endToEndFlow() {
     const host = (runtime) => {
         const tools = new Map();
         registerWorkerTools((name, config, handler) => tools.set(name, { config, handler }), () => runtime, ws);
-        return { tools, call: async (name, args) => JSON.parse((await tools.get(name).handler(tools.get(name).config.inputSchema.parse(args))).content[0].text) };
+        return { tools, call: async (name, args) => JSON.parse((await tools.get('worker').handler(tools.get('worker').config.inputSchema.parse({ action: name.slice('worker_'.length), ...args }))).content[0].text) };
     };
     const runtime = new Runtime([code, verify], { ledgerDir: ledger, spawner: fakeOpenCode, now, attachUrl: url });
     const { tools, call } = host(runtime);
@@ -149,10 +149,10 @@ async function endToEndFlow() {
     };
     const exit = async (child, codeValue = 0) => { child.emit('exit', codeValue, null); await tick(); };
 
-    // 1. Exactly the eight operations; no worker ask/respond (Spec 003).
-    assert.deepEqual([...tools.keys()], [...WORKER_TOOL_NAMES]);
-    assert.equal(tools.size, 8);
-    assert.ok(![...tools.keys()].some((n) => /ask|respond/.test(n)));
+    // 1. One `worker` tool whose actions are exactly the eight operations; no worker ask/respond (Spec 003).
+    assert.deepEqual([...tools.keys()], ['worker']);
+    assert.deepEqual(WORKER_ACTIONS.map((a) => `worker_${a}`), [...WORKER_TOOL_NAMES]);
+    assert.ok(!WORKER_ACTIONS.some((n) => /ask|respond/.test(n)));
 
     // 2. Per-mode selection: only the mode's declared models and thinking, refused explicitly otherwise.
     const badModel = await call('worker_start', pkt('code', 'x', { model: 'github-copilot/gpt-6-sol' }));
@@ -225,7 +225,7 @@ async function endToEndFlow() {
     // 10. Retirement: once its cache is cold the worker retires on the next submit and a fresh start is required.
     clock += 301_000;
     const cold = await reHost.call('worker_submit', { workerId: a.workerId, ...pkt('code', 'too late') });
-    assert.deepEqual([cold.status, cold.reason], ['RETIRED', 'cache expired; start a fresh worker (worker_start)']);
+    assert.deepEqual([cold.status, cold.reason], ['RETIRED', 'cache expired; start a fresh worker (action start)']);
 
     // 11. Protected prune: running work is kept, finished non-reusable workers are archived, costs stay.
     const running = await reHost.call('worker_start', pkt('verify', 'still going', { track: 'B' }));
@@ -236,5 +236,5 @@ async function endToEndFlow() {
     assert.ok(reloaded.usageByTurn(ws)['turn-flow'].cost >= turnCost.cost, 'archived cost history is kept');
 
     fs.rmSync(toolsDir, { recursive: true, force: true });
-    console.log('EV-021 EndToEndAsyncWorkerFlow: PASS ops=8 askRespond=0 selectionRefused=2 parallelTracks=2 sharedServer=true progress=nonBlocking queue+cancel=true sessionReuse=true cacheBoundary=true resume=sameSession ledgerText=0 trace=metricsEvents reload=reconnect retire=coldCache prune=protected');
+    console.log('EV-021 EndToEndAsyncWorkerFlow: PASS tool=worker actions=8 askRespond=0 selectionRefused=2 parallelTracks=2 sharedServer=true progress=nonBlocking queue+cancel=true sessionReuse=true cacheBoundary=true resume=sameSession ledgerText=0 trace=metricsEvents reload=reconnect retire=coldCache prune=protected');
 }
