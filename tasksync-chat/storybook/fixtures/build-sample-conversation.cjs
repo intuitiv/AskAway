@@ -48,10 +48,13 @@ const [commentary] = commentaryToolDefinitions(() => store, ws);
 
 const frames = [];
 const chat = [];
+const turnStarts = [];
 let turn = '';
+// The prompt hook marks each turn start; the sample does the same when the reviewer sends a message.
+const userSays = (text) => { later(1); turnStarts.push(clock); chat.push({ role: 'user', text }); };
 const snap = (caption) => {
     const state = projectWorkersState(runtime, ws, now);
-    frames.push({ at: clock, caption, chat: chat.slice(), commentary: commentaryView(store.read(ws)), workers: { ...state, scoreboard: [] } });
+    frames.push({ at: clock, caption, chat: chat.slice(), commentary: commentaryView(store.read(ws), turnStarts.slice()), workers: { ...state, scoreboard: [] } });
 };
 const say = async (kind, text) => { await commentary.run({ kind, text, turnId: turn }); };
 const spawnedFor = new Map();
@@ -82,7 +85,7 @@ const later = (seconds) => { clock += seconds * 1000; };
 (async () => {
     // ── Turn 1 ──
     turn = 'turn-1';
-    chat.push({ role: 'user', text: 'Add a truncate(text, max) helper with a test, and tell me where listenWhenFree is defined.' });
+    userSays('Add a truncate(text, max) helper with a test, and tell me where listenWhenFree is defined.');
     await say('update', '🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.');
     snap('The orchestrator plans two independent tracks.');
     later(4);
@@ -116,14 +119,16 @@ const later = (seconds) => { clock += seconds * 1000; };
     later(2);
     await say('update', '🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.');
     chat.push({ role: 'assistant', text: 'Both tracks accepted. truncate.js + test (TRUNCATE-TEST: PASS, run by a separate checker); listenWhenFree is defined in src/mcp/sharedPort.ts:4 and called from src/mcp/mcpServer.ts:375. Worker cost about $0.011.' });
-    snap('Turn 1 done: every line of it lives in one pane.');
+    snap('Turn 1 done: its lines stay flat until the next prompt.');
 
     // ── Turn 2: the previous turn's pane collapses ──
     later(70);
     turn = 'turn-2';
-    chat.push({ role: 'user', text: 'Make truncate safe for emoji.' });
+    userSays('Make truncate safe for emoji.');
+    snap('A new turn starts: everything so far folds into one collapsed pane.');
+    later(2);
     await say('update', '🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.');
-    snap('A new turn starts: the previous turn collapses to one line.');
+    snap('The new turn\'s lines appear below the folded pane.');
     later(3);
     const a2 = await act('submit', { workerId: a.workerId, ...packet('code', 'Make truncate count emoji as one character; extend the test.', { track: 'A', allowedFiles: ['src/truncate.js', 'test/truncate.test.js'] }) });
     await say('heads-up', '❓ Should a flag emoji like 🇮🇳 count as **one character or two**? I will assume one.');

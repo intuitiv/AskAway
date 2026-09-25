@@ -1502,15 +1502,20 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) { this._broadcast({ type: 'commentaryState', data: null }); return; }
         const store = sharedCommentaryStore();
+        const push = (state = store.read(root)) => this._broadcast({ type: 'commentaryState', data: commentaryView(state, store.turnStarts(root)) });
         if (!this._commentarySubscribed) {
             this._commentarySubscribed = true;
             store.onChange((state) => {
-                if (commentaryKey(state.workspacePath) === commentaryKey(root)) { this._broadcast({ type: 'commentaryState', data: commentaryView(state) }); }
+                if (commentaryKey(state.workspacePath) === commentaryKey(root)) { push(state); }
             });
+            // A new chat turn folds the lines so far into a collapsed pane as soon as the prompt is sent.
+            const turns = store.turnsFile(root);
+            fs.watchFile(turns, { interval: 1000 }, () => push());
+            this._disposables.push({ dispose: () => fs.unwatchFile(turns) });
         }
         if (action === 'goal') { store.setGoal(root, value ?? ''); return; }
         if (action === 'clear') { store.clear(root, value === 'goal' || value === 'all' ? value : 'feed'); return; }
-        this._broadcast({ type: 'commentaryState', data: commentaryView(store.read(root)) });
+        push();
     }
 
     /** Opens the exact OpenCode session in a terminal; only sessions of this workspace's workers are accepted. */

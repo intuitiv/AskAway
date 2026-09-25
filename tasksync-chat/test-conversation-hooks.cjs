@@ -30,6 +30,13 @@ assert.match(run('spec-context-inject.cjs', { session_id: 'conv-2', cwd: workspa
 const noSpec = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-hook-nospec-'));
 assert.equal(run('spec-context-inject.cjs', { session_id: 'conv-3', cwd: noSpec }), '', 'no active spec, no injection');
 
+// --- Every prompt marks a turn start, which the Commentary tab uses to fold the lines so far ---
+const turnsFile = (cwd) => path.join(home, '.askaway', 'commentary', `${fs.realpathSync(cwd).replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()}.turns.json`);
+const starts = JSON.parse(fs.readFileSync(turnsFile(workspace), 'utf8')).starts;
+assert.equal(starts.length, 3, 'three prompts in this workspace, three turn starts (even when nothing is injected)');
+assert.ok(starts.every((ts, i) => i === 0 || ts >= starts[i - 1]), 'in order');
+assert.equal(JSON.parse(fs.readFileSync(turnsFile(noSpec), 'utf8')).starts.length, 1, 'per workspace');
+
 // --- Compact chat capture ---
 const transcript = path.join(workspace, 'transcript.jsonl');
 const records = (answer) => [
@@ -60,4 +67,4 @@ assert.equal(rows[0].assistant, 'final answer', 'keeps the FINAL assistant messa
 assert.doesNotMatch(JSON.stringify(rows[0]), /Checking the files now|toolRequests/);
 
 for (const dir of [home, workspace, noSpec]) { fs.rmSync(dir, { recursive: true, force: true }); }
-console.log('EV-HOOKS ConversationContext: PASS injectOnce=true reinjectNewConversation=true captureFinalOnly=true upsertPerTurn=true');
+console.log('EV-HOOKS ConversationContext: PASS injectOnce=true reinjectNewConversation=true turnStartPerPrompt=true captureFinalOnly=true upsertPerTurn=true');

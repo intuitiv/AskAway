@@ -2,7 +2,7 @@
   "workspacePath": "/Users/reviewer/projects/askaway-demo",
   "frames": [
     {
-      "at": 1790338500000,
+      "at": 1790338501000,
       "caption": "The orchestrator plans two independent tracks.",
       "chat": [
         {
@@ -15,19 +15,22 @@
         "goalUpdatedAt": 0,
         "items": [
           {
-            "id": "c-mugxbfs0-1",
-            "ts": 1790338500000,
+            "id": "c-mugxbgjs-1",
+            "ts": 1790338501000,
             "kind": "update",
             "text": "🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.",
             "turnId": "turn-1"
           }
         ],
         "archivedCount": 0,
-        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (1):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\nContinue toward the main goal."
+        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (1):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\nContinue toward the main goal.",
+        "turnStarts": [
+          1790338501000
+        ]
       },
       "workers": {
         "workspacePath": "/Users/reviewer/projects/askaway-demo",
-        "generatedAt": 1790338500000,
+        "generatedAt": 1790338501000,
         "server": {
           "state": "ATTACHED",
           "endpoint": "http://127.0.0.1:4096"
@@ -37,7 +40,7 @@
       }
     },
     {
-      "at": 1790338504000,
+      "at": 1790338505000,
       "caption": "Two workers start in parallel, one lane per track.",
       "chat": [
         {
@@ -50,33 +53,36 @@
         "goalUpdatedAt": 0,
         "items": [
           {
-            "id": "c-mugxbfs0-1",
-            "ts": 1790338500000,
+            "id": "c-mugxbgjs-1",
+            "ts": 1790338501000,
             "kind": "update",
             "text": "🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbiv4-2",
-            "ts": 1790338504000,
+            "id": "c-mugxbjmw-2",
+            "ts": 1790338505000,
             "kind": "update",
             "text": "🚀 **Both tracks started at once**; they touch no shared files.",
             "turnId": "turn-1"
           }
         ],
         "archivedCount": 0,
-        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (2):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\nContinue toward the main goal."
+        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (2):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\nContinue toward the main goal.",
+        "turnStarts": [
+          1790338501000
+        ]
       },
       "workers": {
         "workspacePath": "/Users/reviewer/projects/askaway-demo",
-        "generatedAt": 1790338504000,
+        "generatedAt": 1790338505000,
         "server": {
           "state": "ATTACHED",
           "endpoint": "http://127.0.0.1:4096"
         },
         "workers": [
           {
-            "workerId": "worker-1whoz3-1",
+            "workerId": "worker-5o124n-1",
             "state": "STARTING",
             "adapter": "opencode",
             "profile": "code",
@@ -84,7 +90,7 @@
             "thinking": "high",
             "sessionId": "",
             "sessionOpenAction": "",
-            "lastUpdateAt": 1790338504000,
+            "lastUpdateAt": 1790338505000,
             "blocker": "",
             "nextInputTokens": 0,
             "cacheExpiresAt": 0,
@@ -97,7 +103,7 @@
               "lastIn": 0,
               "lastCached": 0,
               "turnOut": 0,
-              "lastActivityAt": 1790338504000
+              "lastActivityAt": 1790338505000
             },
             "usage": {
               "input": 0,
@@ -110,11 +116,11 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-2",
+                "runId": "run-5o124n-2",
                 "state": "STARTING",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
+                "startedAt": 1790338505000,
                 "elapsedMs": 0,
                 "usage": {
                   "input": 0,
@@ -131,7 +137,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-3",
+            "workerId": "worker-5o124n-3",
             "state": "STARTING",
             "adapter": "opencode",
             "profile": "explore",
@@ -139,7 +145,7 @@
             "thinking": "low",
             "sessionId": "",
             "sessionOpenAction": "",
-            "lastUpdateAt": 1790338504000,
+            "lastUpdateAt": 1790338505000,
             "blocker": "",
             "nextInputTokens": 0,
             "cacheExpiresAt": 0,
@@ -152,7 +158,7 @@
               "lastIn": 0,
               "lastCached": 0,
               "turnOut": 0,
-              "lastActivityAt": 1790338504000
+              "lastActivityAt": 1790338505000
             },
             "usage": {
               "input": 0,
@@ -165,11 +171,11 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-4",
+                "runId": "run-5o124n-4",
                 "state": "STARTING",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
+                "startedAt": 1790338505000,
                 "elapsedMs": 0,
                 "usage": {
                   "input": 0,
@@ -190,7 +196,7 @@
       }
     },
     {
-      "at": 1790338513000,
+      "at": 1790338514000,
       "caption": "Workers report steps, tokens and cost as they go.",
       "chat": [
         {
@@ -203,33 +209,36 @@
         "goalUpdatedAt": 0,
         "items": [
           {
-            "id": "c-mugxbfs0-1",
-            "ts": 1790338500000,
+            "id": "c-mugxbgjs-1",
+            "ts": 1790338501000,
             "kind": "update",
             "text": "🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbiv4-2",
-            "ts": 1790338504000,
+            "id": "c-mugxbjmw-2",
+            "ts": 1790338505000,
             "kind": "update",
             "text": "🚀 **Both tracks started at once**; they touch no shared files.",
             "turnId": "turn-1"
           }
         ],
         "archivedCount": 0,
-        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (2):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\nContinue toward the main goal."
+        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (2):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\nContinue toward the main goal.",
+        "turnStarts": [
+          1790338501000
+        ]
       },
       "workers": {
         "workspacePath": "/Users/reviewer/projects/askaway-demo",
-        "generatedAt": 1790338513000,
+        "generatedAt": 1790338514000,
         "server": {
           "state": "ATTACHED",
           "endpoint": "http://127.0.0.1:4096"
         },
         "workers": [
           {
-            "workerId": "worker-1whoz3-1",
+            "workerId": "worker-5o124n-1",
             "state": "RUNNING",
             "adapter": "opencode",
             "profile": "code",
@@ -237,7 +246,7 @@
             "thinking": "high",
             "sessionId": "ses_A",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_A",
-            "lastUpdateAt": 1790338513000,
+            "lastUpdateAt": 1790338514000,
             "blocker": "",
             "nextInputTokens": 9860,
             "cacheExpiresAt": 0,
@@ -250,7 +259,7 @@
               "lastIn": 9800,
               "lastCached": 0,
               "turnOut": 60,
-              "lastActivityAt": 1790338513000
+              "lastActivityAt": 1790338514000
             },
             "usage": {
               "input": 9800,
@@ -263,11 +272,11 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-2",
+                "runId": "run-5o124n-2",
                 "state": "RUNNING",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
+                "startedAt": 1790338505000,
                 "elapsedMs": 9000,
                 "usage": {
                   "input": 9800,
@@ -282,8 +291,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 9800,
                     "outputTokens": 60,
@@ -292,8 +301,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "write",
                     "durMs": 900,
                     "status": "ok",
@@ -307,7 +316,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-3",
+            "workerId": "worker-5o124n-3",
             "state": "RUNNING",
             "adapter": "opencode",
             "profile": "explore",
@@ -315,7 +324,7 @@
             "thinking": "low",
             "sessionId": "ses_B",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_B",
-            "lastUpdateAt": 1790338513000,
+            "lastUpdateAt": 1790338514000,
             "blocker": "",
             "nextInputTokens": 8460,
             "cacheExpiresAt": 0,
@@ -328,7 +337,7 @@
               "lastIn": 8400,
               "lastCached": 0,
               "turnOut": 60,
-              "lastActivityAt": 1790338513000
+              "lastActivityAt": 1790338514000
             },
             "usage": {
               "input": 8400,
@@ -341,11 +350,11 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-4",
+                "runId": "run-5o124n-4",
                 "state": "RUNNING",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
+                "startedAt": 1790338505000,
                 "elapsedMs": 9000,
                 "usage": {
                   "input": 8400,
@@ -360,8 +369,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8400,
                     "outputTokens": 60,
@@ -370,8 +379,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -389,7 +398,7 @@
       }
     },
     {
-      "at": 1790338520000,
+      "at": 1790338521000,
       "caption": "Track B is back; an independent verifier re-derives it.",
       "chat": [
         {
@@ -402,40 +411,43 @@
         "goalUpdatedAt": 0,
         "items": [
           {
-            "id": "c-mugxbfs0-1",
-            "ts": 1790338500000,
+            "id": "c-mugxbgjs-1",
+            "ts": 1790338501000,
             "kind": "update",
             "text": "🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbiv4-2",
-            "ts": 1790338504000,
+            "id": "c-mugxbjmw-2",
+            "ts": 1790338505000,
             "kind": "update",
             "text": "🚀 **Both tracks started at once**; they touch no shared files.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbv7k-3",
-            "ts": 1790338520000,
+            "id": "c-mugxbvzc-3",
+            "ts": 1790338521000,
             "kind": "update",
             "text": "📦 Locator found **the definition and one caller**; a separate checker confirms next.",
             "turnId": "turn-1"
           }
         ],
         "archivedCount": 0,
-        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (3):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\nContinue toward the main goal."
+        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (3):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\nContinue toward the main goal.",
+        "turnStarts": [
+          1790338501000
+        ]
       },
       "workers": {
         "workspacePath": "/Users/reviewer/projects/askaway-demo",
-        "generatedAt": 1790338520000,
+        "generatedAt": 1790338521000,
         "server": {
           "state": "ATTACHED",
           "endpoint": "http://127.0.0.1:4096"
         },
         "workers": [
           {
-            "workerId": "worker-1whoz3-3",
+            "workerId": "worker-5o124n-3",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "explore",
@@ -443,10 +455,10 @@
             "thinking": "low",
             "sessionId": "ses_B",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_B",
-            "lastUpdateAt": 1790338520000,
+            "lastUpdateAt": 1790338521000,
             "blocker": "",
             "nextInputTokens": 8580,
-            "cacheExpiresAt": 1790338820000,
+            "cacheExpiresAt": 1790338821000,
             "expired": false,
             "knowledge": "knows the MCP port code",
             "track": "B",
@@ -456,7 +468,7 @@
               "lastIn": 8520,
               "lastCached": 8400,
               "turnOut": 120,
-              "lastActivityAt": 1790338520000
+              "lastActivityAt": 1790338521000
             },
             "usage": {
               "input": 8520,
@@ -469,12 +481,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-4",
+                "runId": "run-5o124n-4",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338520000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338521000,
                 "elapsedMs": 16000,
                 "usage": {
                   "input": 8520,
@@ -489,8 +501,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8400,
                     "outputTokens": 60,
@@ -499,8 +511,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -511,8 +523,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "20000",
-                    "ts": 1790338520000,
+                    "id": "21000",
+                    "ts": 1790338521000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8520,
                     "outputTokens": 60,
@@ -524,7 +536,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-5",
+            "workerId": "worker-5o124n-5",
             "state": "STARTING",
             "adapter": "opencode",
             "profile": "verify",
@@ -532,7 +544,7 @@
             "thinking": "low",
             "sessionId": "",
             "sessionOpenAction": "",
-            "lastUpdateAt": 1790338520000,
+            "lastUpdateAt": 1790338521000,
             "blocker": "",
             "nextInputTokens": 0,
             "cacheExpiresAt": 0,
@@ -545,7 +557,7 @@
               "lastIn": 0,
               "lastCached": 0,
               "turnOut": 0,
-              "lastActivityAt": 1790338520000
+              "lastActivityAt": 1790338521000
             },
             "usage": {
               "input": 0,
@@ -558,11 +570,11 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-6",
+                "runId": "run-5o124n-6",
                 "state": "STARTING",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338520000,
+                "startedAt": 1790338521000,
                 "elapsedMs": 0,
                 "usage": {
                   "input": 0,
@@ -579,7 +591,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-1",
+            "workerId": "worker-5o124n-1",
             "state": "RUNNING",
             "adapter": "opencode",
             "profile": "code",
@@ -587,7 +599,7 @@
             "thinking": "high",
             "sessionId": "ses_A",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_A",
-            "lastUpdateAt": 1790338513000,
+            "lastUpdateAt": 1790338514000,
             "blocker": "",
             "nextInputTokens": 9860,
             "cacheExpiresAt": 0,
@@ -600,7 +612,7 @@
               "lastIn": 9800,
               "lastCached": 0,
               "turnOut": 60,
-              "lastActivityAt": 1790338513000
+              "lastActivityAt": 1790338514000
             },
             "usage": {
               "input": 9800,
@@ -613,11 +625,11 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-2",
+                "runId": "run-5o124n-2",
                 "state": "RUNNING",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
+                "startedAt": 1790338505000,
                 "elapsedMs": 16000,
                 "usage": {
                   "input": 9800,
@@ -632,8 +644,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 9800,
                     "outputTokens": 60,
@@ -642,8 +654,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "write",
                     "durMs": 900,
                     "status": "ok",
@@ -661,7 +673,7 @@
       }
     },
     {
-      "at": 1790338526000,
+      "at": 1790338527000,
       "caption": "The builder never marks its own homework: a verifier runs the test.",
       "chat": [
         {
@@ -674,54 +686,57 @@
         "goalUpdatedAt": 0,
         "items": [
           {
-            "id": "c-mugxbfs0-1",
-            "ts": 1790338500000,
+            "id": "c-mugxbgjs-1",
+            "ts": 1790338501000,
             "kind": "update",
             "text": "🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbiv4-2",
-            "ts": 1790338504000,
+            "id": "c-mugxbjmw-2",
+            "ts": 1790338505000,
             "kind": "update",
             "text": "🚀 **Both tracks started at once**; they touch no shared files.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbv7k-3",
-            "ts": 1790338520000,
+            "id": "c-mugxbvzc-3",
+            "ts": 1790338521000,
             "kind": "update",
             "text": "📦 Locator found **the definition and one caller**; a separate checker confirms next.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu8-4",
-            "ts": 1790338526000,
+            "id": "c-mugxc0m0-4",
+            "ts": 1790338527000,
             "kind": "update",
             "text": "✅ **listenWhenFree accepted**: the checker found the same definition and caller.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu9-5",
-            "ts": 1790338526001,
+            "id": "c-mugxc0m1-5",
+            "ts": 1790338527001,
             "kind": "update",
             "text": "🚀 Builder says truncate passes; a **different checker** now runs the test itself.",
             "turnId": "turn-1"
           }
         ],
         "archivedCount": 0,
-        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (5):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\nContinue toward the main goal."
+        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (5):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\nContinue toward the main goal.",
+        "turnStarts": [
+          1790338501000
+        ]
       },
       "workers": {
         "workspacePath": "/Users/reviewer/projects/askaway-demo",
-        "generatedAt": 1790338526000,
+        "generatedAt": 1790338527000,
         "server": {
           "state": "ATTACHED",
           "endpoint": "http://127.0.0.1:4096"
         },
         "workers": [
           {
-            "workerId": "worker-1whoz3-1",
+            "workerId": "worker-5o124n-1",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "code",
@@ -729,10 +744,10 @@
             "thinking": "high",
             "sessionId": "ses_A",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_A",
-            "lastUpdateAt": 1790338526000,
+            "lastUpdateAt": 1790338527000,
             "blocker": "",
             "nextInputTokens": 10160,
-            "cacheExpiresAt": 1790338826000,
+            "cacheExpiresAt": 1790338827000,
             "expired": false,
             "knowledge": "knows truncate.js and its test",
             "track": "A",
@@ -742,7 +757,7 @@
               "lastIn": 10100,
               "lastCached": 9800,
               "turnOut": 120,
-              "lastActivityAt": 1790338526000
+              "lastActivityAt": 1790338527000
             },
             "usage": {
               "input": 10100,
@@ -755,12 +770,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-2",
+                "runId": "run-5o124n-2",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 22000,
                 "usage": {
                   "input": 10100,
@@ -775,8 +790,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 9800,
                     "outputTokens": 60,
@@ -785,8 +800,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "write",
                     "durMs": 900,
                     "status": "ok",
@@ -797,8 +812,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 10100,
                     "outputTokens": 60,
@@ -810,7 +825,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-5",
+            "workerId": "worker-5o124n-5",
             "state": "STARTING",
             "adapter": "opencode",
             "profile": "verify",
@@ -818,7 +833,7 @@
             "thinking": "low",
             "sessionId": "ses_BV",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_BV",
-            "lastUpdateAt": 1790338526000,
+            "lastUpdateAt": 1790338527000,
             "blocker": "",
             "nextInputTokens": 8760,
             "cacheExpiresAt": 0,
@@ -831,7 +846,7 @@
               "lastIn": 0,
               "lastCached": 0,
               "turnOut": 0,
-              "lastActivityAt": 1790338526000
+              "lastActivityAt": 1790338527000
             },
             "usage": {
               "input": 8700,
@@ -844,12 +859,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-6",
+                "runId": "run-5o124n-6",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338520000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338521000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 6000,
                 "usage": {
                   "input": 8700,
@@ -864,8 +879,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8700,
                     "outputTokens": 60,
@@ -874,8 +889,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -887,11 +902,11 @@
                 ]
               },
               {
-                "runId": "run-1whoz3-7",
+                "runId": "run-5o124n-7",
                 "state": "STARTING",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338526000,
+                "startedAt": 1790338527000,
                 "elapsedMs": 0,
                 "usage": {
                   "input": 0,
@@ -908,7 +923,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-3",
+            "workerId": "worker-5o124n-3",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "explore",
@@ -916,10 +931,10 @@
             "thinking": "low",
             "sessionId": "ses_B",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_B",
-            "lastUpdateAt": 1790338520000,
+            "lastUpdateAt": 1790338521000,
             "blocker": "",
             "nextInputTokens": 8580,
-            "cacheExpiresAt": 1790338820000,
+            "cacheExpiresAt": 1790338821000,
             "expired": false,
             "knowledge": "knows the MCP port code",
             "track": "B",
@@ -929,7 +944,7 @@
               "lastIn": 8520,
               "lastCached": 8400,
               "turnOut": 120,
-              "lastActivityAt": 1790338520000
+              "lastActivityAt": 1790338521000
             },
             "usage": {
               "input": 8520,
@@ -942,12 +957,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-4",
+                "runId": "run-5o124n-4",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338520000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338521000,
                 "elapsedMs": 16000,
                 "usage": {
                   "input": 8520,
@@ -962,8 +977,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8400,
                     "outputTokens": 60,
@@ -972,8 +987,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -984,8 +999,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "20000",
-                    "ts": 1790338520000,
+                    "id": "21000",
+                    "ts": 1790338521000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8520,
                     "outputTokens": 60,
@@ -1001,8 +1016,8 @@
       }
     },
     {
-      "at": 1790338536000,
-      "caption": "Turn 1 done: every line of it lives in one pane.",
+      "at": 1790338537000,
+      "caption": "Turn 1 done: its lines stay flat until the next prompt.",
       "chat": [
         {
           "role": "user",
@@ -1018,68 +1033,71 @@
         "goalUpdatedAt": 0,
         "items": [
           {
-            "id": "c-mugxbfs0-1",
-            "ts": 1790338500000,
+            "id": "c-mugxbgjs-1",
+            "ts": 1790338501000,
             "kind": "update",
             "text": "🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbiv4-2",
-            "ts": 1790338504000,
+            "id": "c-mugxbjmw-2",
+            "ts": 1790338505000,
             "kind": "update",
             "text": "🚀 **Both tracks started at once**; they touch no shared files.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbv7k-3",
-            "ts": 1790338520000,
+            "id": "c-mugxbvzc-3",
+            "ts": 1790338521000,
             "kind": "update",
             "text": "📦 Locator found **the definition and one caller**; a separate checker confirms next.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu8-4",
-            "ts": 1790338526000,
+            "id": "c-mugxc0m0-4",
+            "ts": 1790338527000,
             "kind": "update",
             "text": "✅ **listenWhenFree accepted**: the checker found the same definition and caller.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu9-5",
-            "ts": 1790338526001,
+            "id": "c-mugxc0m1-5",
+            "ts": 1790338527001,
             "kind": "update",
             "text": "🚀 Builder says truncate passes; a **different checker** now runs the test itself.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxc60g-6",
-            "ts": 1790338534000,
+            "id": "c-mugxc6s8-6",
+            "ts": 1790338535000,
             "kind": "update",
             "text": "✅ **Truncate accepted**: a separate checker saw the test pass.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxc7k0-7",
-            "ts": 1790338536000,
+            "id": "c-mugxc8bs-7",
+            "ts": 1790338537000,
             "kind": "update",
             "text": "🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.",
             "turnId": "turn-1"
           }
         ],
         "archivedCount": 0,
-        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (7):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\n- 12:15 ✅ **Truncate accepted**: a separate checker saw the test pass.\n- 12:15 🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.\nContinue toward the main goal."
+        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (7):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\n- 12:15 ✅ **Truncate accepted**: a separate checker saw the test pass.\n- 12:15 🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.\nContinue toward the main goal.",
+        "turnStarts": [
+          1790338501000
+        ]
       },
       "workers": {
         "workspacePath": "/Users/reviewer/projects/askaway-demo",
-        "generatedAt": 1790338536000,
+        "generatedAt": 1790338537000,
         "server": {
           "state": "ATTACHED",
           "endpoint": "http://127.0.0.1:4096"
         },
         "workers": [
           {
-            "workerId": "worker-1whoz3-5",
+            "workerId": "worker-5o124n-5",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "verify",
@@ -1087,10 +1105,10 @@
             "thinking": "low",
             "sessionId": "ses_BV",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_BV",
-            "lastUpdateAt": 1790338534000,
+            "lastUpdateAt": 1790338535000,
             "blocker": "",
             "nextInputTokens": 8160,
-            "cacheExpiresAt": 1790338834000,
+            "cacheExpiresAt": 1790338835000,
             "expired": false,
             "knowledge": "ran the truncate test",
             "track": "A",
@@ -1100,7 +1118,7 @@
               "lastIn": 8100,
               "lastCached": 0,
               "turnOut": 60,
-              "lastActivityAt": 1790338534000
+              "lastActivityAt": 1790338535000
             },
             "usage": {
               "input": 16800,
@@ -1113,12 +1131,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-6",
+                "runId": "run-5o124n-6",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338520000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338521000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 6000,
                 "usage": {
                   "input": 8700,
@@ -1133,8 +1151,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8700,
                     "outputTokens": 60,
@@ -1143,8 +1161,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -1156,12 +1174,12 @@
                 ]
               },
               {
-                "runId": "run-1whoz3-7",
+                "runId": "run-5o124n-7",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338526000,
-                "endedAt": 1790338534000,
+                "startedAt": 1790338527000,
+                "endedAt": 1790338535000,
                 "elapsedMs": 8000,
                 "usage": {
                   "input": 8100,
@@ -1176,8 +1194,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "34000",
-                    "ts": 1790338534000,
+                    "id": "35000",
+                    "ts": 1790338535000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8100,
                     "outputTokens": 60,
@@ -1186,8 +1204,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "34000",
-                    "ts": 1790338534000,
+                    "id": "35000",
+                    "ts": 1790338535000,
                     "tool": "bash",
                     "durMs": 900,
                     "status": "ok",
@@ -1201,7 +1219,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-1",
+            "workerId": "worker-5o124n-1",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "code",
@@ -1209,10 +1227,10 @@
             "thinking": "high",
             "sessionId": "ses_A",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_A",
-            "lastUpdateAt": 1790338526000,
+            "lastUpdateAt": 1790338527000,
             "blocker": "",
             "nextInputTokens": 10160,
-            "cacheExpiresAt": 1790338826000,
+            "cacheExpiresAt": 1790338827000,
             "expired": false,
             "knowledge": "knows truncate.js and its test",
             "track": "A",
@@ -1222,7 +1240,7 @@
               "lastIn": 10100,
               "lastCached": 9800,
               "turnOut": 120,
-              "lastActivityAt": 1790338526000
+              "lastActivityAt": 1790338527000
             },
             "usage": {
               "input": 10100,
@@ -1235,12 +1253,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-2",
+                "runId": "run-5o124n-2",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 22000,
                 "usage": {
                   "input": 10100,
@@ -1255,8 +1273,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 9800,
                     "outputTokens": 60,
@@ -1265,8 +1283,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "write",
                     "durMs": 900,
                     "status": "ok",
@@ -1277,8 +1295,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 10100,
                     "outputTokens": 60,
@@ -1290,7 +1308,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-3",
+            "workerId": "worker-5o124n-3",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "explore",
@@ -1298,10 +1316,10 @@
             "thinking": "low",
             "sessionId": "ses_B",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_B",
-            "lastUpdateAt": 1790338520000,
+            "lastUpdateAt": 1790338521000,
             "blocker": "",
             "nextInputTokens": 8580,
-            "cacheExpiresAt": 1790338820000,
+            "cacheExpiresAt": 1790338821000,
             "expired": false,
             "knowledge": "knows the MCP port code",
             "track": "B",
@@ -1311,7 +1329,7 @@
               "lastIn": 8520,
               "lastCached": 8400,
               "turnOut": 120,
-              "lastActivityAt": 1790338520000
+              "lastActivityAt": 1790338521000
             },
             "usage": {
               "input": 8520,
@@ -1324,12 +1342,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-4",
+                "runId": "run-5o124n-4",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338520000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338521000,
                 "elapsedMs": 16000,
                 "usage": {
                   "input": 8520,
@@ -1344,8 +1362,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8400,
                     "outputTokens": 60,
@@ -1354,8 +1372,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -1366,8 +1384,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "20000",
-                    "ts": 1790338520000,
+                    "id": "21000",
+                    "ts": 1790338521000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8520,
                     "outputTokens": 60,
@@ -1383,8 +1401,8 @@
       }
     },
     {
-      "at": 1790338606000,
-      "caption": "A new turn starts: the previous turn collapses to one line.",
+      "at": 1790338608000,
+      "caption": "A new turn starts: everything so far folds into one collapsed pane.",
       "chat": [
         {
           "role": "user",
@@ -1404,75 +1422,72 @@
         "goalUpdatedAt": 0,
         "items": [
           {
-            "id": "c-mugxbfs0-1",
-            "ts": 1790338500000,
+            "id": "c-mugxbgjs-1",
+            "ts": 1790338501000,
             "kind": "update",
             "text": "🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbiv4-2",
-            "ts": 1790338504000,
+            "id": "c-mugxbjmw-2",
+            "ts": 1790338505000,
             "kind": "update",
             "text": "🚀 **Both tracks started at once**; they touch no shared files.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbv7k-3",
-            "ts": 1790338520000,
+            "id": "c-mugxbvzc-3",
+            "ts": 1790338521000,
             "kind": "update",
             "text": "📦 Locator found **the definition and one caller**; a separate checker confirms next.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu8-4",
-            "ts": 1790338526000,
+            "id": "c-mugxc0m0-4",
+            "ts": 1790338527000,
             "kind": "update",
             "text": "✅ **listenWhenFree accepted**: the checker found the same definition and caller.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu9-5",
-            "ts": 1790338526001,
+            "id": "c-mugxc0m1-5",
+            "ts": 1790338527001,
             "kind": "update",
             "text": "🚀 Builder says truncate passes; a **different checker** now runs the test itself.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxc60g-6",
-            "ts": 1790338534000,
+            "id": "c-mugxc6s8-6",
+            "ts": 1790338535000,
             "kind": "update",
             "text": "✅ **Truncate accepted**: a separate checker saw the test pass.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxc7k0-7",
-            "ts": 1790338536000,
+            "id": "c-mugxc8bs-7",
+            "ts": 1790338537000,
             "kind": "update",
             "text": "🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.",
             "turnId": "turn-1"
-          },
-          {
-            "id": "c-mugxdpkg-8",
-            "ts": 1790338606000,
-            "kind": "update",
-            "text": "🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.",
-            "turnId": "turn-2"
           }
         ],
         "archivedCount": 0,
-        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (8):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\n- 12:15 ✅ **Truncate accepted**: a separate checker saw the test pass.\n- 12:15 🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.\n- 12:16 🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.\nContinue toward the main goal."
+        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (7):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\n- 12:15 ✅ **Truncate accepted**: a separate checker saw the test pass.\n- 12:15 🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.\nContinue toward the main goal.",
+        "turnStarts": [
+          1790338501000,
+          1790338608000
+        ]
       },
       "workers": {
         "workspacePath": "/Users/reviewer/projects/askaway-demo",
-        "generatedAt": 1790338606000,
+        "generatedAt": 1790338608000,
         "server": {
           "state": "ATTACHED",
           "endpoint": "http://127.0.0.1:4096"
         },
         "workers": [
           {
-            "workerId": "worker-1whoz3-5",
+            "workerId": "worker-5o124n-5",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "verify",
@@ -1480,10 +1495,10 @@
             "thinking": "low",
             "sessionId": "ses_BV",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_BV",
-            "lastUpdateAt": 1790338534000,
+            "lastUpdateAt": 1790338535000,
             "blocker": "",
             "nextInputTokens": 8160,
-            "cacheExpiresAt": 1790338834000,
+            "cacheExpiresAt": 1790338835000,
             "expired": false,
             "knowledge": "ran the truncate test",
             "track": "A",
@@ -1493,7 +1508,7 @@
               "lastIn": 8100,
               "lastCached": 0,
               "turnOut": 60,
-              "lastActivityAt": 1790338534000
+              "lastActivityAt": 1790338535000
             },
             "usage": {
               "input": 16800,
@@ -1506,12 +1521,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-6",
+                "runId": "run-5o124n-6",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338520000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338521000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 6000,
                 "usage": {
                   "input": 8700,
@@ -1526,8 +1541,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8700,
                     "outputTokens": 60,
@@ -1536,8 +1551,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -1549,12 +1564,12 @@
                 ]
               },
               {
-                "runId": "run-1whoz3-7",
+                "runId": "run-5o124n-7",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338526000,
-                "endedAt": 1790338534000,
+                "startedAt": 1790338527000,
+                "endedAt": 1790338535000,
                 "elapsedMs": 8000,
                 "usage": {
                   "input": 8100,
@@ -1569,8 +1584,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "34000",
-                    "ts": 1790338534000,
+                    "id": "35000",
+                    "ts": 1790338535000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8100,
                     "outputTokens": 60,
@@ -1579,8 +1594,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "34000",
-                    "ts": 1790338534000,
+                    "id": "35000",
+                    "ts": 1790338535000,
                     "tool": "bash",
                     "durMs": 900,
                     "status": "ok",
@@ -1594,7 +1609,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-1",
+            "workerId": "worker-5o124n-1",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "code",
@@ -1602,10 +1617,10 @@
             "thinking": "high",
             "sessionId": "ses_A",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_A",
-            "lastUpdateAt": 1790338526000,
+            "lastUpdateAt": 1790338527000,
             "blocker": "",
             "nextInputTokens": 10160,
-            "cacheExpiresAt": 1790338826000,
+            "cacheExpiresAt": 1790338827000,
             "expired": false,
             "knowledge": "knows truncate.js and its test",
             "track": "A",
@@ -1615,7 +1630,7 @@
               "lastIn": 10100,
               "lastCached": 9800,
               "turnOut": 120,
-              "lastActivityAt": 1790338526000
+              "lastActivityAt": 1790338527000
             },
             "usage": {
               "input": 10100,
@@ -1628,12 +1643,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-2",
+                "runId": "run-5o124n-2",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 22000,
                 "usage": {
                   "input": 10100,
@@ -1648,8 +1663,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 9800,
                     "outputTokens": 60,
@@ -1658,8 +1673,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "write",
                     "durMs": 900,
                     "status": "ok",
@@ -1670,8 +1685,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 10100,
                     "outputTokens": 60,
@@ -1683,7 +1698,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-3",
+            "workerId": "worker-5o124n-3",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "explore",
@@ -1691,10 +1706,10 @@
             "thinking": "low",
             "sessionId": "ses_B",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_B",
-            "lastUpdateAt": 1790338520000,
+            "lastUpdateAt": 1790338521000,
             "blocker": "",
             "nextInputTokens": 8580,
-            "cacheExpiresAt": 1790338820000,
+            "cacheExpiresAt": 1790338821000,
             "expired": false,
             "knowledge": "knows the MCP port code",
             "track": "B",
@@ -1704,7 +1719,7 @@
               "lastIn": 8520,
               "lastCached": 8400,
               "turnOut": 120,
-              "lastActivityAt": 1790338520000
+              "lastActivityAt": 1790338521000
             },
             "usage": {
               "input": 8520,
@@ -1717,12 +1732,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-4",
+                "runId": "run-5o124n-4",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338520000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338521000,
                 "elapsedMs": 16000,
                 "usage": {
                   "input": 8520,
@@ -1737,8 +1752,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8400,
                     "outputTokens": 60,
@@ -1747,8 +1762,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -1759,8 +1774,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "20000",
-                    "ts": 1790338520000,
+                    "id": "21000",
+                    "ts": 1790338521000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8520,
                     "outputTokens": 60,
@@ -1776,7 +1791,404 @@
       }
     },
     {
-      "at": 1790338609000,
+      "at": 1790338610000,
+      "caption": "The new turn's lines appear below the folded pane.",
+      "chat": [
+        {
+          "role": "user",
+          "text": "Add a truncate(text, max) helper with a test, and tell me where listenWhenFree is defined."
+        },
+        {
+          "role": "assistant",
+          "text": "Both tracks accepted. truncate.js + test (TRUNCATE-TEST: PASS, run by a separate checker); listenWhenFree is defined in src/mcp/sharedPort.ts:4 and called from src/mcp/mcpServer.ts:375. Worker cost about $0.011."
+        },
+        {
+          "role": "user",
+          "text": "Make truncate safe for emoji."
+        }
+      ],
+      "commentary": {
+        "goal": "",
+        "goalUpdatedAt": 0,
+        "items": [
+          {
+            "id": "c-mugxbgjs-1",
+            "ts": 1790338501000,
+            "kind": "update",
+            "text": "🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.",
+            "turnId": "turn-1"
+          },
+          {
+            "id": "c-mugxbjmw-2",
+            "ts": 1790338505000,
+            "kind": "update",
+            "text": "🚀 **Both tracks started at once**; they touch no shared files.",
+            "turnId": "turn-1"
+          },
+          {
+            "id": "c-mugxbvzc-3",
+            "ts": 1790338521000,
+            "kind": "update",
+            "text": "📦 Locator found **the definition and one caller**; a separate checker confirms next.",
+            "turnId": "turn-1"
+          },
+          {
+            "id": "c-mugxc0m0-4",
+            "ts": 1790338527000,
+            "kind": "update",
+            "text": "✅ **listenWhenFree accepted**: the checker found the same definition and caller.",
+            "turnId": "turn-1"
+          },
+          {
+            "id": "c-mugxc0m1-5",
+            "ts": 1790338527001,
+            "kind": "update",
+            "text": "🚀 Builder says truncate passes; a **different checker** now runs the test itself.",
+            "turnId": "turn-1"
+          },
+          {
+            "id": "c-mugxc6s8-6",
+            "ts": 1790338535000,
+            "kind": "update",
+            "text": "✅ **Truncate accepted**: a separate checker saw the test pass.",
+            "turnId": "turn-1"
+          },
+          {
+            "id": "c-mugxc8bs-7",
+            "ts": 1790338537000,
+            "kind": "update",
+            "text": "🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.",
+            "turnId": "turn-1"
+          },
+          {
+            "id": "c-mugxdsnk-8",
+            "ts": 1790338610000,
+            "kind": "update",
+            "text": "🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.",
+            "turnId": "turn-2"
+          }
+        ],
+        "archivedCount": 0,
+        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (8):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\n- 12:15 ✅ **Truncate accepted**: a separate checker saw the test pass.\n- 12:15 🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.\n- 12:16 🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.\nContinue toward the main goal.",
+        "turnStarts": [
+          1790338501000,
+          1790338608000
+        ]
+      },
+      "workers": {
+        "workspacePath": "/Users/reviewer/projects/askaway-demo",
+        "generatedAt": 1790338610000,
+        "server": {
+          "state": "ATTACHED",
+          "endpoint": "http://127.0.0.1:4096"
+        },
+        "workers": [
+          {
+            "workerId": "worker-5o124n-5",
+            "state": "COMPLETED",
+            "adapter": "opencode",
+            "profile": "verify",
+            "model": "github-copilot/gpt-5.6-luna",
+            "thinking": "low",
+            "sessionId": "ses_BV",
+            "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_BV",
+            "lastUpdateAt": 1790338535000,
+            "blocker": "",
+            "nextInputTokens": 8160,
+            "cacheExpiresAt": 1790338835000,
+            "expired": false,
+            "knowledge": "ran the truncate test",
+            "track": "A",
+            "banner": {
+              "requests": 1,
+              "dollars": 0.0021,
+              "lastIn": 8100,
+              "lastCached": 0,
+              "turnOut": 60,
+              "lastActivityAt": 1790338535000
+            },
+            "usage": {
+              "input": 16800,
+              "output": 120,
+              "reasoning": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "cost": 0.0045,
+              "steps": 2
+            },
+            "runs": [
+              {
+                "runId": "run-5o124n-6",
+                "state": "COMPLETED",
+                "dispatchTurnId": "turn-1",
+                "queuePosition": 0,
+                "startedAt": 1790338521000,
+                "endedAt": 1790338527000,
+                "elapsedMs": 6000,
+                "usage": {
+                  "input": 8700,
+                  "output": 60,
+                  "reasoning": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "cost": 0.0024,
+                  "steps": 1
+                },
+                "reason": "",
+                "events": [
+                  {
+                    "kind": "request",
+                    "id": "27000",
+                    "ts": 1790338527000,
+                    "model": "gpt-5.6-luna",
+                    "inputTokens": 8700,
+                    "outputTokens": 60,
+                    "cachedTokens": 0,
+                    "dollars": 0.0024
+                  },
+                  {
+                    "kind": "tool",
+                    "id": "27000",
+                    "ts": 1790338527000,
+                    "tool": "grep",
+                    "durMs": 900,
+                    "status": "ok",
+                    "inputTokens": 8,
+                    "outputTokens": 1,
+                    "inputPreview": "",
+                    "outputPreview": ""
+                  }
+                ]
+              },
+              {
+                "runId": "run-5o124n-7",
+                "state": "COMPLETED",
+                "dispatchTurnId": "turn-1",
+                "queuePosition": 0,
+                "startedAt": 1790338527000,
+                "endedAt": 1790338535000,
+                "elapsedMs": 8000,
+                "usage": {
+                  "input": 8100,
+                  "output": 60,
+                  "reasoning": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "cost": 0.0021,
+                  "steps": 1
+                },
+                "reason": "",
+                "events": [
+                  {
+                    "kind": "request",
+                    "id": "35000",
+                    "ts": 1790338535000,
+                    "model": "gpt-5.6-luna",
+                    "inputTokens": 8100,
+                    "outputTokens": 60,
+                    "cachedTokens": 0,
+                    "dollars": 0.0021
+                  },
+                  {
+                    "kind": "tool",
+                    "id": "35000",
+                    "ts": 1790338535000,
+                    "tool": "bash",
+                    "durMs": 900,
+                    "status": "ok",
+                    "inputTokens": 8,
+                    "outputTokens": 1,
+                    "inputPreview": "",
+                    "outputPreview": ""
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "workerId": "worker-5o124n-1",
+            "state": "COMPLETED",
+            "adapter": "opencode",
+            "profile": "code",
+            "model": "github-copilot/gpt-5.6-terra",
+            "thinking": "high",
+            "sessionId": "ses_A",
+            "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_A",
+            "lastUpdateAt": 1790338527000,
+            "blocker": "",
+            "nextInputTokens": 10160,
+            "cacheExpiresAt": 1790338827000,
+            "expired": false,
+            "knowledge": "knows truncate.js and its test",
+            "track": "A",
+            "banner": {
+              "requests": 2,
+              "dollars": 0.0043,
+              "lastIn": 10100,
+              "lastCached": 9800,
+              "turnOut": 120,
+              "lastActivityAt": 1790338527000
+            },
+            "usage": {
+              "input": 10100,
+              "output": 120,
+              "reasoning": 0,
+              "cacheRead": 9800,
+              "cacheWrite": 0,
+              "cost": 0.0043,
+              "steps": 2
+            },
+            "runs": [
+              {
+                "runId": "run-5o124n-2",
+                "state": "COMPLETED",
+                "dispatchTurnId": "turn-1",
+                "queuePosition": 0,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338527000,
+                "elapsedMs": 22000,
+                "usage": {
+                  "input": 10100,
+                  "output": 120,
+                  "reasoning": 0,
+                  "cacheRead": 9800,
+                  "cacheWrite": 0,
+                  "cost": 0.0043,
+                  "steps": 2
+                },
+                "reason": "",
+                "events": [
+                  {
+                    "kind": "request",
+                    "id": "14000",
+                    "ts": 1790338514000,
+                    "model": "gpt-5.6-terra",
+                    "inputTokens": 9800,
+                    "outputTokens": 60,
+                    "cachedTokens": 0,
+                    "dollars": 0.0031
+                  },
+                  {
+                    "kind": "tool",
+                    "id": "14000",
+                    "ts": 1790338514000,
+                    "tool": "write",
+                    "durMs": 900,
+                    "status": "ok",
+                    "inputTokens": 8,
+                    "outputTokens": 1,
+                    "inputPreview": "",
+                    "outputPreview": ""
+                  },
+                  {
+                    "kind": "request",
+                    "id": "27000",
+                    "ts": 1790338527000,
+                    "model": "gpt-5.6-terra",
+                    "inputTokens": 10100,
+                    "outputTokens": 60,
+                    "cachedTokens": 9800,
+                    "dollars": 0.0012
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "workerId": "worker-5o124n-3",
+            "state": "COMPLETED",
+            "adapter": "opencode",
+            "profile": "explore",
+            "model": "github-copilot/gpt-5.6-luna",
+            "thinking": "low",
+            "sessionId": "ses_B",
+            "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_B",
+            "lastUpdateAt": 1790338521000,
+            "blocker": "",
+            "nextInputTokens": 8580,
+            "cacheExpiresAt": 1790338821000,
+            "expired": false,
+            "knowledge": "knows the MCP port code",
+            "track": "B",
+            "banner": {
+              "requests": 2,
+              "dollars": 0.0025,
+              "lastIn": 8520,
+              "lastCached": 8400,
+              "turnOut": 120,
+              "lastActivityAt": 1790338521000
+            },
+            "usage": {
+              "input": 8520,
+              "output": 120,
+              "reasoning": 0,
+              "cacheRead": 8400,
+              "cacheWrite": 0,
+              "cost": 0.0025,
+              "steps": 2
+            },
+            "runs": [
+              {
+                "runId": "run-5o124n-4",
+                "state": "COMPLETED",
+                "dispatchTurnId": "turn-1",
+                "queuePosition": 0,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338521000,
+                "elapsedMs": 16000,
+                "usage": {
+                  "input": 8520,
+                  "output": 120,
+                  "reasoning": 0,
+                  "cacheRead": 8400,
+                  "cacheWrite": 0,
+                  "cost": 0.0025,
+                  "steps": 2
+                },
+                "reason": "",
+                "events": [
+                  {
+                    "kind": "request",
+                    "id": "14000",
+                    "ts": 1790338514000,
+                    "model": "gpt-5.6-luna",
+                    "inputTokens": 8400,
+                    "outputTokens": 60,
+                    "cachedTokens": 0,
+                    "dollars": 0.0019
+                  },
+                  {
+                    "kind": "tool",
+                    "id": "14000",
+                    "ts": 1790338514000,
+                    "tool": "grep",
+                    "durMs": 900,
+                    "status": "ok",
+                    "inputTokens": 8,
+                    "outputTokens": 1,
+                    "inputPreview": "",
+                    "outputPreview": ""
+                  },
+                  {
+                    "kind": "request",
+                    "id": "21000",
+                    "ts": 1790338521000,
+                    "model": "gpt-5.6-luna",
+                    "inputTokens": 8520,
+                    "outputTokens": 60,
+                    "cachedTokens": 8400,
+                    "dollars": 0.0006
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "scoreboard": []
+      }
+    },
+    {
+      "at": 1790338613000,
       "caption": "Reusing a warm worker keeps its cache; a heads-up asks the one open question.",
       "chat": [
         {
@@ -1797,82 +2209,86 @@
         "goalUpdatedAt": 0,
         "items": [
           {
-            "id": "c-mugxbfs0-1",
-            "ts": 1790338500000,
+            "id": "c-mugxbgjs-1",
+            "ts": 1790338501000,
             "kind": "update",
             "text": "🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbiv4-2",
-            "ts": 1790338504000,
+            "id": "c-mugxbjmw-2",
+            "ts": 1790338505000,
             "kind": "update",
             "text": "🚀 **Both tracks started at once**; they touch no shared files.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbv7k-3",
-            "ts": 1790338520000,
+            "id": "c-mugxbvzc-3",
+            "ts": 1790338521000,
             "kind": "update",
             "text": "📦 Locator found **the definition and one caller**; a separate checker confirms next.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu8-4",
-            "ts": 1790338526000,
+            "id": "c-mugxc0m0-4",
+            "ts": 1790338527000,
             "kind": "update",
             "text": "✅ **listenWhenFree accepted**: the checker found the same definition and caller.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu9-5",
-            "ts": 1790338526001,
+            "id": "c-mugxc0m1-5",
+            "ts": 1790338527001,
             "kind": "update",
             "text": "🚀 Builder says truncate passes; a **different checker** now runs the test itself.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxc60g-6",
-            "ts": 1790338534000,
+            "id": "c-mugxc6s8-6",
+            "ts": 1790338535000,
             "kind": "update",
             "text": "✅ **Truncate accepted**: a separate checker saw the test pass.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxc7k0-7",
-            "ts": 1790338536000,
+            "id": "c-mugxc8bs-7",
+            "ts": 1790338537000,
             "kind": "update",
             "text": "🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxdpkg-8",
-            "ts": 1790338606000,
+            "id": "c-mugxdsnk-8",
+            "ts": 1790338610000,
             "kind": "update",
             "text": "🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.",
             "turnId": "turn-2"
           },
           {
-            "id": "c-mugxdrvs-9",
-            "ts": 1790338609000,
+            "id": "c-mugxduyw-9",
+            "ts": 1790338613000,
             "kind": "heads-up",
             "text": "❓ Should a flag emoji like 🇮🇳 count as **one character or two**? I will assume one.",
             "turnId": "turn-2"
           }
         ],
         "archivedCount": 0,
-        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (9):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\n- 12:15 ✅ **Truncate accepted**: a separate checker saw the test pass.\n- 12:15 🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.\n- 12:16 🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.\n- 12:16 HEADS-UP: ❓ Should a flag emoji like 🇮🇳 count as **one character or two**? I will assume one.\nContinue toward the main goal."
+        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (9):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\n- 12:15 ✅ **Truncate accepted**: a separate checker saw the test pass.\n- 12:15 🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.\n- 12:16 🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.\n- 12:16 HEADS-UP: ❓ Should a flag emoji like 🇮🇳 count as **one character or two**? I will assume one.\nContinue toward the main goal.",
+        "turnStarts": [
+          1790338501000,
+          1790338608000
+        ]
       },
       "workers": {
         "workspacePath": "/Users/reviewer/projects/askaway-demo",
-        "generatedAt": 1790338609000,
+        "generatedAt": 1790338613000,
         "server": {
           "state": "ATTACHED",
           "endpoint": "http://127.0.0.1:4096"
         },
         "workers": [
           {
-            "workerId": "worker-1whoz3-1",
+            "workerId": "worker-5o124n-1",
             "state": "STARTING",
             "adapter": "opencode",
             "profile": "code",
@@ -1880,7 +2296,7 @@
             "thinking": "high",
             "sessionId": "ses_A",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_A",
-            "lastUpdateAt": 1790338609000,
+            "lastUpdateAt": 1790338613000,
             "blocker": "",
             "nextInputTokens": 10160,
             "cacheExpiresAt": 0,
@@ -1893,7 +2309,7 @@
               "lastIn": 0,
               "lastCached": 0,
               "turnOut": 0,
-              "lastActivityAt": 1790338609000
+              "lastActivityAt": 1790338613000
             },
             "usage": {
               "input": 10100,
@@ -1906,12 +2322,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-2",
+                "runId": "run-5o124n-2",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 22000,
                 "usage": {
                   "input": 10100,
@@ -1926,8 +2342,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 9800,
                     "outputTokens": 60,
@@ -1936,8 +2352,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "write",
                     "durMs": 900,
                     "status": "ok",
@@ -1948,8 +2364,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 10100,
                     "outputTokens": 60,
@@ -1959,11 +2375,11 @@
                 ]
               },
               {
-                "runId": "run-1whoz3-8",
+                "runId": "run-5o124n-8",
                 "state": "STARTING",
                 "dispatchTurnId": "turn-2",
                 "queuePosition": 0,
-                "startedAt": 1790338609000,
+                "startedAt": 1790338613000,
                 "elapsedMs": 0,
                 "usage": {
                   "input": 0,
@@ -1980,7 +2396,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-5",
+            "workerId": "worker-5o124n-5",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "verify",
@@ -1988,10 +2404,10 @@
             "thinking": "low",
             "sessionId": "ses_BV",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_BV",
-            "lastUpdateAt": 1790338534000,
+            "lastUpdateAt": 1790338535000,
             "blocker": "",
             "nextInputTokens": 8160,
-            "cacheExpiresAt": 1790338834000,
+            "cacheExpiresAt": 1790338835000,
             "expired": false,
             "knowledge": "ran the truncate test",
             "track": "A",
@@ -2001,7 +2417,7 @@
               "lastIn": 8100,
               "lastCached": 0,
               "turnOut": 60,
-              "lastActivityAt": 1790338534000
+              "lastActivityAt": 1790338535000
             },
             "usage": {
               "input": 16800,
@@ -2014,12 +2430,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-6",
+                "runId": "run-5o124n-6",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338520000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338521000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 6000,
                 "usage": {
                   "input": 8700,
@@ -2034,8 +2450,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8700,
                     "outputTokens": 60,
@@ -2044,8 +2460,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -2057,12 +2473,12 @@
                 ]
               },
               {
-                "runId": "run-1whoz3-7",
+                "runId": "run-5o124n-7",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338526000,
-                "endedAt": 1790338534000,
+                "startedAt": 1790338527000,
+                "endedAt": 1790338535000,
                 "elapsedMs": 8000,
                 "usage": {
                   "input": 8100,
@@ -2077,8 +2493,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "34000",
-                    "ts": 1790338534000,
+                    "id": "35000",
+                    "ts": 1790338535000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8100,
                     "outputTokens": 60,
@@ -2087,8 +2503,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "34000",
-                    "ts": 1790338534000,
+                    "id": "35000",
+                    "ts": 1790338535000,
                     "tool": "bash",
                     "durMs": 900,
                     "status": "ok",
@@ -2102,7 +2518,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-3",
+            "workerId": "worker-5o124n-3",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "explore",
@@ -2110,10 +2526,10 @@
             "thinking": "low",
             "sessionId": "ses_B",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_B",
-            "lastUpdateAt": 1790338520000,
+            "lastUpdateAt": 1790338521000,
             "blocker": "",
             "nextInputTokens": 8580,
-            "cacheExpiresAt": 1790338820000,
+            "cacheExpiresAt": 1790338821000,
             "expired": false,
             "knowledge": "knows the MCP port code",
             "track": "B",
@@ -2123,7 +2539,7 @@
               "lastIn": 8520,
               "lastCached": 8400,
               "turnOut": 120,
-              "lastActivityAt": 1790338520000
+              "lastActivityAt": 1790338521000
             },
             "usage": {
               "input": 8520,
@@ -2136,12 +2552,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-4",
+                "runId": "run-5o124n-4",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338520000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338521000,
                 "elapsedMs": 16000,
                 "usage": {
                   "input": 8520,
@@ -2156,8 +2572,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8400,
                     "outputTokens": 60,
@@ -2166,8 +2582,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -2178,8 +2594,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "20000",
-                    "ts": 1790338520000,
+                    "id": "21000",
+                    "ts": 1790338521000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8520,
                     "outputTokens": 60,
@@ -2195,7 +2611,7 @@
       }
     },
     {
-      "at": 1790338619000,
+      "at": 1790338623000,
       "caption": "Follow-ups queue on warm workers, about 4x cheaper than a cold start.",
       "chat": [
         {
@@ -2216,89 +2632,93 @@
         "goalUpdatedAt": 0,
         "items": [
           {
-            "id": "c-mugxbfs0-1",
-            "ts": 1790338500000,
+            "id": "c-mugxbgjs-1",
+            "ts": 1790338501000,
             "kind": "update",
             "text": "🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbiv4-2",
-            "ts": 1790338504000,
+            "id": "c-mugxbjmw-2",
+            "ts": 1790338505000,
             "kind": "update",
             "text": "🚀 **Both tracks started at once**; they touch no shared files.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbv7k-3",
-            "ts": 1790338520000,
+            "id": "c-mugxbvzc-3",
+            "ts": 1790338521000,
             "kind": "update",
             "text": "📦 Locator found **the definition and one caller**; a separate checker confirms next.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu8-4",
-            "ts": 1790338526000,
+            "id": "c-mugxc0m0-4",
+            "ts": 1790338527000,
             "kind": "update",
             "text": "✅ **listenWhenFree accepted**: the checker found the same definition and caller.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu9-5",
-            "ts": 1790338526001,
+            "id": "c-mugxc0m1-5",
+            "ts": 1790338527001,
             "kind": "update",
             "text": "🚀 Builder says truncate passes; a **different checker** now runs the test itself.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxc60g-6",
-            "ts": 1790338534000,
+            "id": "c-mugxc6s8-6",
+            "ts": 1790338535000,
             "kind": "update",
             "text": "✅ **Truncate accepted**: a separate checker saw the test pass.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxc7k0-7",
-            "ts": 1790338536000,
+            "id": "c-mugxc8bs-7",
+            "ts": 1790338537000,
             "kind": "update",
             "text": "🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxdpkg-8",
-            "ts": 1790338606000,
+            "id": "c-mugxdsnk-8",
+            "ts": 1790338610000,
             "kind": "update",
             "text": "🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.",
             "turnId": "turn-2"
           },
           {
-            "id": "c-mugxdrvs-9",
-            "ts": 1790338609000,
+            "id": "c-mugxduyw-9",
+            "ts": 1790338613000,
             "kind": "heads-up",
             "text": "❓ Should a flag emoji like 🇮🇳 count as **one character or two**? I will assume one.",
             "turnId": "turn-2"
           },
           {
-            "id": "c-mugxdzlk-10",
-            "ts": 1790338619000,
+            "id": "c-mugxe2oo-10",
+            "ts": 1790338623000,
             "kind": "update",
             "text": "🔁 Builder done; the **same warm checker** reruns the test at the cached rate.",
             "turnId": "turn-2"
           }
         ],
         "archivedCount": 0,
-        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (10):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\n- 12:15 ✅ **Truncate accepted**: a separate checker saw the test pass.\n- 12:15 🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.\n- 12:16 🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.\n- 12:16 HEADS-UP: ❓ Should a flag emoji like 🇮🇳 count as **one character or two**? I will assume one.\n- 12:16 🔁 Builder done; the **same warm checker** reruns the test at the cached rate.\nContinue toward the main goal."
+        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (10):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\n- 12:15 ✅ **Truncate accepted**: a separate checker saw the test pass.\n- 12:15 🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.\n- 12:16 🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.\n- 12:16 HEADS-UP: ❓ Should a flag emoji like 🇮🇳 count as **one character or two**? I will assume one.\n- 12:17 🔁 Builder done; the **same warm checker** reruns the test at the cached rate.\nContinue toward the main goal.",
+        "turnStarts": [
+          1790338501000,
+          1790338608000
+        ]
       },
       "workers": {
         "workspacePath": "/Users/reviewer/projects/askaway-demo",
-        "generatedAt": 1790338619000,
+        "generatedAt": 1790338623000,
         "server": {
           "state": "ATTACHED",
           "endpoint": "http://127.0.0.1:4096"
         },
         "workers": [
           {
-            "workerId": "worker-1whoz3-1",
+            "workerId": "worker-5o124n-1",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "code",
@@ -2306,10 +2726,10 @@
             "thinking": "high",
             "sessionId": "ses_A",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_A",
-            "lastUpdateAt": 1790338619000,
+            "lastUpdateAt": 1790338623000,
             "blocker": "",
             "nextInputTokens": 10560,
-            "cacheExpiresAt": 1790338919000,
+            "cacheExpiresAt": 1790338923000,
             "expired": false,
             "knowledge": "knows truncate.js, emoji-safe",
             "track": "A",
@@ -2319,7 +2739,7 @@
               "lastIn": 10500,
               "lastCached": 10100,
               "turnOut": 60,
-              "lastActivityAt": 1790338619000
+              "lastActivityAt": 1790338623000
             },
             "usage": {
               "input": 10500,
@@ -2332,12 +2752,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-2",
+                "runId": "run-5o124n-2",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 22000,
                 "usage": {
                   "input": 10100,
@@ -2352,8 +2772,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 9800,
                     "outputTokens": 60,
@@ -2362,8 +2782,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "write",
                     "durMs": 900,
                     "status": "ok",
@@ -2374,8 +2794,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 10100,
                     "outputTokens": 60,
@@ -2385,12 +2805,12 @@
                 ]
               },
               {
-                "runId": "run-1whoz3-8",
+                "runId": "run-5o124n-8",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-2",
                 "queuePosition": 0,
-                "startedAt": 1790338609000,
-                "endedAt": 1790338619000,
+                "startedAt": 1790338613000,
+                "endedAt": 1790338623000,
                 "elapsedMs": 10000,
                 "usage": {
                   "input": 400,
@@ -2405,8 +2825,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "19000",
-                    "ts": 1790338619000,
+                    "id": "23000",
+                    "ts": 1790338623000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 10500,
                     "outputTokens": 60,
@@ -2415,8 +2835,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "19000",
-                    "ts": 1790338619000,
+                    "id": "23000",
+                    "ts": 1790338623000,
                     "tool": "edit",
                     "durMs": 900,
                     "status": "ok",
@@ -2430,7 +2850,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-5",
+            "workerId": "worker-5o124n-5",
             "state": "STARTING",
             "adapter": "opencode",
             "profile": "verify",
@@ -2438,7 +2858,7 @@
             "thinking": "low",
             "sessionId": "ses_BV",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_BV",
-            "lastUpdateAt": 1790338619000,
+            "lastUpdateAt": 1790338623000,
             "blocker": "",
             "nextInputTokens": 8160,
             "cacheExpiresAt": 0,
@@ -2451,7 +2871,7 @@
               "lastIn": 0,
               "lastCached": 0,
               "turnOut": 0,
-              "lastActivityAt": 1790338619000
+              "lastActivityAt": 1790338623000
             },
             "usage": {
               "input": 16800,
@@ -2464,12 +2884,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-6",
+                "runId": "run-5o124n-6",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338520000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338521000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 6000,
                 "usage": {
                   "input": 8700,
@@ -2484,8 +2904,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8700,
                     "outputTokens": 60,
@@ -2494,8 +2914,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -2507,12 +2927,12 @@
                 ]
               },
               {
-                "runId": "run-1whoz3-7",
+                "runId": "run-5o124n-7",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338526000,
-                "endedAt": 1790338534000,
+                "startedAt": 1790338527000,
+                "endedAt": 1790338535000,
                 "elapsedMs": 8000,
                 "usage": {
                   "input": 8100,
@@ -2527,8 +2947,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "34000",
-                    "ts": 1790338534000,
+                    "id": "35000",
+                    "ts": 1790338535000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8100,
                     "outputTokens": 60,
@@ -2537,8 +2957,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "34000",
-                    "ts": 1790338534000,
+                    "id": "35000",
+                    "ts": 1790338535000,
                     "tool": "bash",
                     "durMs": 900,
                     "status": "ok",
@@ -2550,11 +2970,11 @@
                 ]
               },
               {
-                "runId": "run-1whoz3-9",
+                "runId": "run-5o124n-9",
                 "state": "STARTING",
                 "dispatchTurnId": "turn-2",
                 "queuePosition": 0,
-                "startedAt": 1790338619000,
+                "startedAt": 1790338623000,
                 "elapsedMs": 0,
                 "usage": {
                   "input": 0,
@@ -2571,7 +2991,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-3",
+            "workerId": "worker-5o124n-3",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "explore",
@@ -2579,10 +2999,10 @@
             "thinking": "low",
             "sessionId": "ses_B",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_B",
-            "lastUpdateAt": 1790338520000,
+            "lastUpdateAt": 1790338521000,
             "blocker": "",
             "nextInputTokens": 8580,
-            "cacheExpiresAt": 1790338820000,
+            "cacheExpiresAt": 1790338821000,
             "expired": false,
             "knowledge": "knows the MCP port code",
             "track": "B",
@@ -2592,7 +3012,7 @@
               "lastIn": 8520,
               "lastCached": 8400,
               "turnOut": 120,
-              "lastActivityAt": 1790338520000
+              "lastActivityAt": 1790338521000
             },
             "usage": {
               "input": 8520,
@@ -2605,12 +3025,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-4",
+                "runId": "run-5o124n-4",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338520000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338521000,
                 "elapsedMs": 16000,
                 "usage": {
                   "input": 8520,
@@ -2625,8 +3045,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8400,
                     "outputTokens": 60,
@@ -2635,8 +3055,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -2647,8 +3067,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "20000",
-                    "ts": 1790338520000,
+                    "id": "21000",
+                    "ts": 1790338521000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8520,
                     "outputTokens": 60,
@@ -2664,7 +3084,7 @@
       }
     },
     {
-      "at": 1790338624000,
+      "at": 1790338628000,
       "caption": "Turn 2 done. Open the heads-up answer in the chat if the assumption was wrong.",
       "chat": [
         {
@@ -2689,96 +3109,100 @@
         "goalUpdatedAt": 0,
         "items": [
           {
-            "id": "c-mugxbfs0-1",
-            "ts": 1790338500000,
+            "id": "c-mugxbgjs-1",
+            "ts": 1790338501000,
             "kind": "update",
             "text": "🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbiv4-2",
-            "ts": 1790338504000,
+            "id": "c-mugxbjmw-2",
+            "ts": 1790338505000,
             "kind": "update",
             "text": "🚀 **Both tracks started at once**; they touch no shared files.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbv7k-3",
-            "ts": 1790338520000,
+            "id": "c-mugxbvzc-3",
+            "ts": 1790338521000,
             "kind": "update",
             "text": "📦 Locator found **the definition and one caller**; a separate checker confirms next.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu8-4",
-            "ts": 1790338526000,
+            "id": "c-mugxc0m0-4",
+            "ts": 1790338527000,
             "kind": "update",
             "text": "✅ **listenWhenFree accepted**: the checker found the same definition and caller.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxbzu9-5",
-            "ts": 1790338526001,
+            "id": "c-mugxc0m1-5",
+            "ts": 1790338527001,
             "kind": "update",
             "text": "🚀 Builder says truncate passes; a **different checker** now runs the test itself.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxc60g-6",
-            "ts": 1790338534000,
+            "id": "c-mugxc6s8-6",
+            "ts": 1790338535000,
             "kind": "update",
             "text": "✅ **Truncate accepted**: a separate checker saw the test pass.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxc7k0-7",
-            "ts": 1790338536000,
+            "id": "c-mugxc8bs-7",
+            "ts": 1790338537000,
             "kind": "update",
             "text": "🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.",
             "turnId": "turn-1"
           },
           {
-            "id": "c-mugxdpkg-8",
-            "ts": 1790338606000,
+            "id": "c-mugxdsnk-8",
+            "ts": 1790338610000,
             "kind": "update",
             "text": "🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.",
             "turnId": "turn-2"
           },
           {
-            "id": "c-mugxdrvs-9",
-            "ts": 1790338609000,
+            "id": "c-mugxduyw-9",
+            "ts": 1790338613000,
             "kind": "heads-up",
             "text": "❓ Should a flag emoji like 🇮🇳 count as **one character or two**? I will assume one.",
             "turnId": "turn-2"
           },
           {
-            "id": "c-mugxdzlk-10",
-            "ts": 1790338619000,
+            "id": "c-mugxe2oo-10",
+            "ts": 1790338623000,
             "kind": "update",
             "text": "🔁 Builder done; the **same warm checker** reruns the test at the cached rate.",
             "turnId": "turn-2"
           },
           {
-            "id": "c-mugxe3gg-11",
-            "ts": 1790338624000,
+            "id": "c-mugxe6jk-11",
+            "ts": 1790338628000,
             "kind": "update",
             "text": "🏆 **Emoji-safe truncate accepted** by the checker. This turn cost ==$0.002==.",
             "turnId": "turn-2"
           }
         ],
         "archivedCount": 0,
-        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (11):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\n- 12:15 ✅ **Truncate accepted**: a separate checker saw the test pass.\n- 12:15 🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.\n- 12:16 🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.\n- 12:16 HEADS-UP: ❓ Should a flag emoji like 🇮🇳 count as **one character or two**? I will assume one.\n- 12:16 🔁 Builder done; the **same warm checker** reruns the test at the cached rate.\n- 12:17 🏆 **Emoji-safe truncate accepted** by the checker. This turn cost ==$0.002==.\nContinue toward the main goal."
+        "opener": "Main goal: (none set; use the active spec cycle)\nCommentary since last clear (11):\n- 12:15 🏏 Plan: **two tracks** — build truncate, and locate listenWhenFree; each checked by another worker.\n- 12:15 🚀 **Both tracks started at once**; they touch no shared files.\n- 12:15 📦 Locator found **the definition and one caller**; a separate checker confirms next.\n- 12:15 ✅ **listenWhenFree accepted**: the checker found the same definition and caller.\n- 12:15 🚀 Builder says truncate passes; a **different checker** now runs the test itself.\n- 12:15 ✅ **Truncate accepted**: a separate checker saw the test pass.\n- 12:15 🏆 **Both tracks accepted**, 2 of 2, in 36 seconds. Cost ==about one cent==.\n- 12:16 🏏 Plan: **reuse the warm builder** for emoji support, then the warm checker runs the test.\n- 12:16 HEADS-UP: ❓ Should a flag emoji like 🇮🇳 count as **one character or two**? I will assume one.\n- 12:17 🔁 Builder done; the **same warm checker** reruns the test at the cached rate.\n- 12:17 🏆 **Emoji-safe truncate accepted** by the checker. This turn cost ==$0.002==.\nContinue toward the main goal.",
+        "turnStarts": [
+          1790338501000,
+          1790338608000
+        ]
       },
       "workers": {
         "workspacePath": "/Users/reviewer/projects/askaway-demo",
-        "generatedAt": 1790338624000,
+        "generatedAt": 1790338628000,
         "server": {
           "state": "ATTACHED",
           "endpoint": "http://127.0.0.1:4096"
         },
         "workers": [
           {
-            "workerId": "worker-1whoz3-5",
+            "workerId": "worker-5o124n-5",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "verify",
@@ -2786,10 +3210,10 @@
             "thinking": "low",
             "sessionId": "ses_BV",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_BV",
-            "lastUpdateAt": 1790338624000,
+            "lastUpdateAt": 1790338628000,
             "blocker": "",
             "nextInputTokens": 8360,
-            "cacheExpiresAt": 1790338924000,
+            "cacheExpiresAt": 1790338928000,
             "expired": false,
             "knowledge": "ran the truncate test",
             "track": "A",
@@ -2799,7 +3223,7 @@
               "lastIn": 8300,
               "lastCached": 8100,
               "turnOut": 60,
-              "lastActivityAt": 1790338624000
+              "lastActivityAt": 1790338628000
             },
             "usage": {
               "input": 17000,
@@ -2812,12 +3236,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-6",
+                "runId": "run-5o124n-6",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338520000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338521000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 6000,
                 "usage": {
                   "input": 8700,
@@ -2832,8 +3256,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8700,
                     "outputTokens": 60,
@@ -2842,8 +3266,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -2855,12 +3279,12 @@
                 ]
               },
               {
-                "runId": "run-1whoz3-7",
+                "runId": "run-5o124n-7",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338526000,
-                "endedAt": 1790338534000,
+                "startedAt": 1790338527000,
+                "endedAt": 1790338535000,
                 "elapsedMs": 8000,
                 "usage": {
                   "input": 8100,
@@ -2875,8 +3299,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "34000",
-                    "ts": 1790338534000,
+                    "id": "35000",
+                    "ts": 1790338535000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8100,
                     "outputTokens": 60,
@@ -2885,8 +3309,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "34000",
-                    "ts": 1790338534000,
+                    "id": "35000",
+                    "ts": 1790338535000,
                     "tool": "bash",
                     "durMs": 900,
                     "status": "ok",
@@ -2898,12 +3322,12 @@
                 ]
               },
               {
-                "runId": "run-1whoz3-9",
+                "runId": "run-5o124n-9",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-2",
                 "queuePosition": 0,
-                "startedAt": 1790338619000,
-                "endedAt": 1790338624000,
+                "startedAt": 1790338623000,
+                "endedAt": 1790338628000,
                 "elapsedMs": 5000,
                 "usage": {
                   "input": 200,
@@ -2918,8 +3342,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "24000",
-                    "ts": 1790338624000,
+                    "id": "28000",
+                    "ts": 1790338628000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8300,
                     "outputTokens": 60,
@@ -2928,8 +3352,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "24000",
-                    "ts": 1790338624000,
+                    "id": "28000",
+                    "ts": 1790338628000,
                     "tool": "bash",
                     "durMs": 900,
                     "status": "ok",
@@ -2943,7 +3367,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-1",
+            "workerId": "worker-5o124n-1",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "code",
@@ -2951,10 +3375,10 @@
             "thinking": "high",
             "sessionId": "ses_A",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_A",
-            "lastUpdateAt": 1790338619000,
+            "lastUpdateAt": 1790338623000,
             "blocker": "",
             "nextInputTokens": 10560,
-            "cacheExpiresAt": 1790338919000,
+            "cacheExpiresAt": 1790338923000,
             "expired": false,
             "knowledge": "knows truncate.js, emoji-safe",
             "track": "A",
@@ -2964,7 +3388,7 @@
               "lastIn": 10500,
               "lastCached": 10100,
               "turnOut": 60,
-              "lastActivityAt": 1790338619000
+              "lastActivityAt": 1790338623000
             },
             "usage": {
               "input": 10500,
@@ -2977,12 +3401,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-2",
+                "runId": "run-5o124n-2",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338526000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338527000,
                 "elapsedMs": 22000,
                 "usage": {
                   "input": 10100,
@@ -2997,8 +3421,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 9800,
                     "outputTokens": 60,
@@ -3007,8 +3431,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "write",
                     "durMs": 900,
                     "status": "ok",
@@ -3019,8 +3443,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "26000",
-                    "ts": 1790338526000,
+                    "id": "27000",
+                    "ts": 1790338527000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 10100,
                     "outputTokens": 60,
@@ -3030,12 +3454,12 @@
                 ]
               },
               {
-                "runId": "run-1whoz3-8",
+                "runId": "run-5o124n-8",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-2",
                 "queuePosition": 0,
-                "startedAt": 1790338609000,
-                "endedAt": 1790338619000,
+                "startedAt": 1790338613000,
+                "endedAt": 1790338623000,
                 "elapsedMs": 10000,
                 "usage": {
                   "input": 400,
@@ -3050,8 +3474,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "19000",
-                    "ts": 1790338619000,
+                    "id": "23000",
+                    "ts": 1790338623000,
                     "model": "gpt-5.6-terra",
                     "inputTokens": 10500,
                     "outputTokens": 60,
@@ -3060,8 +3484,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "19000",
-                    "ts": 1790338619000,
+                    "id": "23000",
+                    "ts": 1790338623000,
                     "tool": "edit",
                     "durMs": 900,
                     "status": "ok",
@@ -3075,7 +3499,7 @@
             ]
           },
           {
-            "workerId": "worker-1whoz3-3",
+            "workerId": "worker-5o124n-3",
             "state": "COMPLETED",
             "adapter": "opencode",
             "profile": "explore",
@@ -3083,10 +3507,10 @@
             "thinking": "low",
             "sessionId": "ses_B",
             "sessionOpenAction": "opencode attach http://127.0.0.1:4096 --session ses_B",
-            "lastUpdateAt": 1790338520000,
+            "lastUpdateAt": 1790338521000,
             "blocker": "",
             "nextInputTokens": 8580,
-            "cacheExpiresAt": 1790338820000,
+            "cacheExpiresAt": 1790338821000,
             "expired": false,
             "knowledge": "knows the MCP port code",
             "track": "B",
@@ -3096,7 +3520,7 @@
               "lastIn": 8520,
               "lastCached": 8400,
               "turnOut": 120,
-              "lastActivityAt": 1790338520000
+              "lastActivityAt": 1790338521000
             },
             "usage": {
               "input": 8520,
@@ -3109,12 +3533,12 @@
             },
             "runs": [
               {
-                "runId": "run-1whoz3-4",
+                "runId": "run-5o124n-4",
                 "state": "COMPLETED",
                 "dispatchTurnId": "turn-1",
                 "queuePosition": 0,
-                "startedAt": 1790338504000,
-                "endedAt": 1790338520000,
+                "startedAt": 1790338505000,
+                "endedAt": 1790338521000,
                 "elapsedMs": 16000,
                 "usage": {
                   "input": 8520,
@@ -3129,8 +3553,8 @@
                 "events": [
                   {
                     "kind": "request",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8400,
                     "outputTokens": 60,
@@ -3139,8 +3563,8 @@
                   },
                   {
                     "kind": "tool",
-                    "id": "13000",
-                    "ts": 1790338513000,
+                    "id": "14000",
+                    "ts": 1790338514000,
                     "tool": "grep",
                     "durMs": 900,
                     "status": "ok",
@@ -3151,8 +3575,8 @@
                   },
                   {
                     "kind": "request",
-                    "id": "20000",
-                    "ts": 1790338520000,
+                    "id": "21000",
+                    "ts": 1790338521000,
                     "model": "gpt-5.6-luna",
                     "inputTokens": 8520,
                     "outputTokens": 60,

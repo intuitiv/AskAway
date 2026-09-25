@@ -36,6 +36,16 @@ function readCommentary(cwd) {
     }
 }
 
+// Each prompt starts a turn: the Commentary tab folds the lines so far into a collapsed pane (CommentaryStore.turnsFile).
+function markTurnStart(cwd) {
+    const file = path.join(os.homedir(), '.askaway', 'commentary', `${commentaryKey(cwd)}.turns.json`);
+    let starts = [];
+    try { starts = JSON.parse(fs.readFileSync(file, 'utf8')).starts || []; } catch { starts = []; }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify({ starts: [...starts, Date.now()].slice(-200) }));
+    fs.renameSync(`${file}.tmp`, file);
+}
+
 function activeCycle(specDir) {
     try {
         const match = fs.readFileSync(path.join(specDir, 'tasks.md'), 'utf8').match(/^- \[ \] T\d+\w* \[(CY-\d+)\]/m);
@@ -90,6 +100,7 @@ function main() {
         }
     }
 
+    try { markTurnStart(cwd); } catch { /* the feed just won't fold this turn */ }
     // Per-prompt anchor: it sits in the new user turn, so the cached prompt prefix is unchanged.
     const anchor = commentary.goal ? `Main goal (goal box): ${commentary.goal}` : (specDir && activeCycle(specDir) ? `Main goal: finish ${activeCycle(specDir)} of ${path.basename(specDir)}.` : '');
     if (anchor) {

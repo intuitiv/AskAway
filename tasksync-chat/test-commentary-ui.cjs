@@ -61,27 +61,30 @@ for (const rule of feedRules) {
 assert.match(webview, /if \(pinned\) feed\.scrollTop = feed\.scrollHeight;/, 'a live push keeps the newest line in view at the bottom');
 console.log('EV-030c CommentaryNewestAtBottom: PASS order=chronological dayDividers=true cssReorder=none scrollPinsBottom=true');
 
-// Reviewer, 2026-09-25: one collapsible pane per turn; a new turn collapses the older ones.
+// Reviewer, 2026-09-25: "at the beginning of new turn wrap the current top ones into a turn and collapse."
 const turnView = { archivedCount: 0, items: [
-    { id: 'a1', ts: today, kind: 'update', turnId: 'turn-1', text: '🏏 Plan: **two tracks**, each checked by another worker.' },
-    { id: 'a2', ts: today + 5_000, kind: 'heads-up', turnId: 'turn-1', text: 'Keep three retries or allow five? Your call.' },
-    { id: 'a3', ts: today + 60_000, kind: 'update', turnId: 'turn-1', text: '🏆 Both tracks accepted, two of two.' },
-    { id: 'b1', ts: today + 600_000, kind: 'update', turnId: 'turn-2', text: '🏏 Plan: fix the flaky retry test.' },
-    { id: 'b2', ts: today + 660_000, kind: 'update', turnId: 'turn-2', text: '🚀 Root-cause worker started on the cheapest model.' },
+    { id: 'a1', ts: today, kind: 'update', text: '🏏 Plan: **two tracks**, each checked by another worker.' },
+    { id: 'a2', ts: today + 5_000, kind: 'heads-up', text: 'Keep three retries or allow five? Your call.' },
+    { id: 'a3', ts: today + 60_000, kind: 'update', text: '🏆 Both tracks accepted, two of two.' },
+    { id: 'b1', ts: today + 600_000, kind: 'update', text: '🏏 Plan: fix the flaky retry test.' },
+    { id: 'b2', ts: today + 660_000, kind: 'update', text: '🚀 Root-cause worker started on the cheapest model.' },
 ] };
 const panes = (h) => [...h.matchAll(/<details class="cm-turn" data-turn="([^"]+)"( open)?>[\s\S]*?<\/details>/g)]
     .map((m) => ({ key: m[1], open: Boolean(m[2]), ids: [...m[0].matchAll(/data-id="(\w+)"/g)].map((x) => x[1]), head: /<summary[\s\S]*?<\/summary>/.exec(m[0])[0] }));
-const byTurn = panes(ui.render(turnView));
-assert.deepEqual(byTurn.map((p) => [p.ids, p.open]), [[['a1', 'a2', 'a3'], false], [['b1', 'b2'], true]], 'one pane per turn, oldest first; only the newest is open');
+const flat = (h) => [...h.replace(/<details[\s\S]*?<\/details>/g, '').matchAll(/data-id="([^"]+)"/g)].map((m) => m[1]);
+const turn1 = today - 30_000;
+const turn2 = today + 300_000;
+assert.deepEqual([panes(ui.render({ ...turnView, turnStarts: [turn1] })).length, flat(ui.render({ ...turnView, turnStarts: [turn1] })).length], [0, 5], 'within one turn nothing folds');
+const folded = ui.render({ ...turnView, turnStarts: [turn1, turn2] });
+const byTurn = panes(folded);
+assert.deepEqual(byTurn.map((p) => [p.ids, p.open]), [[['a1', 'a2', 'a3'], false]], 'a new turn wraps the earlier lines into one collapsed pane');
+assert.deepEqual(flat(folded), ['b1', 'b2'], 'the current turn stays flat below it');
 assert.match(byTurn[0].head, /17:45–17:46[\s\S]*<strong>two tracks<\/strong>[\s\S]*3 · 1 heads-up/, 'a collapsed pane still shows its time, first line, and heads-up count');
-assert.match(byTurn[1].head, /cm-turn-count">2</);
-const reviewerChoice = { [byTurn[0].key]: true, [byTurn[1].key]: false };
-assert.deepEqual(panes(ui.render(turnView, reviewerChoice)).map((p) => p.open), [true, false], 'the reviewer\'s own open/close wins');
-const nextTurn = { ...turnView, items: [...turnView.items, { id: 'c1', ts: today + 900_000, kind: 'update', turnId: 'turn-3', text: '🏏 Plan: write the demo story.' }] };
-assert.deepEqual(panes(ui.render(nextTurn)).map((p) => p.open), [false, false, true], 'a new turn collapses the previous one');
-assert.equal(panes(ui.render(view)).length, 1, 'lines without a turn id stay together');
+const justStarted = ui.render({ ...turnView, turnStarts: [turn1, turn2, today + 900_000] });
+assert.deepEqual([panes(justStarted).map((p) => [p.ids.length, p.open]), flat(justStarted)], [[[3, false], [2, false]], []], 'the moment a prompt is sent, everything so far is folded');
+assert.deepEqual(panes(ui.render({ ...turnView, turnStarts: [turn1, turn2] }, { [byTurn[0].key]: true })).map((p) => p.open), [true], 'the reviewer can reopen a pane');
 assert.match(webview, /closest\('\.cm-turn-head'\)[\s\S]{0,160}commentaryOpenTurns\[/, 'only the reviewer\'s clicks are remembered');
-console.log('EV-030e CommentaryTurnPanes: PASS panesPerTurn=true newestOpen=true olderCollapsed=true headShowsHeadsUp=true reviewerChoiceKept=true');
+console.log('EV-030e CommentaryTurnPanes: PASS foldOnNewTurn=true currentFlat=true headShowsHeadsUp=true foldsAtPrompt=true reviewerChoiceKept=true');
 console.log('EV-030a CommentaryFeedRender: PASS newestAtBottom=true refs=none kinds=update+heads-up noFilters=true escaped=true');
 
 // Markup and wiring: the tab exists, its controls send the backend messages, pushes are rendered.
@@ -140,10 +143,11 @@ for (const selector of ['.cm-heads-up', '.cm-heads-up-tag', '.cm-goal-input', '.
     const last = sample.frames[sample.frames.length - 1];
     assert.equal(workersKit.renderWorkersHtml(last.workers, '', {}, false, {}, {}), real.render(last.workers, '', {}, false, {}, {}), 'Storybook renders byte-identical Workers HTML');
     assert.match(workersKit.panelHtml, /^<div class="tab-panel active" id="panel-workers">[\s\S]*id="workers-list"[\s\S]*<!-- End panel-workers -->$/);
-    const lastPanes = panes(kit.renderCommentaryHtml(last.commentary));
-    assert.deepEqual(lastPanes.map((p) => p.open), [false, true], 'the sample shows turn 1 collapsed under turn 2');
+    const lastHtml = kit.renderCommentaryHtml(last.commentary);
+    assert.deepEqual([panes(lastHtml).map((p) => p.open), flat(lastHtml).length > 0], [[false], true], 'the sample shows turn 1 folded above turn 2\'s lines');
+    assert.ok(sample.frames.some((f) => /folds into one collapsed pane/.test(f.caption) && flat(kit.renderCommentaryHtml(f.commentary)).length === 0), 'the fold happens as the prompt is sent');
     assert.ok(last.commentary.items.some((i) => i.kind === 'heads-up'), 'the sample includes a heads-up');
     assert.ok(last.workers.workers.some((w) => w.runs.length > 1), 'the sample reuses a warm worker');
     assert.ok(sample.frames.every((f) => f.caption && f.chat.length && f.workers.workers), 'every frame has a caption, chat, and workers state');
-    console.log(`EV-SB-SAMPLE SampleConversationStory: PASS frames=${sample.frames.length} workersIdentical=true turnPanes=collapsed+open headsUp=true warmReuse=true`);
+    console.log(`EV-SB-SAMPLE SampleConversationStory: PASS frames=${sample.frames.length} workersIdentical=true foldOnPrompt=true headsUp=true warmReuse=true`);
 })().catch((error) => { console.error(error); process.exit(1); });

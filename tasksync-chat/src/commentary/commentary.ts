@@ -51,12 +51,12 @@ export function buildOpener(state: CommentaryState): string {
     return lines.join('\n');
 }
 
-/** What the Commentary tab receives: the goal, the uncleared feed, and the ready-to-copy opener. */
-export interface CommentaryView { goal: string; goalUpdatedAt: number; items: CommentaryItem[]; archivedCount: number; opener: string }
+/** What the Commentary tab receives: the goal, the uncleared feed, when each chat turn started, and the ready-to-copy opener. */
+export interface CommentaryView { goal: string; goalUpdatedAt: number; items: CommentaryItem[]; archivedCount: number; opener: string; turnStarts: number[] }
 
-export function commentaryView(state: CommentaryState): CommentaryView {
+export function commentaryView(state: CommentaryState, turnStarts: number[] = []): CommentaryView {
     const items = uncleared(state);
-    return { goal: state.goal, goalUpdatedAt: state.goalUpdatedAt, items, archivedCount: state.items.length - items.length, opener: buildOpener(state) };
+    return { goal: state.goal, goalUpdatedAt: state.goalUpdatedAt, items, archivedCount: state.items.length - items.length, opener: buildOpener(state), turnStarts };
 }
 
 export class CommentaryStore {
@@ -72,6 +72,20 @@ export class CommentaryStore {
 
     file(workspacePath: string): string {
         return path.join(this.dir, `${commentaryKey(workspacePath)}.json`);
+    }
+
+    /** Written by the UserPromptSubmit hook (hooks/spec-context-inject.cjs), never by the store, so a prompt can't race a post. */
+    turnsFile(workspacePath: string): string {
+        return path.join(this.dir, `${commentaryKey(workspacePath)}.turns.json`);
+    }
+
+    turnStarts(workspacePath: string): number[] {
+        try {
+            const starts = JSON.parse(fs.readFileSync(this.turnsFile(workspacePath), 'utf8')).starts;
+            return Array.isArray(starts) ? starts.filter((ts) => typeof ts === 'number') : [];
+        } catch {
+            return [];
+        }
     }
 
     read(workspacePath: string): CommentaryState {
@@ -144,7 +158,7 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
         inputSchema: z.object({
             kind: z.enum(COMMENTARY_KINDS),
             text: z.string().min(1).describe('10-20 plain words: what is happening and why.'),
-            turnId: z.string().optional().describe('The dispatchTurnId you pass to the worker tool; one turn\'s lines share a collapsible pane.'),
+            turnId: z.string().optional(),
         }),
         run: (args) => store().post(defaultWorkspace, args),
     }];

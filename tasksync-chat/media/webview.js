@@ -5172,16 +5172,20 @@
             .replace(/\+\+([^+]+)\+\+/g, '<u>$1</u>')
             .replace(/(^|[\s(])_([^_]+)_(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
     }
-    // One pane per orchestrator turn: consecutive lines with the same turnId (a new day also starts a pane).
-    function commentaryTurns(items) {
-        var turns = [];
+    // Lines before each chat-turn start (recorded by the prompt hook) form one earlier turn; the current turn stays flat.
+    function commentaryTurns(items, turnStarts) {
+        var starts = (turnStarts || []).slice().sort(function (a, b) { return a - b; });
+        var boundary = starts.length ? starts[starts.length - 1] : -Infinity;
+        var earlier = [];
+        var current = [];
         items.forEach(function (item) {
-            var last = turns[turns.length - 1];
-            var turnId = item.turnId || '';
-            if (last && last.turnId === turnId && commentaryDay(last.items[0].ts) === commentaryDay(item.ts)) { last.items.push(item); return; }
-            turns.push({ key: turnId ? 'turn:' + turnId + ':' + item.id : 'line:' + item.id, turnId: turnId, items: [item] });
+            if (item.ts >= boundary) { current.push(item); return; }
+            var segment = 0;
+            while (segment < starts.length && item.ts >= starts[segment]) segment++;
+            var last = earlier[earlier.length - 1];
+            if (last && last.segment === segment) { last.items.push(item); } else { earlier.push({ segment: segment, key: 'turn:' + item.id, items: [item] }); }
         });
-        return turns;
+        return { earlier: earlier, current: current };
     }
     function commentaryItemHtml(item) {
         var flagged = commentaryIsHeadsUp(item);
@@ -5191,7 +5195,7 @@
             '<div class="cm-text">' + commentaryMarkup(item.text) + '</div>' +
             '</div></div>';
     }
-    // `openTurns[key]` is the reviewer's own choice; otherwise only the newest turn is open.
+    // `openTurns[key]` records the reviewer's own clicks; otherwise earlier turns are collapsed.
     function renderCommentaryHtml(view, openTurns) {
         if (!view) return '<div class="cm-empty">Commentary is not available for this workspace.</div>';
         var all = view.items || [];
@@ -5205,23 +5209,27 @@
         // Oldest first, newest at the bottom, like the chat and every other feed here.
         // A clock without a day made yesterday's 20:52 look newer than today's 17:45, so each new day gets a divider.
         var multiDay = commentaryDay(all[0].ts) !== commentaryDay(all[all.length - 1].ts);
-        var turns = commentaryTurns(all);
-        turns.forEach(function (turn, n) {
+        var lastDay = '';
+        var dayDivider = function (ts) {
+            var day = commentaryDay(ts);
+            var out = multiDay && day !== lastDay ? '<div class="cm-day">' + day + '</div>' : '';
+            lastDay = day;
+            return out;
+        };
+        var turns = commentaryTurns(all, view.turnStarts);
+        turns.earlier.forEach(function (turn) {
             var first = turn.items[0];
             var last = turn.items[turn.items.length - 1];
-            if (multiDay && (n === 0 || commentaryDay(first.ts) !== commentaryDay(turns[n - 1].items[0].ts))) {
-                html += '<div class="cm-day">' + commentaryDay(first.ts) + '</div>';
-            }
-            var chosen = openTurns && Object.prototype.hasOwnProperty.call(openTurns, turn.key) ? openTurns[turn.key] : undefined;
-            var open = chosen === undefined ? n === turns.length - 1 : chosen;
+            var open = Boolean(openTurns && openTurns[turn.key]);
             var flagged = turn.items.filter(commentaryIsHeadsUp).length;
             var clock = commentaryClock(first.ts).slice(0, 5) + (turn.items.length > 1 ? '–' + commentaryClock(last.ts).slice(0, 5) : '');
-            html += '<details class="cm-turn" data-turn="' + commentaryEsc(turn.key) + '"' + (open ? ' open' : '') + '>' +
+            html += dayDivider(first.ts) + '<details class="cm-turn" data-turn="' + commentaryEsc(turn.key) + '"' + (open ? ' open' : '') + '>' +
                 '<summary class="cm-turn-head"><span class="cm-turn-time">' + clock + '</span>' +
                 '<span class="cm-turn-title">' + commentaryMarkup(first.text) + '</span>' +
                 '<span class="cm-turn-count">' + turn.items.length + (flagged ? ' · ' + flagged + ' heads-up' : '') + '</span></summary>' +
                 turn.items.map(commentaryItemHtml).join('') + '</details>';
         });
+        turns.current.forEach(function (item) { html += dayDivider(item.ts) + commentaryItemHtml(item); });
         return html;
     }
     // ── end Commentary pure render ──
