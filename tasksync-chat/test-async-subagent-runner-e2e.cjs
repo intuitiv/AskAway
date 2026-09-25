@@ -67,6 +67,8 @@ const finish = (id, input, cost) => ({ type: 'step_finish', sessionID: id, part:
     assert.deepEqual([x.runs[0].usage.cost, x.runs[1].usage.cost, x.usage.cost], [0.003, 0.001, 0.004], 'measured cost survives the reload');
     const y = state.workers.find((w) => w.workerId === noSession.workerId);
     assert.deepEqual([y.state, y.blocker], ['ORPHANED', 'orphaned: no OpenCode session was recorded before reload']);
+    assert.equal(y.expired, true, 'an orphaned worker cannot be reused, so the tab hides it unless Show completed is on');
+    assert.equal(state.workers.find((w) => w.workerId === done.workerId).expired, false, 'the reconnected warm worker stays visible');
 
     // Resume continues the same session; an orphaned worker needs a fresh submission.
     const spawned = children.length;

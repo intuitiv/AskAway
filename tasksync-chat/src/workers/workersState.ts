@@ -37,7 +37,7 @@ export interface WorkerRow {
     nextInputTokens: number;
     /** When the idle worker's prompt cache goes cold (0 while running or never reusable). */
     cacheExpiresAt: number;
-    /** Not running and no longer reusable: cache cold or retired. The Workers tab hides these. */
+    /** Not running and no longer reusable: cache cold, retired, or orphaned. The Workers tab hides these. */
     expired: boolean;
     knowledge: string;
     /** The orchestrator track of the worker's latest run that named one; '' when none did. */
@@ -203,7 +203,7 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
         }));
         const session = [...runs].reverse().find((run) => run.sessionId);
         const cacheExpiresAt = routed ? runtime.router.cacheExpiresAt(routed) : 0;
-        const expired = !active && (state === 'RETIRED' || (cacheExpiresAt > 0 && now() >= cacheExpiresAt));
+        const expired = !active && (state === 'RETIRED' || state === 'ORPHANED' || (cacheExpiresAt > 0 && now() >= cacheExpiresAt));
         workers.push({
             workerId, state, adapter: 'opencode', profile: latest.profile, model: latest.model, thinking: latest.thinking,
             sessionId: session?.sessionId ?? '', sessionOpenAction: session?.sessionOpenAction ?? '',
