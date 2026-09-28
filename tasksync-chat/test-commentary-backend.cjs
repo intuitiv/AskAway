@@ -85,18 +85,25 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     console.log(`EV-035 OrchestratorReachesWorkers: PASS lmTools=${Object.keys(workers).length + 1} manifestInSync=true invalidInputRefused=4`);
 
     // --- The same commentary tool on the AskAway MCP, as a scripted client or OpenCode host calls it ---
+    // Reviewer 2026-09-28: lines from this workspace showed in another one. The MCP server lives in ONE window and
+    // defaulted to that window's workspace; over MCP a line must name its workspace.
     const { registerToolDefinitions } = require(path.join(buildDir, 'workers', 'workerTools.js'));
     const mcpTools = new Map();
-    registerToolDefinitions((name, config, handler) => mcpTools.set(name, { config, handler }), commentaryToolDefinitions(() => store, workspace));
+    registerToolDefinitions((name, config, handler) => mcpTools.set(name, { config, handler }), commentaryToolDefinitions(() => store, ''));
     const viaMcp = async (args) => JSON.parse((await mcpTools.get('commentary').handler(mcpTools.get('commentary').config.inputSchema.parse(args))).content[0].text);
+    const otherWorkspace = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-commentary-other-')));
     const before = store.read(workspace).items.length;
-    assert.equal((await viaMcp({ kind: 'update', text: '🏏 Plan posted from an MCP client, same feed as the orchestrator.' })).status, 'POSTED');
-    assert.equal(store.read(workspace).items.length, before + 1, 'an MCP post lands in the Commentary tab feed');
-    assert.equal((await viaMcp({ kind: 'update', text: Array(21).fill('word').join(' ') })).status, 'REJECTED', 'same limits as the VS Code tool');
+    const unnamed = await viaMcp({ kind: 'update', text: '🏏 Posted over MCP without naming a workspace at all.' });
+    assert.deepEqual([unnamed.status, /workspacePath is required/.test(unnamed.reason)], ['REJECTED', true], 'no silent fallback to the server owner\'s workspace');
+    assert.equal((await viaMcp({ kind: 'update', text: '🏏 Plan posted from an MCP client, same feed as the orchestrator.', workspacePath: workspace })).status, 'POSTED');
+    assert.equal(store.read(workspace).items.length, before + 1, 'an MCP post lands in the named workspace feed');
+    assert.equal(store.read(otherWorkspace).items.length, 0, 'and in no other workspace');
+    assert.equal((await viaMcp({ kind: 'update', text: Array(21).fill('word').join(' '), workspacePath: workspace })).status, 'REJECTED', 'same limits as the VS Code tool');
     assert.throws(() => mcpTools.get('commentary').config.inputSchema.parse({ kind: 'milestone', text: 'old kind' }), 'same kinds as the VS Code tool');
     assert.match(fs.readFileSync(path.join(__dirname, 'src', 'mcp', 'mcpServer.ts'), 'utf8'),
-        /registerToolDefinitions\([^\n]*commentaryToolDefinitions\(sharedCommentaryStore, gradleWorkspaceRoot\)\)/, 'the MCP server registers it');
-    console.log('EV-030d CommentaryOnMcp: PASS posted=feed limits=shared kinds=shared registered=mcpServer');
+        /registerToolDefinitions\([^\n]*commentaryToolDefinitions\(sharedCommentaryStore, ''\)\)/, 'the MCP server registers it with no default workspace');
+    fs.rmSync(otherWorkspace, { recursive: true, force: true });
+    console.log('EV-030d CommentaryOnMcp: PASS posted=namedWorkspaceOnly unnamed=refused limits=shared kinds=shared registered=mcpServer');
 
     // --- Next conversation: carry-over once, goal anchor every prompt, asides ---
     fs.mkdirSync(path.join(workspace, '.specify'), { recursive: true });

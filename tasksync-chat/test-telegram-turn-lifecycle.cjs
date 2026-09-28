@@ -137,6 +137,11 @@ const newest = () => Math.max(...api.messages.keys());
     assert.notEqual(turn2, turn1);
     assert.match(text(turn2), /💬 <i>Also make it emoji safe\.<\/i>$/);
     await commentaryTool('update', '🚀 Reusing the warm builder for emoji support.');
+    // A line for this workspace written by another window (e.g. over the shared MCP server) reaches this turn's message.
+    const otherWindow = new m.CommentaryStore({ dir: path.join(home, '.askaway', 'commentary') });
+    otherWindow.post(workspace, { kind: 'update', text: '📦 Checker posted from another window: six cases pass.' });
+    await settle();
+    assert.match(text(newest()), /Checker posted from another window/, 'cross-window lines are picked up from the feed file');
 
     // ── Turn 3: a queued message is delivered mid-turn: turn 2's message is closed, a new one opens ──
     await queuedMessageDelivered('Queue: also handle flags as one character.');

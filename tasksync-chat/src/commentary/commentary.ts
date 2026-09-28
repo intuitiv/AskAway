@@ -190,7 +190,11 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
             kind: z.enum(COMMENTARY_KINDS),
             text: z.string().min(1).describe('10-20 plain words: what is happening and why.'),
             turnId: z.string().optional(),
+            workspacePath: z.string().optional().describe('The workspace this line belongs to. Required over MCP; the VS Code tool defaults to its own window.'),
         }),
-        run: (args) => store().post(defaultWorkspace, args),
+        // One MCP server serves every window, so a missing workspace must never fall back to the server owner's feed.
+        run: (args) => (args.workspacePath || defaultWorkspace)
+            ? store().post(args.workspacePath || defaultWorkspace, args)
+            : { status: 'REJECTED', reason: 'workspacePath is required: say which workspace this line belongs to' },
     }];
 }

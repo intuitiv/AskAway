@@ -419,6 +419,10 @@
             },
             "turnId": {
               "type": "string"
+            },
+            "workspacePath": {
+              "type": "string",
+              "description": "The workspace this line belongs to. Required over MCP; the VS Code tool defaults to its own window."
             }
           },
           "required": [

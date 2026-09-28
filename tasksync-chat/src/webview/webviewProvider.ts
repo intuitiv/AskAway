@@ -1517,8 +1517,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             });
             // A new chat turn folds the lines so far into a collapsed pane as soon as the prompt is sent.
             const turns = store.turnsFile(root);
-            fs.watchFile(turns, { interval: 1000 }, () => push());
-            this._disposables.push({ dispose: () => fs.unwatchFile(turns) });
+            const onFile = () => push();
+            fs.watchFile(turns, { interval: 1000 }, onFile);
+            // Lines for this workspace posted by another window (the shared MCP server lives in one window).
+            const feed = store.file(root);
+            fs.watchFile(feed, { interval: 1000 }, onFile);
+            this._disposables.push({ dispose: () => { fs.unwatchFile(turns, onFile); fs.unwatchFile(feed, onFile); } });
         }
         if (action === 'goal') { store.setGoal(root, value ?? ''); return; }
         if (action === 'clear') { store.clear(root, value === 'goal' || value === 'all' ? value : 'feed'); return; }
@@ -2091,6 +2095,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             void this._broadcastMemoriesList();
         })();
         return this._observabilityScanPromise;
+    }
+
+    /** For the Telegram status line: the newest model request of this window's chat and how many the turn has made. */
+    public getTurnActivity(): { lastActivityAt: number; requests: number } {
+        return { lastActivityAt: this._newestRequestTs, requests: this._turnRequests.length };
     }
 
     public async getTurnMetricsSnapshot(): Promise<{ latestInputTokens: number; turnOutputTokens: number; turnNanoAiu: number }> {

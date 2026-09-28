@@ -1362,7 +1362,7 @@ export function activate(context: vscode.ExtensionContext) {
                 if (liveRoot) {
                     const { TelegramLiveCommentary, relayCommentaryToTelegram, telegramTurnTarget } = await import('./commentary/telegramLive');
                     const liveOn = () => vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<boolean>('telegram.liveCommentary', true);
-                    telegramLiveCommentary = new TelegramLiveCommentary(() => telegramService, path.basename(liveRoot), { enabled: liveOn });
+                    telegramLiveCommentary = new TelegramLiveCommentary(() => telegramService, path.basename(liveRoot), { enabled: liveOn, activity: () => provider.getTurnActivity() });
                     telegramService.setLiveTurns(liveOn);
                     telegramTurn = telegramTurnTarget(telegramLiveCommentary, () => telegramService);
                     context.subscriptions.push(relayCommentaryToTelegram(telegramLiveCommentary, sharedCommentaryStore(), liveRoot,

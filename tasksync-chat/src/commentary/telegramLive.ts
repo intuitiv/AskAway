@@ -46,16 +46,35 @@ export function currentTurn(view: CommentaryView): { startedAt: number; prompt: 
 
 const HEADS: Record<Phase, string> = { live: '🔴 <b>Live</b>', final: '✅ <b>Turn complete</b>', continued: '⏭ <b>Continued</b>' };
 
-export function liveCommentaryHtml(workspaceName: string, prompt: string, items: CommentaryItem[], phase: Phase, budget = MAX_HTML): string {
+export function liveCommentaryHtml(workspaceName: string, prompt: string, items: CommentaryItem[], phase: Phase, budget = MAX_HTML, footer = ''): string {
     const head = [`${HEADS[phase]} · ${esc(workspaceName)}`, prompt ? `💬 <i>${esc(prompt)}</i>` : ''].filter(Boolean);
     const lines = items.map((item) => `<code>${clock(item.ts)}</code> ${HEADS_UP.has(item.kind) ? '❓ <b>HEADS-UP</b> ' : ''}${markup(item.text)}`);
-    let body = [...head, ...lines].join('\n');
+    const tail = footer ? [footer] : [];
+    let body = [...head, ...lines, ...tail].join('\n');
     // Keep the newest lines when the turn outgrows one message.
     while (body.length > budget && lines.length > 1) {
         lines.shift();
-        body = [...head, '…', ...lines].join('\n');
+        body = [...head, '…', ...lines, ...tail].join('\n');
     }
     return body;
+}
+
+/** What the extension knows about the running turn, for the periodic status line. */
+export interface TurnActivity { lastActivityAt: number; requests: number }
+
+const STUCK_MS = 5 * 60 * 1000;
+
+function minutes(ms: number): string {
+    const m = Math.floor(ms / 60_000);
+    return m < 1 ? `${Math.max(0, Math.round(ms / 1000))}s` : `${m}m`;
+}
+
+/** Every tick while a turn is live: how long it has run and when the agent last did anything; warns when it looks stuck. */
+export function statusFooter(now: number, turnStartedAt: number, activity: TurnActivity): string {
+    const last = Math.max(activity.lastActivityAt, turnStartedAt);
+    const idle = now - last;
+    const facts = `⏱ ${clock(now).slice(0, 5)} · working ${minutes(now - turnStartedAt)} · ${activity.requests} request${activity.requests === 1 ? '' : 's'} · last activity ${minutes(idle)} ago`;
+    return idle >= STUCK_MS ? `${facts}\n⚠️ <b>No activity for ${minutes(idle)}</b> — the agent may be stuck or errored.` : facts;
 }
 
 export class TelegramLiveCommentary {
@@ -66,17 +85,31 @@ export class TelegramLiveCommentary {
     private lastHtml = '';
     private lastEditAt = 0;
     private pending: NodeJS.Timeout | undefined;
+    private ticker: NodeJS.Timeout | undefined;
+    private footer = '';
+    private lastView: CommentaryView | undefined;
     private chain: Promise<unknown> = Promise.resolve();
 
     constructor(
         private readonly poster: () => LiveMessagePoster | undefined,
         private readonly workspaceName: string,
-        private readonly options: { minEditMs?: number; now?: () => number; enabled?: () => boolean } = {},
+        private readonly options: { minEditMs?: number; now?: () => number; enabled?: () => boolean; activity?: () => TurnActivity; tickMs?: number } = {},
     ) { }
 
     /** Serialized so a burst of events never opens two messages for one turn. */
     update(view: CommentaryView): Promise<void> {
+        this.lastView = view;
         return this.enqueue(() => this.apply(view));
+    }
+
+    /** Refreshes the status line of a live turn; the ticker calls this every `tickMs` (default 2 minutes). */
+    tick(): Promise<void> {
+        return this.enqueue(async () => {
+            if (!this.options.activity || this.messageId === undefined || this.finished || !this.lastView) { return; }
+            this.footer = statusFooter(this.now(), this.turnStartedAt, this.options.activity());
+            this.lastEditAt = 0;
+            await this.apply(this.lastView);
+        });
     }
 
     /** The final response replaces the live status in the same message; false when there is no live message to reuse. */
@@ -85,6 +118,7 @@ export class TelegramLiveCommentary {
             const poster = this.active();
             if (!poster || this.messageId === undefined || this.finished) { return false; }
             this.cancelPending();
+            this.stopTicker();
             const head = liveCommentaryHtml(this.workspaceName, this.turn.prompt, this.turn.items, 'final', 1800);
             const ok = await poster.finishLive(this.messageId, head, finalMarkdown, replyTaskId);
             if (ok) { this.finished = true; }
@@ -94,6 +128,16 @@ export class TelegramLiveCommentary {
 
     dispose(): void {
         this.cancelPending();
+        this.stopTicker();
+    }
+
+    private startTicker(): void {
+        if (this.ticker || !this.options.activity) { return; }
+        this.ticker = setInterval(() => { void this.tick(); }, this.options.tickMs ?? 120_000);
+    }
+
+    private stopTicker(): void {
+        if (this.ticker) { clearInterval(this.ticker); this.ticker = undefined; }
     }
 
     private enqueue<T>(step: () => Promise<T>): Promise<T> {
@@ -121,14 +165,15 @@ export class TelegramLiveCommentary {
             this.messageId = undefined;
             this.finished = false;
             this.lastHtml = '';
+            this.footer = '';
         }
         this.turn = { prompt: turn.prompt, items: turn.items };
         if (this.finished || (!turn.items.length && !turn.prompt)) { return; }
-        const html = liveCommentaryHtml(this.workspaceName, turn.prompt, turn.items, 'live');
+        const html = liveCommentaryHtml(this.workspaceName, turn.prompt, turn.items, 'live', MAX_HTML, this.footer);
         if (html === this.lastHtml) { return; }
         if (this.messageId === undefined) {
             this.messageId = await poster.sendLive(html);
-            if (this.messageId !== undefined) { this.lastHtml = html; this.lastEditAt = this.now(); }
+            if (this.messageId !== undefined) { this.lastHtml = html; this.lastEditAt = this.now(); this.startTicker(); }
             return;
         }
         const wait = (this.options.minEditMs ?? 1500) - (this.now() - this.lastEditAt);
@@ -170,7 +215,10 @@ export function relayCommentaryToTelegram(relay: TelegramLiveCommentary, store: 
         push();
     };
     store.onChange(() => push());
+    // Another window may post for this workspace (the shared MCP server lives in one window), so watch the feed file too.
+    const feed = store.file(workspacePath);
+    fs.watchFile(feed, { interval: 1000 }, push);
     const turns = store.turnsFile(workspacePath);
     fs.watchFile(turns, { interval: 500 }, onTurns);
-    return { dispose: () => { fs.unwatchFile(turns, onTurns); relay.dispose(); } };
+    return { dispose: () => { fs.unwatchFile(turns, onTurns); fs.unwatchFile(feed, push); relay.dispose(); } };
 }

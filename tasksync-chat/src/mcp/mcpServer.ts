@@ -292,7 +292,7 @@ export class McpServerManager {
             );
 
             registerWorkerTools((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), () => sharedWorkerRuntimeReady(gradleWorkspaceRoot), gradleWorkspaceRoot);
-            registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), commentaryToolDefinitions(sharedCommentaryStore, gradleWorkspaceRoot));
+            registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), commentaryToolDefinitions(sharedCommentaryStore, ''));
             registerVsCodeToolBridge((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), { selfPort: this.port });
                 return mcpServer;
             };
