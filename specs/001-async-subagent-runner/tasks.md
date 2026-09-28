@@ -162,3 +162,21 @@ Parallel opportunities after their dependencies are met: `T001` and `T003`; `T00
 - [x] T035 [CY-005] [ControlPlane] Expose `worker_*` and `commentary` to the VS Code orchestrator. Today the AskAway MCP registers only with Kiro/Cursor/Antigravity, so AA.Orchestrator cannot call `worker_*` and falls back to terminal `opencode run`. Demo: `EV-035 OrchestratorReachesWorkers` (orchestrator eval dispatches through `worker_start`). AC: `AC-T035-OrchestratorReachesWorkers`.
 - [x] T036 [CY-005] [Runtime] `tasksync-chat/src/workers/sharedServer.ts` Attach every worker launch to the one shared `opencode serve` on :4096, starting it detached on first worker use; the fixed port is the cross-window mutex; failure is visible as `NOT_ATTACHED` with a reason. Demo: `EV-036 SharedServerAttach`. Live proof after reload still pending.
 - [x] T038 [CY-005] [UI] Worker trace reuses the Metrics turn-trace rows: extract the request/tool row builders from `updateObservabilityUI` into one shared pure block, map worker ledger facts (step_finish → request row, before/after_tool → tool row) onto it, and load them lazily when a worker's trace is expanded. Demo: `EV-038 SharedTraceRows`. Done 2026-09-24: `traceRowsHtml` block; one partition row per run; tool previews live in memory only. Lazy loading not done (projection builds events every poll).
+
+## Phase P7: Reviewer Feedback After Acceptance
+
+### Cycle CY-008: Reviewer-facing polish and control
+
+**Goal**: Everything the reviewer asked for after CY-007 lands as a tracked task with an end-to-end test: one worker tool, a readable commentary feed that folds per turn and reaches Telegram, a sample conversation in Storybook, the active spec always visible, and a hard cap on generated tasks.
+
+**CAC CY-008**: `npm run test:workers` exits 0 including every EV below.
+
+- [x] T041 [CY-008] [Fix] Reclaim the MCP port after reload. `tasksync-chat/src/mcp/sharedPort.ts` Demo: `EV-MCP-PORT PortReclaim`.
+- [x] T042 [CY-008] [UI] Day dividers and one-line cost tips. `tasksync-chat/media/webview.js` Demo: `EV-030c CommentaryNewestAtBottom`, `EV-015c WorkersSummaryTipsLanes`.
+- [x] T043 [CY-008] [MCP] Commentary on the MCP surface. `tasksync-chat/src/mcp/mcpServer.ts` Demo: `EV-030d CommentaryOnMcp`.
+- [x] T044 [CY-008] [Tools] One `worker` tool with actions. `tasksync-chat/src/workers/workerTools.ts` Demo: `EV-012 WorkerMcpSurface` (tools=1 actions=8).
+- [x] T045 [CY-008] [UI] Fold earlier turns on a new prompt. `tasksync-chat/hooks/spec-context-inject.cjs` Demo: `EV-030e CommentaryTurnPanes`, `EV-HOOKS ConversationContext`.
+- [x] T046 [CY-008] [Storybook] Sample conversation story. `tasksync-chat/storybook/stories/SampleConversation.stories.js` Demo: `EV-SB-SAMPLE SampleConversationStory`.
+- [x] T047 [CY-008] [Fix] Active spec never hidden. `tasksync-chat/media/webview.js` Demo: `EV-SPECS-ACTIVE-VISIBLE`.
+- [x] T048 [CY-008] [Telegram] Live commentary message in Telegram. `tasksync-chat/src/commentary/telegramLive.ts` Demo: `EV-048 TelegramLiveCommentary`.
+- [x] T049 [CY-008] [Process] Cap generated tasks per spec. `tasksync-chat/tools/task-budget.cjs` Demo: `EV-049 TaskBudget`; `/sk.tasks` must print its PASS line.

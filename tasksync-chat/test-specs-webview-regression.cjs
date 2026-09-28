@@ -136,3 +136,14 @@ for (const selector of ['.conversation-health', '.spec-work-phase', '.spec-cycle
 }
 
 console.log('EV-SPECS-WEBVIEW-REGRESSION: PASS banner=last-input+turn-output hierarchy=phase>cycle>task actions=cycle+task');
+
+// Regression (reviewer 2026-09-28, first fixed 2026-08-19): the active spec is never hidden by the Completed filter.
+const shown = hierarchyContext.visibleSpecs([
+    { slug: '001-active', stage: 'done', active: true },
+    { slug: '002-finished', stage: 'done', active: false },
+    { slug: '003-open', stage: 'in-progress', active: false },
+], false).map((s) => s.slug);
+assert.deepEqual(shown, ['001-active', '003-open'], 'done-but-active stays visible; other done specs hide');
+assert.equal(hierarchyContext.visibleSpecs([{ slug: 'x', stage: 'done' }], true).length, 1, 'Show completed shows everything');
+assert.match(webview, /var specs = visibleSpecs\(all, specsShowDone\);/, 'renderSpecs uses the rule');
+console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true otherDoneHidden=true');

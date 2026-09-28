@@ -11,3 +11,4 @@ Cycle metadata for the Specs hierarchy. Tasks join a cycle with a `[CY-NNN]` tag
 | CY-005 | Operator-visible workers | Show server/worker state, filters, usage and exact session links in the Workers view | `node tasksync-chat/test-workers-control-plane.cjs` |
 | CY-006 | Recoverable and retired workers | Recover after reload, retire unsafe reuse, and prune only inactive workers | `node tasksync-chat/test-async-subagent-runner-e2e.cjs` |
 | CY-007 | Delegation and real-provider acceptance | Constrain the orchestrator to delegation and prove real bounded provider usage | `node tasksync-chat/test-orchestrator-delegation.cjs` |
+| CY-008 | Reviewer-facing polish and control | Ships one worker tool, a per-turn folding commentary feed mirrored live to Telegram, a Storybook sample conversation, an always-visible active spec, and a hard task budget, each with its EV line | `npm --prefix tasksync-chat run test:workers` |

@@ -5748,6 +5748,11 @@
         }).join('') + '</div>';
     }
 
+    // The active spec is never hidden: finishing its tasks does not mean the reviewer stopped working on it.
+    function visibleSpecs(all, showDone) {
+        return showDone ? all : all.filter(function(s) { return s.stage !== 'done' || s.active; });
+    }
+
     function renderSpecs() {
         var list = document.getElementById('specs-list');
         if (!list) return;
@@ -5784,7 +5789,7 @@
             if (lbl) lbl.classList.toggle('hidden', completedWorkCount === 0);
         }
 
-        var specs = specsShowDone ? all : all.filter(function(s) { return s.stage !== 'done'; });
+        var specs = visibleSpecs(all, specsShowDone);
         if (!specs.length) {
             list.innerHTML = '<div class="specs-empty">' +
                 (all.length ? 'All specs are complete.' : 'No specs found under specs/.') + '</div>';
