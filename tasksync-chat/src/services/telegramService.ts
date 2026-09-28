@@ -1999,6 +1999,38 @@ export class TelegramService {
         }
     }
 
+    /** Live commentary: one silent message per turn in this workspace's topic, edited in place (TelegramLiveCommentary). */
+    public async sendLive(html: string): Promise<number | undefined> {
+        if (!this.isConfigured()) { return undefined; }
+        const body: any = { chat_id: this._chatId, text: html, parse_mode: 'HTML', disable_notification: true };
+        const threadId = this._topicIds.get(this._workspaceName());
+        if (threadId) { body.message_thread_id = threadId; }
+        try {
+            const resp = await fetch(this._apiUrl('sendMessage'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (!resp.ok) { this._warn(`AskAway/Telegram: live commentary send failed ${resp.status}: ${await resp.text()}`); return undefined; }
+            const data = await resp.json() as any;
+            return data.result?.message_id;
+        } catch (error) {
+            this._warn(`AskAway/Telegram: live commentary send error: ${error instanceof Error ? error.message : String(error)}`);
+            return undefined;
+        }
+    }
+
+    public async editLive(messageId: number, html: string): Promise<boolean> {
+        if (!this.isConfigured()) { return false; }
+        try {
+            const resp = await fetch(this._apiUrl('editMessageText'), {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: this._chatId, message_id: messageId, text: html, parse_mode: 'HTML' }),
+            });
+            if (!resp.ok) { this._warn(`AskAway/Telegram: live commentary edit failed ${resp.status}: ${await resp.text()}`); }
+            return resp.ok;
+        } catch (error) {
+            this._warn(`AskAway/Telegram: live commentary edit error: ${error instanceof Error ? error.message : String(error)}`);
+            return false;
+        }
+    }
+
     public async sendStatusUpdate(status: string): Promise<void> {
         if (!this.isConfigured()) { return; }
         // Throttle: don't send more than once per 30 seconds

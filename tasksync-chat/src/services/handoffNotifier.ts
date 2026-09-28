@@ -63,7 +63,9 @@ export class HandoffNotifier implements vscode.Disposable {
         private readonly _targets: HandoffTarget[],
         private readonly _debugLogsDir: string | undefined,
         private readonly _log: (msg: string, data?: unknown) => void,
-        private readonly _getTurnMetrics?: () => TurnMetricsSnapshot | Promise<TurnMetricsSnapshot>
+        private readonly _getTurnMetrics?: () => TurnMetricsSnapshot | Promise<TurnMetricsSnapshot>,
+        /** Runs once per new turn end, before the handoff posts (closes the live commentary message). */
+        private readonly _beforePost?: () => Promise<void>
     ) { }
 
     public start(): void {
@@ -107,6 +109,7 @@ export class HandoffNotifier implements vscode.Disposable {
             }
             let configuredTargets = 0;
             let postedTargets = 0;
+            try { await this._beforePost?.(); } catch (err) { this._log('Handoff notifier: before-post step failed', err instanceof Error ? err.message : String(err)); }
             const turnMetrics = await this._getTurnMetrics?.();
             for (const target of enabled) {
                 const poster = target.get();

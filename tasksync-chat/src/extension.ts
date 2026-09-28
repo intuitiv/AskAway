@@ -11,6 +11,8 @@ import { killAllGradleRuns } from './gradle/gradleEngine';
 import { ContextManager } from './context';
 import { PlanEditorProvider } from './plan/planEditorProvider';
 import { COWORK_BUNDLE_B64, COWORK_APPLY_B64, COWORK_PROMPT_B64 } from './cowork/coworkAssets';
+import { commentaryView } from './commentary/commentary';
+import { sharedCommentaryStore } from './workers/workerHost';
 
 // Heavy modules loaded lazily to avoid blocking activation
 // RemoteUiServer imports express + socket.io (expensive)
@@ -1300,6 +1302,7 @@ export function activate(context: vscode.ExtensionContext) {
         setImmediate(async () => {
             let webexService: WebexServiceType | undefined;
             let telegramService: TelegramServiceType | undefined;
+            let telegramLiveCommentary: import('./commentary/telegramLive').TelegramLiveCommentary | undefined;
 
             // Initialize Webex independently so its failure does not block Telegram.
             try {
@@ -1354,6 +1357,15 @@ export function activate(context: vscode.ExtensionContext) {
                         telegramService.reloadConfig();
                     }
                 }));
+
+                const liveRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (liveRoot) {
+                    const { TelegramLiveCommentary, relayCommentaryToTelegram } = await import('./commentary/telegramLive');
+                    telegramLiveCommentary = new TelegramLiveCommentary(() => telegramService, path.basename(liveRoot), {
+                        enabled: () => vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<boolean>('telegram.liveCommentary', true),
+                    });
+                    context.subscriptions.push(relayCommentaryToTelegram(telegramLiveCommentary, sharedCommentaryStore(), liveRoot));
+                }
             } catch (err) {
                 logRuntime('Telegram deferred init failed', formatError(err));
                 console.error('[AskAway] Telegram deferred init error:', err);
@@ -1377,7 +1389,13 @@ export function activate(context: vscode.ExtensionContext) {
                     createHandoffTargets(() => webexService, () => telegramService),
                     debugLogsDir,
                     logRuntime,
-                    () => provider.getTurnMetricsSnapshot()
+                    () => provider.getTurnMetricsSnapshot(),
+                    async () => {
+                        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                        if (!root || !telegramLiveCommentary) { return; }
+                        const store = sharedCommentaryStore();
+                        await telegramLiveCommentary.finish(commentaryView(store.read(root), store.turnStarts(root)));
+                    }
                 );
                 notifier.start();
                 context.subscriptions.push(notifier);
