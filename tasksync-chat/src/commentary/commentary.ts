@@ -52,11 +52,20 @@ export function buildOpener(state: CommentaryState): string {
 }
 
 /** What the Commentary tab receives: the goal, the uncleared feed, when each chat turn started, and the ready-to-copy opener. */
-export interface CommentaryView { goal: string; goalUpdatedAt: number; items: CommentaryItem[]; archivedCount: number; opener: string; turnStarts: number[] }
+export interface CommentaryView { goal: string; goalUpdatedAt: number; items: CommentaryItem[]; archivedCount: number; opener: string; turnStarts: number[]; currentPrompt: string }
 
-export function commentaryView(state: CommentaryState, turnStarts: number[] = []): CommentaryView {
+export function commentaryView(state: CommentaryState, turnStarts: number[] = [], currentPrompt = ''): CommentaryView {
     const items = uncleared(state);
-    return { goal: state.goal, goalUpdatedAt: state.goalUpdatedAt, items, archivedCount: state.items.length - items.length, opener: buildOpener(state), turnStarts };
+    return { goal: state.goal, goalUpdatedAt: state.goalUpdatedAt, items, archivedCount: state.items.length - items.length, opener: buildOpener(state), turnStarts, currentPrompt };
+}
+
+/** Same turns-file shape as hooks/spec-context-inject.cjs writes: parallel `starts` and `prompts`, newest last. */
+const MAX_TURNS = 200;
+const PROMPT_CHARS = 300;
+const CREDENTIAL_ANYWHERE = new RegExp(CREDENTIAL.source, 'g');
+export function promptExcerpt(text: string): string {
+    const oneLine = String(text ?? '').replace(/\s+/g, ' ').trim().replace(CREDENTIAL_ANYWHERE, '[redacted]');
+    return oneLine.length > PROMPT_CHARS ? `${oneLine.slice(0, PROMPT_CHARS - 1)}…` : oneLine;
 }
 
 export class CommentaryStore {
@@ -74,18 +83,40 @@ export class CommentaryStore {
         return path.join(this.dir, `${commentaryKey(workspacePath)}.json`);
     }
 
-    /** Written by the UserPromptSubmit hook (hooks/spec-context-inject.cjs), never by the store, so a prompt can't race a post. */
+    /** A user message starts a turn: a typed prompt (written by the UserPromptSubmit hook) or a queued/answered message (written here). */
     turnsFile(workspacePath: string): string {
         return path.join(this.dir, `${commentaryKey(workspacePath)}.turns.json`);
     }
 
-    turnStarts(workspacePath: string): number[] {
+    private readTurns(workspacePath: string): { starts: number[]; prompts: string[] } {
         try {
-            const starts = JSON.parse(fs.readFileSync(this.turnsFile(workspacePath), 'utf8')).starts;
-            return Array.isArray(starts) ? starts.filter((ts) => typeof ts === 'number') : [];
+            const parsed = JSON.parse(fs.readFileSync(this.turnsFile(workspacePath), 'utf8'));
+            const starts: number[] = Array.isArray(parsed.starts) ? parsed.starts : [];
+            const prompts: string[] = Array.isArray(parsed.prompts) ? parsed.prompts : [];
+            // Older files have starts only; align prompts to the same length.
+            return { starts, prompts: starts.map((_, i) => String(prompts[i - (starts.length - prompts.length)] ?? '')) };
         } catch {
-            return [];
+            return { starts: [], prompts: [] };
         }
+    }
+
+    turnStarts(workspacePath: string): number[] {
+        return this.readTurns(workspacePath).starts.filter((ts) => typeof ts === 'number');
+    }
+
+    currentPrompt(workspacePath: string): string {
+        const { prompts } = this.readTurns(workspacePath);
+        return prompts.length ? prompts[prompts.length - 1] : '';
+    }
+
+    markTurnStart(workspacePath: string, prompt: string): number {
+        const turns = this.readTurns(workspacePath);
+        const ts = Math.max(this.now(), (turns.starts[turns.starts.length - 1] ?? 0) + 1);
+        const file = this.turnsFile(workspacePath);
+        fs.mkdirSync(this.dir, { recursive: true });
+        fs.writeFileSync(`${file}.tmp`, JSON.stringify({ starts: [...turns.starts, ts].slice(-MAX_TURNS), prompts: [...turns.prompts, promptExcerpt(prompt)].slice(-MAX_TURNS) }));
+        fs.renameSync(`${file}.tmp`, file);
+        return ts;
     }
 
     read(workspacePath: string): CommentaryState {

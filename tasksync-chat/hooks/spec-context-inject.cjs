@@ -36,13 +36,21 @@ function readCommentary(cwd) {
     }
 }
 
-// Each prompt starts a turn: the Commentary tab folds the lines so far into a collapsed pane (CommentaryStore.turnsFile).
-function markTurnStart(cwd) {
+// Each prompt starts a turn: the Commentary tab folds the lines so far and Telegram starts a new live message.
+// Same shape as CommentaryStore.markTurnStart in src/commentary/commentary.ts.
+const CREDENTIAL = /\bgh[pousr]_[A-Za-z0-9]{20,}|\bsk-[A-Za-z0-9]{20,}|\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}|\bsqu_[A-Za-z0-9]{20,}|\d{8,}:[A-Za-z0-9_-]{30,}/g;
+function markTurnStart(cwd, prompt) {
     const file = path.join(os.homedir(), '.askaway', 'commentary', `${commentaryKey(cwd)}.turns.json`);
-    let starts = [];
-    try { starts = JSON.parse(fs.readFileSync(file, 'utf8')).starts || []; } catch { starts = []; }
+    let turns = {};
+    try { turns = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { turns = {}; }
+    const starts = Array.isArray(turns.starts) ? turns.starts : [];
+    const prompts = Array.isArray(turns.prompts) ? turns.prompts : [];
+    const aligned = starts.map((_, i) => String(prompts[i - (starts.length - prompts.length)] ?? ''));
+    let excerpt = String(prompt || '').replace(/\s+/g, ' ').trim().replace(CREDENTIAL, '[redacted]');
+    if (excerpt.length > 300) { excerpt = `${excerpt.slice(0, 299)}…`; }
+    const ts = Math.max(Date.now(), (starts[starts.length - 1] || 0) + 1);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(`${file}.tmp`, JSON.stringify({ starts: [...starts, Date.now()].slice(-200) }));
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify({ starts: [...starts, ts].slice(-200), prompts: [...aligned, excerpt].slice(-200) }));
     fs.renameSync(`${file}.tmp`, file);
 }
 
@@ -100,7 +108,7 @@ function main() {
         }
     }
 
-    try { markTurnStart(cwd); } catch { /* the feed just won't fold this turn */ }
+    try { markTurnStart(cwd, prompt); } catch { /* the feed just won't fold this turn */ }
     // Per-prompt anchor: it sits in the new user turn, so the cached prompt prefix is unchanged.
     const anchor = commentary.goal ? `Main goal (goal box): ${commentary.goal}` : (specDir && activeCycle(specDir) ? `Main goal: finish ${activeCycle(specDir)} of ${path.basename(specDir)}.` : '');
     if (anchor) {

@@ -930,8 +930,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     }
 
                     resolver({ value: prompt, queue: true, attachments: [] });
-                    this._telegramService?.resolveTask?.(toolCallId);
-                    this._webexService?.resolveTask?.(toolCallId);
+                    this._userMessageDelivered(toolCallId, prompt);
                     return;
                 }
             }
@@ -1410,8 +1409,16 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._currentToolCallId = null;
         this._signalNextWaiter();
         // Also tell whichever service did NOT deliver this reply to stop polling
-        this._telegramService?.resolveTask?.(resolvedMsgId);
-        this._webexService?.resolveTask?.(resolvedMsgId);
+        this._userMessageDelivered(resolvedMsgId, response);
+    }
+
+    /** A delivered user message starts a turn: the Commentary tab folds and Telegram opens a new live message. */
+    private _userMessageDelivered(toolCallId: string | null, text: string): void {
+        this._telegramService?.resolveTask?.(toolCallId);
+        this._webexService?.resolveTask?.(toolCallId);
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) { return; }
+        try { sharedCommentaryStore().markTurnStart(root, text); } catch (error) { console.warn('[AskAway] Could not record the turn start:', error); }
     }
 
     public setRemoteBroadcastCallback(callback: ((message: ToWebviewMessage) => void) | null): void {
@@ -4345,6 +4352,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     this._currentToolCallId = null;
                     this._signalNextWaiter();
                     this._resetTurnMetrics();
+                    this._userMessageDelivered(toolCallId, queuedPrompt.prompt);
                     return {
                         value: queuedPrompt.prompt,
                         queue: this._queueEnabled && this._promptQueue.length > 0,
@@ -5268,8 +5276,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 this._pendingRequests.delete(this._currentToolCallId);
                 this._currentToolCallId = null;
                 this._signalNextWaiter();
-                this._telegramService?.resolveTask?.(resolvedId);
-                this._webexService?.resolveTask?.(resolvedId);
+                this._userMessageDelivered(resolvedId, value);
             } else {
                 // No pending tool call - add message to queue for later use
                 if (value && value.trim()) {
@@ -5715,8 +5722,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             this._pendingRequests.delete(resolvedQueueId);
             this._currentToolCallId = null;
             this._signalNextWaiter();
-            this._telegramService?.resolveTask?.(resolvedQueueId);
-            this._webexService?.resolveTask?.(resolvedQueueId);
+            this._userMessageDelivered(resolvedQueueId, queuedPrompt.prompt);
         } else {
             // No pending request - add to queue normally
             this._promptQueue.push(queuedPrompt);

@@ -11,7 +11,6 @@ import { killAllGradleRuns } from './gradle/gradleEngine';
 import { ContextManager } from './context';
 import { PlanEditorProvider } from './plan/planEditorProvider';
 import { COWORK_BUNDLE_B64, COWORK_APPLY_B64, COWORK_PROMPT_B64 } from './cowork/coworkAssets';
-import { commentaryView } from './commentary/commentary';
 import { sharedCommentaryStore } from './workers/workerHost';
 
 // Heavy modules loaded lazily to avoid blocking activation
@@ -1303,6 +1302,7 @@ export function activate(context: vscode.ExtensionContext) {
             let webexService: WebexServiceType | undefined;
             let telegramService: TelegramServiceType | undefined;
             let telegramLiveCommentary: import('./commentary/telegramLive').TelegramLiveCommentary | undefined;
+            let telegramTurn: ReturnType<typeof import('./commentary/telegramLive').telegramTurnTarget> | undefined;
 
             // Initialize Webex independently so its failure does not block Telegram.
             try {
@@ -1360,10 +1360,11 @@ export function activate(context: vscode.ExtensionContext) {
 
                 const liveRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                 if (liveRoot) {
-                    const { TelegramLiveCommentary, relayCommentaryToTelegram } = await import('./commentary/telegramLive');
-                    telegramLiveCommentary = new TelegramLiveCommentary(() => telegramService, path.basename(liveRoot), {
-                        enabled: () => vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<boolean>('telegram.liveCommentary', true),
-                    });
+                    const { TelegramLiveCommentary, relayCommentaryToTelegram, telegramTurnTarget } = await import('./commentary/telegramLive');
+                    const liveOn = () => vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<boolean>('telegram.liveCommentary', true);
+                    telegramLiveCommentary = new TelegramLiveCommentary(() => telegramService, path.basename(liveRoot), { enabled: liveOn });
+                    telegramService.setLiveTurns(liveOn);
+                    telegramTurn = telegramTurnTarget(telegramLiveCommentary, () => telegramService);
                     context.subscriptions.push(relayCommentaryToTelegram(telegramLiveCommentary, sharedCommentaryStore(), liveRoot,
                         () => { telegramService?.resolveHandoffs(); }));
                 }
@@ -1387,16 +1388,10 @@ export function activate(context: vscode.ExtensionContext) {
                 const { HandoffNotifier, createHandoffTargets } = await import('./services/handoffNotifier');
                 const debugLogsDir = path.join(path.dirname(storagePath), 'GitHub.copilot-chat', 'debug-logs');
                 const notifier = new HandoffNotifier(
-                    createHandoffTargets(() => webexService, () => telegramService),
+                    createHandoffTargets(() => webexService, () => telegramTurn ?? telegramService),
                     debugLogsDir,
                     logRuntime,
-                    () => provider.getTurnMetricsSnapshot(),
-                    async () => {
-                        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                        if (!root || !telegramLiveCommentary) { return; }
-                        const store = sharedCommentaryStore();
-                        await telegramLiveCommentary.finish(commentaryView(store.read(root), store.turnStarts(root)));
-                    }
+                    () => provider.getTurnMetricsSnapshot()
                 );
                 notifier.start();
                 context.subscriptions.push(notifier);

@@ -37,32 +37,34 @@ const poster = {
     isConfigured: () => telegram.configured,
     sendLive: async (html) => { telegram.sent.push(html); return telegram.nextId++; },
     editLive: async (id, html) => { telegram.edits.push({ id, html }); return true; },
+    finishLive: async (id, head, markdown, replyTaskId) => { telegram.edits.push({ id, html: `${head}\n\n${markdown}`, replyTaskId }); return true; },
 };
 let enabled = true;
 const relay = new TelegramLiveCommentary(() => poster, 'TaskSync', { minEditMs: 0, enabled: () => enabled });
-const view = () => commentaryView(store.read(workspace), store.turnStarts(workspace));
+const view = () => commentaryView(store.read(workspace), store.turnStarts(workspace), store.currentPrompt(workspace));
 const sync = () => relay.update(view());
 
 (async () => {
-    // Turn 1: the first line sends the live message; later lines edit that same message.
+    // Turn 1: the user message opens the live message; lines edit that same message.
     prompt();
     await sync();
-    assert.equal(telegram.sent.length, 0, 'a prompt alone sends nothing');
+    assert.equal(telegram.sent.length, 1, 'a user message opens the live message');
+    assert.match(telegram.sent[0], /^🔴 <b>Live<\/b> · TaskSync\n💬 <i>go<\/i>$/);
     post('update', '🏏 Plan: **two tracks**, each checked by another worker.');
     await sync();
-    assert.equal(telegram.sent.length, 1);
-    assert.match(telegram.sent[0], /^🔴 <b>Live<\/b> · TaskSync\n<code>\d\d:\d\d:\d\d<\/code> 🏏 Plan: <b>two tracks<\/b>, each checked by another worker\.$/);
+    assert.match(telegram.edits[0].html, /\n<code>\d\d:\d\d:\d\d<\/code> 🏏 Plan: <b>two tracks<\/b>, each checked by another worker\.$/);
     post('heads-up', 'Keep three retries or allow five? <script>x</script>');
     await sync();
     await sync();
-    assert.deepEqual([telegram.sent.length, telegram.edits.length, telegram.edits[0].id], [1, 1, 100], 'one message per turn, edited in place; an unchanged feed is not re-sent');
-    assert.match(telegram.edits[0].html, /❓ <b>HEADS-UP<\/b> Keep three retries or allow five\? &lt;script&gt;x&lt;\/script&gt;$/, 'heads-up flagged, HTML escaped');
+    assert.deepEqual([telegram.sent.length, telegram.edits.length, telegram.edits[1].id], [1, 2, 100], 'one message per turn, edited in place; an unchanged feed is not re-sent');
+    assert.match(telegram.edits[1].html, /❓ <b>HEADS-UP<\/b> Keep three retries or allow five\? &lt;script&gt;x&lt;\/script&gt;$/, 'heads-up flagged, HTML escaped');
 
-    // Turn end: the live message is marked complete before the handoff posts.
-    await relay.finish(view());
-    const closed = telegram.edits[telegram.edits.length - 1].html;
-    assert.match(closed, /^✅ <b>Turn complete<\/b> · TaskSync/);
-    assert.match(closed, /<i>Final response follows\.<\/i>$/);
+    // Turn end: the final response replaces the live status in the same message, once.
+    assert.equal(await relay.finish('- Summary: accepted', 'handoff:1'), true);
+    const closed = telegram.edits[telegram.edits.length - 1];
+    assert.deepEqual([closed.id, closed.replyTaskId], [100, 'handoff:1']);
+    assert.match(closed.html, /^✅ <b>Turn complete<\/b> · TaskSync[\s\S]*- Summary: accepted$/);
+    assert.equal(await relay.finish('- Summary: again', 'handoff:2'), false, 'a finished turn is not finished twice');
 
     // Turn 2: a new prompt starts a new live message holding only the new turn's lines.
     prompt();
@@ -110,5 +112,5 @@ const sync = () => relay.update(view());
     assert.equal(newTurns, 1, 'one prompt, one new-turn signal');
 
     for (const dir of [buildDir, home, workspace]) { fs.rmSync(dir, { recursive: true, force: true }); }
-    console.log('EV-048 TelegramLiveCommentary: PASS oneMessagePerTurn=true editInPlace=true headsUp=flagged escaped=true closedOnTurnEnd=true throttled=trailingEdit offSwitches=true bounded=true newTurnSignal=true');
+    console.log('EV-048 TelegramLiveCommentary: PASS openOnUserMessage=true editInPlace=true headsUp=flagged escaped=true finalReplacesLive=true throttled=trailingEdit offSwitches=true bounded=true newTurnSignal=true');
 })().catch((error) => { console.error(error); process.exit(1); });

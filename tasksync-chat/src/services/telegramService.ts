@@ -87,6 +87,7 @@ export class TelegramService {
     private _lastHeartbeatMsgId: number | undefined;
     private _lastStatusSentAt: number = 0;
     private _lastTelegramReplyAt: number = 0;
+    private _liveTurns: () => boolean = () => false;
 
     // ── Pre-resolved set (handles race between async postQuestion and resolveTask) ──
     private _preResolved: Set<string> = new Set();
@@ -933,6 +934,10 @@ export class TelegramService {
         // so any remaining entries are stale from previous conversations.
         const staleCount = this._activeTasks.size;
         if (staleCount > 0) {
+            // A handoff answered by this local message is continued, not silently forgotten.
+            for (const [staleId, stale] of this._activeTasks) {
+                if (staleId !== taskId && isTelegramHandoffTaskId(staleId)) { void this._markResolvedExternal(stale, 'Continued in VS Code'); }
+            }
             this._activeTasks.clear();
             this._log(`AskAway/Telegram: Cleared all ${staleCount} active task(s) (resolved ${taskId})`);
             this.stopPolling();
@@ -941,6 +946,7 @@ export class TelegramService {
         // Also mark as pre-resolved in case postQuestion is still in flight
         this._preResolved.add(taskId);
 
+        if (this._liveTurns()) { return; }
         // Send "processing" confirmation and start heartbeat
         this.resetHeartbeatMessage();
         this.sendStatusUpdate('🟢 Processing your response...');
@@ -2027,7 +2033,7 @@ export class TelegramService {
     public async sendLive(html: string): Promise<number | undefined> {
         if (!this.isConfigured()) { return undefined; }
         const body: any = { chat_id: this._chatId, text: html, parse_mode: 'HTML', disable_notification: true };
-        const threadId = this._topicIds.get(this._workspaceName());
+        const threadId = await this._getTopicId(this._workspaceName());
         if (threadId) { body.message_thread_id = threadId; }
         try {
             const resp = await fetch(this._apiUrl('sendMessage'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -2053,6 +2059,31 @@ export class TelegramService {
             this._warn(`AskAway/Telegram: live commentary edit error: ${error instanceof Error ? error.message : String(error)}`);
             return false;
         }
+    }
+
+    /** The turn's live message becomes the final response and is tracked for replies, like a posted handoff. */
+    public async finishLive(messageId: number, headHtml: string, finalMarkdown: string, replyTaskId: string): Promise<boolean> {
+        if (!this.isConfigured()) { return false; }
+        let finalHtml: string;
+        try { finalHtml = this._markdownToHtml(finalMarkdown); } catch { finalHtml = this._escapeHtml(finalMarkdown); }
+        const text = `${headHtml}\n\n${finalHtml}`.slice(0, 4000);
+        if (!await this.editLive(messageId, text)) { return false; }
+        for (const [taskId, task] of this._activeTasks) {
+            if (isTelegramHandoffTaskId(taskId)) { this._activeTasks.delete(taskId); void this._markResolvedExternal(task, 'Continued in VS Code'); }
+        }
+        this._activeTasks.set(replyTaskId, {
+            taskId: replyTaskId, messageId, topicId: this._topicIds.get(this._workspaceName()),
+            question: finalMarkdown, timestamp: Date.now(), formattedText: text,
+        });
+        this.stopPolling();
+        this.startPolling();
+        this._log(`AskAway/Telegram: turn message ${messageId} is the final response; tracking replies as ${replyTaskId}`);
+        return true;
+    }
+
+    /** With live turn messages on, the live message is the status: no separate heartbeat or "processing" message. */
+    public setLiveTurns(enabled: () => boolean): void {
+        this._liveTurns = enabled;
     }
 
     public async sendStatusUpdate(status: string): Promise<void> {
@@ -2104,6 +2135,7 @@ export class TelegramService {
     /** Start the heartbeat timer if not already running and no active ask_user */
     private _ensureHeartbeat(): void {
         if (this._heartbeatTimer) { return; }
+        if (this._liveTurns()) { return; }
         if (this._activeTasks.size > 0) { return; }   // ask_user is pending, no heartbeat needed
         if (!this.isConfigured()) { return; }
 
