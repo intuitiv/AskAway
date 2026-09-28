@@ -100,6 +100,15 @@ const sync = () => relay.update(view());
     const long = telegram.sent[telegram.sent.length - 1];
     assert.ok(long.length <= 3900 && /Line 79 /.test(long) && !/Line 0 /.test(long), 'newest lines kept, under the limit');
 
+    // A new prompt fires onNewTurn exactly once (it resolves the last turn-end handoff in Telegram).
+    const { relayCommentaryToTelegram } = require(path.join(buildDir, 'commentary', 'telegramLive.js'));
+    let newTurns = 0;
+    const wired = relayCommentaryToTelegram(new TelegramLiveCommentary(() => poster, 'TaskSync'), store, workspace, () => { newTurns++; });
+    prompt();
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    wired.dispose();
+    assert.equal(newTurns, 1, 'one prompt, one new-turn signal');
+
     for (const dir of [buildDir, home, workspace]) { fs.rmSync(dir, { recursive: true, force: true }); }
-    console.log('EV-048 TelegramLiveCommentary: PASS oneMessagePerTurn=true editInPlace=true headsUp=flagged escaped=true closedOnTurnEnd=true throttled=trailingEdit offSwitches=true bounded=true');
+    console.log('EV-048 TelegramLiveCommentary: PASS oneMessagePerTurn=true editInPlace=true headsUp=flagged escaped=true closedOnTurnEnd=true throttled=trailingEdit offSwitches=true bounded=true newTurnSignal=true');
 })().catch((error) => { console.error(error); process.exit(1); });

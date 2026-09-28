@@ -1364,7 +1364,8 @@ export function activate(context: vscode.ExtensionContext) {
                     telegramLiveCommentary = new TelegramLiveCommentary(() => telegramService, path.basename(liveRoot), {
                         enabled: () => vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<boolean>('telegram.liveCommentary', true),
                     });
-                    context.subscriptions.push(relayCommentaryToTelegram(telegramLiveCommentary, sharedCommentaryStore(), liveRoot));
+                    context.subscriptions.push(relayCommentaryToTelegram(telegramLiveCommentary, sharedCommentaryStore(), liveRoot,
+                        () => { telegramService?.resolveHandoffs(); }));
                 }
             } catch (err) {
                 logRuntime('Telegram deferred init failed', formatError(err));

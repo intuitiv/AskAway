@@ -111,11 +111,17 @@ export class TelegramLiveCommentary {
     }
 }
 
-/** Feeds the relay from the store's own writes and from the prompt hook's turn-start file. */
-export function relayCommentaryToTelegram(relay: TelegramLiveCommentary, store: CommentaryStore, workspacePath: string): { dispose(): void } {
+/** Feeds the relay from the store's own writes and from the prompt hook's turn-start file; `onNewTurn` fires once per new prompt. */
+export function relayCommentaryToTelegram(relay: TelegramLiveCommentary, store: CommentaryStore, workspacePath: string, onNewTurn?: () => void): { dispose(): void } {
+    let lastStart = Math.max(0, ...store.turnStarts(workspacePath));
     const push = () => void relay.update(commentaryView(store.read(workspacePath), store.turnStarts(workspacePath)));
+    const onTurns = () => {
+        const latest = Math.max(0, ...store.turnStarts(workspacePath));
+        if (latest > lastStart) { lastStart = latest; onNewTurn?.(); }
+        push();
+    };
     store.onChange(() => push());
     const turns = store.turnsFile(workspacePath);
-    fs.watchFile(turns, { interval: 1000 }, push);
-    return { dispose: () => { fs.unwatchFile(turns, push); relay.dispose(); } };
+    fs.watchFile(turns, { interval: 1000 }, onTurns);
+    return { dispose: () => { fs.unwatchFile(turns, onTurns); relay.dispose(); } };
 }

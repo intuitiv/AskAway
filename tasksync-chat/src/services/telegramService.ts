@@ -86,6 +86,7 @@ export class TelegramService {
     private _heartbeatIntervalMs: number = 10 * 60 * 1000;  // 10 min default
     private _lastHeartbeatMsgId: number | undefined;
     private _lastStatusSentAt: number = 0;
+    private _lastTelegramReplyAt: number = 0;
 
     // ── Pre-resolved set (handles race between async postQuestion and resolveTask) ──
     private _preResolved: Set<string> = new Set();
@@ -167,7 +168,29 @@ export class TelegramService {
     }
 
     public setResponseCallback(callback: (taskId: string, response: string, user: string, attachments?: AttachmentInfo[]) => void | Promise<void>) {
-        this._onResponseReceived = callback;
+        this._onResponseReceived = async (taskId, response, user, attachments) => {
+            this._lastTelegramReplyAt = Date.now();
+            await callback(taskId, response, user, attachments);
+        };
+    }
+
+    /**
+     * A new chat turn started in VS Code, so the reviewer already answered the last turn-end handoff there:
+     * mark those messages continued and stop polling for them. Skipped right after a Telegram reply, which
+     * starts the turn itself and marks its own message.
+     */
+    public resolveHandoffs(): number {
+        if (Date.now() - this._lastTelegramReplyAt < 15_000) { return 0; }
+        let resolved = 0;
+        for (const [taskId, task] of this._activeTasks) {
+            if (!isTelegramHandoffTaskId(taskId)) { continue; }
+            this._activeTasks.delete(taskId);
+            void this._markResolvedExternal(task, 'Continued in VS Code');
+            resolved++;
+        }
+        if (resolved && this._activeTasks.size === 0) { this.stopPolling(); }
+        if (resolved) { this._log(`AskAway/Telegram: ${resolved} turn handoff(s) continued in VS Code; stopped tracking`); }
+        return resolved;
     }
 
     public setHistoryCallback(callback: () => { prompt: string; response: string; timestamp: number; status: string }[]) {
@@ -925,7 +948,7 @@ export class TelegramService {
     }
 
     /** Edit the Telegram message to show it was answered externally (via VS Code UI) */
-    private async _markResolvedExternal(task: TrackedTask): Promise<void> {
+    private async _markResolvedExternal(task: TrackedTask, label: string = 'Answered via VS Code'): Promise<void> {
         // Truncate question if too long (Telegram 4096 char limit)
         const maxQ = 3500;
         let qText: string;
@@ -938,7 +961,7 @@ export class TelegramService {
             qText = qText.substring(0, maxQ) + '…';
         }
 
-        const text = `✅ <b>Answered via VS Code</b>\n\n<b>Q:</b> ${qText}`;
+        const text = `✅ <b>${this._escapeHtml(label)}</b>\n\n<b>Q:</b> ${qText}`;
 
         try {
             const resp = await fetch(this._apiUrl('editMessageText'), {
@@ -962,7 +985,7 @@ export class TelegramService {
                     body: JSON.stringify({
                         chat_id: this._chatId,
                         message_id: task.messageId,
-                        text: `✅ Answered via VS Code\n\nQ: ${task.question.substring(0, maxQ)}`,
+                        text: `✅ ${label}\n\nQ: ${task.question.substring(0, maxQ)}`,
                         reply_markup: { inline_keyboard: [] }
                     })
                 });
@@ -1977,8 +2000,9 @@ export class TelegramService {
                     this._warn('AskAway/Telegram: turn handoff sent without a message_id; replies cannot be routed');
                     return false;
                 }
-                for (const taskId of this._activeTasks.keys()) {
-                    if (isTelegramHandoffTaskId(taskId)) { this._activeTasks.delete(taskId); }
+                for (const [taskId, task] of this._activeTasks) {
+                    // A newer turn means the older one was continued somewhere; never leave it looking unanswered.
+                    if (isTelegramHandoffTaskId(taskId)) { this._activeTasks.delete(taskId); void this._markResolvedExternal(task, 'Continued in VS Code'); }
                 }
                 this._activeTasks.set(replyTaskId, {
                     taskId: replyTaskId,

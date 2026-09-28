@@ -180,3 +180,4 @@ Parallel opportunities after their dependencies are met: `T001` and `T003`; `T00
 - [x] T047 [CY-008] [Fix] Active spec never hidden. `tasksync-chat/media/webview.js` Demo: `EV-SPECS-ACTIVE-VISIBLE`.
 - [x] T048 [CY-008] [Telegram] Live commentary message in Telegram. `tasksync-chat/src/commentary/telegramLive.ts` Demo: `EV-048 TelegramLiveCommentary`.
 - [x] T049 [CY-008] [Process] Cap generated tasks per spec. `tasksync-chat/tools/task-budget.cjs` Demo: `EV-049 TaskBudget`; `/sk.tasks` must print its PASS line.
+- [x] T050 [CY-008] [Fix] Stop polling handoffs answered in VS Code. `tasksync-chat/src/services/telegramService.ts` Demo: `EV-TELEGRAM-HANDOFF-CONTINUED`.

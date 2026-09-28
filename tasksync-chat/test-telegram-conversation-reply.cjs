@@ -147,6 +147,40 @@ async function main() {
         ]);
         assert.equal(service.getActiveTaskCount(), 0, 'Successful routing must resolve the tracked handoff.');
         console.log('EV-TELEGRAM-CONVERSATION-REPLY: PASS stale=evicted ignored=general routed=thread:8637 commands=2 fastPoll=5s');
+
+        // Reviewer 2026-09-28: "old messages ... still being polled even though i replied to them here".
+        const edits = [];
+        global.fetch = async (url, init) => {
+            const value = String(url);
+            if (value.includes('/sendMessage')) { sentMessageId++; return jsonResponse({ ok: true, result: { message_id: sentMessageId } }); }
+            if (value.includes('/editMessageText')) { edits.push(JSON.parse(init.body)); return jsonResponse({ ok: true, result: true }); }
+            if (value.includes('/editForumTopic') || value.includes('/getUpdates')) { return jsonResponse({ ok: true, result: [] }); }
+            throw new Error(`Unexpected Telegram request: ${value}`);
+        };
+        const local = new runtime.TelegramService();
+        local._isForum = true; local._forumTopicsLoaded = true; local._topicIds.set('TaskSync', 8637); local._botId = 999;
+        local.setResponseCallback(async () => {});
+        await local.postText('Turn one complete', 'Turn one complete', 'handoff:1');
+        const firstId = sentMessageId;
+        await local.postText('Turn two complete', 'Turn two complete', 'handoff:2');
+        await new Promise((resolve) => setImmediate(resolve));
+        const superseded = edits.find((e) => e.message_id === firstId);
+        assert.ok(superseded && /Continued in VS Code/.test(superseded.text), 'a replaced handoff is marked, never left looking unanswered');
+        assert.equal(local.getActiveTaskCount(), 1);
+
+        const secondId = sentMessageId;
+        assert.equal(local.resolveHandoffs(), 1, 'a prompt typed in VS Code resolves the open handoff');
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(local.getActiveTaskCount(), 0, 'nothing left to poll for');
+        assert.equal(local._pollingTimer, undefined, 'polling stopped');
+        assert.match(edits.find((e) => e.message_id === secondId).text, /Continued in VS Code/);
+
+        await local.postText('Turn three complete', 'Turn three complete', 'handoff:3');
+        local._lastTelegramReplyAt = Date.now();
+        assert.equal(local.resolveHandoffs(), 0, 'a turn started by a Telegram reply leaves its own message to the reply path');
+        assert.equal(local.getActiveTaskCount(), 1);
+        local.stopPolling();
+        console.log('EV-TELEGRAM-HANDOFF-CONTINUED: PASS supersededMarked=true vscodePromptResolves=true pollingStopped=true telegramReplyUntouched=true');
     } finally {
         global.fetch = originalFetch;
         delete globalThis.__askawayCommands;
