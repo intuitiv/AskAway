@@ -1,16 +1,14 @@
 #!/usr/bin/env node
-// Daily PR routine, step 0: read-only facts about this workspace's branch and PR, plus whether to run or pause.
-// Run from the workspace: node ~/PycharmProjects/TaskSync/tasksync-chat/tools/pr-daily-facts.cjs [--cwd dir] [--quiet-minutes 30] [--no-fetch]
+// Daily PR routine, step 0: read-only facts about this workspace's branch and PR, plus whether it can run.
+// Run from the workspace: node ~/PycharmProjects/TaskSync/tasksync-chat/tools/pr-daily-facts.cjs [--cwd dir] [--no-fetch]
 // Prints one JSON object. Never commits, rebases, pushes, or edits files.
 const childProcess = require('node:child_process');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : fallback; };
 const cwd = path.resolve(flag('--cwd', process.cwd()));
-const quietMinutes = Number(flag('--quiet-minutes', '30'));
 const now = Number(flag('--now', String(Date.now())));
 const gh = process.env.PR_DAILY_GH || 'gh';
 
@@ -24,32 +22,6 @@ function run(cmd, cmdArgs, { raw = false } = {}) {
 }
 const git = (...a) => run('git', a);
 const ghJson = (...a) => { const r = run(gh, a); if (!r.ok) { return { error: r.err }; } try { return JSON.parse(r.out); } catch { return { error: 'unparsable gh output' }; } };
-
-// Same key the commentary store and conversation hook use for this workspace.
-function commentaryKey(dir) {
-    let resolved = dir;
-    try { resolved = fs.realpathSync(dir); } catch { /* keep as given */ }
-    return resolved.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
-}
-
-/** Latest user message in this workspace other than the routine itself, from the AskAway turns file. */
-function lastOtherPromptAt(root) {
-    try {
-        const file = path.join(os.homedir(), '.askaway', 'commentary', `${commentaryKey(root)}.turns.json`);
-        const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-        const starts = Array.isArray(parsed.starts) ? parsed.starts : [];
-        const prompts = Array.isArray(parsed.prompts) ? parsed.prompts : [];
-        const offset = starts.length - prompts.length;
-        let latest = 0;
-        starts.forEach((ts, i) => {
-            const prompt = String(prompts[i - offset] ?? '');
-            if (!/pr-daily/i.test(prompt) && now - ts > 60_000) { latest = Math.max(latest, ts); }
-        });
-        return latest || undefined;
-    } catch {
-        return undefined;
-    }
-}
 
 const FAILED = new Set(['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE']);
 
@@ -81,24 +53,17 @@ function main() {
 
     const operation = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG']
         .find((name) => fs.existsSync(path.join(gitDir, name)));
-    const dirty = run('git', ['status', '--porcelain'], { raw: true }).out.split('\n').filter(Boolean).map((line) => line.slice(3).replace(/^.* -> /, ''));
-    const newestEditAt = dirty.reduce((max, file) => {
-        try { return Math.max(max, fs.statSync(path.join(root, file)).mtimeMs); } catch { return max; }
-    }, 0) || undefined;
-    const promptAt = lastOtherPromptAt(root);
+    const dirty = run('git', ['status', '--porcelain'], { raw: true }).out.split('\n').filter(Boolean);
     const upstream = git('rev-parse', '--abbrev-ref', '@{u}');
     const count = (range) => { const r = git('rev-list', '--count', range); return r.ok ? Number(r.out) : undefined; };
 
-    const quietMs = quietMinutes * 60_000;
     const reasons = [];
-    if (operation) { reasons.push(`git ${operation} in progress`); }
-    if (promptAt && now - promptAt < quietMs) { reasons.push(`chat active ${Math.round((now - promptAt) / 60_000)} min ago`); }
-    if (newestEditAt && now - newestEditAt < quietMs) { reasons.push(`uncommitted edits ${Math.round((now - newestEditAt) / 60_000)} min ago`); }
-    let action = reasons.length ? 'pause' : 'run';
+    // A half-done rebase or merge is the reviewer's to finish; committing or rebasing over it would lose work.
+    if (operation) { reasons.push(`git ${operation} in progress: finish or abort it first`); }
     if (branch === 'HEAD' || branch === defaultBranch) {
-        action = 'refuse';
         reasons.push(branch === 'HEAD' ? 'detached HEAD' : `on ${defaultBranch}: never pushed directly`);
     }
+    const action = reasons.length ? 'refuse' : 'run';
 
     const prView = ghJson('pr', 'view', '--json', 'number,url,title,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,body');
     let pr = null;
@@ -132,7 +97,6 @@ function main() {
         pr, prError: prView.error && !/no pull requests found/i.test(prView.error) ? prView.error : undefined,
         reviewRequests: Array.isArray(reviewRequests) ? reviewRequests.map((p) => ({ number: p.number, title: p.title, url: p.url, author: p.author?.login })) : [],
         mergeWindow: weekday === 4 || weekday === 5,
-        quietMinutes,
     };
 }
 

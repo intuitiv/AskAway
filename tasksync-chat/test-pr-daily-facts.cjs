@@ -74,29 +74,20 @@ assert.deepEqual(quiet.reviewRequests.map((p) => p.number), [7]);
 assert.equal(quiet.mergeWindow, true, 'Thursday is a merge day');
 assert.equal(facts(['--no-fetch', '--now', String(new Date(2026, 8, 29, 9).getTime())]).mergeWindow, false, 'Tuesday is not');
 
-// ── The reviewer is mid-task: fresh uncommitted edits pause it ──
+// ── Work in progress never stops it: fresh uncommitted edits and a chat a minute ago still run ──
 fs.writeFileSync(path.join(ws, 'b.txt'), 'two, edited\n');
-const editing = facts(['--no-fetch']);
-assert.equal(editing.action, 'pause');
-assert.match(editing.reasons.join(), /uncommitted edits 0 min ago/);
-fs.utimesSync(path.join(ws, 'b.txt'), old, old);
-assert.equal(facts(['--no-fetch']).action, 'run', 'old uncommitted work is committed by the routine, not a pause');
-
-// ── A chat message in this workspace 5 minutes ago pauses it; the routine's own prompt does not ──
 const turnsDir = path.join(home, '.askaway', 'commentary');
 fs.mkdirSync(turnsDir, { recursive: true });
-const turnsFile = path.join(turnsDir, `${ws.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()}.turns.json`);
-const t = Date.now();
-fs.writeFileSync(turnsFile, JSON.stringify({ starts: [t - 5 * 60_000, t - 2 * 60_000], prompts: ['Fix the parser bug', '/pr-daily'] }));
-const chatting = facts(['--no-fetch']);
-assert.equal(chatting.action, 'pause');
-assert.match(chatting.reasons.join(), /chat active 5 min ago/);
-fs.writeFileSync(turnsFile, JSON.stringify({ starts: [t - 3 * 3600_000, t - 2 * 60_000], prompts: ['Fix the parser bug', '/pr-daily'] }));
-assert.equal(facts(['--no-fetch']).action, 'run', 'yesterday\'s chat and the routine prompt itself do not pause it');
+fs.writeFileSync(path.join(turnsDir, `${ws.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()}.turns.json`),
+    JSON.stringify({ starts: [Date.now() - 60_000], prompts: ['Fix the parser bug'] }));
+const busy = facts(['--no-fetch']);
+assert.deepEqual([busy.action, busy.reasons, busy.git.dirtyFiles], ['run', [], 1], 'the routine commits work in progress instead of pausing');
 
-// ── A rebase left half-way pauses it ──
+// ── A rebase left half-way stops it: that is the reviewer's to finish ──
 fs.mkdirSync(path.join(ws, '.git', 'rebase-merge'));
-assert.match(facts(['--no-fetch']).reasons.join(), /git rebase-merge in progress/);
+const rebasing = facts(['--no-fetch']);
+assert.equal(rebasing.action, 'refuse');
+assert.match(rebasing.reasons.join(), /git rebase-merge in progress: finish or abort it first/);
 fs.rmSync(path.join(ws, '.git', 'rebase-merge'), { recursive: true });
 
 // ── On main it refuses to push; without a PR it still reports ──
@@ -110,4 +101,4 @@ const noPr = facts(['--no-fetch'], { FAKE_NO_PR: '1' });
 assert.deepEqual([noPr.pr, noPr.prError, noPr.action], [null, undefined, 'run']);
 
 fs.rmSync(tmp, { recursive: true, force: true });
-console.log('EV-PR-DAILY PrDailyFacts: PASS run=quiet pause=edits,chat,rebase refuse=main prFacts=mergeable,checks,threads,tasks reviewRequests=1 mergeWindow=thu');
+console.log('EV-PR-DAILY PrDailyFacts: PASS run=quiet,workInProgress refuse=rebase,main prFacts=mergeable,checks,threads,tasks reviewRequests=1 mergeWindow=thu');
