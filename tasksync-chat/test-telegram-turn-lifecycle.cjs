@@ -72,10 +72,12 @@ global.fetch = async (url, init) => {
         if (!response.ok) { console.log(`TELEGRAM ${method} ${response.status}: ${data.description ?? ''}`); }
         if (response.ok && method === 'sendMessage') { api.messages.set(data.result.message_id, { text: body.text, silent: !!body.disable_notification, thread: body.message_thread_id }); }
         if (response.ok && method === 'editMessageText') { api.messages.get(body.message_id).text = body.text; }
+        if (response.ok && method === 'deleteMessage') { api.messages.delete(body.message_id); }
         return response;
     }
     if (method === 'sendMessage') { const id = api.nextId++; api.messages.set(id, { text: body.text, silent: !!body.disable_notification, thread: body.message_thread_id }); return ok({ message_id: id }); }
     if (method === 'editMessageText') { api.messages.get(body.message_id).text = body.text; return ok(true); }
+    if (method === 'deleteMessage') { api.messages.delete(body.message_id); return ok(true); }
     if (method === 'getUpdates') { const u = api.updates; api.updates = []; return ok(u); }
     if (['editForumTopic', 'answerCallbackQuery', 'getMe', 'getChat'].includes(method)) { return ok(method === 'getChat' ? { is_forum: true } : true); }
     throw new Error(`unexpected Telegram call ${method}`);
@@ -121,7 +123,7 @@ const newest = () => Math.max(...api.messages.keys());
 
     // ── Turn 1: user message opens the message; commentary edits it; the final response becomes it ──
     await userTypes('Add a truncate helper and prove it with a test.');
-    const turn1 = newest();
+    let turn1 = newest();
     assert.match(text(turn1), /^🔴 <b>Live<\/b> · TaskSync\n💬 <i>Add a truncate helper and prove it with a test\.<\/i>$/, 'a user message opens the live message at once');
     assert.equal(api.messages.get(turn1).thread, 8637, 'in the workspace topic');
     assert.equal(api.messages.get(turn1).silent, true);
@@ -130,7 +132,12 @@ const newest = () => Math.max(...api.messages.keys());
     assert.equal(api.messages.size, 1, 'commentary edits the same message');
     assert.match(text(turn1), /Plan: <b>one builder<\/b>[\s\S]*❓ <b>HEADS-UP<\/b>/);
     assert.equal(await finalResponse('- Summary: truncate accepted, 4 cases pass.\n- Next: Ship it?'), true);
-    assert.equal(api.messages.size, 1, 'the final response lands in the same message');
+    await sleep(LIVE ? 1500 : 20);
+    assert.equal(api.messages.size, 1, 'the final response replaces the live message: still one message per turn');
+    assert.ok(!api.messages.has(turn1), 'the silent live message is gone');
+    turn1 = newest();
+    assert.equal(api.messages.get(turn1).silent, false, 'the final response notifies (edits never do)');
+    assert.equal(api.messages.get(turn1).thread, 8637);
     assert.match(text(turn1), /^✅ <b>Turn complete<\/b> · TaskSync[\s\S]*HEADS-UP[\s\S]*truncate accepted, 4 cases pass/);
     assert.equal(telegram.getActiveTaskCount(), 1, 'the final message waits for a reply');
     if (!LIVE) { assert.ok(telegram._pollingTimer, 'and is polled'); }
@@ -167,10 +174,13 @@ const newest = () => Math.max(...api.messages.keys());
     // ── Turn 3: a queued message is delivered mid-turn: turn 2's message is closed, a new one opens ──
     await queuedMessageDelivered('Queue: also handle flags as one character.');
     assert.match(text(turn2), /^⏭ <b>Continued<\/b>[\s\S]*Reusing the warm builder/, 'a turn without a final response is closed, not left live');
-    const turn3 = newest();
+    let turn3 = newest();
     assert.match(text(turn3), /💬 <i>Queue: also handle flags as one character\.<\/i>/);
     await commentaryTool('update', '✅ **Flags count as one**; the checker reran all six cases.');
     assert.equal(await finalResponse('- Summary: emoji-safe truncate accepted.\n- Next: Anything else?'), true);
+    await sleep(LIVE ? 1500 : 20);
+    turn3 = newest();
+    assert.equal(api.messages.get(turn3).silent, false);
     assert.equal(telegram.getActiveTaskCount(), 1);
 
     if (LIVE) {
@@ -182,7 +192,7 @@ const newest = () => Math.max(...api.messages.keys());
         assert.equal(api.messages.size, 3, 'one Telegram message per turn');
         assert.ok(!api.calls.some((c) => c.method === 'sendMessage' && /Processing your response|still working/i.test(c.body.text)));
         wired.dispose();
-        console.log(`EV-051-LIVE TelegramTurnLifecycle: PASS messages=${[...api.messages.keys()].join(',')} topic=8637 openOnUserMessage=true commentaryEdits=true finalInSameMessage=true vscodeReplyStopsPolling=true queuedMessageClosesTurn=true heartbeat=none`);
+        console.log(`EV-051-LIVE TelegramTurnLifecycle: PASS messages=${[...api.messages.keys()].join(',')} topic=8637 openOnUserMessage=true commentaryEdits=true finalReplacesLive=true vscodeReplyStopsPolling=true queuedMessageClosesTurn=true heartbeat=none`);
         console.log(`EV-053-LIVE TelegramStatusLive: PASS message=${turn2} statusEditedInPlace=true stuckWarning=true crossWindowLine=true tickMs=${tickMs}`);
         process.exit(0);
     }
@@ -205,6 +215,6 @@ const newest = () => Math.max(...api.messages.keys());
     telegram.stopPolling();
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(workspace, { recursive: true, force: true });
-    console.log(`EV-051 TelegramTurnLifecycle: PASS messages=${api.messages.size} openOnUserMessage=true commentaryEdits=true finalInSameMessage=true vscodeReplyStopsPolling=true queuedMessageClosesTurn=true telegramReplyUntouched=true heartbeat=none statusInPlace=true stuckWarning=true`);
+    console.log(`EV-051 TelegramTurnLifecycle: PASS messages=${api.messages.size} openOnUserMessage=true commentaryEdits=true finalReplacesLive=true finalNotifies=true vscodeReplyStopsPolling=true queuedMessageClosesTurn=true telegramReplyUntouched=true heartbeat=none statusInPlace=true stuckWarning=true`);
     process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

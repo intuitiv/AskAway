@@ -2030,9 +2030,9 @@ export class TelegramService {
     }
 
     /** Live commentary: one silent message per turn in this workspace's topic, edited in place (TelegramLiveCommentary). */
-    public async sendLive(html: string): Promise<number | undefined> {
+    public async sendLive(html: string, silent = true): Promise<number | undefined> {
         if (!this.isConfigured()) { return undefined; }
-        const body: any = { chat_id: this._chatId, text: html, parse_mode: 'HTML', disable_notification: true };
+        const body: any = { chat_id: this._chatId, text: html, parse_mode: 'HTML', disable_notification: silent };
         const threadId = await this._getTopicId(this._workspaceName());
         if (threadId) { body.message_thread_id = threadId; }
         try {
@@ -2061,13 +2061,21 @@ export class TelegramService {
         }
     }
 
-    /** The turn's live message becomes the final response and is tracked for replies, like a posted handoff. */
-    public async finishLive(messageId: number, headHtml: string, finalMarkdown: string, replyTaskId: string): Promise<boolean> {
+    /** The final response replaces the turn's live message and is tracked for replies, like a posted handoff. */
+    public async finishLive(liveMessageId: number, headHtml: string, finalMarkdown: string, replyTaskId: string): Promise<boolean> {
         if (!this.isConfigured()) { return false; }
         let finalHtml: string;
         try { finalHtml = this._markdownToHtml(finalMarkdown); } catch { finalHtml = this._escapeHtml(finalMarkdown); }
         const text = `${headHtml}\n\n${finalHtml}`.slice(0, 4000);
-        if (!await this.editLive(messageId, text)) { return false; }
+        // Edits never notify, so the final response is re-sent with sound and the silent live message removed.
+        let messageId = await this.sendLive(text, false);
+        if (messageId !== undefined) {
+            void this._deleteMessage(liveMessageId);
+        } else if (await this.editLive(liveMessageId, text)) {
+            messageId = liveMessageId;
+        } else {
+            return false;
+        }
         for (const [taskId, task] of this._activeTasks) {
             if (isTelegramHandoffTaskId(taskId)) { this._activeTasks.delete(taskId); void this._markResolvedExternal(task, 'Continued in VS Code'); }
         }
@@ -2079,6 +2087,18 @@ export class TelegramService {
         this.startPolling();
         this._log(`AskAway/Telegram: turn message ${messageId} is the final response; tracking replies as ${replyTaskId}`);
         return true;
+    }
+
+    private async _deleteMessage(messageId: number): Promise<void> {
+        try {
+            const resp = await fetch(this._apiUrl('deleteMessage'), {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: this._chatId, message_id: messageId }),
+            });
+            if (!resp.ok) { this._warn(`AskAway/Telegram: deleting live message ${messageId} failed ${resp.status}: ${await resp.text()}`); }
+        } catch (error) {
+            this._warn(`AskAway/Telegram: deleting live message ${messageId} error: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 
     /** With live turn messages on, the live message is the status: no separate heartbeat or "processing" message. */
