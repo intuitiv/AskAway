@@ -202,6 +202,12 @@ RTK helps compress noisy command output before it becomes model input. AskAway d
 
 If `rtk` is not installed, AskAway gracefully disables the RTK toggle and continues showing Copilot metrics.
 
+## Workers & Commentary (Advanced, Optional)
+
+The side panel also has two more tabs: **Workers** (state, cost, and session links for background agents) and **Commentary** (a live narration feed). Both are visible by default in every install, but they only do anything once you install [OpenCode](https://opencode.ai), authenticate a provider, and add a worker profile — most users can skip this entirely.
+
+[Workers & Commentary setup guide](tasksync-chat/docs/WORKERS_SETUP.md)
+
 ## Legacy Remote Ask User Features
 
 AskAway still includes the original human-in-the-loop features from TaskSync and earlier AskAway releases:

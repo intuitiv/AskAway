@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## AskAway v2.2.0 (09-29-26)
+- **Workers & Commentary are now documented.** These two side-panel tabs (async OpenCode-backed background agents, and a live plain-language narration feed) have been present since v2.1.0 but were never explained anywhere. Added a full [Workers & Commentary setup guide](tasksync-chat/docs/WORKERS_SETUP.md) covering installing OpenCode, authenticating a provider, writing a worker profile, and the optional VS Code tool bridge.
+- Both READMEs now call out Workers/Commentary explicitly as advanced/optional, so a fresh install isn't left guessing what those always-visible tabs are for.
+
 ## AskAway v2.1.0 (07-12-26)
 - **New: Cowork Offload (`/export-to-cowork`).** Offload heavy brainstorming to a free external model without spending Copilot credits on the export. The command enumerates relevant files by search only (never reading full contents) and writes `.askaway/cowork-manifest.json`; `bundle.mjs` expands it into a single upload-ready bundle; `apply.mjs` validates and `git apply`s the patch that comes back.
 - Installed automatically at user level on activation, so it works in every workspace: the command goes to the VS Code User prompts folder and the scripts to `~/.askaway/cowork/`. User edits are preserved.

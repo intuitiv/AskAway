@@ -41,5 +41,11 @@ dist/**
 # Exclude test coverage output
 coverage/**
 
+# Exclude dev-only tooling not needed at runtime (storybook is its own package, huge)
+storybook/**
+evals/**
+tools/**
+AskAway.code-workspace
+
 # Include askaway resources for bundling in VSIX
 !askaway-resources/**

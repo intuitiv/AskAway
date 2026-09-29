@@ -136,6 +136,21 @@ Paste or drag-and-drop images into the chat input.
 
 ---
 
+## 🧪 Workers & Commentary (Advanced, Optional)
+
+The side panel always shows two extra tabs — **Workers** and **Commentary** — for viewing and controlling asynchronous background AI agents ("workers") that run through [OpenCode](https://opencode.ai). They render in every install, but the tabs stay empty until OpenCode is installed and at least one worker profile is configured — that's expected, not a bug.
+
+| Tab | What it shows |
+|-----|----------------|
+| **Workers** | State, cost, and session links for OpenCode-backed workers started in the current workspace |
+| **Commentary** | A live, plain-language narration feed a worker (or the agent) can post to while it works |
+
+This is for people who want to dispatch a bounded background research/build task to a separate AI agent process and watch it from VS Code — most AskAway users can ignore these tabs entirely.
+
+[See the full Workers & Commentary setup guide](docs/WORKERS_SETUP.md) for installing OpenCode, writing a worker profile, and starting your first worker.
+
+---
+
 ## Installation
 
 1. Install from [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intuitiv.askaway)
