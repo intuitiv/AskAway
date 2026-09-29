@@ -85,6 +85,7 @@ export interface RunView {
 
 export interface ChildLike {
     stdout: NodeJS.ReadableStream | null;
+    stderr?: NodeJS.ReadableStream | null;
     on(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
     kill(signal?: NodeJS.Signals): boolean;
 }
@@ -146,12 +147,13 @@ function emptyUsage(): RunUsage {
     return { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0, steps: 0 };
 }
 
-// Worker stderr goes to a per-run file: it never enters the caller's context, but remains for diagnosis.
+// Worker stderr is also kept in a per-run file: it never enters the caller's context, but remains for diagnosis.
 const defaultSpawner: Spawner = (args) => {
     fs.mkdirSync('/tmp/aa', { recursive: true });
     const title = args[args.indexOf('--title') + 1] || 'run';
-    const stderr = fs.openSync(path.join('/tmp/aa', `${title.replace(/[^a-zA-Z0-9-]+/g, '_')}.err`), 'a');
-    return childProcess.spawn('opencode', args, { stdio: ['ignore', 'pipe', stderr] });
+    const child = childProcess.spawn('opencode', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stderr.pipe(fs.createWriteStream(path.join('/tmp/aa', `${title.replace(/[^a-zA-Z0-9-]+/g, '_')}.err`), { flags: 'a' }));
+    return child;
 };
 
 /** Runs AskAway worker packets as OpenCode sessions and records their lifecycle and real provider usage. */
@@ -422,6 +424,18 @@ export class OpenCodeWorkerRuntime {
         args.push(message);
         const child = this.spawner(args);
         run.child = child;
+        // Headless OpenCode rejects anything that would ask and then ends the run; that rejection is the real reason.
+        const rejected: string[] = [];
+        let errBuffer = '';
+        child.stderr?.on('data', (chunk: Buffer) => {
+            errBuffer += chunk.toString();
+            const lines = errBuffer.split('\n');
+            errBuffer = lines.pop() ?? '';
+            for (const line of lines) {
+                const match = /permission requested:\s*(.+?);\s*auto-rejecting/i.exec(line);
+                if (match && !rejected.includes(match[1])) { rejected.push(match[1]); }
+            }
+        });
         let buffer = '';
         let lastText = '';
         let started = false;
@@ -481,7 +495,11 @@ export class OpenCodeWorkerRuntime {
             const cancelled = run.reason === 'cancelled by caller';
             // The packet contract requires a Result/Evidence report; a silent exit 0 proves nothing.
             const silent = code === 0 && !signal && !cancelled && run.evidence.join('').trim() === '';
-            if (silent) { run.reason = 'worker ended without a report (no Result/Evidence text)'; }
+            if (silent) {
+                run.reason = rejected.length
+                    ? `permission auto-rejected: ${rejected.join(', ')} (not allowed for this worker; allow it in the OpenCode config or change the packet)`
+                    : 'worker ended without a report (no Result/Evidence text)';
+            }
             const state: RunState = cancelled ? 'CANCELLED' : code === 0 && !signal && !silent ? 'COMPLETED' : 'FAILED';
             if (state === 'FAILED' && !run.reason) { run.reason = signal ? `terminated by ${signal}` : `exit code ${code}`; }
             this.record(run, { type: state === 'COMPLETED' ? 'stop' : 'error', exitCode: code ?? -1, state, reason: run.reason });

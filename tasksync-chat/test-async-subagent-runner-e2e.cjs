@@ -23,6 +23,7 @@ const spawner = (args) => {
     const child = new EventEmitter();
     child.args = args;
     child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
     child.kill = () => true;
     child.emitEvent = (event) => child.stdout.write(`${JSON.stringify(event)}\n`);
     children.push(child);
@@ -102,7 +103,18 @@ const finish = (id, input, cost) => ({ type: 'step_finish', sessionID: id, part:
     const outcome = await silentHost.wait(silent.runId, 1);
     assert.deepEqual([outcome.status, outcome.reason], ['FAILED', 'worker ended without a report (no Result/Evidence text)']);
     assert.equal(silentHost.resume(silent.runId).state, 'STARTING', 'the same session can be asked to finish its report');
-    console.log('EV-037 SilentRunIsNotSuccess: PASS exit0NoReport=FAILED reason=explicit resumable=true');
+
+    // Seen live 2026-09-29: headless OpenCode auto-rejected `npm test` and ended the run; the caller must see that, not "no report".
+    const blocked = silentHost.start(packet('verify', 'run the tests'));
+    const blockedChild = children[children.length - 1];
+    blockedChild.emitEvent({ type: 'step_start', sessionID: 'ses_R', part: {} });
+    blockedChild.stderr.write('! permission requested: bash (npm test); auto-rejecting\n');
+    await tick();
+    blockedChild.emit('exit', 0, null);
+    const blockedOutcome = await silentHost.wait(blocked.runId, 1);
+    assert.equal(blockedOutcome.status, 'FAILED');
+    assert.match(blockedOutcome.reason, /^permission auto-rejected: bash \(npm test\)/);
+    console.log('EV-037 SilentRunIsNotSuccess: PASS exit0NoReport=FAILED reason=explicit resumable=true permissionRejection=named');
 
     await endToEndFlow();
     process.exit(0);
