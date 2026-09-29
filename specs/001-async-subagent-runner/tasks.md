@@ -183,4 +183,4 @@ Parallel opportunities after their dependencies are met: `T001` and `T003`; `T00
 - [x] T050 [CY-008] [Fix] Stop polling handoffs answered in VS Code. `tasksync-chat/src/services/telegramService.ts` Demo: `EV-TELEGRAM-HANDOFF-CONTINUED`.
 - [x] T051 [CY-008] [Telegram] One Telegram message per turn from the hooks. `tasksync-chat/src/commentary/telegramLive.ts` Demo: `EV-051 TelegramTurnLifecycle`; live `node test-telegram-turn-lifecycle.cjs --live` (2026-09-28, messages 9535-9537, topic 8637).
 - [x] T052 [CY-008] [Fix] Commentary stays in its own workspace. `tasksync-chat/src/commentary/commentary.ts` Demo: `EV-030d CommentaryOnMcp` (unnamed=refused), `EV-051` cross-window line.
-- [x] T053 [CY-008] [Telegram] Status line every 2 minutes, with a stuck warning. `tasksync-chat/src/commentary/telegramLive.ts` Demo: `EV-048` (statusEvery2m, stuckWarning).
+- [x] T053 [CY-008] [Telegram] Status line every 2 minutes, with a stuck warning. `tasksync-chat/src/commentary/telegramLive.ts` Demo: `EV-048` (statusEvery2m, stuckWarning); live `EV-053-LIVE TelegramStatusLive` (2026-09-29, message 9577, topic 8637).

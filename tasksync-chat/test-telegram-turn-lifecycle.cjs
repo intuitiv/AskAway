@@ -95,7 +95,14 @@ const newest = () => Math.max(...api.messages.keys());
     telegram.setResponseCallback(async () => {});
     telegram.setLiveTurns(() => true);
     if (LIVE) { telegram.startPolling = () => {}; }
-    const relay = new m.TelegramLiveCommentary(() => telegram, 'TaskSync', { minEditMs: LIVE ? 1500 : 0 });
+    // The status ticker is real; `skew` fast-forwards the clock so the 5-minute stuck warning shows without waiting.
+    let skew = 0;
+    const activity = { lastActivityAt: 0, requests: 0 };
+    const tickMs = LIVE ? 6000 : 3_600_000;
+    const relay = new m.TelegramLiveCommentary(() => telegram, 'TaskSync', {
+        minEditMs: LIVE ? 1500 : 0, now: () => Date.now() + skew, activity: () => activity, tickMs,
+    });
+    const statusTick = () => (LIVE ? sleep(tickMs + 1500) : relay.tick());
     const target = m.telegramTurnTarget(relay, () => telegram);
     const wired = m.relayCommentaryToTelegram(relay, store, workspace, () => telegram.resolveHandoffs());
 
@@ -143,6 +150,20 @@ const newest = () => Math.max(...api.messages.keys());
     await settle();
     assert.match(text(newest()), /Checker posted from another window/, 'cross-window lines are picked up from the feed file');
 
+    // T053: the status line refreshes in the same message, and warns once the agent has been silent for 5 minutes.
+    Object.assign(activity, { lastActivityAt: Date.now(), requests: 3 });
+    const messagesBeforeStatus = api.messages.size;
+    await statusTick();
+    assert.match(text(turn2), /⏱ \d\d:\d\d · working \d+s · 3 requests · last activity \d+s ago/, 'status line in the live message');
+    assert.doesNotMatch(text(turn2), /No activity/);
+    skew = 6 * 60_000;
+    await statusTick();
+    assert.match(text(turn2), /⚠️ <b>No activity for 6m<\/b> — the agent may be stuck or errored\./, 'stuck warning after 5 silent minutes');
+    assert.match(text(turn2), /Checker posted from another window/, 'commentary kept above the status');
+    assert.equal(api.messages.size, messagesBeforeStatus, 'status edits the message, never sends a new one');
+    skew = 0;
+    Object.assign(activity, { lastActivityAt: Date.now(), requests: 4 });
+
     // ── Turn 3: a queued message is delivered mid-turn: turn 2's message is closed, a new one opens ──
     await queuedMessageDelivered('Queue: also handle flags as one character.');
     assert.match(text(turn2), /^⏭ <b>Continued<\/b>[\s\S]*Reusing the warm builder/, 'a turn without a final response is closed, not left live');
@@ -162,6 +183,7 @@ const newest = () => Math.max(...api.messages.keys());
         assert.ok(!api.calls.some((c) => c.method === 'sendMessage' && /Processing your response|still working/i.test(c.body.text)));
         wired.dispose();
         console.log(`EV-051-LIVE TelegramTurnLifecycle: PASS messages=${[...api.messages.keys()].join(',')} topic=8637 openOnUserMessage=true commentaryEdits=true finalInSameMessage=true vscodeReplyStopsPolling=true queuedMessageClosesTurn=true heartbeat=none`);
+        console.log(`EV-053-LIVE TelegramStatusLive: PASS message=${turn2} statusEditedInPlace=true stuckWarning=true crossWindowLine=true tickMs=${tickMs}`);
         process.exit(0);
     }
 
@@ -183,6 +205,6 @@ const newest = () => Math.max(...api.messages.keys());
     telegram.stopPolling();
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(workspace, { recursive: true, force: true });
-    console.log(`EV-051 TelegramTurnLifecycle: PASS messages=${api.messages.size} openOnUserMessage=true commentaryEdits=true finalInSameMessage=true vscodeReplyStopsPolling=true queuedMessageClosesTurn=true telegramReplyUntouched=true heartbeat=none`);
+    console.log(`EV-051 TelegramTurnLifecycle: PASS messages=${api.messages.size} openOnUserMessage=true commentaryEdits=true finalInSameMessage=true vscodeReplyStopsPolling=true queuedMessageClosesTurn=true telegramReplyUntouched=true heartbeat=none statusInPlace=true stuckWarning=true`);
     process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });
