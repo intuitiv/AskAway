@@ -5355,15 +5355,14 @@
             workersEsc(refs.workerId) + (refs.runId ? ' · ' + workersEsc(refs.runId) : '') + '</span> ';
     }
     // One trace for the worker's conversation: the Metrics rows, with a partition line per run.
-    // trace: the worker's OpenCode session read on expand; until it arrives, the ledger's facts (no tool text).
+    // trace: loaded on expand, from the OpenCode session or, when it cannot answer, the ledger's facts (no tool text).
     function workerTraceHtml(worker, openIds, now, trace) {
-        var fromSession = !!(trace && trace.source === 'opencode');
-        var rows = (trace && !fromSession)
+        var rows = (trace && trace.source !== 'opencode')
             ? '<tr><td colspan="7" class="obs-na">Tool input and output unavailable: ' + workersEsc(trace.reason) + '</td></tr>'
             : '';
         (worker.runs || []).forEach(function (r) {
             var ru = r.usage || {};
-            var events = fromSession ? (trace.runs[r.runId] || []) : r.events;
+            var events = trace ? (trace.runs[r.runId] || []) : null;
             rows += '<tr class="worker-run-partition" data-run-id="' + workersEsc(r.runId) + '"><td colspan="7">' +
                 '<span class="worker-state worker-state-' + workersEsc(r.state).toLowerCase() + '">' + workersEsc(r.state) + (r.queuePosition ? ' #' + r.queuePosition : '') + '</span> ' +
                 '<span class="obs-req-id">' + workersEsc(r.runId) + '</span> · turn ' + workersEsc(r.dispatchTurnId) + ' · ' + workersDuration(r.elapsedMs) +
@@ -5371,7 +5370,7 @@
                 (r.queuePosition && r.state === 'STARTING' ? ' <button class="worker-cancel-run" data-worker-action="cancel-run" data-run-id="' + workersEsc(r.runId) + '" title="Cancel before it starts">Cancel</button>' : '') + '</td></tr>';
             rows += (events && events.length)
                 ? traceRowsHtml(events, { openIds: openIds, now: now })
-                : '<tr><td colspan="7" class="obs-na">' + (r.queuePosition ? 'Queued' : 'No events yet') + '</td></tr>';
+                : '<tr><td colspan="7" class="obs-na">' + (r.queuePosition ? 'Queued' : events ? 'No events yet' : 'Loading trace…') + '</td></tr>';
         });
         return '<table class="observability-table observability-model-table obs-timeline-table worker-trace">' + TRACE_HEAD + '<tbody>' + rows + '</tbody></table>';
     }

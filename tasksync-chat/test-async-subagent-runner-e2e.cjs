@@ -131,7 +131,7 @@ async function endToEndFlow() {
     }
     const W = (name) => require(path.join(toolsDir, `${name}.js`));
     const { registerWorkerTools, WORKER_TOOL_NAMES, WORKER_ACTIONS } = W('workerTools');
-    const { projectWorkersState: project, sessionOpenCommand } = W('workersState');
+    const { projectWorkersState: project, sessionOpenCommand, loadWorkerTrace } = W('workersState');
     const Runtime = W('openCodeRuntime').OpenCodeWorkerRuntime;
     const parse = W('workerProfiles').parseWorkerProfile;
     const code = parse('---\nname: code\ndescription: "c"\ntier: mid\nmodel: github-copilot/gpt-5.6-luna\nthinking: low\nmodels: [github-copilot/gpt-5.6-luna, github-copilot/gpt-5.6-terra]\nthinkingOptions: [low, high]\n---\nBody.\n');
@@ -223,7 +223,8 @@ async function endToEndFlow() {
     const openCmd = `opencode attach ${url} --session ses_A`;
     assert.deepEqual([workerA.track, workerA.knowledge, workerA.sessionOpenAction], ['A', 'knows slug.js and its test', openCmd], 'the viewer attaches to the same shared server');
     assert.equal(sessionOpenCommand(view, 'ses_A'), openCmd, 'the tab opens exactly this session');
-    assert.deepEqual(workerA.runs[0].events.map((e) => [e.kind, e.tool || e.model]), [['request', 'gpt-5.6-luna'], ['tool', 'edit'], ['request', 'gpt-5.6-luna']]);
+    const expanded = await loadWorkerTrace(runtime, ws, a.workerId, async () => { throw new Error('offline'); });
+    assert.deepEqual(expanded.runs[workerA.runs[0].runId].map((e) => [e.kind, e.tool || e.model]), [['request', 'gpt-5.6-luna'], ['tool', 'edit'], ['request', 'gpt-5.6-luna']]);
     const turnCost = runtime.usageByTurn(ws)['turn-flow'];
     assert.deepEqual([+turnCost.cost.toFixed(6), turnCost.steps], [0.004, 4], 'every step of every run is billed to the dispatching turn');
 

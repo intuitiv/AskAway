@@ -161,7 +161,7 @@ export class McpServerManager {
             return { ...projectWorkersState(this.getWorkerRuntime(), workspacePath), scoreboard: loadEvalScoreboard() };
         });
         provider.setWorkerTraceSource((workspacePath, workerId) =>
-            loadWorkerTrace(projectWorkersState(this.getWorkerRuntime(), workspacePath), workerId, fetchSessionMessages));
+            loadWorkerTrace(this.getWorkerRuntime(), workspacePath, workerId, fetchSessionMessages));
         provider.setWorkerCancelSource((workspacePath, runId) => cancelQueuedRun(this.getWorkerRuntime(), workspacePath, runId));
         provider.setWorkerArchiveSource((workspacePath) => this.getWorkerRuntime().archive(workspacePath));
         provider.setServerRestartSource((workspacePath) => restartSharedServer(workspacePath));

@@ -8,7 +8,7 @@ export type TraceEvent =
     | { kind: 'request'; id: string; ts: number; model: string; inputTokens: number; outputTokens: number; cachedTokens: number; dollars: number }
     | { kind: 'tool'; id: string; ts: number; tool: string; durMs: number; status: string; inputTokens: number; outputTokens: number; inputPreview: string; outputPreview: string };
 
-/** Per-run trace. cacheRead is the reused worker's historical input; elapsed and cost reset per run. */
+/** Per-run header. cacheRead is the reused worker's historical input; elapsed and cost reset per run. Rows load on expand. */
 export interface WorkerRunTrace {
     runId: string;
     state: RunState;
@@ -19,7 +19,6 @@ export interface WorkerRunTrace {
     elapsedMs: number;
     usage: RunUsage;
     reason: string;
-    events: TraceEvent[];
 }
 
 export interface WorkerRow {
@@ -66,7 +65,8 @@ export function sessionOpenCommand(state: WorkersState, sessionId: string): stri
     return state.workers.find((worker) => worker.sessionId === sessionId)?.sessionOpenAction || undefined;
 }
 
-export interface WorkerTrace { workerId: string; source: 'opencode' | 'unavailable'; reason: string; runs: Record<string, TraceEvent[]> }
+/** source 'ledger': OpenCode could not answer, so rows are the ledger's facts without tool text; reason says why. */
+export interface WorkerTrace { workerId: string; source: 'opencode' | 'ledger'; reason: string; runs: Record<string, TraceEvent[]> }
 
 /** The tab may cancel a run only before it starts, and only a run of this workspace's projection. */
 export function cancelQueuedRun(runtime: OpenCodeWorkerRuntime, workspacePath: string, runId: string): { status: string; runId: string; reason?: string } {
@@ -75,14 +75,23 @@ export function cancelQueuedRun(runtime: OpenCodeWorkerRuntime, workspacePath: s
     return runtime.cancel(runId);
 }
 
-/** A projected worker's full trace, read from its OpenCode session. */
-export async function loadWorkerTrace(state: WorkersState, workerId: string, fetchMessages: (sessionId: string) => Promise<SessionMessage[]>): Promise<WorkerTrace> {
-    const worker = state.workers.find((w) => w.workerId === workerId);
-    if (!worker || !SESSION_ID.test(worker.sessionId)) { return { workerId, source: 'unavailable', reason: 'no OpenCode session yet', runs: {} }; }
+/** A worker's trace, built only when it is expanded: its OpenCode session, else the workspace ledger's facts. */
+export async function loadWorkerTrace(runtime: OpenCodeWorkerRuntime, workspacePath: string, workerId: string,
+    fetchMessages: (sessionId: string) => Promise<SessionMessage[]>): Promise<WorkerTrace> {
+    const worker = projectWorkersState(runtime, workspacePath).workers.find((w) => w.workerId === workerId);
+    if (!worker) { return { workerId, source: 'ledger', reason: 'not a worker of this workspace', runs: {} }; }
+    const fromLedger = (reason: string): WorkerTrace => {
+        const runs: Record<string, TraceEvent[]> = {};
+        for (const run of worker.runs) { runs[run.runId] = []; }
+        const facts = runtime.facts(workspacePath).filter((fact) => fact.runId in runs);
+        for (const runId of Object.keys(runs)) { runs[runId] = traceEvents(facts.filter((fact) => fact.runId === runId)); }
+        return { workerId, source: 'ledger', reason, runs };
+    };
+    if (!SESSION_ID.test(worker.sessionId)) { return fromLedger('no OpenCode session yet'); }
     try {
         return { workerId, source: 'opencode', reason: '', runs: traceFromSession(await fetchMessages(worker.sessionId), worker.runs) };
     } catch (error) {
-        return { workerId, source: 'unavailable', reason: `OpenCode server did not answer (${(error as Error).message})`, runs: {} };
+        return fromLedger(`OpenCode server did not answer (${(error as Error).message})`);
     }
 }
 
@@ -168,14 +177,8 @@ export function traceFromSession(messages: SessionMessage[], runs: Array<{ runId
     return byRun;
 }
 
-/** Workers view state for one workspace. Packet, assistant text, and evidence never leave the runtime; tool text comes from OpenCode on expand. */
+/** Workers view state for one workspace. Packet, assistant text, and evidence never leave the runtime; trace rows load on expand. */
 export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePath: string, now: () => number = Date.now): WorkersState {
-    const factsByRun = new Map<string, LifecycleRecord[]>();
-    for (const fact of runtime.facts(workspacePath)) {
-        const list = factsByRun.get(fact.runId) ?? [];
-        list.push(fact);
-        factsByRun.set(fact.runId, list);
-    }
     const byWorker = new Map<string, ReturnType<OpenCodeWorkerRuntime['list']>>();
     for (const run of runtime.list(workspacePath)) {
         const runs = byWorker.get(run.workerId) ?? [];
@@ -199,7 +202,6 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
         const traces: WorkerRunTrace[] = runs.map((run) => ({
             runId: run.runId, state: run.state, dispatchTurnId: run.dispatchTurnId, queuePosition: run.queuePosition,
             startedAt: run.startedAt, endedAt: run.endedAt, elapsedMs: run.elapsedMs, usage: { ...run.usage }, reason: run.reason ?? '',
-            events: traceEvents(factsByRun.get(run.runId) ?? []),
         }));
         const session = [...runs].reverse().find((run) => run.sessionId);
         const cacheExpiresAt = routed ? runtime.router.cacheExpiresAt(routed) : 0;
