@@ -80,7 +80,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
         assert.ok(declared.some((tool) => tool.name === name && tool.toolReferenceName), `package.json declares ${name}`);
     }
     const toolsSource = fs.readFileSync(path.join(__dirname, 'src', 'tools.ts'), 'utf8');
-    assert.match(toolsSource, /registerLmToolDefinitions\(\[\s*workerTool\(\(\) => sharedWorkerRuntimeReady\(workspaceRoot\), workspaceRoot\),\s*\.\.\.commentaryToolDefinitions\(sharedCommentaryStore, workspaceRoot\)/);
+    assert.match(toolsSource, /registerLmToolDefinitions\(\[\s*workerTool\(\(\) => sharedWorkerRuntimeReady\(workspaceRoot\), workspaceRoot[\s\S]*?\),\s*\.\.\.commentaryToolDefinitions\(sharedCommentaryStore, workspaceRoot\)/);
     assert.ok(!JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).contributes.languageModelTools.some((t) => /^worker_/.test(t.name)), 'the eight per-operation tools are gone');
     console.log(`EV-035 OrchestratorReachesWorkers: PASS lmTools=${Object.keys(workers).length + 1} manifestInSync=true invalidInputRefused=4`);
 

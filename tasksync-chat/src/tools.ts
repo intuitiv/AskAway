@@ -8,6 +8,7 @@ import { getImageMimeType } from './utils/imageUtils';
 import { withTimeout } from './utils/operationDeadline';
 import { PlanTaskStatus } from './plan/planTypes';
 import { dispatchGradle, GradleInput } from './gradle/gradleEngine';
+import { cacheSafeWaitMs } from './observability/cacheClock';
 import { commentaryToolDefinitions } from './commentary/commentary';
 import { registerLmToolDefinitions } from './workers/lmTools';
 import { sharedCommentaryStore, sharedWorkerRuntimeReady } from './workers/workerHost';
@@ -910,7 +911,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // Same definitions as the MCP surface, so the VS Code orchestrator reaches workers without the MCP server running.
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
     context.subscriptions.push(...registerLmToolDefinitions([
-        workerTool(() => sharedWorkerRuntimeReady(workspaceRoot), workspaceRoot),
+        workerTool(() => sharedWorkerRuntimeReady(workspaceRoot), workspaceRoot, { waitBudgetMs: (ms) => cacheSafeWaitMs(ms) }),
         ...commentaryToolDefinitions(sharedCommentaryStore, workspaceRoot),
     ]));
 
@@ -1127,7 +1128,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
             async invoke(options: vscode.LanguageModelToolInvocationOptions<GradleInput>, _token: vscode.CancellationToken) {
                 try {
                     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
-                    const result = await dispatchGradle(options.input, root);
+                    const result = await dispatchGradle(options.input, root, { waitBudgetMs: (ms) => cacheSafeWaitMs(ms) });
                     const gradleText = JSON.stringify(result, null, 2);
                     logToolCall('gradle', gradleText, options?.input?.action);
                     return new vscode.LanguageModelToolResult([

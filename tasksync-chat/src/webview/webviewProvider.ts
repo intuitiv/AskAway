@@ -16,6 +16,7 @@ import { sessionOpenCommand, WorkersState, WorkerTrace } from '../workers/worker
 import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
 import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
+import { noteRequestStart } from '../observability/cacheClock';
 import { sharedCommentaryStore } from '../workers/workerHost';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
@@ -2496,6 +2497,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     // reset the parent's clock — otherwise a long delegation hides the fact that the
                     // main agent's cache went cold while it was blocked.
                     if (!isChildLog && ts > this._newestRequestTs) { this._newestRequestTs = ts; }
+                    // Tool waits budget from the newest request start of any session: that is the conversation calling tools now.
+                    noteRequestStart(ts, typeof parsed.sid === 'string' ? parsed.sid : undefined);
 
                     // NOTE: we deliberately do NOT skip `summarize*` (compaction) or retry calls —
                     // they consume real credits (copilotUsageNanoAiu), so counting them keeps

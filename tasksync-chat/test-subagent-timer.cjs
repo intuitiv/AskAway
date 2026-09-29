@@ -47,5 +47,14 @@ fire('PreToolUse', 'runSubagent', 'parent', 50 * MIN, 'use-2');
 assert.match(fire('PostToolUse', 'read_file', 'child-2', 55 * MIN), /CACHE WINDOW EXPIRED/);
 assert.equal(fire('PostToolUse', 'read_file', 'child-2', 70 * MIN), '', 'a lost end event cannot keep timing forever');
 
+// The parent's cache clock started at its last model request, 90s before the spawn (a slow response):
+// the child's budget counts from there, not from the spawn.
+fire('PostToolUse', 'read_file', 'parent-3', 79 * MIN);
+fs.writeFileSync(path.join(home, '.askaway', 'cache-clock.json'), JSON.stringify({ sessions: { 'parent-3': Date.now() + 80 * MIN - 90_000 } }));
+fire('PreToolUse', 'runSubagent', 'parent-3', 80 * MIN, 'use-3');
+assert.match(fire('PostToolUse', 'read_file', 'child-3', 82 * MIN), /^Elapsed 3m3\ds of your 4m sub-agent budget/);
+assert.match(fire('PostToolUse', 'read_file', 'child-3', 82 * MIN + 40_000), /^CACHE WINDOW EXPIRED \(4m1\ds/);
+assert.match(fire('PostToolUse', 'runSubagent', 'parent-3', 83 * MIN, 'use-3'), /That sub-agent ran 3m0\ds \(4m3\ds since your last model request\)/);
+
 fs.rmSync(home, { recursive: true, force: true });
-console.log('EV-TIMER SubagentTimer: PASS childTimed=true parentNeverTimed=true otherWindowIgnored=true bindingReleased=true staleExpires=true');
+console.log('EV-TIMER SubagentTimer: PASS childTimed=true parentNeverTimed=true otherWindowIgnored=true bindingReleased=true staleExpires=true fromParentRequestStart=true');

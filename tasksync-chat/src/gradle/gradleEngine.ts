@@ -482,7 +482,7 @@ function handleGradleStatus(input: GradleInput, root: string): Record<string, un
     return runToStatus(run, root);
 }
 
-async function handleGradleWait(input: GradleInput, root: string): Promise<Record<string, unknown>> {
+async function handleGradleWait(input: GradleInput, root: string, waitBudgetMs?: (requestedMs: number) => number): Promise<Record<string, unknown>> {
     const run = gradleRuns.get(input.buildId ?? '');
     if (!run) { return { error: `Unknown buildId "${input.buildId}".` }; }
     if (run.state !== 'RUNNING') { return runToStatus(run, root); }
@@ -493,8 +493,9 @@ async function handleGradleWait(input: GradleInput, root: string): Promise<Recor
     const requested = typeof input.timeoutMs === 'number'
         ? Math.max(1000, Math.min(1800000, input.timeoutMs))
         : 120000;
-    const timeoutMs = Math.min(requested, MAX_WAIT_MS);
-    const capped = requested > MAX_WAIT_MS;
+    const ceiling = Math.min(MAX_WAIT_MS, waitBudgetMs ? waitBudgetMs(MAX_WAIT_MS) : MAX_WAIT_MS);
+    const timeoutMs = Math.min(requested, ceiling);
+    const capped = requested > ceiling;
 
     // Opt-in "ready" detection for long-running tasks (servers, watch, --continuous):
     // the task never terminates, so wait returns as soon as readyPattern appears in
@@ -513,7 +514,7 @@ async function handleGradleWait(input: GradleInput, root: string): Promise<Recor
         const st: Record<string, unknown> = { ...runToStatus(run, root), ready: re.test(getRunBuffer(run)) };
         if (run.state === 'RUNNING' && capped) {
             st.waitCapped = true;
-            st.note = `wait capped at ${MAX_WAIT_MS / 1000}s to preserve prompt cache — call wait again to keep polling.`;
+            st.note = `wait capped at ${Math.round(ceiling / 1000)}s to preserve prompt cache — call wait again to keep polling.`;
         }
         return st;
     }
@@ -522,7 +523,7 @@ async function handleGradleWait(input: GradleInput, root: string): Promise<Recor
     const st = runToStatus(run, root);
     if (run.state === 'RUNNING' && capped) {
         (st as Record<string, unknown>).waitCapped = true;
-        (st as Record<string, unknown>).note = `wait capped at ${MAX_WAIT_MS / 1000}s to preserve prompt cache — build still running, call wait again to keep polling (each call keeps the cache warm).`;
+        (st as Record<string, unknown>).note = `wait capped at ${Math.round(ceiling / 1000)}s to preserve prompt cache — build still running, call wait again to keep polling (each call keeps the cache warm).`;
     }
     return st;
 }
@@ -573,11 +574,11 @@ function handleGradleLogs(input: GradleInput): Record<string, unknown> {
  * relative `projectDir` and to relativize paths in the result (defaults to
  * process.cwd()).
  */
-export async function dispatchGradle(input: GradleInput, root: string = process.cwd()): Promise<Record<string, unknown>> {
+export async function dispatchGradle(input: GradleInput, root: string = process.cwd(), options: { waitBudgetMs?: (requestedMs: number) => number } = {}): Promise<Record<string, unknown>> {
     switch (input.action) {
         case 'start':  return handleGradleStart(input, root);
         case 'status': return handleGradleStatus(input, root);
-        case 'wait':   return handleGradleWait(input, root);
+        case 'wait':   return handleGradleWait(input, root, options.waitBudgetMs);
         case 'stop':   return handleGradleStop(input);
         case 'logs':   return handleGradleLogs(input);
         default:       return { error: `Unknown action "${(input as { action: string }).action}". Valid: start|status|stop|logs|wait.` };

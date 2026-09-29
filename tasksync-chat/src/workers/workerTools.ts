@@ -54,9 +54,12 @@ export function registerWorkerTools(register: Register, runtime: () => RuntimeSo
     registerToolDefinitions(register, [workerTool(runtime, defaultWorkspace)]);
 }
 
+/** `waitBudgetMs` caps a wait by the caller's prompt-cache clock; hosts whose callers keep their own cache omit it. */
+export interface WorkerToolOptions { waitBudgetMs?: (requestedMs: number) => number }
+
 /** The eight operations behind one tool: the host schema merges every field, then each action validates its own. */
-export function workerTool(source: () => RuntimeSource, defaultWorkspace: string): ToolDefinition {
-    const operations = new Map(workerToolDefinitions(source, defaultWorkspace).map((d) => [d.name.slice('worker_'.length), d]));
+export function workerTool(source: () => RuntimeSource, defaultWorkspace: string, options: WorkerToolOptions = {}): ToolDefinition {
+    const operations = new Map(workerToolDefinitions(source, defaultWorkspace, options).map((d) => [d.name.slice('worker_'.length), d]));
     const shape: Record<string, z.ZodTypeAny> = {};
     for (const operation of operations.values()) {
         for (const [field, schema] of Object.entries(operation.inputSchema.shape as Record<string, z.ZodTypeAny>)) {
@@ -82,7 +85,7 @@ export function workerTool(source: () => RuntimeSource, defaultWorkspace: string
 type RuntimeSource = OpenCodeWorkerRuntime | Promise<OpenCodeWorkerRuntime>;
 
 /** Exactly the eight Spec 001 worker operations. Results are bounded facts so the caller's context stays small. */
-export function workerToolDefinitions(source: () => RuntimeSource, defaultWorkspace: string): ToolDefinition[] {
+export function workerToolDefinitions(source: () => RuntimeSource, defaultWorkspace: string, options: WorkerToolOptions = {}): ToolDefinition[] {
     const runtime = () => Promise.resolve(source());
     const packetOf = (args: any): WorkerPacket => ({ ...args, workspacePath: args.workspacePath || defaultWorkspace, allowedFiles: args.allowedFiles ?? [] });
     const definitions: ToolDefinition[] = [];
@@ -125,7 +128,11 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
     register('worker_wait', {
         description: `Wait for a run to finish, at most ${MAX_WAIT_SECONDS}s. On the ceiling it returns STILL_RUNNING: end your turn and check back instead of waiting again.`,
         inputSchema: z.object({ runId: z.string(), timeoutSeconds: z.number().min(0).max(MAX_WAIT_SECONDS).optional() }),
-    }, async (args) => (await runtime()).wait(args.runId, args.timeoutSeconds ?? MAX_WAIT_SECONDS));
+    }, async (args) => {
+        const requested = args.timeoutSeconds ?? MAX_WAIT_SECONDS;
+        const seconds = options.waitBudgetMs ? Math.min(requested, Math.floor(options.waitBudgetMs(requested * 1000) / 1000)) : requested;
+        return (await runtime()).wait(args.runId, seconds);
+    });
 
     register('worker_cancel', {
         description: 'Cancel a run. A queued run is removed before it starts; a running one is stopped.',
