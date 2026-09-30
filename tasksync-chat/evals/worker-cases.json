@@ -126,7 +126,7 @@
       "id": "gradle-help",
       "mode": "gradle",
       "requires": ["gradle"],
-      "packet": "In /Users/machs/VSProjects/model-calculation-service-app-logic run `./gradlew help` with JAVA_HOME=/opt/homebrew/Cellar/openjdk@17/17.0.19/libexec/openjdk.jdk/Contents/Home and report the state.",
+      "packet": "In /Users/machs/VSProjects/model-calculation-service-app-logic run `./gradlew help` with JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home and report the state.",
       "grade": { "expect": ["SUCCESS|BUILD SUCCESSFUL"], "readOnly": true }
     }
   ]

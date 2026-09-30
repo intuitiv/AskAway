@@ -99,6 +99,19 @@ const editorAgent = profiles.toOpenCodeAgent(editor);
 assert.match(editorAgent, /^ {2}edit:\n {4}"\*": allow\n {4}"\*\*\/\*\.env": deny/m, 'editing workers get explicit edit allow with .env still denied');
 assert.doesNotMatch(editorAgent, /^ {2}edit: deny$/m);
 
+// Every worker runs headless: one shared rule block, plus guidance tuned to the tier's model class.
+const tierHeading = { light: 'small, fast model', mid: 'strong model', heavy: 'top model' };
+for (const profile of [authoring, explore, editor]) {
+    const text = profiles.toOpenCodeAgent(profile);
+    assert.match(text, /## Worker basics \(every AskAway worker\)/, `${profile.name} gets the shared worker rules`);
+    assert.match(text, /Prefix every shell command with `rtk `/, 'commands stay inside the headless allowlist');
+    assert.match(text, /Never `git commit`, `git push`/, 'the orchestrator owns git');
+    assert.match(text, /Result: PASS \| FAIL \| BLOCKED/, 'one result block for every mode');
+    assert.ok(text.includes(`## How to work (${tierHeading[profile.tier]}`), `${profile.name} (${profile.tier}) gets its tier guidance`);
+    assert.ok(text.indexOf(profile.prompt) < text.indexOf('## Worker basics'), 'mode prompt first, shared rules last');
+}
+console.log('EV-007b WorkerPromptBasics: PASS sharedRules=all tierGuidance=light+mid rtkPrefix=true gitOwnedByOrchestrator=true');
+
 const agentsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-opencode-agents-'));
 const written = profiles.syncOpenCodeAgents(fixtures, agentsDir);
 assert.deepEqual(written.map((file) => path.basename(file)), ['aa-authoring.md', 'aa-explore.md']);

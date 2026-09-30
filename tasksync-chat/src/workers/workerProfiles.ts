@@ -156,9 +156,43 @@ export function toOpenCodeAgent(profile: WorkerProfile): string {
         '',
         profile.prompt,
         '',
+        TIER_GUIDANCE[profile.tier],
+        '',
+        WORKER_BASICS,
+        '',
     ];
     return lines.join('\n');
 }
+
+// Worker runs are headless: an approval prompt is auto-rejected and ends the run, so the rules below keep work inside the allowlist.
+const WORKER_BASICS = `## Worker basics (every AskAway worker)
+- You run headless. Nobody can answer a question or an approval prompt: a command that needs approval is auto-rejected and ends your run.
+- Prefix every shell command with \`rtk \` (e.g. \`rtk npm test\`, \`rtk ./gradlew :app:test\`). One command per call: no \`&&\`, \`|\`, \`;\` or redirects.
+- Never \`git commit\`, \`git push\`, \`git reset\`, or delete files; the orchestrator owns git. Never read or print secrets or \`.env\` files.
+- Stay inside the packet: its objective, allowed files, and verification command. Anything else goes under \`Not done:\` with the reason.
+- A check that could not run is never a pass. Exit 0 with zero tests matched is FAIL.
+- End with your mode's output, then exactly these three lines:
+  \`Result: PASS | FAIL | BLOCKED\`
+  \`Evidence: <exact command and observed line, or path:line>\`
+  \`Not done: <items, or none>\``;
+
+/** Guidance per tier, tuned to the model class that tier runs on (light: Luna 6; mid: Sonnet 5.5 / Sol 6.1; heavy: Opus 5.5). */
+const TIER_GUIDANCE: Record<WorkerTier, string> = {
+    light: `## How to work (small, fast model)
+- Follow your steps literally and in order. Do not improvise a different method.
+- Keep to about 10 tool calls. Stop as soon as the packet's question is answered.
+- Copy exact lines, paths, and numbers from tool output; never paraphrase or round them.
+- If a step fails twice, stop and report BLOCKED with the exact error instead of trying alternatives.`,
+    mid: `## How to work (strong model)
+- Think before the first tool call: restate the objective and the check that will judge you.
+- Do exactly the packet. No refactors, renames, formatting, or extras outside scope, even when tempting.
+- Prefer the smallest correct change at the rule that owns the behaviour.
+- Stop as soon as the verification passes; report, do not polish.`,
+    heavy: `## How to work (top model, used for consequential decisions)
+- Reason explicitly: name the alternatives you considered and why you rejected them.
+- Prefer evidence over reasoning: reproduce, measure, or read the source before concluding.
+- Keep the output short even when the reasoning was long.`,
+};
 
 /** Writes one OpenCode agent file per profile, named `aa-<profile>.md`. */
 export function syncOpenCodeAgents(profiles: WorkerProfile[], agentsDir: string): string[] {

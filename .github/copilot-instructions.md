@@ -26,8 +26,8 @@ holds only what is specific to THIS repo.
 
 ## Gradle test target (for engine testing)
 - Reference project: `/Users/machs/VSProjects/model-calculation-service-app-logic`, Gradle 8.3.
-  `JAVA_HOME=/opt/homebrew/Cellar/openjdk@17/17.0.19/libexec/openjdk.jdk/Contents/Home` (the old
-  corretto-17 path is gone). Config phase is ~100s before the first `> Task`; keep the daemon warm,
+  `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home` (version-independent Homebrew link; versioned Cellar
+  paths break on every JDK upgrade). Config phase is ~100s before the first `> Task`; keep the daemon warm,
   never pkill mid-run.
 
 ## Communication (this repo)
