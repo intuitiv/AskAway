@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AskAway spec run record v1",
+  "type": "object",
+  "required": ["v", "slug", "kind", "command", "stageBefore", "stageAfter", "branch", "pr", "startedAt", "endedAt", "agentMs", "cost"],
+  "additionalProperties": true,
+  "properties": {
+    "v": { "const": 1 },
+    "slug": { "type": "string", "pattern": "^[0-9]{3}-[a-z0-9-]+$" },
+    "kind": { "enum": ["chat", "worker", "checkpoint", "converge", "import"] },
+    "command": { "type": "string", "maxLength": 80 },
+    "stageBefore": { "enum": [null, "specify", "clarify", "plan", "checklist", "tasks", "analyze", "implement", "converge"] },
+    "stageAfter": { "enum": [null, "specify", "clarify", "plan", "checklist", "tasks", "analyze", "implement", "converge"] },
+    "branch": { "type": "string" },
+    "pr": { "type": "string" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "endedAt": { "type": "string", "format": "date-time" },
+    "agentMs": { "type": "number", "minimum": 0 },
+    "cost": {
+      "type": "object",
+      "required": ["nanoAiu", "requests"],
+      "properties": { "nanoAiu": { "type": "number", "minimum": 0 }, "requests": { "type": "integer", "minimum": 0 } }
+    },
+    "tokens": {
+      "type": "object",
+      "properties": {
+        "input": { "type": "integer" }, "output": { "type": "integer" }, "reasoning": { "type": "integer" },
+        "cacheRead": { "type": "integer" }, "cacheWrite": { "type": "integer" }
+      }
+    },
+    "story": { "type": "string" },
+    "checkpoint": {
+      "type": "object",
+      "required": ["result", "independentTest", "scs"],
+      "properties": {
+        "result": { "enum": ["PASS", "FAIL", "BLOCKED"] },
+        "independentTest": { "type": "string" },
+        "scs": { "type": "array", "items": { "type": "object", "required": ["id", "result"], "properties": { "id": { "type": "string" }, "result": { "enum": ["PASS", "FAIL", "BLOCKED", "N/A"] }, "evidence": { "type": "string" } } } }
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "required": ["checks", "openFindings", "residualRisk"],
+      "properties": {
+        "checks": { "type": "array", "items": { "type": "object", "required": ["name", "status"], "properties": { "name": { "type": "string" }, "status": { "enum": ["PASS", "FAIL", "BLOCKED", "N/A"] }, "reason": { "type": "string" }, "evidence": { "type": "string" } } } },
+        "openFindings": { "type": "array", "items": { "type": "string" } },
+        "residualRisk": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "workerId": { "type": "string" },
+    "runId": { "type": "string" }
+  }
+}

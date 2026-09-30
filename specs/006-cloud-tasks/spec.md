@@ -179,10 +179,10 @@ The extension prevents unsafe overlap and runaway work: no two cloud tasks run o
 ## Assumptions
 
 - Verified from GitHub docs (2026-09-30): mentioning `@copilot` in a comment on any pull request, including ones the developer created, makes the cloud agent push commits directly to that PR's branch by default. Assigning an issue always creates a new branch and PR, so it is not the default route (same-branch is a reviewer requirement).
-- Verified: the web UI has a model picker; a comment posted without it uses the PR's original/default model. Whether an API-posted comment can select a model is UNVERIFIED and is proven in US1 before FR-008's UI is built.
+- Verified: the web UI has a model picker for PR comments; a comment posted without it uses the PR's original model, and entry points without a picker use Auto. Whether an API-posted comment can select a model is UNVERIFIED and is proven in US1 before FR-008's UI is built.
 - Verified: each cloud-agent session has a hard 59-minute limit; the ~45-minute eligibility bound leaves margin.
 - Verified: the cloud agent runs in a GitHub Actions environment and follows repository custom instructions, custom agents, MCP servers, hooks and skills; `copilot-setup-steps.yml` prepares its environment. Packets therefore reference committed artifacts instead of repeating them.
-- Verified: GitHub Actions workflows do not run automatically on the cloud agent's pushes unless configured (see FR-023).
+- Verified (docs, 2026-09-30): by default GitHub Actions workflows wait for an "Approve and run workflows" click on the cloud agent's pushes; a repository administrator turns this off under Settings → Copilot → Cloud agent → "Require approval for workflow runs". FR-023 therefore needs that setting off; US1 records which state the repository is in.
 - Verified: the cloud agent only responds to users with write access.
 - Verified: cost is Actions minutes plus AI credits; no per-session price is exposed, so only duration and model are shown.
 - Status is obtained by periodic polling as stated in 005 Rules ("the extension polls periodically"); webhooks are not used because a local extension has no public endpoint. The poll interval is a setting with a default of a few minutes.
