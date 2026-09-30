@@ -17,7 +17,7 @@ export interface ToolDefinition {
 }
 
 const packetShape = {
-    profile: z.string().describe('Worker mode: explore, research, verify, gradle, test, code, rca, review, authoring, devx.'),
+    profile: z.string().describe('Worker mode: build, code, test, explore, research, verify, gradle, rca, review, quality, perf, authoring, devx.'),
     model: z.string().optional().describe('provider/model; must be allowed by the mode. Omit for the mode default.'),
     thinking: z.string().optional().describe('Reasoning variant; must be allowed by the mode.'),
     dispatchTurnId: z.string().min(1).describe('The orchestrator turn this work is attributed to.'),
@@ -26,7 +26,9 @@ const packetShape = {
     allowedFiles: z.array(z.string()).describe('Files the worker may change; empty means read-only.'),
     acceptance: z.string().min(1).describe('One observable assertion.'),
     expected: z.string().min(1).describe('The exact expected result.'),
-    command: z.string().min(1).describe('The verification command.'),
+    // Workers run headless: a `cd`, `&&`, `|`, `;` or redirect is auto-rejected by the bash allowlist and kills the run.
+    command: z.string().min(1).regex(/^(?!\s*cd\s)[^&|;<>]+$/, 'one simple command from the repo root, no cd/&&/|/;/redirects')
+        .describe('One simple verification command run from the repo root, e.g. `rtk npm --prefix tasksync-chat run test:workers`. No cd, &&, |, ; or redirects.'),
     estimatedSeconds: z.number().positive().optional(),
     track: z.string().max(24).optional().describe('Your plan\'s track for this packet, e.g. "A"; the Workers tab shows one lane per track.'),
     workspacePath: z.string().optional().describe('Defaults to the current workspace.'),

@@ -58,6 +58,10 @@ const call = viaWorkerTool(tools);
     assert.equal((await call('worker_status', {})).status, 'INVALID_INPUT', 'each action validates its own required fields');
 
     const packet = { profile: 'verify', dispatchTurnId: 'turn-9', baseRevision: 'abc', objective: 'Check', allowedFiles: [], acceptance: 'a', expected: 'e', command: 'true' };
+    // Headless workers auto-reject compound shell commands, so the packet is refused before a run is wasted.
+    for (const command of ['cd tasksync-chat && npm test', 'npx tsc --noEmit && node t.cjs', 'node t.cjs | tail -3', 'node t.cjs > out.txt', 'a; b']) {
+        await assert.rejects(call('worker_start', { ...packet, command }), /one simple command/, `compound command refused: ${command}`);
+    }
     const started = await call('worker_start', packet);
     assert.equal(started.state, 'STARTING');
     children[0].stdout.write(`${JSON.stringify({ type: 'step_finish', sessionID: 'ses_T', part: { tokens: { input: 10, output: 2 }, cost: 0.0004 } })}\n`);

@@ -464,7 +464,7 @@
             },
             "profile": {
               "type": "string",
-              "description": "Worker mode: explore, research, verify, gradle, test, code, rca, review, authoring, devx."
+              "description": "Worker mode: build, code, test, explore, research, verify, gradle, rca, review, quality, perf, authoring, devx."
             },
             "model": {
               "type": "string",
@@ -508,7 +508,8 @@
             "command": {
               "type": "string",
               "minLength": 1,
-              "description": "The verification command."
+              "pattern": "^(?!\\s*cd\\s)[^&|;<>]+$",
+              "description": "One simple verification command run from the repo root, e.g. `rtk npm --prefix tasksync-chat run test:workers`. No cd, &&, |, ; or redirects."
             },
             "estimatedSeconds": {
               "type": "number",
