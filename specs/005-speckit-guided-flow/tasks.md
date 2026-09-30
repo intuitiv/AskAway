@@ -62,6 +62,13 @@ description: "Task list for 005 Spec Kit Guided Flow"
 
 ---
 
+## Phase 5: Pulled forward from `## Later` (worker-built)
+
+- [ ] T011 [P] [US3] `tools/spec-facts.cjs` per contracts/spec-facts-cli.md (same scanner as the Specs tab) with `test-spec-facts-cli.cjs` in `test:workers`
+- [x] T012 [P] [US7] `src/specs/readiness.ts` (`normalizeReadiness`: PASS without evidence → BLOCKED; `readinessLines` plain text shared by Specs tab, Telegram, PR text) with `test-spec-readiness.cjs` in `test:workers`
+
+---
+
 ## Dependencies & Execution Order
 
 - Setup → Foundational → US1 → US2 → (plan.md `## Later`: US3–US7, Polish).

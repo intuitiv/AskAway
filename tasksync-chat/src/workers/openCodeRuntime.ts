@@ -105,6 +105,16 @@ interface RunRecord extends RunView {
     evidence: string[];
     child?: ChildLike;
     waiters: Array<() => void>;
+    autoResumes?: number;
+}
+
+const MAX_AUTO_RESUMES = 2;
+
+/** Feedback for a worker whose command was auto-rejected, so it adapts instead of the run dying. */
+export function rejectionFeedback(rejected: string[]): string {
+    return `These commands were auto-rejected (headless run, not in the allowlist): ${rejected.join('; ')}. Do not retry them. `
+        + 'Read files with your read/grep/glob tools. Run shell commands only as ONE simple command prefixed with `rtk ` '
+        + '(no cd, &&, |, ; or redirects). Continue the packet from where you stopped and finish it with the required report.';
 }
 
 const REQUIRED: Array<keyof WorkerPacket> = ['workspacePath', 'profile', 'dispatchTurnId', 'baseRevision', 'objective', 'acceptance', 'expected', 'command'];
@@ -488,6 +498,14 @@ export class OpenCodeWorkerRuntime {
         });
         child.on('exit', (code, signal) => {
             run.evidence = lastText.trim().split('\n').slice(-MAX_EVIDENCE_LINES);
+            const silentRejection = code === 0 && !signal && run.reason !== 'cancelled by caller' && rejected.length > 0
+                && run.evidence.join('').trim() === '';
+            if (silentRejection && run.sessionId && (run.autoResumes ?? 0) < MAX_AUTO_RESUMES) {
+                run.autoResumes = (run.autoResumes ?? 0) + 1;
+                this.record(run, { type: 'approval', reason: `auto-rejected, resumed with feedback: ${rejected.join('; ')}` });
+                this.launch(run, rejectionFeedback(rejected));
+                return;
+            }
             const worker = this.router.worker(run.workerId);
             this.router.complete(run.workerId, run.runId, { contextTokens: run.nextInputTokens || worker?.contextTokens || 0 });
             const knowledge = [...run.evidence].reverse().find((line) => /^\W*Knowledge:/i.test(line));

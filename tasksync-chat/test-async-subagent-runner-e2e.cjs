@@ -104,17 +104,31 @@ const finish = (id, input, cost) => ({ type: 'step_finish', sessionID: id, part:
     assert.deepEqual([outcome.status, outcome.reason], ['FAILED', 'worker ended without a report (no Result/Evidence text)']);
     assert.equal(silentHost.resume(silent.runId).state, 'STARTING', 'the same session can be asked to finish its report');
 
-    // Seen live 2026-09-29: headless OpenCode auto-rejected `npm test` and ended the run; the caller must see that, not "no report".
+    // Seen live 2026-09-29/30: headless OpenCode auto-rejected a command and ended the run. The same session is resumed
+    // with feedback (twice at most) so the worker adapts; only then does the caller see the named rejection.
     const blocked = silentHost.start(packet('verify', 'run the tests'));
-    const blockedChild = children[children.length - 1];
-    blockedChild.emitEvent({ type: 'step_start', sessionID: 'ses_R', part: {} });
-    blockedChild.stderr.write('! permission requested: bash (npm test); auto-rejecting\n');
-    await tick();
-    blockedChild.emit('exit', 0, null);
+    const reject = async (command) => {
+        const current = children[children.length - 1];
+        current.emitEvent({ type: 'step_start', sessionID: 'ses_R', part: {} });
+        current.stderr.write(`! permission requested: bash (${command}); auto-rejecting\n`);
+        await tick();
+        current.emit('exit', 0, null);
+        await tick();
+    };
+    const spawnedBefore = children.length;
+    await reject('npm test');
+    assert.equal(children.length, spawnedBefore + 1, 'a rejection resumes the run instead of ending it');
+    const feedbackArgs = children[children.length - 1].args;
+    assert.ok(feedbackArgs.indexOf('--session') > 0, 'resumed in the worker\'s OpenCode session');
+    assert.match(feedbackArgs[feedbackArgs.length - 1], /auto-rejected.*npm test.*`rtk `/s, 'the worker is told what was rejected and how to run commands');
+    assert.notEqual(silentHost.status(blocked.runId).state, 'FAILED');
+    await reject('sed -n 1,5p a.ts | head');
+    await reject('npm test');
     const blockedOutcome = await silentHost.wait(blocked.runId, 1);
-    assert.equal(blockedOutcome.status, 'FAILED');
+    assert.equal(blockedOutcome.status, 'FAILED', 'after two resumes the rejection is final');
     assert.match(blockedOutcome.reason, /^permission auto-rejected: bash \(npm test\)/);
-    console.log('EV-037 SilentRunIsNotSuccess: PASS exit0NoReport=FAILED reason=explicit resumable=true permissionRejection=named');
+    assert.ok(silentHost.logs(blocked.runId).filter((r) => r.type === 'approval').length === 2, 'each resume is a lifecycle fact');
+    console.log('EV-037 SilentRunIsNotSuccess: PASS exit0NoReport=FAILED reason=explicit resumable=true permissionRejection=resumed2xThenNamed');
 
     await endToEndFlow();
     process.exit(0);
