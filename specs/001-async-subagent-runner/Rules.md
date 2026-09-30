@@ -3,11 +3,11 @@
 Decisions and constraints the reviewer stated. Change a rule only when the reviewer changes it.
 
 ## Orchestration
-- The orchestrator is the reviewer's proxy: it holds the design intent, gotchas, and limits, and delegates. It must not implement.
+- The orchestrator is the reviewer's proxy and technical manager: it holds the design intent, gotchas, and limits, and delegates. It does not implement; it may run one standalone command (reviewer, 2026-09-30), and anything needing more goes to a `build` worker.
 - Plan as tracks. Run independent tracks in parallel; serialize only on real dependencies.
 - Prefer instruct-then-verify: one worker does the work, a different worker verifies it. The orchestrator often never needs the underlying data.
 - Keep orchestrator context small at all times. Pulling transcripts, logs, diffs, or file contents into it is a defect.
-- Minimize cost creatively. Cheapest capable tier first, escalate only on evidence.
+- Minimize cost creatively. Pick the tier by the work, not the cheapest by habit: Luna for tiny fully-specified work, Sonnet or Terra for real implementation (reviewer, 2026-09-30); escalate further only on evidence.
 - Collect durable knowledge in the spec (Goal.md, Rules.md, plan, research). Cross-spec principles go in the constitution.
 
 ## Runtime

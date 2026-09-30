@@ -5,7 +5,7 @@ Let one strong-model orchestrator run for a long time at low cost by delegating 
 ## Outcomes that define done
 - **Orchestrator plans, workers work.** The main agent decomposes goals into small, independently acceptable packets across parallel tracks, dispatches them, and verifies results. It does not read code or data itself.
 - **Main-agent input stays small.** Parent context does not grow with the amount of delegated work: workers return bounded syntheses plus evidence references, never transcripts or file contents.
-- **Async, tiered workers.** The user picks the orchestrator model (often Opus). The orchestrator picks each worker's model by complexity and cost: GPT-5.6 Luna for light work, GPT-5.6 Terra for normal work, Opus or GPT-6 Sol only for justified hard work.
+- **Async, tiered workers.** The user picks the orchestrator model (often Opus). The orchestrator picks each worker's model by complexity and cost: GPT-5.6 Luna for light work, Claude Sonnet or GPT-5.6 Terra for normal work, Opus or GPT-6 Sol only for justified hard work.
 - **One shared OpenCode server for all workspaces.** Workers are workspace-bound records on it; the Workers tab is global and filters by workspace.
 - **Kick-ass Workers tab.** Every worker in the workspace, its state and cost, a link to its exact OpenCode session, and a per-worker task queue with enqueue and cancel-before-start.
 - **Bounded waiting.** Until the Spec 003 side channel exists, a status wait lasts at most 240 seconds, then returns `STILL_RUNNING` so the turn ends instead of burning credits.
