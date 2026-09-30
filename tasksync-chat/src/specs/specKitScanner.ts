@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { readRunRecords, SpecFacts, specFacts } from './runRecords';
+import { specsStaleness, StaleEntry } from './staleness';
 import { impliedStage, nextStep, SpecArtifacts, SpecKitStage, stageButton, stageMismatch, StageMismatch } from './stages';
 
 /** Derived from which artifacts exist and how many tasks are ticked — Spec Kit stores no status field. */
@@ -89,6 +90,8 @@ export interface SpecSummary {
     stageButton: string;
     artifacts: SpecArtifacts;
     facts: SpecFacts;
+    /** Artifacts older (by git commit order) than an artifact they are generated from. */
+    stale: StaleEntry[];
 }
 
 export interface SpecScanResult {
@@ -96,6 +99,8 @@ export interface SpecScanResult {
     specsRoot: string;
     activeSlug: string;
     repositoryUrl: string;
+    /** False when the workspace is not a git repository; staleness is then unknown, not "fresh". */
+    stalenessAvailable: boolean;
     specs: SpecSummary[];
 }
 
@@ -346,7 +351,7 @@ function readActiveSlug(workspaceRoot: string): string {
 /** Scan `<workspaceRoot>/specs/*` for Spec Kit features. Returns `enabled: false` when there is no specs/ dir. */
 export function scanSpecs(workspaceRoot: string): SpecScanResult {
     const specsRoot = path.join(workspaceRoot, 'specs');
-    const empty: SpecScanResult = { enabled: false, specsRoot, activeSlug: '', repositoryUrl: '', specs: [] };
+    const empty: SpecScanResult = { enabled: false, specsRoot, activeSlug: '', repositoryUrl: '', stalenessAvailable: false, specs: [] };
     let entries: fs.Dirent[];
     try {
         if (!fs.statSync(specsRoot).isDirectory()) { return empty; }
@@ -356,6 +361,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
     }
 
     const activeSlug = readActiveSlug(workspaceRoot);
+    const staleness = specsStaleness(specsRoot);
     const specs: SpecSummary[] = [];
     const tasksBySlug = new Map<string, ParsedTask[]>();
 
@@ -421,7 +427,8 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
             nextStep: nextStep(specKitStage, artifacts),
             stageButton: stageButton(specKitStage, artifacts),
             artifacts,
-            facts
+            facts,
+            stale: staleness.bySlug.get(entry.name) || []
         });
     }
 
@@ -467,5 +474,5 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
         return a.slug.localeCompare(b.slug, undefined, { numeric: true });
     });
 
-    return { enabled: specs.length > 0, specsRoot, activeSlug, repositoryUrl: readRepositoryUrl(workspaceRoot), specs };
+    return { enabled: specs.length > 0, specsRoot, activeSlug, repositoryUrl: readRepositoryUrl(workspaceRoot), stalenessAvailable: staleness.available, specs };
 }
