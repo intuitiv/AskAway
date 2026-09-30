@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AskAway cloud task run (local state, gitignored)",
+  "type": "object",
+  "required": ["v", "slug", "taskId", "attempt", "packetPath", "packetSha", "pr", "branch", "commentId", "commentUrl", "model", "state", "queuedAt", "history"],
+  "properties": {
+    "v": { "const": 1 },
+    "slug": { "type": "string" },
+    "taskId": { "type": "string" },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "packetPath": { "type": "string" },
+    "packetSha": { "type": "string" },
+    "pr": { "type": "string" },
+    "branch": { "type": "string" },
+    "commentId": { "type": "string" },
+    "commentUrl": { "type": "string" },
+    "model": { "type": "string", "description": "model that will run / ran; 'PR default' until observed" },
+    "allowedPaths": { "type": "array", "items": { "type": "string" } },
+    "ceilingMinutes": { "type": "integer", "maximum": 59 },
+    "state": { "enum": ["Held", "Queued", "Working", "Pushed", "Checks passed", "Checks failed", "Checks waiting for approval", "Needs review", "Accepted", "Returned", "Timed out", "No response"] },
+    "queuedAt": { "type": "string", "format": "date-time" },
+    "startedAt": { "type": "string" },
+    "endedAt": { "type": "string" },
+    "commits": { "type": "array", "items": { "type": "object", "properties": { "sha": { "type": "string" }, "author": { "type": "string" }, "at": { "type": "string" } } } },
+    "checkRuns": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "conclusion": { "type": "string" }, "url": { "type": "string" } } } },
+    "blocker": { "type": "string" },
+    "decisionNeeded": { "type": "string" },
+    "conflict": { "type": "object", "properties": { "developerSha": { "type": "string" }, "agentSha": { "type": "string" } } },
+    "acceptance": { "type": "object", "properties": { "result": { "enum": ["Accepted", "Returned"] }, "evidence": { "type": "string" }, "outOfScope": { "type": "array", "items": { "type": "string" } } } },
+    "staleSince": { "type": "string" },
+    "history": { "type": "array", "items": { "type": "object", "required": ["at", "state", "signal"], "properties": { "at": { "type": "string" }, "state": { "type": "string" }, "signal": { "type": "string" }, "url": { "type": "string" } } } }
+  }
+}
