@@ -55,7 +55,7 @@ description: "Task list for 005 Spec Kit Guided Flow"
 **Independent Test**: spec.md US2.
 
 - [x] T008 [P] [US2] Story model + story groups: `spec.stories[]` in the scanner (`### User Story N - <title> (Priority: Pn)` in spec.md, `[USn]` tags or story phase for tasks, Independent Test, SCs from `Verified by:`), Independent Test + SCs shown under each story phase by `renderSpecWork`; `test-spec-stories.cjs` in `test:workers`. Per-story task budget moved to T010.
-- [ ] T010 [US2] `tools/task-budget.cjs` budgets open tasks per story (`[USn]`/story phase) instead of treating all untagged tasks as one "(no cycle)" group; extend `test-task-budget.cjs`
+- [x] T010 [US2] `tools/task-budget.cjs` budgets open tasks per story (`[USn]`/story phase) instead of treating all untagged tasks as one "(no cycle)" group; extend `test-task-budget.cjs`
 - [ ] T009 [P] [US2] Rewrite `SPEC_KIT_PROMPTS` in `src/specs/specKitPromptAssets.ts` to the story structure (remove `acceptance`, `categories`, `gates` and every CY/PAC/CAC demand; D-18), regenerate user prompt copies; assert in `test-spec-planning-contract.cjs` that wrapper text has no `CY-`/`PAC-`/`CAC-` and names Setup, Foundational, `[USn]`, Polish
 
 **Checkpoint**: US2 Independent Test passes; SC-003 checked.

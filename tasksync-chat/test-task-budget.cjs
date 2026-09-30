@@ -35,6 +35,20 @@ assert.match(result.stdout, /overCycles=CY-001:7\/6/);
 
 assert.equal(run(workspace, [fatCycle, '--max-cycle', '8']).status, 0, 'limits are flags, not hard-coded');
 
+// 005 US2: stories are the groups — 6 open in US1 and 6 in US2 pass; a 7th open US1 task fails as US1:7/6.
+const storyRows = (story, count, start) => Array.from({ length: count }, (_, i) => `- [ ] T${String(start + i).padStart(3, '0')} [${story}] Story work ${i}`);
+const storyDir = path.join(workspace, 'specs', '004-stories');
+fs.mkdirSync(storyDir, { recursive: true });
+fs.writeFileSync(path.join(storyDir, 'tasks.md'), ['# Tasks', '## Phase 3: User Story 1 - A (Priority: P1)', ...storyRows('US1', 5, 1),
+    '- [ ] T006 untagged task in the US1 phase', '## Phase 4: User Story 2 - B (Priority: P2)', ...storyRows('US2', 6, 7)].join('\n'));
+result = run(workspace, [storyDir]);
+assert.equal(result.status, 0, result.stdout);
+assert.match(result.stdout, /open=12\/12 largestCycle=US\d:6\/6/);
+fs.appendFileSync(path.join(storyDir, 'tasks.md'), '\n## Phase 3: User Story 1 - A again\n- [ ] T013 one more\n');
+result = run(workspace, [storyDir, '--max-open', '20']);
+assert.equal(result.status, 1);
+assert.match(result.stdout, /overCycles=US1:7\/6/, 'untagged tasks count toward their story phase');
+
 fs.mkdirSync(path.join(workspace, '.specify'), { recursive: true });
 fs.writeFileSync(path.join(workspace, '.specify', 'feature.json'), JSON.stringify({ feature_directory: small }));
 assert.match(run(workspace).stdout, /001-small: PASS/, 'defaults to the active spec');

@@ -7,10 +7,15 @@ const TASK = /^\s*[-*]\s*\[([ xX])\]\s*(T\d+[a-zA-Z]*)?\s*(.*)$/; // same rule a
 
 function budget(tasksMd, { maxOpen = 12, maxCycle = 6 } = {}) {
     const open = [];
+    let phaseStory = '';
     for (const line of tasksMd.split('\n')) {
+        const heading = /^##\s+(.+)$/.exec(line);
+        if (heading) { const story = /User Story (\d+)/i.exec(heading[1]); phaseStory = story ? `US${story[1]}` : ''; continue; }
         const m = TASK.exec(line);
         if (!m || m[1] !== ' ') { continue; }
-        open.push({ id: m[2] || '(no id)', cycle: (/\[(CY-\d+)\]/.exec(m[3]) || [])[1] || '(no cycle)' });
+        // Group = legacy cycle tag, else the task's story ([USn] tag or its story phase).
+        const group = (/\[(CY-\d+)\]/.exec(m[3]) || [])[1] || ((/\[(US\d+)\]/i.exec(m[3]) || [])[1] || phaseStory || '(no cycle)').toUpperCase();
+        open.push({ id: m[2] || '(no id)', cycle: group });
     }
     const byCycle = {};
     for (const task of open) { (byCycle[task.cycle] = byCycle[task.cycle] || []).push(task.id); }
