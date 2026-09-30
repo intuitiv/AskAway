@@ -96,7 +96,8 @@ for (const any of [agent, profiles.toOpenCodeAgent(explore)]) {
 assert.doesNotMatch(profiles.toOpenCodeAgent(explore), /skill:/, 'profiles without skills get no skill access block');
 const editor = profiles.parseWorkerProfile(profileText('code').replace('edit: deny', 'edit: allow'));
 const editorAgent = profiles.toOpenCodeAgent(editor);
-assert.match(editorAgent, /^ {2}edit:\n {4}"\*": allow\n {4}"\*\*\/\*\.env": deny/m, 'editing workers get explicit edit allow with .env still denied');
+// Seen live 2026-09-30: `"*"` alone did not cover nested paths and a build worker's writes were auto-rejected.
+assert.match(editorAgent, /^ {2}edit:\n {4}"\*": allow\n {4}"\*\*": allow\n {4}"\*\*\/\*\.env": deny/m, 'editing workers may edit nested paths with .env still denied');
 assert.doesNotMatch(editorAgent, /^ {2}edit: deny$/m);
 
 // Every worker runs headless: one shared rule block, plus guidance tuned to the tier's model class.

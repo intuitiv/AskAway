@@ -137,7 +137,7 @@ export function toOpenCodeAgent(profile: WorkerProfile): string {
     }
     if (profile.edit === 'allow') {
         // Without an explicit allow, edits fall back to the global "ask" and are auto-rejected in a headless run.
-        permission.push('  edit:', '    "*": allow', '    "**/*.env": deny', '    "**/*.env.*": deny');
+        permission.push('  edit:', '    "*": allow', '    "**": allow', '    "**/*.env": deny', '    "**/*.env.*": deny');
     }
     for (const pattern of profile.mcp) {
         permission.push(`  ${JSON.stringify(pattern)}: allow`);
