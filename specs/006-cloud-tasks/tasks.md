@@ -20,13 +20,13 @@ description: "Task list for 006 Cloud Tasks"
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] `src/cloud/gh.ts`: `gh` runner with injectable exec, JSON parsing, typed failures (`unauthenticated`, `rate-limited`, `network`); settings `askaway.cloudTasks.enabled|pollMinutes|digestTime|agentLogins` in `package.json`; `test-cloud-gh.cjs` in `test:workers`
+- [x] T001 [P] `src/cloud/gh.ts`: `gh` runner with injectable exec, JSON parsing, typed failures (`unauthenticated`, `rate-limited`, `network`), first stderr line only; `test-cloud-gh.cjs` in `test:workers`. Settings `askaway.cloudTasks.*` are added in US2 with the code that reads them.
 
 ---
 
 ## Phase 2: Foundational
 
-- [ ] T002 [P] Secret gate `secretFindings(text, knownValues)` in `src/cloud/packet.ts` (C-16) with `test-cloud-secrets.cjs` in `test:workers` (each seeded pattern and a known env value refused with the field name; clean text passes)
+- [x] T002 [P] Secret gate `secretFindings(text, knownValues)` in `src/cloud/packet.ts` (C-16) with `test-cloud-secrets.cjs` in `test:workers` (each seeded pattern and a known env value refused with the field name; clean text passes)
 
 **Checkpoint**: gh runner and secret gate ready.
 
