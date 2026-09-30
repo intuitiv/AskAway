@@ -1,7 +1,7 @@
 # Specification Quality Checklist: Spec Kit Guided Flow
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-09-29
+**Created**: 2026-09-30
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,6 +31,7 @@
 
 ## Notes
 
-- 2 open [NEEDS CLARIFICATION] markers: FR-006 (staleness basis), US6 scenario 1 (feature mismatch: block vs. offer switch). Resolve via `/sk.check` (clarify) before `/sk.plan`.
-- Named commands (`/sk.*`, `/pr-daily`) and `.specify/feature.json` are the product's user-facing surface named by the developer, not implementation choices.
-- Previous active feature (before this spec): `specs/001-async-subagent-runner`.
+- Named product surfaces (`/sk.*`, Specs tab, Telegram, `.askaway/specs/<slug>/`, git commit order) are reviewer-stated rules from Rules.md, not implementation choices.
+- Every SC carries "Verified by: USn"; every story is covered by at least one SC.
+- Cloud tasks moved to feature 006; 005 keeps only the hook points (FR-027).
+- Small-work sizing thresholds deferred to plan (Assumptions).
