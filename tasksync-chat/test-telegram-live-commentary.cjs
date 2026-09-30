@@ -114,7 +114,8 @@ const sync = () => relay.update(view());
     // Every 2 minutes (here 80ms) a live turn shows how long it ran and when the agent last acted; long silence warns.
     const { statusFooter } = require(path.join(buildDir, 'commentary', 'telegramLive.js'));
     const at = new Date(2026, 8, 28, 16, 0, 0).getTime();
-    assert.equal(statusFooter(at, at - 6 * 60_000, { lastActivityAt: at - 40_000, requests: 12 }), '⏱ 16:00 · working 6m · 12 requests · last activity 40s ago');
+    assert.equal(statusFooter(at, at - 6 * 60_000, { lastActivityAt: at - 40_000, requests: 12, dollars: 1.234, lastIn: 95_000, turnOut: 2_100 }),
+        '⏱ 16:00 · working 6m · 12 requests · <b>$1.23</b> · 95.0K last in / 2.1K turn out · last activity 40s ago');
     assert.match(statusFooter(at, at - 20 * 60_000, { lastActivityAt: at - 7 * 60_000, requests: 3 }), /\n⚠️ <b>No activity for 7m<\/b> — the agent may be stuck or errored\.$/);
     const activity = { lastActivityAt: Date.now(), requests: 2 };
     const ticking = new TelegramLiveCommentary(() => poster, 'TaskSync', { minEditMs: 0, activity: () => activity, tickMs: 80 });
@@ -124,7 +125,7 @@ const sync = () => relay.update(view());
     await new Promise((resolve) => setTimeout(resolve, 200));
     const ticked = telegram.edits[telegram.edits.length - 1].html;
     assert.equal(telegram.sent.length, tickSent, 'the status refresh edits the live message, never a new one');
-    assert.match(ticked, /\n⏱ \d\d:\d\d · working \d+s · 2 requests · last activity \d+s ago$/);
+    assert.match(ticked, /\n⏱ \d\d:\d\d · working \d+s · 2 requests · <b>\$0\.00<\/b> · 0 last in \/ 0 turn out · last activity \d+s ago$/);
     await ticking.finish('- Summary: done', 'handoff:9');
     const editsAfterFinish = telegram.edits.length;
     await new Promise((resolve) => setTimeout(resolve, 200));

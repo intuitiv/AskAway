@@ -13,10 +13,12 @@ if (!fs.existsSync(agentFile)) {
 const text = fs.readFileSync(agentFile, 'utf8');
 const tools = (/^tools:\s*\[([^\]]*)\]/m.exec(text) || [])[1].split(',').map((t) => t.trim()).filter(Boolean);
 
-// Denied: anything that reads or edits implementation code, runs commands, or delegates outside AskAway workers.
-const denied = [/^execute\b/, /^edit\b/, /^read\b/, /^search\/(codebase|textSearch|usages)\b/, /^agent\b/, /runSubagent/, /^vscode\/runCommand/, /terminal/i];
+// Denied: editing, sub-agents, and broad code search. Reviewer 2026-09-30: it may run ONE standalone command (git is its job,
+// workers cannot commit) and read Spec Kit artifacts; multi-command work goes to a build worker.
+const denied = [/^edit\b/, /^search\/(codebase|textSearch|usages)\b/, /^agent\b/, /runSubagent/, /^vscode\/runCommand/];
 const leaks = tools.filter((tool) => denied.some((pattern) => pattern.test(tool)));
-assert.deepEqual(leaks, [], 'no code read/edit, terminal, or sub-agent tools');
+assert.deepEqual(leaks, [], 'no code edit, code search, or sub-agent tools');
+assert.deepEqual(tools.filter((t) => /^(execute|read)\//.test(t)).sort(), ['execute/runInTerminal', 'read/readFile'], 'only one terminal and one read tool');
 
 // Allowed and required: planning memory, the one worker tool (eight actions), commentary, budget, and the internet.
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).contributes.languageModelTools.map((t) => t.toolReferenceName);
@@ -27,5 +29,9 @@ for (const tool of tools.filter((t) => t.startsWith('intuitiv.askaway/'))) {
     assert.ok(manifest.includes(tool.split('/')[1]), `${tool} is a tool this extension declares`);
 }
 assert.doesNotMatch(text, /opencode run --print-logs/, 'no terminal fallback that would dispatch around the Workers tab');
-assert.match(text, /no terminal and no code read\/edit tools, by design/);
-console.log(`EV-022 OrchestratorToolPolicy: PASS tools=${tools.length} denied=0 workerTool=1 terminalFallback=none`);
+assert.match(text, /use the terminal only for ONE standalone command/, 'terminal is limited to one standalone command');
+assert.match(text, /two or more commands in sequence[^\n]*is a `build` worker packet/, 'multi-command work is delegated');
+assert.match(text, /You may read Spec Kit artifacts only/, 'reads are limited to spec artifacts');
+assert.match(text, /At most TWO build workers at once per track/, 'parallel build workers are capped');
+assert.match(text, /no shared file or shared surface/, 'parallel only on disjoint scope');
+console.log(`EV-022 OrchestratorToolPolicy: PASS tools=${tools.length} edit=0 terminal=standalone-only reads=spec-artifacts parallelBuildCap=2 terminalFallback=none`);

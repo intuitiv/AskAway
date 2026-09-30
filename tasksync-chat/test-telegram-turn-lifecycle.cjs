@@ -158,10 +158,10 @@ const newest = () => Math.max(...api.messages.keys());
     assert.match(text(newest()), /Checker posted from another window/, 'cross-window lines are picked up from the feed file');
 
     // T053: the status line refreshes in the same message, and warns once the agent has been silent for 5 minutes.
-    Object.assign(activity, { lastActivityAt: Date.now(), requests: 3 });
+    Object.assign(activity, { lastActivityAt: Date.now(), requests: 3, dollars: 0.4213, lastIn: 128_400, turnOut: 3_450 });
     const messagesBeforeStatus = api.messages.size;
     await statusTick();
-    assert.match(text(turn2), /⏱ \d\d:\d\d · working \d+s · 3 requests · last activity \d+s ago/, 'status line in the live message');
+    assert.match(text(turn2), /⏱ \d\d:\d\d · working \d+s · 3 requests · <b>\$0\.42<\/b> · 128\.4K last in \/ 3\.5K turn out · last activity \d+s ago/, 'status line carries the chat banner numbers');
     assert.doesNotMatch(text(turn2), /No activity/);
     skew = 6 * 60_000;
     await statusTick();
@@ -181,6 +181,7 @@ const newest = () => Math.max(...api.messages.keys());
     await sleep(LIVE ? 1500 : 20);
     turn3 = newest();
     assert.equal(api.messages.get(turn3).silent, false);
+    assert.match(text(turn3), /💰 4 requests · <b>\$0\.42<\/b> · 128\.4K last in \/ 3\.5K turn out/, 'the final message header shows what the turn cost');
     assert.equal(telegram.getActiveTaskCount(), 1);
 
     if (LIVE) {
@@ -215,6 +216,6 @@ const newest = () => Math.max(...api.messages.keys());
     telegram.stopPolling();
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(workspace, { recursive: true, force: true });
-    console.log(`EV-051 TelegramTurnLifecycle: PASS messages=${api.messages.size} openOnUserMessage=true commentaryEdits=true finalReplacesLive=true finalNotifies=true vscodeReplyStopsPolling=true queuedMessageClosesTurn=true telegramReplyUntouched=true heartbeat=none statusInPlace=true stuckWarning=true`);
+    console.log(`EV-051 TelegramTurnLifecycle: PASS messages=${api.messages.size} openOnUserMessage=true commentaryEdits=true finalReplacesLive=true finalNotifies=true vscodeReplyStopsPolling=true queuedMessageClosesTurn=true telegramReplyUntouched=true heartbeat=none statusInPlace=true stuckWarning=true usageInStatus=true usageInFinal=true`);
     process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

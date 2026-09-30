@@ -59,8 +59,8 @@ export function liveCommentaryHtml(workspaceName: string, prompt: string, items:
     return body;
 }
 
-/** What the extension knows about the running turn, for the periodic status line. */
-export interface TurnActivity { lastActivityAt: number; requests: number }
+/** What the extension knows about the running turn: the chat banner's numbers, for the status line and the final header. */
+export interface TurnActivity { lastActivityAt: number; requests: number; dollars?: number; lastIn?: number; turnOut?: number }
 
 const STUCK_MS = 5 * 60 * 1000;
 
@@ -69,11 +69,20 @@ function minutes(ms: number): string {
     return m < 1 ? `${Math.max(0, Math.round(ms / 1000))}s` : `${m}m`;
 }
 
+function tokens(n: number): string {
+    return n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n);
+}
+
+/** Same facts, same order as the chat banner: requests · $ · last in / turn out. */
+export function usageLine(activity: TurnActivity): string {
+    return `${activity.requests} request${activity.requests === 1 ? '' : 's'} · <b>$${(activity.dollars ?? 0).toFixed(2)}</b> · ${tokens(activity.lastIn ?? 0)} last in / ${tokens(activity.turnOut ?? 0)} turn out`;
+}
+
 /** Every tick while a turn is live: how long it has run and when the agent last did anything; warns when it looks stuck. */
 export function statusFooter(now: number, turnStartedAt: number, activity: TurnActivity): string {
     const last = Math.max(activity.lastActivityAt, turnStartedAt);
     const idle = now - last;
-    const facts = `⏱ ${clock(now).slice(0, 5)} · working ${minutes(now - turnStartedAt)} · ${activity.requests} request${activity.requests === 1 ? '' : 's'} · last activity ${minutes(idle)} ago`;
+    const facts = `⏱ ${clock(now).slice(0, 5)} · working ${minutes(now - turnStartedAt)} · ${usageLine(activity)} · last activity ${minutes(idle)} ago`;
     return idle >= STUCK_MS ? `${facts}\n⚠️ <b>No activity for ${minutes(idle)}</b> — the agent may be stuck or errored.` : facts;
 }
 
@@ -119,7 +128,8 @@ export class TelegramLiveCommentary {
             if (!poster || this.messageId === undefined || this.finished) { return false; }
             this.cancelPending();
             this.stopTicker();
-            const head = liveCommentaryHtml(this.workspaceName, this.turn.prompt, this.turn.items, 'final', 1800);
+            const usage = this.options.activity ? `💰 ${usageLine(this.options.activity())}` : '';
+            const head = liveCommentaryHtml(this.workspaceName, this.turn.prompt, this.turn.items, 'final', 1800, usage);
             const ok = await poster.finishLive(this.messageId, head, finalMarkdown, replyTaskId);
             if (ok) { this.finished = true; }
             return ok;

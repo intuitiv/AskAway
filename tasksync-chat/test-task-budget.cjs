@@ -39,8 +39,13 @@ fs.mkdirSync(path.join(workspace, '.specify'), { recursive: true });
 fs.writeFileSync(path.join(workspace, '.specify', 'feature.json'), JSON.stringify({ feature_directory: small }));
 assert.match(run(workspace).stdout, /001-small: PASS/, 'defaults to the active spec');
 
+const early = path.join(workspace, 'specs', '002-just-specified');
+fs.mkdirSync(early, { recursive: true });
+assert.match(run(workspace, [early]).stdout, /002-just-specified: PASS open=0\/12/, 'a spec before its tasks stage has nothing to budget');
+
 const real = run(path.join(__dirname, '..'));
-assert.match(real.stdout, /TASK-BUDGET 001-async-subagent-runner: (PASS|FAIL) open=\d+\/12/, 'runs on this repo\'s active spec');
+const activeSlug = path.basename(JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.specify', 'feature.json'), 'utf8')).feature_directory);
+assert.match(real.stdout, new RegExp(`TASK-BUDGET ${activeSlug}: (PASS|FAIL) open=\\d+/12`), 'runs on this repo\'s active spec');
 assert.equal(real.status, 0, `this repo's active spec is within budget: ${real.stdout}`);
 
 const skTasks = path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User', 'prompts', 'sk.tasks.prompt.md');

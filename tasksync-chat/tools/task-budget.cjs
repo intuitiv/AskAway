@@ -35,7 +35,9 @@ if (require.main === module) {
         const feature = JSON.parse(fs.readFileSync(path.join(root, '.specify', 'feature.json'), 'utf8'));
         specDir = path.resolve(root, feature.feature_directory);
     }
-    const result = budget(fs.readFileSync(path.join(specDir, 'tasks.md'), 'utf8'), { maxOpen: flag('--max-open', 12), maxCycle: flag('--max-cycle', 6) });
+    const tasksFile = path.join(specDir, 'tasks.md');
+    // A spec that has not reached the tasks stage has no open tasks to budget.
+    const result = budget(fs.existsSync(tasksFile) ? fs.readFileSync(tasksFile, 'utf8') : '', { maxOpen: flag('--max-open', 12), maxCycle: flag('--max-cycle', 6) });
     const line = `TASK-BUDGET ${path.basename(specDir)}: ${result.pass ? 'PASS' : 'FAIL'} open=${result.open}/${result.maxOpen} largestCycle=${result.largest}`
         + (result.overCycles.length ? ` overCycles=${result.overCycles.join(',')}` : '');
     console.log(line);

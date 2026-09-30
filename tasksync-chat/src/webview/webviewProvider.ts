@@ -17,6 +17,8 @@ import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
 import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
 import { noteRequestStart } from '../observability/cacheClock';
+import { LogCursor, readLogIncrement } from '../observability/logCursor';
+import type { TurnActivity } from '../commentary/telegramLive';
 import { sharedCommentaryStore } from '../workers/workerHost';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
@@ -583,7 +585,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _observabilityPollInterval: ReturnType<typeof setInterval> | null = null;
     private readonly _OBSERVABILITY_POLL_MS = 2000;
     /** Tracks byte + line offsets already consumed per log file so we only read new lines on each poll. */
-    private readonly _logFileReadOffsets = new Map<string, { byteOffset: number; lineCount: number }>();
+    private readonly _logFileReadOffsets = new Map<string, LogCursor>();
     /** Guards one-time load of persisted read offsets (survives extension restart → no re-scan / duplicate appends). */
     private _logOffsetsLoaded = false;
     /** Persisted per-file read cursors for the ALL-workspace global credit ingest (separate from the workspace scan). */
@@ -2098,9 +2100,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         return this._observabilityScanPromise;
     }
 
-    /** For the Telegram status line: the newest model request of this window's chat and how many the turn has made. */
-    public getTurnActivity(): { lastActivityAt: number; requests: number } {
-        return { lastActivityAt: this._newestRequestTs, requests: this._turnRequests.length };
+    /** For the Telegram status line: the chat banner's turn numbers plus when the agent last made a model request. */
+    public getTurnActivity(): TurnActivity {
+        const turn = this._deriveLastRequest();
+        const latest = this._turnRequests[this._turnRequests.length - 1];
+        return { lastActivityAt: this._newestRequestTs, requests: this._turnRequests.length,
+            dollars: turn.nanoAiu / 1e9 / 100, lastIn: latest?.inputTokens ?? 0, turnOut: turn.outputTokens };
     }
 
     public async getTurnMetricsSnapshot(): Promise<{ latestInputTokens: number; turnOutputTokens: number; turnNanoAiu: number }> {
@@ -2271,36 +2276,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 let lineIndexBase = 0;
                 try {
                     // Incremental read: only consume bytes added since the last poll.
-                    // This avoids re-scanning the entire (potentially 10k+ line) JSONL on every tick.
-                    const entry = this._logFileReadOffsets.get(logFile);
-                    const knownOffset = entry?.byteOffset ?? 0;
-                    const knownLineCount = entry?.lineCount ?? 0;
-                    const fd = await fs.promises.open(logFile, 'r');
-                    try {
-                        const fileSize = (await fd.stat()).size;
-                        if (fileSize > knownOffset) {
-                            const buf = Buffer.allocUnsafe(fileSize - knownOffset);
-                            await fd.read(buf, 0, buf.length, knownOffset);
-                            // Only consume up to the last complete line (newline boundary) so a
-                            // partially-flushed trailing line isn't split across polls, which would
-                            // corrupt line indexing and JSON parsing.
-                            const lastNl = buf.lastIndexOf(0x0a);
-                            if (lastNl < 0) {
-                                // No complete line yet; wait for more data.
-                                continue;
-                            }
-                            raw = buf.toString('utf8', 0, lastNl + 1);
-                            lineIndexBase = knownLineCount;
-                            // Advance offset to the newline boundary; count only complete lines.
-                            const consumedLines = raw.split('\n').length - 1; // trailing '' after final \n
-                            this._logFileReadOffsets.set(logFile, {
-                                byteOffset: knownOffset + lastNl + 1,
-                                lineCount: knownLineCount + consumedLines
-                            });
-                        }
-                    } finally {
-                        await fd.close();
-                    }
+                    const increment = await readLogIncrement(logFile, this._logFileReadOffsets.get(logFile));
+                    this._logFileReadOffsets.set(logFile, increment.cursor);
+                    raw = increment.raw;
+                    lineIndexBase = increment.lineIndexBase;
                 } catch {
                     continue;
                 }
@@ -3114,10 +3093,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._logOffsetsLoaded = true;
         try {
             const raw = await fs.promises.readFile(this._getLogOffsetsPath(), 'utf8');
-            const parsed = JSON.parse(raw) as Record<string, { byteOffset: number; lineCount: number }>;
+            const parsed = JSON.parse(raw) as Record<string, LogCursor>;
             for (const [file, off] of Object.entries(parsed)) {
                 if (off && typeof off.byteOffset === 'number' && typeof off.lineCount === 'number') {
-                    this._logFileReadOffsets.set(file, { byteOffset: off.byteOffset, lineCount: off.lineCount });
+                    this._logFileReadOffsets.set(file, { byteOffset: off.byteOffset, lineCount: off.lineCount, headHash: off.headHash, fileId: off.fileId });
                 }
             }
         } catch { /* no persisted offsets yet */ }
@@ -3125,7 +3104,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private async _saveLogOffsets(): Promise<void> {
         try {
-            const obj: Record<string, { byteOffset: number; lineCount: number }> = {};
+            const obj: Record<string, LogCursor> = {};
             for (const [file, off] of this._logFileReadOffsets.entries()) { obj[file] = off; }
             const p = this._getLogOffsetsPath();
             await fs.promises.mkdir(path.dirname(p), { recursive: true });
@@ -6894,8 +6873,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 <div class="specs-header">
                     <div class="specs-active" id="specs-active-chip"></div>
                     <div class="specs-velocity" id="specs-workspace-velocity"></div>
+                    <div class="specs-toggle" title="Show specs other than the active one">
+                        <span>All</span>
+                        <div class="toggle-switch specs-toggle-switch" id="specs-show-all" role="switch" aria-checked="false" tabindex="0"></div>
+                    </div>
                     <div class="specs-toggle" title="Include completed specs, cycles, and tasks">
-                        <span>Show completed</span>
+                        <span>Completed</span>
                         <div class="toggle-switch specs-toggle-switch" id="specs-show-done" role="switch" aria-checked="false" tabindex="0"></div>
                     </div>
                     <button class="specs-refresh-btn" id="specs-refresh-btn" title="Rescan specs/">

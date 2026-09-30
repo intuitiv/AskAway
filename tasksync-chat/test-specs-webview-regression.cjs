@@ -125,7 +125,9 @@ assert.match(provider, /id="common-cache-age"/);
 assert.match(provider, /id="cost-attribution-toggle"/);
 assert.match(provider, /id="specs-workspace-velocity"/);
 assert.match(provider, /id="specs-show-done"/);
-assert.match(provider, />Show completed</);
+assert.match(provider, />Completed</);
+assert.match(provider, /id="specs-show-all"/);
+assert.match(provider, />All</);
 assert.match(provider, /role="switch"/);
 assert.match(webview, /Agent throughput/);
 assert.match(webview, /completedWorkCount === 0/);
@@ -138,12 +140,17 @@ for (const selector of ['.conversation-health', '.spec-work-phase', '.spec-cycle
 console.log('EV-SPECS-WEBVIEW-REGRESSION: PASS banner=last-input+turn-output hierarchy=phase>cycle>task actions=cycle+task');
 
 // Regression (reviewer 2026-09-28, first fixed 2026-08-19): the active spec is never hidden by the Completed filter.
-const shown = hierarchyContext.visibleSpecs([
+const specs = [
     { slug: '001-active', stage: 'done', active: true },
     { slug: '002-finished', stage: 'done', active: false },
     { slug: '003-open', stage: 'in-progress', active: false },
-], false).map((s) => s.slug);
-assert.deepEqual(shown, ['001-active', '003-open'], 'done-but-active stays visible; other done specs hide');
-assert.equal(hierarchyContext.visibleSpecs([{ slug: 'x', stage: 'done' }], true).length, 1, 'Show completed shows everything');
-assert.match(webview, /var specs = visibleSpecs\(all, specsShowDone\);/, 'renderSpecs uses the rule');
-console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true otherDoneHidden=true');
+];
+const slugs = (done, all) => hierarchyContext.visibleSpecs(specs, done, all).map((s) => s.slug);
+assert.deepEqual(slugs(false, false), ['001-active'], 'default: only the active spec, even when it is done');
+assert.deepEqual(slugs(false, true), ['001-active', '003-open'], 'All: other open specs; done ones still need Completed');
+assert.deepEqual(slugs(true, true), ['001-active', '002-finished', '003-open'], 'All + Completed shows everything');
+assert.deepEqual(slugs(true, false), ['001-active'], 'Completed alone does not reveal other specs');
+assert.deepEqual(hierarchyContext.visibleSpecs([{ slug: 'x', stage: 'done' }, { slug: 'y', stage: 'planned' }], false, false).map((s) => s.slug), ['y'],
+    'with no active spec, open specs show so the tab is never empty by accident');
+assert.match(webview, /var specs = visibleSpecs\(all, specsShowDone, specsShowAll\);/, 'renderSpecs uses the rule');
+console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=true doneNeedsCompleted=true noActiveShowsOpen=true');

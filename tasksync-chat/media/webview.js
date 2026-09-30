@@ -5128,6 +5128,7 @@
     // ---- Spec Kit overview tab ----
     var specsState = { enabled: false, activeSlug: '', specs: [] };
     var specsShowDone = false;
+    var specsShowAll = false;
     var specsExpanded = {};
     var specsWorkExpanded = {};
 
@@ -5612,6 +5613,17 @@
                 if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCompletedSpecs(); }
             });
         }
+        var showAll = document.getElementById('specs-show-all');
+        if (showAll) {
+            var toggleAllSpecs = function() {
+                specsShowAll = !specsShowAll;
+                renderSpecs();
+            };
+            showAll.addEventListener('click', toggleAllSpecs);
+            showAll.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAllSpecs(); }
+            });
+        }
         var list = document.getElementById('specs-list');
         if (list) {
             list.addEventListener('click', onSpecsListClick);
@@ -5748,8 +5760,14 @@
     }
 
     // The active spec is never hidden: finishing its tasks does not mean the reviewer stopped working on it.
-    function visibleSpecs(all, showDone) {
-        return showDone ? all : all.filter(function(s) { return s.stage !== 'done' || s.active; });
+    // Other specs show only with "All" on (or when no spec is active); done ones additionally need "Completed".
+    function visibleSpecs(all, showDone, showAll) {
+        var hasActive = all.some(function(s) { return s.active; });
+        return all.filter(function(s) {
+            if (s.active) return true;
+            if (hasActive && !showAll) return false;
+            return showDone || s.stage !== 'done';
+        });
     }
 
     function renderSpecs() {
@@ -5787,8 +5805,15 @@
             var lbl = toggle.parentElement;
             if (lbl) lbl.classList.toggle('hidden', completedWorkCount === 0);
         }
+        var allToggle = document.getElementById('specs-show-all');
+        if (allToggle) {
+            allToggle.setAttribute('aria-checked', specsShowAll ? 'true' : 'false');
+            allToggle.classList.toggle('active', specsShowAll);
+            var others = all.filter(function(s) { return !s.active; }).length;
+            if (allToggle.parentElement) allToggle.parentElement.title = 'Show the ' + others + ' spec' + (others === 1 ? '' : 's') + ' other than the active one';
+        }
 
-        var specs = visibleSpecs(all, specsShowDone);
+        var specs = visibleSpecs(all, specsShowDone, specsShowAll);
         if (!specs.length) {
             list.innerHTML = '<div class="specs-empty">' +
                 (all.length ? 'All specs are complete.' : 'No specs found under specs/.') + '</div>';
