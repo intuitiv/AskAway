@@ -5759,6 +5759,29 @@
         }).join('') + '</div>';
     }
 
+    var SPEC_STAGE_COMMAND = { Plan: '/sk.plan', Tasks: '/sk.tasks', Implement: '/sk.implement' };
+
+    // Always visible on a spec card: Spec Kit stage, suggested next step, the stage's action and /sk.check.
+    function renderStageBar(spec, stalenessAvailable) {
+        var stage = spec.specKitStage || '';
+        if (!stage) return '';
+        var source = spec.stageSource === 'records' ? 'stored' : 'from artifacts';
+        var command = SPEC_STAGE_COMMAND[spec.stageButton] || '';
+        var stale = Array.isArray(spec.stale) ? spec.stale : [];
+        return '<div class="spec-stage-bar">' +
+            '<span class="spec-stage-name" title="Stage ' + escapeHtml(source) + '">Stage <strong>' + escapeHtml(stage) + '</strong></span>' +
+            '<span class="spec-next-step">Next <code class="inline-code">' + escapeHtml(spec.nextStep || '') + '</code></span>' +
+            (command ? '<button class="spec-action spec-stage-action" data-act="sk" data-cmd="' + command + '">' + escapeHtml(command) + '</button>' : '') +
+            '<button class="spec-action spec-stage-action" data-act="sk" data-cmd="/sk.check">/sk.check</button>' +
+            (spec.mismatch ? '<div class="spec-stage-warn"><span class="codicon codicon-warning"></span> Stage mismatch: ' + escapeHtml(spec.mismatch.reason) + '</div>' : '') +
+            stale.map(function(entry) {
+                return '<div class="spec-stale"><span class="codicon codicon-history"></span> ' + escapeHtml(entry.artifact) + ' is stale: ' +
+                    escapeHtml(entry.upstream) + (entry.reason === 'upstream-dirty' ? ' has uncommitted edits' : ' changed later') + '</div>';
+            }).join('') +
+            (stalenessAvailable === false ? '<div class="spec-stale specs-muted">Staleness unknown: not a git repository</div>' : '') +
+            '</div>';
+    }
+
     // The active spec is never hidden: finishing its tasks does not mean the reviewer stopped working on it.
     // Other specs show only with "All" on (or when no spec is active); done ones additionally need "Completed".
     function visibleSpecs(all, showDone, showAll) {
@@ -5858,10 +5881,11 @@
                 '    <span class="spec-id">' + escapeHtml(spec.id) + '</span>' +
                 '    <span class="spec-title">' + escapeHtml(spec.title) + '</span>' +
                 (spec.clarifications ? '<span class="spec-dot" title="' + spec.clarifications + ' open [NEEDS CLARIFICATION]">!</span>' : '') +
-                '    <span class="spec-badge spec-stage-' + spec.stage + '">' + (SPEC_STAGE_LABEL[spec.stage] || spec.stage) + '</span>' +
+                '    <span class="spec-badge spec-stage-' + escapeHtml(spec.specKitStage || spec.stage) + '">' + escapeHtml(spec.specKitStage || SPEC_STAGE_LABEL[spec.stage] || spec.stage) + '</span>' +
                 '    <span class="spec-pct">' + pct + '%</span>' +
                 '  </div>' +
                 '  <div class="spec-bar"><div class="spec-bar-fill" style="width:' + pct + '%"></div></div>' +
+                renderStageBar(spec, specsState.stalenessAvailable) +
                 next +
                 body +
                 '</div>';
@@ -5885,6 +5909,10 @@
             e.preventDefault();
             e.stopPropagation();
             prefillChat('/implement ' + btn.getAttribute('data-ref'));
+        } else if (act === 'sk') {
+            e.preventDefault();
+            e.stopPropagation();
+            prefillChat(btn.getAttribute('data-cmd') + ' ' + id);
         } else if (act === 'start') {
             prefillChat('/start ' + id);
         } else if (act === 'continue') {

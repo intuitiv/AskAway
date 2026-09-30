@@ -154,3 +154,48 @@ assert.deepEqual(hierarchyContext.visibleSpecs([{ slug: 'x', stage: 'done' }, { 
     'with no active spec, open specs show so the tab is never empty by accident');
 assert.match(webview, /var specs = visibleSpecs\(all, specsShowDone, specsShowAll\);/, 'renderSpecs uses the rule');
 console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=true doneNeedsCompleted=true noActiveShowsOpen=true');
+// 005 US1: every spec card shows its Spec Kit stage, next step, the stage's action and /sk.check, plus mismatch and
+// staleness — fed by the real scanner on a sample repo (SC-001, SC-002).
+{
+    const os = require('node:os');
+    const ts = require(path.join(root, 'node_modules', 'typescript'));
+    const { makeSampleRepo } = require('./test-fixtures/specs-sample.cjs');
+    const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-stage-bar-'));
+    for (const name of ['stages', 'runRecords', 'staleness', 'specKitScanner']) {
+        fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(fs.readFileSync(path.join(root, 'src', 'specs', `${name}.ts`), 'utf8'),
+            { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText);
+    }
+    const { scanSpecs } = require(path.join(buildDir, 'specKitScanner.js'));
+    const { appendRunRecord } = require(path.join(buildDir, 'runRecords.js'));
+    const repo = makeSampleRepo({ git: true });
+    appendRunRecord(repo.root, '003-planned', { command: '/sk.tasks', stageAfter: 'tasks' });
+    repo.write('specs/005-tasked/spec.md', '# Feature Specification: Tasked\n\nedited\n');
+    const scan = scanSpecs(repo.root);
+    const bars = Object.fromEntries(scan.specs.map((s) => [s.slug, hierarchyContext.renderStageBar(s, scan.stalenessAvailable)]));
+    for (const [slug, bar] of Object.entries(bars)) {
+        assert.match(bar, /Stage <strong>[a-z]+<\/strong>/, `${slug} shows a stage`);
+        assert.match(bar, /data-cmd="\/sk\.check"/, `${slug} always offers /sk.check`);
+        assert.match(bar, /Next <code/, `${slug} suggests a next step`);
+    }
+    assert.match(bars['001-specified'], /Stage <strong>specify<\/strong>.*\/sk\.check \(clarify\).*data-cmd="\/sk\.plan"/s, 'scenario 1');
+    assert.match(bars['003-planned'], /Stage mismatch: stored stage tasks needs tasks\.md/, 'scenario 2');
+    assert.match(bars['005-tasked'], /plan\.md is stale: spec\.md has uncommitted edits/, 'dirty upstream shown');
+    assert.match(bars['005-tasked'], /tasks\.md is stale: spec\.md has uncommitted edits/);
+    assert.doesNotMatch(bars['001-specified'], /stale/);
+    const plain = makeSampleRepo();
+    const plainScan = scanSpecs(plain.root);
+    assert.match(hierarchyContext.renderStageBar(plainScan.specs[0], plainScan.stalenessAvailable), /not a git repository/);
+    assert.match(webview, /renderStageBar\(spec, specsState\.stalenessAvailable\)/, 'renderSpecs puts the stage bar on every card');
+    assert.match(webview, /act === 'sk'/, 'stage buttons prefill their /sk.* command');
+    assert.match(css, /\.spec-stage-bar/);
+
+    // Scenario 5: ten specs, three completed → only the active one with both switches off.
+    const ten = Array.from({ length: 10 }, (_, i) => ({ slug: `0${i}`, stage: i < 3 ? 'done' : 'implement', active: i === 5 }));
+    assert.deepEqual(hierarchyContext.visibleSpecs(ten, false, false).map((s) => s.slug), ['05']);
+    assert.equal(hierarchyContext.visibleSpecs(ten, false, true).length, 7);
+    assert.equal(hierarchyContext.visibleSpecs(ten, true, true).length, 10);
+    plain.cleanup();
+    repo.cleanup();
+    fs.rmSync(buildDir, { recursive: true, force: true });
+    console.log('EV-SPECS-STAGE-BAR: PASS allCardsStage+next+check=true mismatch=true staleDirty=true noGit=unknown switches=1/7/10');
+}

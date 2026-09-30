@@ -5248,6 +5248,20 @@ button#send-btn:disabled {
     margin-right: 5px;
 }
 
+.spec-stage-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    margin-top: 4px;
+    padding-left: 17px;
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+}
+.spec-stage-bar .spec-stage-action { font-size: 10px; padding: 1px 6px; }
+.spec-stage-warn, .spec-stale { flex-basis: 100%; }
+.spec-stage-warn { color: var(--vscode-editorWarning-foreground); }
+
 .spec-meta {
     display: flex;
     flex-wrap: wrap;

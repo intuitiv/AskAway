@@ -41,8 +41,8 @@ description: "Task list for 005 Spec Kit Guided Flow"
 
 **Independent Test**: spec.md US1 — fixture specs at each stage render stage/button/`/sk.check`/next step; an uncommitted upstream edit marks the downstream artifact stale; a stored stage past a missing artifact is flagged.
 
-- [ ] T006 [P] [US1] `src/specs/staleness.ts` (D-6, D-7: one `git log --name-only` + `git status --porcelain` per spec, ancestry compare, `unavailable` outside git) wired into the scanner as `spec.stale[]`, with `test-spec-staleness.cjs` (US1 scenarios 3 and 4) in `test:workers`
-- [ ] T007 [US1] Stage bar in the Specs tab: `renderStageBar` in `media/webview.js` (stage, stage button, `/sk.check`, next step, mismatch + stale badges), button handlers in `src/webview/webviewProvider.ts` sending the `/sk.*` command; retire the derived `stage` label; extend `test-specs-webview-regression.cjs` for US1 scenarios 1, 2 and 5
+- [x] T006 [P] [US1] `src/specs/staleness.ts` (D-6, D-7: one `git log --name-only` + `git status --porcelain` per spec, ancestry compare, `unavailable` outside git) wired into the scanner as `spec.stale[]`, with `test-spec-staleness.cjs` (US1 scenarios 3 and 4) in `test:workers`
+- [x] T007 [US1] Stage bar in the Specs tab: `renderStageBar` in `media/webview.js` (stage, stage button, `/sk.check`, next step, mismatch + stale badges), button handlers in `media/webview.js` (`act === 'sk'`) prefilling the `/sk.*` command; card badge shows the Spec Kit stage (derived `stage` kept only for the Completed filter); extend `test-specs-webview-regression.cjs` for US1 scenarios 1, 2 and 5
 
 **Checkpoint**: US1 Independent Test passes; SC-001, SC-002 checked; story PR ready.
 
