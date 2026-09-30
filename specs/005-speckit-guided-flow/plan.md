@@ -63,7 +63,7 @@ Every question found while planning, with its answer. Product answers come from 
 | D-1 | Does the stored stage mean the step last completed or the next one? | Last completed step. `specify` + no plan → next is `/sk.check` (clarify). | Matches US1 scenario 1 and US3 scenario 3. | spec.md US1/US3 |
 | D-2 | Where is the stored stage kept without two writers on one file? | Each run record carries `stageAfter`; the stored stage is the `stageAfter` of the newest run record (by `endedAt`, tie → file name). No separate stage file. | FR-014 "one file per run" makes a shared stage file a second writer; deriving from run records keeps one writer per file. | FR-001, FR-014, Rules "per-spec data" |
 | D-3 | What is the stage when a spec has no run records (older specs)? | Stage implied by artifacts (D-4), marked `source: "artifacts"`; no mismatch is shown. | Older specs must still render (FR-010) and nothing was stored for them. | FR-005, FR-010 |
-| D-4 | How are artifacts mapped to an implied stage? | `tasks.md` all ticked → `implement` done; any tasks → `tasks`; `checklists/*.md` present with plan → `checklist`; `plan.md` → `plan`; `## Clarifications` session in spec → `clarify`; `spec.md` → `specify`. `analyze` and `converge` are only known from run records (they write no artifact). | Spec Kit stores nothing else; gates without artifacts need the record. | Spec Kit templates, FR-005 |
+| D-4 | How are artifacts mapped to an implied stage? | Any ticked task → `implement`; `tasks.md` with no ticks → `tasks`; `checklists/*.md` with plan → `checklist`; `plan.md` → `plan`; `## Clarifications` session in spec → `clarify`; `spec.md` → `specify`. `analyze` and `converge` are only known from run records (they write no artifact). | Spec Kit stores nothing else; gates without artifacts need the record. | Spec Kit templates, FR-005 |
 | D-5 | What is a mismatch? | Stored stage requires an artifact that is missing (e.g. stored `tasks`, no `tasks.md`), or implied stage is ahead of stored stage by more than one step. Shown with both names; next step follows the artifacts. | Edge case "Stored stage points past a missing artifact". | spec.md Edge Cases |
 | D-6 | Staleness dependency graph? | `spec.md` → `plan.md`, `checklists/*`; `plan.md` → `research.md`, `data-model.md`, `contracts/**`, `quickstart.md`, `tasks.md`; `spec.md` → `tasks.md`. A dependent is stale when any upstream changed later. | Mirrors Spec Kit's generation order. | FR-006 |
 | D-7 | How is "changed later by git commit order" computed? | For each artifact: dirty (`git status --porcelain`) or untracked → rank ∞. Else last commit touching it (`git log -1 --format=%H -- <file>`); B is later than A when A ≠ B and `git merge-base --is-ancestor A B`. Equal ranks are not stale; two dirty files are equal. Non-git workspace → staleness off, shown as "no git". | Commit order, not mtimes, per reviewer; ancestry handles rebases and clock skew. | FR-006, Assumptions |
@@ -233,3 +233,14 @@ tasksync-chat/
 ## Complexity Tracking
 
 None.
+
+## Later
+
+Moved out of tasks.md by the task budget; each becomes tasks when US1–US2 close.
+
+- US3: `tools/spec-facts.cjs` per contracts/spec-facts-cli.md + test; routing rules (D-8) in AskAway Build agent and `sk.continue`/`sk.handoff`/`/pr-daily`; routing eval (10 labelled messages, ≥9/10).
+- US4: Stop-hook run-record writer; worker runs write records; one-time ledger import (D-16); `renderSpecFacts` on the card; test for concurrent writers, card totals, Telegram cost+tokens.
+- US5: `src/specs/checkpoint.ts` verify packet + record; active PR via `gh` (D-12, D-13); test with stubbed worker/gh (PASS→ready, FAIL/BLOCKED→not ready, new story→new PR).
+- US6: router admission (track cap, glob overlap, `allowedPaths` required); `scopeCheck`; orchestrator PreToolUse guard (D-19); orchestrator agent text; `test-orchestrator-dispatch.cjs`.
+- US7: `src/specs/readiness.ts` (`readinessLines`, PASS without evidence → BLOCKED); used by Specs tab, Telegram, `/pr-daily`; `test-readiness-surfaces.cjs`.
+- Polish: Storybook stories for the new render blocks; README "Guided flow"; quickstart run + deploy.

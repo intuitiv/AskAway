@@ -200,3 +200,13 @@ tasksync-chat/
 ## Complexity Tracking
 
 None.
+
+## Later
+
+Moved out of tasks.md by the task budget; each becomes tasks after US1's go.
+
+- US2: `[cloud]`/`[local: reason]` rules in the `/sk.tasks` asset; `buildPacket`/`buildComment` (contracts/packet.md); `queueTask` + `refusalFor` (C-21); "Queue in cloud" button + model line (C-3); `test-cloud-queue.cjs` (9 fields, ≤5-line comment, refusals before writes).
+- US3: `pollPr` (C-4, C-6); pure `deriveCloudState` (data-model transitions); feed adapter to `traceRowsHtml` (C-20); Telegram live + `digestLines` (C-18); `test-cloud-state.cjs` replaying the US1 fixture.
+- US4: `acceptCloudTask` (worktree, verify worker, `outOfScope`, Status-line check); tick + run record + push on pass; `test-cloud-accept.cjs` on pass/fail/out-of-scope fixtures.
+- US5: overlap/one-at-a-time hold; conflict detection; ceilings + No response; commit status `askaway/cloud-task` + "merge blocked" line; `test-cloud-safety.cjs`.
+- Polish: Storybook task-row states and digest; README "Cloud tasks" incl. reviewer setup; quickstart + deploy.

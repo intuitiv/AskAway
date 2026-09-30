@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { readRunRecords, SpecFacts, specFacts } from './runRecords';
+import { impliedStage, nextStep, SpecArtifacts, SpecKitStage, stageButton, stageMismatch, StageMismatch } from './stages';
 
 /** Derived from which artifacts exist and how many tasks are ticked — Spec Kit stores no status field. */
 export type SpecStage =
@@ -22,6 +24,9 @@ export interface SpecTaskSummary {
     done: boolean;
     phase: string;
     cycleId: string;
+    /** Leading `[...]` markers, e.g. `P`, `US1`, `cloud`, `local: needs mesh`. */
+    tags: string[];
+    story: string;
 }
 
 export interface SpecCycleTask {
@@ -75,6 +80,15 @@ export interface SpecSummary {
     completedTasksByDay: Array<{ day: string; taskIds: string[] }>;
     pullRequestUrl: string;
     cost?: { requests: number; nanoAiu: number; turns: number; days: number };
+    /** Spec Kit stage: stored (newest run record) or implied by artifacts when nothing is stored. */
+    specKitStage: SpecKitStage;
+    stageSource: 'records' | 'artifacts';
+    impliedStage: SpecKitStage;
+    mismatch: StageMismatch | null;
+    nextStep: string;
+    stageButton: string;
+    artifacts: SpecArtifacts;
+    facts: SpecFacts;
 }
 
 export interface SpecScanResult {
@@ -174,7 +188,7 @@ function countClarifications(...texts: string[]): number {
 
 function stripTaskTags(text: string): string {
     return text
-        .replace(/\[(P|US\d+|CY-\d+|mesh|[A-Z]{1,4}\d*)\]/gi, '')
+        .replace(/\[(P|US\d+|CY-\d+|mesh|cloud|local:[^\]]*|[A-Z]{1,4}\d*)\]/gi, '')
         .replace(/^\s*\*{4}\s*/, '')
         .replace(/\s{2,}/g, ' ')
         .trim();
@@ -200,6 +214,17 @@ function parseCompletedTasksByDay(implementationText: string): Array<{ day: stri
         days.set(cells[2], tasks);
     }
     return [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, taskIds]) => ({ day, taskIds: [...taskIds] }));
+}
+
+function parseTaskTags(text: string): string[] {
+    const tags: string[] = [];
+    const lead = /^\s*\[([^\]]+)\]/;
+    let rest = text;
+    for (let m = lead.exec(rest); m; m = lead.exec(rest)) {
+        tags.push(m[1].trim());
+        rest = rest.slice(m[0].length);
+    }
+    return tags;
 }
 
 interface ParsedTask extends SpecTaskSummary { }
@@ -234,12 +259,15 @@ function parseTasks(text: string): TaskParse {
         const isDone = task[1].toLowerCase() === 'x';
         const rawText = task[3] || '';
         const cycleMatch = /\[CY-(\d+)\]/i.exec(rawText);
+        const tags = parseTaskTags(rawText);
         tasks.push({
             id: task[2] || '',
             text: stripTaskTags(rawText),
             done: isDone,
             phase: current?.name || '',
-            cycleId: cycleMatch ? `CY-${cycleMatch[1].padStart(3, '0')}` : ''
+            cycleId: cycleMatch ? `CY-${cycleMatch[1].padStart(3, '0')}` : '',
+            tags,
+            story: (tags.find(tag => /^US\d+$/i.test(tag)) || '').toUpperCase()
         });
         total++;
         if (current) { current.total++; }
@@ -295,6 +323,14 @@ function deriveStage(o: {
     return 'specified';
 }
 
+function hasMarkdown(dir: string): boolean {
+    try {
+        return fs.readdirSync(dir).some(name => name.endsWith('.md'));
+    } catch {
+        return false;
+    }
+}
+
 function readActiveSlug(workspaceRoot: string): string {
     const raw = readTextFile(path.join(workspaceRoot, '.specify', 'feature.json'));
     if (!raw) { return ''; }
@@ -340,6 +376,18 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
 
         const startedAt = oldestMtime(dir);
         const lastActivity = newestMtime(dir);
+        const artifacts: SpecArtifacts = {
+            spec: specText.length > 0,
+            clarified: /^##\s+Clarifications\b/m.test(specText),
+            plan: hasPlan,
+            checklists: hasMarkdown(path.join(dir, 'checklists')),
+            tasks: hasTasks,
+            tasksTotal: parsed.total,
+            tasksDone: parsed.done
+        };
+        const { records, skipped } = readRunRecords(workspaceRoot, entry.name);
+        const facts = specFacts(records, skipped);
+        const specKitStage = facts.storedStage || impliedStage(artifacts);
         specs.push({
             id: (/^\d+/.exec(entry.name) || [''])[0],
             slug: entry.name,
@@ -365,7 +413,15 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
             branch: extractFeatureBranch(tasksText),
             implementationRecords: countLogRows(implementationText),
             completedTasksByDay: parseCompletedTasksByDay(implementationText),
-            pullRequestUrl: extractPullRequestUrl(specText, planText, tasksText, implementationText)
+            pullRequestUrl: extractPullRequestUrl(specText, planText, tasksText, implementationText),
+            specKitStage,
+            stageSource: facts.storedStage ? 'records' : 'artifacts',
+            impliedStage: impliedStage(artifacts),
+            mismatch: facts.storedStage ? stageMismatch(facts.storedStage, artifacts) : null,
+            nextStep: nextStep(specKitStage, artifacts),
+            stageButton: stageButton(specKitStage, artifacts),
+            artifacts,
+            facts
         });
     }
 
