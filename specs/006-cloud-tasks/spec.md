@@ -13,6 +13,13 @@
 - Update the same branch (the active PR), not a new branch per task. The model should be selectable.
 - The message to the cloud agent states the stage, the task and what to do; context is referenced from committed artifacts, not repeated.
 
+## Clarifications
+
+### Session 2026-09-30
+
+- Q: What happens to a cloud task when the active PR is merged or closed mid-run? → A: Block merging the active PR while any cloud task on it is Working (reviewer chose the recommended option C; at most one merge per story, and a session is capped at 59 minutes).
+- Q: Should Actions run on cloud-agent pushes? → A: Yes, automatically: "GitHub Actions automatically will run on any PR. No much choice here." Checks on cloud pushes run without the developer; US1's live proof confirms it on a real PR.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Live proof of the cloud route (Priority: P1)
@@ -107,7 +114,7 @@ The extension prevents unsafe overlap and runaway work: no two cloud tasks run o
 
 ### Edge Cases
 
-- The active PR is merged or closed while a cloud task is Working: [NEEDS CLARIFICATION: what happens to a cloud task when the active PR is merged mid-run — (A) mark it Returned and re-queue it on the next active PR, (B) let it finish and cherry-pick its commits onto the next PR, or (C) block merging the PR while any cloud task is Working?]
+- The active PR is merged or closed while a cloud task is Working: merging is blocked while any cloud task on the active PR is Working; the Specs tab says which task and how long until its 59-minute cap. A PR closed outside the extension marks its Working tasks Returned.
 - The cloud agent opens a new branch or PR instead of pushing to the active branch: the task is marked Returned with "wrong branch" and nothing is merged automatically.
 - The developer lacks write access or the cloud agent is not enabled for the repository: queuing is refused with that reason before any commit or comment.
 - The cloud agent never responds to the comment: after a fixed wait the task shows "No response" as a blocker.
@@ -142,7 +149,7 @@ The extension prevents unsafe overlap and runaway work: no two cloud tasks run o
 - **FR-020**: Packets and comments MUST NOT contain secrets; writing MUST be refused when a secret pattern or known credential is detected.
 - **FR-021**: Queuing MUST be refused, before any commit or comment, when there is no active PR, the developer lacks write access, or the task is already queued and not finished.
 - **FR-022**: Per-task cloud facts (packet path, comment link, model, start/end time, duration, commits, state) MUST be stored per spec in `.askaway/`, mapped by spec name.
-- **FR-023**: Repository workflows on cloud-agent pushes MUST be handled as follows: [NEEDS CLARIFICATION: should the extension enable Actions runs on cloud-agent pushes automatically (changes repository configuration, costs Actions minutes, gives Checks passed/failed without the developer), or leave them off and rely only on local verification (US4)?]
+- **FR-023**: Repository workflows MUST run automatically on cloud-agent pushes to the active PR, so check results are waiting for the developer; the task status shows their pass/fail.
 
 ### Key Entities
 

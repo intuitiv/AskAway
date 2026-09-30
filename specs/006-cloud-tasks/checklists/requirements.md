@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,6 +31,6 @@
 
 ## Notes
 
-- Two [NEEDS CLARIFICATION] markers remain (Edge Cases: active PR merged mid-run; FR-023: Actions runs on cloud pushes). Resolve with `/sk.check` (clarify) before plan.
+- Both clarifications resolved 2026-09-30 (see spec Clarifications): block merge while a cloud task is Working; Actions run automatically on cloud pushes.
 - GitHub, `@copilot`, Actions and Telegram are named because they are the feature's subject and binding in 005 Rules, not implementation choices.
 - Poll vs webhooks was not raised: 005 Rules state "polls periodically" (recorded in Assumptions).
