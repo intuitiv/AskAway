@@ -117,6 +117,7 @@ const packet = (overrides = {}) => ({
     assert.equal(listed.sessionOpenAction, 'opencode --session ses_A');
     children[1].emitEvent(session('ses_A'));
     children[1].emitEvent(finish('ses_A', 900, 100, 0.001));
+    children[1].emitEvent(text('ses_A', 'Result: PASS\nEvidence: follow-up done'));
 
     // Queue: a third packet waits behind run2; cancel before start spawns nothing.
     const run3 = runtime.submit(run1.workerId, packet({ dispatchTurnId: 'turn-2', objective: 'queued follow-up' }));
@@ -174,6 +175,7 @@ const packet = (overrides = {}) => ({
     // Retirement: a worker whose context exceeds 300000 refuses further submissions.
     const big = runtime.start(packet({ workspacePath: wsB, dispatchTurnId: 'turn-4', model: 'github-copilot/gpt-5.6-luna' }));
     children[5].emitEvent(finish('ses_C', 300001, 1, 0.01));
+    children[5].emitEvent(text('ses_C', 'Result: PASS\nEvidence: big context'));
     await children[5].finish(0);
     await runtime.wait(big.runId, 5);
     assert.equal(runtime.submit(big.workerId, packet({ workspacePath: wsB })).status, 'RETIRED');

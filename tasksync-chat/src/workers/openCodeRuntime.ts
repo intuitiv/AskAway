@@ -109,6 +109,8 @@ interface RunRecord extends RunView {
 }
 
 const MAX_AUTO_RESUMES = 2;
+const UNFINISHED_FEEDBACK = 'You stopped before finishing the packet. Continue from where you stopped, run the verification command, '
+    + 'and end with the required report including a `Result: PASS | FAIL | BLOCKED` line.';
 
 /** Feedback for a worker whose command was auto-rejected, so it adapts instead of the run dying. */
 export function rejectionFeedback(rejected: string[]): string {
@@ -498,12 +500,13 @@ export class OpenCodeWorkerRuntime {
         });
         child.on('exit', (code, signal) => {
             run.evidence = lastText.trim().split('\n').slice(-MAX_EVIDENCE_LINES);
-            const silentRejection = code === 0 && !signal && run.reason !== 'cancelled by caller' && rejected.length > 0
-                && run.evidence.join('').trim() === '';
-            if (silentRejection && run.sessionId && (run.autoResumes ?? 0) < MAX_AUTO_RESUMES) {
+            // Only a `Result:` line ends a packet; text that stops mid-thought is an unfinished run, not a completion.
+            const hasResult = run.evidence.some((line) => /^\W*Result:\s*(PASS|FAIL|BLOCKED)\b/i.test(line));
+            const unfinished = code === 0 && !signal && run.reason !== 'cancelled by caller' && !hasResult;
+            if (unfinished && run.sessionId && (run.autoResumes ?? 0) < MAX_AUTO_RESUMES) {
                 run.autoResumes = (run.autoResumes ?? 0) + 1;
-                this.record(run, { type: 'approval', reason: `auto-rejected, resumed with feedback: ${rejected.join('; ')}` });
-                this.launch(run, rejectionFeedback(rejected));
+                this.record(run, { type: 'approval', reason: rejected.length ? `auto-rejected, resumed with feedback: ${rejected.join('; ')}` : 'stopped without a Result line, resumed' });
+                this.launch(run, rejected.length ? rejectionFeedback(rejected) : UNFINISHED_FEEDBACK);
                 return;
             }
             const worker = this.router.worker(run.workerId);
@@ -511,12 +514,11 @@ export class OpenCodeWorkerRuntime {
             const knowledge = [...run.evidence].reverse().find((line) => /^\W*Knowledge:/i.test(line));
             if (knowledge) { run.knowledge = knowledge.replace(/^\W*Knowledge:\s*/i, '').slice(0, 200); }
             const cancelled = run.reason === 'cancelled by caller';
-            // The packet contract requires a Result/Evidence report; a silent exit 0 proves nothing.
-            const silent = code === 0 && !signal && !cancelled && run.evidence.join('').trim() === '';
+            const silent = unfinished;
             if (silent) {
                 run.reason = rejected.length
                     ? `permission auto-rejected: ${rejected.join(', ')} (not allowed for this worker; allow it in the OpenCode config or change the packet)`
-                    : 'worker ended without a report (no Result/Evidence text)';
+                    : run.evidence.join('').trim() === '' ? 'worker ended without a report (no Result/Evidence text)' : 'worker stopped without a Result line';
             }
             const state: RunState = cancelled ? 'CANCELLED' : code === 0 && !signal && !silent ? 'COMPLETED' : 'FAILED';
             if (state === 'FAILED' && !run.reason) { run.reason = signal ? `terminated by ${signal}` : `exit code ${code}`; }

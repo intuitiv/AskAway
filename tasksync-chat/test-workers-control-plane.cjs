@@ -84,6 +84,7 @@ const packet = (overrides = {}) => ({
     await children[2].finish(2);
     const runD = runtime.start(packet({ profile: 'verify', thinking: 'low', dispatchTurnId: 'turn-3' }));
     children[3].emitEvent(start('ses_D'));
+    children[3].emitEvent(text('ses_D', 'Result: PASS'));
     await children[3].finish(0);
     runtime.router.retire(runD.workerId, 'context 300001 > 300000');
 

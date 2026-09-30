@@ -95,11 +95,18 @@ const finish = (id, input, cost) => ({ type: 'step_finish', sessionID: id, part:
     // Seen live in the commentary demo: a verify run exited 0 with no report and was treated as done.
     const silentHost = new OpenCodeWorkerRuntime(profiles, { ledgerDir: fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-silent-')), spawner });
     const silent = silentHost.start(packet('verify', 'silent run'));
-    const child = children[children.length - 1];
-    child.emitEvent({ type: 'step_start', sessionID: 'ses_Q', part: {} });
-    child.emitEvent({ type: 'tool_use', sessionID: 'ses_Q', part: { tool: 'bash', state: { status: 'completed' } } });
-    await tick();
-    child.emit('exit', 0, null);
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const child = children[children.length - 1];
+        child.emitEvent({ type: 'step_start', sessionID: 'ses_Q', part: {} });
+        child.emitEvent({ type: 'tool_use', sessionID: 'ses_Q', part: { tool: 'bash', state: { status: 'completed' } } });
+        await tick();
+        child.emit('exit', 0, null);
+        await tick();
+        if (attempt < 2) {
+            const lastArgs = children[children.length - 1].args;
+            assert.match(lastArgs[lastArgs.length - 1], /stopped before finishing.*Result: PASS \| FAIL \| BLOCKED/s, 'a reportless stop is resumed with feedback');
+        }
+    }
     const outcome = await silentHost.wait(silent.runId, 1);
     assert.deepEqual([outcome.status, outcome.reason], ['FAILED', 'worker ended without a report (no Result/Evidence text)']);
     assert.equal(silentHost.resume(silent.runId).state, 'STARTING', 'the same session can be asked to finish its report');
