@@ -5745,10 +5745,17 @@
             var phaseOpen = Object.prototype.hasOwnProperty.call(specsWorkExpanded, phaseKey)
                 ? specsWorkExpanded[phaseKey] : index === 0;
             var phaseTasks = tasksByPhase[phase];
+            var storyNum = /User Story (\d+)/i.exec(phase);
+            var story = storyNum && (spec.stories || []).filter(function(s) { return s.id === 'US' + storyNum[1]; })[0];
+            var storyTest = story && story.independentTest
+                ? '<div class="spec-story-test"><strong>Independent Test</strong> ' + formatSpecInline(story.independentTest) +
+                  (story.successCriteria && story.successCriteria.length ? ' <span class="specs-muted">· verifies ' + escapeHtml(story.successCriteria.join(', ')) + '</span>' : '') + '</div>'
+                : '';
             return '<details class="spec-work-phase" data-work-key="' + escapeHtml(phaseKey) + '"' + (phaseOpen ? ' open' : '') + '>' +
                 '<summary class="spec-work-phase-title"><span class="codicon codicon-chevron-right spec-phase-caret"></span>' +
                 '<span class="spec-phase-name">' + formatSpecInline(phase) + '</span>' +
                 '<span class="spec-phase-count">' + phaseTasks.filter(function(task) { return task.done; }).length + '/' + phaseTasks.length + ' tasks</span></summary>' +
+                storyTest +
                 phaseTasks.map(function(task) {
                     return '<div class="spec-work-row' + (task.done ? ' done' : '') + '"><span class="codicon ' +
                         (task.done ? 'codicon-check' : 'codicon-circle-large-outline') + '"></span><span class="spec-work-id">' +

@@ -5261,6 +5261,7 @@ button#send-btn:disabled {
 .spec-stage-bar .spec-stage-action { font-size: 10px; padding: 1px 6px; }
 .spec-stage-warn, .spec-stale { flex-basis: 100%; }
 .spec-stage-warn { color: var(--vscode-editorWarning-foreground); }
+.spec-story-test { font-size: 10px; padding: 2px 0 4px 20px; color: var(--vscode-descriptionForeground); }
 
 .spec-meta {
     display: flex;

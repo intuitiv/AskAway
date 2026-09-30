@@ -54,6 +54,16 @@ export interface SpecCycleSummary {
     tasks: SpecCycleTask[];
 }
 
+export interface SpecStory {
+    id: string;
+    title: string;
+    priority: string;
+    independentTest: string;
+    successCriteria: string[];
+    total: number;
+    done: number;
+}
+
 export interface SpecSummary {
     id: string;
     slug: string;
@@ -92,6 +102,8 @@ export interface SpecSummary {
     facts: SpecFacts;
     /** Artifacts older (by git commit order) than an artifact they are generated from. */
     stale: StaleEntry[];
+    /** User stories from spec.md with progress from tasks tagged `[USn]` or under their story phase. */
+    stories: SpecStory[];
 }
 
 export interface SpecScanResult {
@@ -328,6 +340,35 @@ function deriveStage(o: {
     return 'specified';
 }
 
+function parseStories(specText: string, tasks: ParsedTask[]): SpecStory[] {
+    const stories: SpecStory[] = [];
+    let current: SpecStory | undefined;
+    for (const line of specText.split(/\r?\n/)) {
+        const head = /^###\s+User Story\s+(\d+)\s*[-–—:]\s*(.+?)\s*(?:\(Priority:\s*(P\d+)\))?\s*$/i.exec(line);
+        if (head) {
+            current = { id: `US${head[1]}`, title: head[2], priority: head[3] || '', independentTest: '', successCriteria: [], total: 0, done: 0 };
+            stories.push(current);
+            continue;
+        }
+        if (/^##\s/.test(line)) { current = undefined; }
+        const test = /^\*\*Independent Test\*\*:\s*(.+)$/.exec(line);
+        if (test && current && !current.independentTest) { current.independentTest = test[1].trim(); }
+        const sc = /^\s*[-*]\s*\*\*(SC-\d+)\*\*:.*Verified by:\s*([^\n]+)$/i.exec(line);
+        if (sc) {
+            for (const id of sc[2].match(/US\d+/gi) || []) {
+                stories.find(story => story.id === id.toUpperCase())?.successCriteria.push(sc[1]);
+            }
+        }
+    }
+    for (const story of stories) {
+        const phase = new RegExp(`User Story ${story.id.slice(2)}\\b`, 'i');
+        const members = tasks.filter(task => task.story === story.id || (!task.story && phase.test(task.phase)));
+        story.total = members.length;
+        story.done = members.filter(task => task.done).length;
+    }
+    return stories;
+}
+
 function hasMarkdown(dir: string): boolean {
     try {
         return fs.readdirSync(dir).some(name => name.endsWith('.md'));
@@ -428,7 +469,8 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
             stageButton: stageButton(specKitStage, artifacts),
             artifacts,
             facts,
-            stale: staleness.bySlug.get(entry.name) || []
+            stale: staleness.bySlug.get(entry.name) || [],
+            stories: parseStories(specText, parsed.tasks)
         });
     }
 
