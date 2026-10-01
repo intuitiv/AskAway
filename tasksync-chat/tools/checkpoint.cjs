@@ -40,6 +40,8 @@ function main(argv) {
         if (rel.startsWith('..') || path.isAbsolute(rel)) { fail(`path outside the repo: ${p}`); }
     }
 
+    // `commit --only <paths>` silently drops new files, so commit the index and guard it instead.
+    if (git(['diff', '--cached', '--name-only'], cwd).stdout.trim()) { fail('other changes are already staged; commit or unstage them first'); }
     const stat = git(['diff', '--stat', '--', ...paths], cwd);
     process.stdout.write(stat.out);
     const add = git(['add', '--', ...paths], cwd);
@@ -47,7 +49,7 @@ function main(argv) {
     const staged = git(['diff', '--cached', '--name-only', '--', ...paths], cwd);
     if (!staged.stdout.trim()) { fail('nothing staged for the named paths; nothing to commit'); }
 
-    const commit = git(['commit', '-m', message, '--only', '--', ...paths], cwd);
+    const commit = git(['commit', '-m', message], cwd);
     if (commit.code !== 0) { fail(`git commit failed: ${commit.out.trim()}`); }
     process.stdout.write(git(['status', '--short'], cwd).out);
     process.stdout.write(git(['log', '--oneline', '-1'], cwd).out);

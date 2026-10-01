@@ -31,6 +31,19 @@ try {
     assert.strictEqual(git('show', '--name-only', '--format=', 'HEAD').stdout.trim(), 'a.txt');
     assert.strictEqual(git('diff', '--cached', '--name-only').stdout.trim(), '', 'nothing left staged');
 
+    // a new (untracked) named file is committed too, together with a tracked one
+    write('fresh.txt', 'f\n');
+    r = run('-m', 'add fresh', 'fresh.txt', 'b.txt');
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.deepStrictEqual(git('show', '--name-only', '--format=', 'HEAD').stdout.trim().split('\n').sort(), ['b.txt', 'fresh.txt']);
+    assert.match(r.stdout, /^\?\? new\.txt$/m, 'unnamed new file stays untracked');
+
+    // something else already staged: refuse rather than sweep it in
+    write('a.txt', 'a3\n'); git('add', 'a.txt'); write('new.txt', 'n2\n');
+    r = run('-m', 'x', 'new.txt');
+    assert.notStrictEqual(r.status, 0); assert.match(r.stderr, /already staged/);
+    git('reset', '-q'); git('checkout', '--', 'a.txt');
+
     // refusals
     r = run('-m', 'x');
     assert.notStrictEqual(r.status, 0); assert.match(r.stderr, /no paths/);
