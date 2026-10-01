@@ -74,7 +74,7 @@ export function workerTool(source: () => RuntimeSource, defaultWorkspace: string
             + '- start: run one self-contained packet (profile, dispatchTurnId, baseRevision, objective, allowedFiles, acceptance, expected, command; optional model, thinking, track). Returns a handle at once.\n'
             + '- submit: same packet plus workerId, queued on a warm worker (reuses its session, ~4x cheaper).\n'
             + '- list: live workers with knowledge, nextInputTokens, warmForSeconds; check before start.\n'
-            + `- status | wait | cancel | resume | logs: by runId. wait blocks at most ${MAX_WAIT_SECONDS}s (timeoutSeconds), then STILL_RUNNING: end your turn. logs: facts only (limit).\n`
+            + `- status | wait | cancel | resume | logs: by runId. status adds the report (evidence) once the run is terminal. wait blocks at most ${MAX_WAIT_SECONDS}s (timeoutSeconds), then STILL_RUNNING: end your turn. logs: facts only (limit).\n`
             + 'Replies are bounded JSON facts, never transcripts.',
         inputSchema: z.object({ action: z.enum(WORKER_ACTIONS).describe('Which operation to run.'), ...shape }),
         run: async ({ action, ...args }) => {
@@ -123,7 +123,7 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
     });
 
     register('worker_status', {
-        description: 'Current state, usage, and blocker reason for one run.',
+        description: 'Current state, usage, and blocker reason for one run; once terminal (COMPLETED/FAILED/CANCELLED) also its report as evidence lines.',
         inputSchema: z.object({ runId: z.string() }),
     }, async (args) => (await runtime()).status(args.runId) ?? { status: 'UNKNOWN_RUN', runId: args.runId });
 

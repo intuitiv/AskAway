@@ -85,6 +85,8 @@ const call = viaWorkerTool(tools);
     await new Promise((resolve) => setImmediate(resolve));
     children[0].emit('exit', 0, null);
     assert.equal((await call('worker_wait', { runId: started.runId, timeoutSeconds: 1 })).status, 'COMPLETED');
+    const finished = await call('worker_status', { runId: started.runId });
+    assert.deepEqual([finished.state, finished.evidence.includes('Result: PASS')], ['COMPLETED', true], 'status of a finished run returns its report');
     const catalog = await call('worker_list', {});
     assert.deepEqual([catalog[0].knowledge, catalog[0].state, catalog[0].warmForSeconds > 290], ['knows slugify.js, its test, and the scratch dir layout', 'COMPLETED', true],
         'a finished worker publishes what it knows and how long it stays warm');

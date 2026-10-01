@@ -291,9 +291,10 @@ export class OpenCodeWorkerRuntime {
         return { ...this.view(this.runs.get(view.runId) as RunRecord), status: 'FORKED', forkedFrom: workerId };
     }
 
-    status(runId: string): RunView | undefined {
+    status(runId: string): (RunView & { evidence?: string[] }) | undefined {
         const run = this.runs.get(runId);
-        return run ? this.view(run) : undefined;
+        if (!run) { return undefined; }
+        return this.terminal(run.state) ? { ...this.view(run), evidence: run.evidence } : this.view(run);
     }
 
     list(workspacePath: string): Array<RunView & { sessionOpenAction: string; contextTokens: number; workerState: string }> {
