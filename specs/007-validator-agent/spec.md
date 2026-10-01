@@ -13,6 +13,11 @@
 ### Session 2026-10-02
 
 - Q: FR-018 — may the validator's answer be delivered to the agent without the reviewer seeing it first? → A: No. Beta phase (reviewer, binding, also in Rules.md): validator answers appear only in the Commentary tab and nothing is sent to the agent; linking to the agent is a later release, with cautions, and is out of scope for this spec's first release.
+- Q: FR-019 — which responses does the validator observe? → A: C: every response, with a cheap check first that skips pure progress updates.
+- Q: FR-020 — when does stored knowledge expire? → A: A: it is kept until the reviewer changes it (the reviewer is the only authority).
+- Q: Success targets 60/70/80/10% — are they confirmed? → A: A: provisional; reset after a first-week measurement.
+- Q: Prompt enhancement during beta — how is it delivered? → A: A: as a suggestion in the Commentary tab that the reviewer can dismiss.
+- Q: Show how closely the validator predicted the reviewer's reply? → A: A: yes, shown in Commentary (it builds the reviewer's confidence to link the validator to the agent later).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -129,7 +134,7 @@ The validator's prompt is strong and verified by evals covering three behaviours
 - **FR-006**: After a reviewer message, System MUST send the previous agent response and the reviewer's reply to the validator FIRST.
 - **FR-007**: Validator MUST compare the reviewer's reply with its prediction and record the difference.
 - **FR-008**: Validator MUST extract knowledge, rules, instructions and goals from reviewer replies and store them with the related spec, story or task, preferring memories over new files; examples MAY be captured.
-- **FR-009**: Validator MAY propose, in the Commentary tab, context to load with the reviewer's prompt; the reviewer MUST be able to see and remove proposed additions. In beta the proposal MUST NOT change the prompt the agent receives.
+- **FR-009**: Validator MAY propose, in the Commentary tab, context to load with the reviewer's prompt; the proposal is a suggestion the reviewer MUST be able to see and dismiss (remove each proposed addition). In beta the proposal MUST NOT change the prompt the agent receives.
 - **FR-010**: Stored knowledge MUST be deduplicated and concise; the same fact MUST NOT be loaded in different forms.
 - **FR-011**: A reviewer decision that reverses a stored one MUST replace it.
 - **FR-012**: Validator responses MUST be visible in the Commentary tab, using the same shared components that show agent responses and observations elsewhere.
@@ -140,10 +145,9 @@ The validator's prompt is strong and verified by evals covering three behaviours
 - **FR-017**: A validator failure MUST NOT block the agent or reviewer flow and MUST be visible.
 - **FR-018**: Validator output MUST be advisory; it MUST NOT approve gates or trigger destructive actions on the reviewer's behalf. In beta, validator answers MUST appear only in the Commentary tab and MUST NOT be sent to the agent; linking validator answers to the agent is out of scope for this spec's first release.
 
-### Open Questions
-
-- **FR-019**: System MUST observe [NEEDS CLARIFICATION: which responses are observed to control cost? Options: A) every response; B) only responses containing a question or decision; C) every response, with a cheap check first that skips pure progress updates].
-- **FR-020**: System MUST keep stored knowledge for [NEEDS CLARIFICATION: when does stored knowledge expire or get reviewed? Options: A) until the reviewer changes it; B) flagged for review when the related spec completes; C) flagged when its source file changes].
+- **FR-019**: System MUST observe every agent or worker response, running a cheap check first that skips pure progress updates (no question, decision or new information) before the validator answers.
+- **FR-020**: System MUST keep stored knowledge until the reviewer changes it; it MUST NOT expire or be flagged for review automatically (the reviewer is the only authority).
+- **FR-021**: In Commentary, the validator MUST show how closely its prediction matched the reviewer's actual reply (the match measure of FR-007), so the reviewer can build confidence before linking.
 
 ### Key Entities
 
@@ -156,6 +160,8 @@ The validator's prompt is strong and verified by evals covering three behaviours
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
+
+The numeric targets below (60%, 70%, 80%, 10%) are provisional (reviewer, 2026-10-02) and are reset after a first-week measurement.
 
 - **SC-001**: At least 60% of agent questions get a validator answer in Commentary from existing artifacts, with a named source (baseline measured in the first week).
 - **SC-002**: Once linking to the agent ships (after beta; not measurable in beta, when the agent receives nothing), repeat instructions from the reviewer (the same rule or requirement stated more than once) fall by at least 70% per week versus the week before linking.

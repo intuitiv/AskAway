@@ -13,8 +13,8 @@
 
 ## Requirement Completeness
 
-- [ ] CHK005 No [NEEDS CLARIFICATION] markers remain (2 open: FR-019, FR-020, each with options; FR-018 resolved 2026-10-02)
-- [x] CHK006 Requirements are testable and unambiguous (except the two open items)
+- [x] CHK005 No [NEEDS CLARIFICATION] markers remain (0 open; FR-018, FR-019, FR-020 resolved 2026-10-02)
+- [x] CHK006 Requirements are testable and unambiguous
 - [x] CHK007 Success criteria are measurable
 - [x] CHK008 Success criteria are technology-agnostic
 - [x] CHK009 All acceptance scenarios are defined
@@ -24,12 +24,12 @@
 
 ## Feature Readiness
 
-- [x] CHK013 All functional requirements have clear acceptance criteria (FR-019 and FR-020 pending clarification)
+- [x] CHK013 All functional requirements have clear acceptance criteria (FR-019, FR-020, FR-021 resolved 2026-10-02)
 - [x] CHK014 User stories cover primary flows and are independently testable in priority order
 - [x] CHK015 Every Goal.md outcome and Rules.md rule maps to a story or FR
-- [ ] CHK016 Success-criteria targets (60%, 70%, 80%, 10%) are reviewer-confirmed; they are proposed defaults
+- [x] CHK016 Success-criteria targets (60%, 70%, 80%, 10%) are reviewer-accepted as provisional (2026-10-02); reset after a first-week measurement
 
 ## Notes
 
-- Items marked incomplete need the reviewer's answer before `/sk.plan`.
-- SC targets are proposals; baselines are measured in the first week.
+- All items pass; clarify answers recorded 2026-10-02, ready for `/sk.plan`.
+- SC targets are provisional; baselines are measured in the first week.
