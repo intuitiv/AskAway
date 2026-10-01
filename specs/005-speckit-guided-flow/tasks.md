@@ -79,7 +79,7 @@ description: "Task list for 005 Spec Kit Guided Flow"
 - [ ] T018 [US6] Keep a warm worker warm while the main chat is active and its knowledge fits pending work: minimal `POST /session/:id/message` ping before the 5-min TTL, ping cost in the ledger, stop at 300K context or after N unused pings (research 2026-10-01: a ping is a real request, cache read 0.1×, cold rewrite 1.25×; health checks do not refresh)
 - [x] T022 [US6] Fork-for-parallel POC: a second request for a busy warm worker forks its OpenCode session and runs in parallel; verify both forks keep ~99-100% cache hits on Luna and Sonnet (`tools/poc-session-fork.cjs`); if confirmed, `submit` to a busy worker forks instead of queuing
 - [x] T023 Reviewer requirements per UI component and feature in `tasksync-chat/docs/requirements/` (reviewer's quoted words, date, guarding test or `gap`); `test-requirements-docs.cjs` fails on a cited test id that does not exist (EV-REQUIREMENTS-DOCS)
-- [ ] T024 [US6] Command batching for the main agent (data: `tools/command-options.cjs`, option H saves 38 requests / $2.29 over 5 conversations): `tools/checkpoint.cjs` for commits (done, EV-CHECKPOINT), `tools/batch.cjs` for independent command sequences (EV-BATCH), worker `status` returns the report once finished; both agent prompts name them
+- [x] T024 [US6] Command batching for the main agent (data: `tools/command-options.cjs`, option H saves 38 requests / $2.29 over 5 conversations): `tools/checkpoint.cjs` for commits (done, EV-CHECKPOINT), `tools/batch.cjs` for independent command sequences (EV-BATCH), worker `status` returns the report once finished; both agent prompts name them
 
 ---
 
