@@ -101,9 +101,9 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
     }, async (args) => (await runtime()).start(packetOf(args)));
 
     register('worker_submit', {
-        description: 'Queue a packet on an existing warm worker (reuses its OpenCode session). Refuses explicitly if the worker is retired or ineligible.',
+        description: 'Queue a packet on an existing warm worker (reuses its OpenCode session). If that worker is busy for more than ~30s the session is forked into a new parallel worker instead (status FORKED, forkedFrom). Refuses explicitly if the worker is retired or ineligible.',
         inputSchema: z.object({ workerId: z.string(), ...packetShape }),
-    }, async (args) => (await runtime()).submit(args.workerId, packetOf(args)));
+    }, async (args) => (await runtime()).submitForking(args.workerId, packetOf(args)));
 
     register('worker_list', {
         description: 'List this workspace\'s live workers (running or still warm) so you can reuse one: mode, model, state, what it knows, '

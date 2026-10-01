@@ -3,6 +3,8 @@ import { resolveSelection, workerRegistryKey, WorkerProfile } from './workerProf
 export const MAX_QUEUE_WAIT_SECONDS = 120;
 export const MAX_CONTEXT_TOKENS = 300000;
 export const DEFAULT_CACHE_TTL_SECONDS = 300;
+/** A submit to a busy worker whose expected wait exceeds this forks the worker's session instead of queuing. */
+export const FORK_AFTER_SECONDS = 30;
 
 export type RoutedWorkerState = 'IDLE' | 'RUNNING' | 'RETIRED' | 'ORPHANED';
 
@@ -25,6 +27,8 @@ export interface RoutedWorker {
     contextTokens: number;
     lastActivityAt: number;
     retiredReason?: string;
+    /** The worker whose session this one was forked from; empty for a worker that started fresh. */
+    forkedFrom?: string;
     active?: QueueEntry;
     queue: QueueEntry[];
 }
@@ -143,6 +147,31 @@ export class WorkerRouter {
         return { status: 'REUSED', workerId, runId: entry.runId, model: worker.model, thinking: worker.thinking, queuePosition, estimatedWaitSeconds, reason: 'submitted to named worker' };
     }
 
+    /** The running worker a submit should fork instead of queue behind: its expected wait is past FORK_AFTER_SECONDS. */
+    forkCandidate(workerId: string): { parent: RoutedWorker; waitSeconds: number } | undefined {
+        const worker = this.workersById.get(workerId);
+        if (!worker || !worker.active || worker.state !== 'RUNNING' || this.ineligibility(worker, false)) { return undefined; }
+        const waitSeconds = this.estimatedWaitSeconds(worker);
+        return waitSeconds > FORK_AFTER_SECONDS ? { parent: worker, waitSeconds } : undefined;
+    }
+
+    /**
+     * Registers a new worker for a session forked from a busy one (same profile, model, thinking, and the parent's
+     * context size) and starts the packet on it at once, in parallel with the parent.
+     */
+    startFork(parentId: string, packetId: string, estimatedSeconds: number): (RouteResult & { forkedFrom: string }) | undefined {
+        const parent = this.workersById.get(parentId);
+        if (!parent) { return undefined; }
+        const worker = this.createWorker(parent.registryKey, parent.workspacePath, parent.profile, parent.model, parent.thinking);
+        worker.contextTokens = parent.contextTokens;
+        worker.forkedFrom = parentId;
+        const entry: QueueEntry = { runId: this.nextId('run'), packetId, estimatedSeconds, enqueuedAt: this.now() };
+        this.dispatches++;
+        this.start(worker, entry);
+        return { status: 'CREATED', workerId: worker.workerId, runId: entry.runId, model: worker.model, thinking: worker.thinking,
+            queuePosition: 0, estimatedWaitSeconds: 0, reason: `forked from busy worker ${parentId}`, forkedFrom: parentId };
+    }
+
     /** Only a not-yet-started entry can be cancelled; running work is never cancelled here. */
     cancelQueued(workerId: string, runId: string): { status: 'CANCELLED' | 'NOT_QUEUED' } {
         const worker = this.workersById.get(workerId);
@@ -176,7 +205,7 @@ export class WorkerRouter {
     }
 
     /** Re-registers a worker known from the ledger after a reload. It keeps its identity and never re-runs work. */
-    adopt(record: Pick<RoutedWorker, 'workerId' | 'workspacePath' | 'profile' | 'model' | 'thinking' | 'contextTokens' | 'lastActivityAt'>,
+    adopt(record: Pick<RoutedWorker, 'workerId' | 'workspacePath' | 'profile' | 'model' | 'thinking' | 'contextTokens' | 'lastActivityAt' | 'forkedFrom'>,
         state: 'IDLE' | 'ORPHANED', reason?: string): void {
         const existing = this.workersById.get(record.workerId);
         if (existing) {

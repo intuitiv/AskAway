@@ -1,6 +1,7 @@
 // POC: does forking a warm OpenCode session keep the prompt cache for parallel requests?
-// Run: node tools/poc-session-fork.cjs [--model provider/model] [--server http://127.0.0.1:4096] [--agent aa-explore] [--fork-at-base] [--max-cost 0.10]
+// Run: node tools/poc-session-fork.cjs [--model provider/model] [--server http://127.0.0.1:4096] [--agent aa-explore] [--fork-at-base] [--busy] [--max-cost 0.10]
 // Flow: base (~8K tokens of fixed context) -> control (question 1, same session) -> fork twice -> questions 2 and 3 in parallel.
+// --busy: skip the control/parallel flow; fork while the base session is still generating a long answer (see busy()).
 // By default a fork copies the whole session (base + control exchange); --fork-at-base forks before the control message instead.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -61,7 +62,75 @@ function row(name, r) {
     return `${name.padEnd(8)}${String(r.input).padStart(8)}${String(r.cacheRead).padStart(11)}${String(r.cacheWrite).padStart(11)}${r.hit.toFixed(1).padStart(8)}%${('$' + r.cost.toFixed(4)).padStart(10)}`;
 }
 
+const messageText = (m) => (m.parts || []).filter((p) => p.type === 'text').map((p) => p.text).join('');
+const inFlight = (m) => m.info.role === 'assistant' && !(m.info.time && m.info.time.completed);
+
+// The fork body's messageID is EXCLUSIVE: messages before it are copied. Cutting at the user message of the in-flight
+// reply keeps everything completed and drops the unfinished turn.
+function cutBeforeInFlight(messages) {
+    const open = messages.find(inFlight);
+    if (!open) { return undefined; }
+    return messages.some((m) => m.info.id === open.info.parentID) ? open.info.parentID : open.info.id;
+}
+
+// --busy: fork a session while it is still generating a long answer, at its last completed message.
+async function busy() {
+    const created = [];
+    const results = {};
+    try {
+        const base = await call('POST', '/session', { title: 'poc-fork busy base' });
+        created.push(base.id);
+        results.base = await send(base.id, baseText());
+        if (results.base.cost > MAX_COST) { throw new Error(`base cost $${results.base.cost} over budget`); }
+
+        let longError;
+        const long = send(base.id, 'Write a 500 word essay about the history of tea. Plain prose, no tools, no lists.').catch((e) => { longError = e; });
+        let messages = [];
+        let partial = '';
+        for (let i = 0; i < 100 && !longError; i++) {
+            messages = await call('GET', `/session/${base.id}/message`);
+            const open = messages.find(inFlight);
+            partial = open ? messageText(open) : '';
+            if (open && partial.length > 40) { break; }
+            await new Promise((r) => setTimeout(r, 200));
+        }
+        if (!messages.some(inFlight)) { throw new Error('the long answer finished before it could be forked (still busy window missed)'); }
+        const cut = cutBeforeInFlight(messages);
+        const completedBefore = messages.findIndex((m) => m.info.id === cut);
+
+        const fork = await call('POST', `/session/${base.id}/fork`, cut ? { messageID: cut } : {});
+        created.push(fork.id);
+        const copied = await call('GET', `/session/${fork.id}/message`);
+        const copiedPartial = copied.some((m) => m.info.role === 'assistant' && partial.slice(0, 40) !== '' && messageText(m).startsWith(partial.slice(0, 40)));
+        const copiedInFlight = copied.some(inFlight);
+
+        results.fork = await send(fork.id, 'Question 2: what is 3+3? Answer in one sentence, no tools.');
+        await long;
+        if (longError) { throw longError; }
+        const after = await call('GET', `/session/${base.id}/message`);
+        const last = after[after.length - 1];
+        const finished = last.info.role === 'assistant' && !!(last.info.time && last.info.time.completed) && !last.info.error;
+        const words = messageText(last).split(/\s+/).filter(Boolean).length;
+
+        console.log(`model=${MODEL} agent=${AGENT} mode=busy`);
+        console.log(`base session had ${messages.length} messages at fork time (${completedBefore} before the cut, partial answer ${partial.length} chars in flight)`);
+        console.log(`fork copied ${copied.length} messages; partial in-progress message copied: ${copiedPartial || copiedInFlight ? 'YES' : 'NO'}`);
+        console.log('row       input  cacheRead cacheWrite     hit%      cost');
+        console.log(row('base', results.base));
+        console.log(row('fork', results.fork));
+        console.log(`original long run completed: ${finished ? 'YES' : 'NO'} (${words} words)`);
+        const ok = results.fork.hit >= 90 && finished && !copiedPartial && !copiedInFlight;
+        console.log(`VERDICT busy fork: ${ok ? 'CONFIRMED' : 'REJECTED'} fork hit ${results.fork.hit.toFixed(1)}%, partial copied ${copiedPartial || copiedInFlight}, original completed ${finished}`);
+    } finally {
+        for (const id of created) {
+            try { await call('DELETE', `/session/${id}`); } catch (e) { console.error(`cleanup failed for ${id}: ${e.message}`); }
+        }
+        console.log(`deleted ${created.length} sessions`);
+    }
+}
+
 async function main() {
+    if (process.argv.includes('--busy')) { return busy(); }
     const created = [];
     const results = {};
     try {

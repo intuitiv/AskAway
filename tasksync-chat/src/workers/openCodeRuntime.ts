@@ -9,7 +9,7 @@ export const MAX_WAIT_SECONDS = 240;
 const MAX_EVIDENCE_LINES = 25;
 
 export type RunState = 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-export type LifecycleType = 'start' | 'message_update' | 'before_tool' | 'after_tool' | 'checkpoint' | 'approval' | 'stop' | 'error' | 'archive';
+export type LifecycleType = 'start' | 'message_update' | 'before_tool' | 'after_tool' | 'checkpoint' | 'approval' | 'stop' | 'error' | 'archive' | 'fork';
 
 export interface RunUsage { input: number; output: number; reasoning: number; cacheRead: number; cacheWrite: number; cost: number; steps: number }
 
@@ -24,6 +24,8 @@ export interface LifecycleRecord {
     dispatchTurnId: string;
     source: string;
     track?: string;
+    /** Set on every fact of a worker that was forked from a busy one: the parent's worker id. */
+    forkedFrom?: string;
     profile: string;
     model: string;
     thinking: string;
@@ -81,6 +83,8 @@ export interface RunView {
     lastCachedTokens: number;
     /** The worker's own one-line summary of the context it holds, for reuse decisions. */
     knowledge: string;
+    /** Parent worker id when this run's worker was forked from a busy one. */
+    forkedFrom?: string;
 }
 
 export interface ChildLike {
@@ -92,11 +96,16 @@ export interface ChildLike {
 
 export type Spawner = (args: string[]) => ChildLike;
 
+/** Forks an OpenCode session at its last completed message and returns the new session's id. */
+export type ForkSession = (sessionId: string) => Promise<{ sessionId: string }>;
+
 export interface RuntimeOptions {
     ledgerDir?: string;
     now?: () => number;
     spawner?: Spawner;
     attachUrl?: string;
+    /** Defaults to the shared server's HTTP API at the attach URL; tests inject a fake. */
+    forkSession?: ForkSession;
 }
 
 interface RunRecord extends RunView {
@@ -108,7 +117,37 @@ interface RunRecord extends RunView {
     autoResumes?: number;
 }
 
+interface ServerMessage { info: { id: string; role: string; parentID?: string; time?: { completed?: number } } }
+
+/**
+ * Forks a session through the shared OpenCode server (`POST /session/:id/fork`). The body's `messageID` is exclusive, so a
+ * session that is mid-answer is cut at the user message of its unfinished reply: the fork keeps every completed message
+ * and never copies the partial one. Errors carry the HTTP status only, never a response body.
+ */
+export async function forkSessionViaServer(baseUrl: string, sessionId: string, fetchImpl: typeof fetch = fetch): Promise<{ sessionId: string }> {
+    if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) { throw new Error('invalid session id'); }
+    const call = async (method: string, route: string, body?: unknown): Promise<any> => {
+        const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}${route}`, {
+            method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(FORK_HTTP_TIMEOUT_MS),
+        });
+        if (!res.ok) { throw new Error(`${method} ${route.replace(sessionId, ':id')} -> HTTP ${res.status}`); }
+        const text = await res.text();
+        return text ? JSON.parse(text) : undefined;
+    };
+    const messages: ServerMessage[] = await call('GET', `/session/${sessionId}/message`);
+    const unfinished = messages.find((m) => m.info.role === 'assistant' && !m.info.time?.completed);
+    const last = messages[messages.length - 1];
+    const cut = unfinished ? (messages.some((m) => m.info.id === unfinished.info.parentID) ? unfinished.info.parentID : unfinished.info.id)
+        : last?.info.role === 'user' ? last.info.id : undefined;
+    if ((cut ? messages.findIndex((m) => m.info.id === cut) : messages.length) <= 0) { throw new Error('no completed message to fork from yet'); }
+    const fork = await call('POST', `/session/${sessionId}/fork`, cut ? { messageID: cut } : {});
+    if (!fork?.id) { throw new Error('fork returned no session id'); }
+    return { sessionId: String(fork.id) };
+}
+
+
 const MAX_AUTO_RESUMES = 2;
+const FORK_HTTP_TIMEOUT_MS = 15000;
 const UNFINISHED_FEEDBACK = 'You stopped before finishing the packet. Continue from where you stopped, run the verification command, '
     + 'and end with the required report including a `Result: PASS | FAIL | BLOCKED` line.';
 
@@ -174,11 +213,12 @@ export class OpenCodeWorkerRuntime {
     private readonly runs = new Map<string, RunRecord>();
     private readonly sessionsByWorker = new Map<string, string>();
     private readonly rehydrated = new Set<string>();
-    private readonly adopted = new Map<string, { workspace: string; profile: string; model: string; thinking: string; sessionId: string; contextTokens: number; lastTs: number }>();
+    private readonly adopted = new Map<string, { workspace: string; profile: string; model: string; thinking: string; sessionId: string; contextTokens: number; lastTs: number; forkedFrom?: string }>();
     private readonly ledgerDir: string;
     readonly now: () => number;
     private readonly spawner: Spawner;
     private attachUrl?: string;
+    private readonly forkSession?: ForkSession;
 
     constructor(profiles: WorkerProfile[], options: RuntimeOptions = {}) {
         this.now = options.now ?? Date.now;
@@ -186,6 +226,7 @@ export class OpenCodeWorkerRuntime {
         this.ledgerDir = options.ledgerDir ?? path.join(os.homedir(), '.askaway', 'worker-ledger');
         this.spawner = options.spawner ?? defaultSpawner;
         this.attachUrl = options.attachUrl;
+        this.forkSession = options.forkSession;
     }
 
     /** The shared OpenCode server workers attach to; empty when each run hosts its own. */
@@ -216,6 +257,38 @@ export class OpenCodeWorkerRuntime {
             return { status: routed.status === 'RETIRED' ? 'RETIRED' : 'INELIGIBLE', workerId, reason: routed.reason };
         }
         return this.admit(routed, canonical(packet.workspacePath), packet);
+    }
+
+    /**
+     * submit, except that a busy worker whose expected wait is past FORK_AFTER_SECONDS is forked at its last completed
+     * message and the packet runs on the fork in parallel (status FORKED). When the fork is impossible the packet queues
+     * as submit does, with the reason in `forkSkipped`.
+     */
+    async submitForking(workerId: string, packet: WorkerPacket): Promise<ReturnType<OpenCodeWorkerRuntime['submit']> | (RunView & { status: 'FORKED'; forkedFrom: string })
+        | (RunView & { forkSkipped: string })> {
+        const candidate = validatePacket(packet) ? undefined : this.router.forkCandidate(workerId);
+        if (!candidate) { return this.submit(workerId, packet); }
+        const parentSession = this.sessionsByWorker.get(workerId);
+        const fork = this.forkSession ?? (this.attachUrl ? ((id: string) => forkSessionViaServer(this.attachUrl as string, id)) : undefined);
+        let forkedSession = '';
+        let skipped = '';
+        if (!parentSession) { skipped = 'the busy worker has no OpenCode session yet'; }
+        else if (!fork) { skipped = 'no shared OpenCode server attached'; }
+        else {
+            try { forkedSession = (await fork(parentSession)).sessionId; } catch (error) { skipped = `fork failed: ${(error as Error).message}`; }
+        }
+        if (!forkedSession) {
+            const queued = this.submit(workerId, packet);
+            return 'runId' in queued ? { ...queued, forkSkipped: skipped } : { ...queued, reason: `${queued.reason}; fork skipped: ${skipped}` };
+        }
+        const workspace = canonical(packet.workspacePath);
+        const routed = this.router.startFork(workerId, packet.objective.slice(0, 40), packet.estimatedSeconds ?? 60);
+        if (!routed || !('runId' in routed)) { return this.submit(workerId, packet); }
+        this.sessionsByWorker.set(routed.workerId, forkedSession);
+        const parentKnowledge = [...this.runs.values()].filter((run) => run.workerId === workerId && run.knowledge).pop()?.knowledge ?? '';
+        const view = this.admit(routed, workspace, packet, parentKnowledge);
+        this.record(this.runs.get(view.runId) as RunRecord, { type: 'fork', reason: `forked from ${workerId} (session ${parentSession})` });
+        return { ...this.view(this.runs.get(view.runId) as RunRecord), status: 'FORKED', forkedFrom: workerId };
     }
 
     status(runId: string): RunView | undefined {
@@ -316,7 +389,7 @@ export class OpenCodeWorkerRuntime {
             const reason = !serverLive ? 'shared OpenCode server not reachable after reload'
                 : !adopted.sessionId ? 'no OpenCode session was recorded before reload' : '';
             this.router.adopt({ workerId, workspacePath: workspace, profile: adopted.profile, model: adopted.model, thinking: adopted.thinking,
-                contextTokens: adopted.contextTokens, lastActivityAt: adopted.lastTs }, reason ? 'ORPHANED' : 'IDLE', reason || undefined);
+                contextTokens: adopted.contextTokens, lastActivityAt: adopted.lastTs, forkedFrom: adopted.forkedFrom }, reason ? 'ORPHANED' : 'IDLE', reason || undefined);
             if (reason) { result.orphaned.push({ workerId, reason }); } else {
                 this.sessionsByWorker.set(workerId, adopted.sessionId);
                 result.reconnected.push(workerId);
@@ -388,12 +461,13 @@ export class OpenCodeWorkerRuntime {
                 runId, workerId: first.workerId, sessionId, state, profile: first.profile, model: first.model, thinking: first.thinking,
                 dispatchTurnId: first.dispatchTurnId, track: first.track ?? '', startedAt: first.ts, endedAt: last.ts, updatedAt: last.ts, elapsedMs: last.ts - first.ts,
                 usage, queuePosition: 0, reason, workspace, packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
-                lastPromptTokens, lastCachedTokens,
+                lastPromptTokens, lastCachedTokens, ...(first.forkedFrom ? { forkedFrom: first.forkedFrom } : {}),
             });
             const adopted = this.adopted.get(first.workerId);
             if (!adopted || last.ts >= adopted.lastTs) {
                 this.adopted.set(first.workerId, { workspace, profile: first.profile, model: first.model, thinking: first.thinking,
-                    sessionId: sessionId || adopted?.sessionId || '', contextTokens: contextTokens || adopted?.contextTokens || 0, lastTs: last.ts });
+                    sessionId: sessionId || adopted?.sessionId || '', contextTokens: contextTokens || adopted?.contextTokens || 0, lastTs: last.ts,
+                    forkedFrom: first.forkedFrom ?? adopted?.forkedFrom });
             }
         }
     }
@@ -427,13 +501,14 @@ export class OpenCodeWorkerRuntime {
         return total;
     }
 
-    private admit(routed: Extract<RouteResult, { runId: string }>, workspace: string, packet: WorkerPacket): RunView {
+    private admit(routed: Extract<RouteResult, { runId: string }>, workspace: string, packet: WorkerPacket, knowledge = ''): RunView {
         const run: RunRecord = {
             runId: routed.runId, workerId: routed.workerId, sessionId: this.sessionsByWorker.get(routed.workerId) ?? '',
             state: 'STARTING', profile: packet.profile, model: routed.model, thinking: routed.thinking,
             dispatchTurnId: packet.dispatchTurnId, track: String(packet.track ?? '').trim().slice(0, 24), startedAt: this.now(), updatedAt: this.now(), elapsedMs: 0, usage: emptyUsage(),
             queuePosition: routed.queuePosition, workspace, packet: renderPacket(packet), evidence: [], waiters: [],
-            nextInputTokens: this.router.worker(routed.workerId)?.contextTokens ?? 0, knowledge: '', lastPromptTokens: 0, lastCachedTokens: 0,
+            nextInputTokens: this.router.worker(routed.workerId)?.contextTokens ?? 0, knowledge, lastPromptTokens: 0, lastCachedTokens: 0,
+            ...(this.router.worker(routed.workerId)?.forkedFrom ? { forkedFrom: this.router.worker(routed.workerId)?.forkedFrom } : {}),
         };
         this.runs.set(run.runId, run);
         if (routed.queuePosition === 0) { this.launch(run, run.packet); }
@@ -561,16 +636,16 @@ export class OpenCodeWorkerRuntime {
     }
 
     private view(run: RunRecord): RunView {
-        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens } = run;
+        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens, forkedFrom } = run;
         return { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens,
-            elapsedMs: (endedAt ?? this.now()) - startedAt, usage: { ...usage }, queuePosition, reason };
+            elapsedMs: (endedAt ?? this.now()) - startedAt, usage: { ...usage }, queuePosition, reason, ...(forkedFrom ? { forkedFrom } : {}) };
     }
 
     private record(run: RunRecord, fact: Pick<LifecycleRecord, 'type'> & Partial<LifecycleRecord>): void {
         const record: LifecycleRecord = {
             ts: this.now(), workspace: run.workspace, workerId: run.workerId, runId: run.runId, sessionId: run.sessionId,
             dispatchTurnId: run.dispatchTurnId, source: run.model.split('/')[0] || 'unknown', ...(run.track ? { track: run.track } : {}),
-            profile: run.profile, model: run.model, thinking: run.thinking, ...fact,
+            ...(run.forkedFrom ? { forkedFrom: run.forkedFrom } : {}), profile: run.profile, model: run.model, thinking: run.thinking, ...fact,
         };
         run.updatedAt = record.ts;
         fs.mkdirSync(this.ledgerDir, { recursive: true });
