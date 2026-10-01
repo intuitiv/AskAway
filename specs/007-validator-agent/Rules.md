@@ -9,4 +9,5 @@ Decisions the reviewer stated (2026-10-01). Change a rule only when the reviewer
 - Storage: knowledge bits, rules, instructions and goals extracted from reviewer messages are stored with the related spec, story or task (memories preferred over new files); deduplicated and concise.
 - Strong prompt, verified by evals: answering questions, improving the prompt, storing observations.
 - Delivery: start as a simple observer (a tool; behind it an agent run); optimise later.
+- Beta (2026-10-02): "we are in beta phase, I want to see validator response in Commentary before it going to the agent. Once i get confidence we'll link later, with some cautions and all." The validator's answers show in the Commentary tab only; nothing reaches the agent until the reviewer links it.
 - UI shows the validator's responses; its cost counts in the shared banner.

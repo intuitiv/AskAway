@@ -8,24 +8,30 @@
 
 **Input**: User description: "Then user role becomes explaining new requirement only once." A validator agent watches every agent and worker response, answers from what the reviewer already said (ADRs, memories, specs, Goal/Rules), learns from each reviewer reply, and stores what it learns next to the active spec, story or task, so the reviewer never repeats himself and work can start from anywhere. Binding inputs: [Goal.md](Goal.md) and [Rules.md](Rules.md).
 
+## Clarifications
+
+### Session 2026-10-02
+
+- Q: FR-018 — may the validator's answer be delivered to the agent without the reviewer seeing it first? → A: No. Beta phase (reviewer, binding, also in Rules.md): validator answers appear only in the Commentary tab and nothing is sent to the agent; linking to the agent is a later release, with cautions, and is out of scope for this spec's first release.
+
 ## User Scenarios & Testing *(mandatory)*
 
-Each story is an independently testable slice, delivered in priority order. The validator starts as a simple observer (a tool with an agent run behind it); moving it to the backend is a later optimisation and is not a story here.
+Each story is an independently testable slice, delivered in priority order. The validator starts as a simple observer (a tool with an agent run behind it); moving it to the backend is a later optimisation and is not a story here. In the beta first release the validator is Commentary-only: its output is never sent to the agent.
 
 ### User Story 1 - Observer answers the agent's question, with its cost (Priority: P1)
 
-Every agent or worker response is handed to the validator. When the response asks a question or needs a decision, the validator answers it from the active spec and its resources (ADRs, memories, documents, Goal.md, Rules.md, the spec's stories and tasks), keeping the spec's ultimate goal in mind. The answer is as close as possible to what the reviewer would say, and comes with observations, a short summary and the impact. The validator's response appears in the UI, and its cost is added to the shared cost banner. When no source supports an answer, the validator says so instead of guessing.
+Every agent or worker response is handed to the validator. When the response asks a question or needs a decision, the validator answers it from the active spec and its resources (ADRs, memories, documents, Goal.md, Rules.md, the spec's stories and tasks), keeping the spec's ultimate goal in mind. The answer is as close as possible to what the reviewer would say, and comes with observations, a short summary and the impact. The validator's response appears in the Commentary tab only, and its cost is added to the shared cost banner. In beta nothing is sent to the agent: the reviewer reads the answer in Commentary first and builds confidence before any linking to the agent. When no source supports an answer, the validator says so instead of guessing.
 
-**Why this priority**: This is the smallest slice that removes the reviewer from the loop for questions already answered in the repo, and it proves the core promise ("explain once") before any learning is built.
+**Why this priority**: This is the smallest slice that shows the reviewer which questions the repo already answers, and it proves the core promise ("explain once") and the validator's closeness to the reviewer before any learning or linking is built.
 
-**Independent Test**: In a sample spec whose Rules.md states a decision, have an agent response ask a question covered by that rule and one that is not covered. Confirm the first gets an answer citing the rule with observations, summary and impact, shown in the UI; the second is reported as unanswerable from sources; and the shared banner's cost rose by the validator's cost.
+**Independent Test**: In a sample spec whose Rules.md states a decision, have an agent response ask a question covered by that rule and one that is not covered. Confirm the first gets an answer citing the rule with observations, summary and impact, shown in the Commentary tab; the second is reported as unanswerable from sources; the agent received nothing from the validator; and the shared banner's cost rose by the validator's cost.
 
 **Acceptance Scenarios**:
 
-1. **Given** an active spec whose Rules.md decides X, **When** an agent response asks "should we do X or Y?", **Then** the validator answers X, names the source it used, and adds observations, summary and impact.
+1. **Given** an active spec whose Rules.md decides X, **When** an agent response asks "should we do X or Y?", **Then** the validator answers X in the Commentary tab, names the source it used, and adds observations, summary and impact; nothing is sent to the agent.
 2. **Given** an agent response with no question or decision, **When** it is observed, **Then** the validator still returns observations and a summary and does not invent a question.
 3. **Given** a question no source covers, **When** the validator runs, **Then** it states that no source answers it and leaves the question for the reviewer.
-4. **Given** a validator run that cost tokens, **When** the UI renders, **Then** its response is visible and the shared banner includes its cost.
+4. **Given** a validator run that cost tokens, **When** the UI renders, **Then** its response is visible in the Commentary tab and the shared banner includes its cost.
 5. **Given** a worker response (not the native chat agent), **When** it is observed, **Then** it is handled the same as an agent response.
 
 ---
@@ -36,7 +42,7 @@ When the reviewer replies, the previous agent response and the reviewer's reply 
 
 **Why this priority**: This is where "explain once" is earned: each reply makes the next answer better. It depends on Story 1's predictions.
 
-**Independent Test**: Run Story 1's question, then reply as the reviewer with a decision that differs from the prediction and contains a new rule. Confirm the validator received the pair before anything else, recorded the mismatch, and stored the rule with the active spec/story/task; start a fresh agent on that spec and confirm the rule is answerable from storage.
+**Independent Test**: Run Story 1's question, then reply as the reviewer with a decision that differs from the prediction and contains a new rule. Confirm the validator received the pair before anything else, recorded the mismatch, and stored the rule with the active spec/story/task; have a fresh agent on that spec ask a related question and confirm the validator's Commentary answer cites the stored rule.
 
 **Acceptance Scenarios**:
 
@@ -51,18 +57,18 @@ When the reviewer replies, the previous agent response and the reviewer's reply 
 
 ### User Story 3 - Prompt enhancement (Priority: P3)
 
-When the reviewer sends a prompt, the validator can add the context to load (relevant ADRs, memories, spec resources, stored rules), so everything arrives with the prompt in one go instead of the agent asking for it. The reviewer sees what was added and can remove it.
+When the reviewer sends a prompt, the validator can propose the context to load (relevant ADRs, memories, spec resources, stored rules), so that once linked everything can arrive with the prompt in one go instead of the agent asking for it. In beta the proposal is shown in the Commentary tab only; the agent still receives the reviewer's prompt exactly as written. The reviewer sees what was proposed and can remove it.
 
-**Why this priority**: It removes the agent's discovery questions up front, but only pays off once Stories 1 and 2 have knowledge to load.
+**Why this priority**: It previews how the agent's discovery questions would be removed up front, but only pays off once Stories 1 and 2 have knowledge to load.
 
-**Independent Test**: With stored rules for a spec, send a short prompt on that spec. Confirm the enhanced prompt names the context to load, the reviewer can see and remove each addition, and the agent starts without asking for that context.
+**Independent Test**: With stored rules for a spec, send a short prompt on that spec. Confirm the Commentary tab names the proposed context to load, the reviewer can see and remove each proposed addition, and the agent receives the prompt unchanged.
 
 **Acceptance Scenarios**:
 
-1. **Given** stored knowledge relevant to a short prompt, **When** the prompt is sent, **Then** the validator adds the context to load and the reviewer sees the additions.
-2. **Given** an addition the reviewer does not want, **When** the reviewer removes it, **Then** the agent receives the prompt without it.
-3. **Given** a prompt with nothing relevant stored, **When** enhanced, **Then** it is sent unchanged.
-4. **Given** a prompt that already names the context, **When** enhanced, **Then** nothing is duplicated.
+1. **Given** stored knowledge relevant to a short prompt, **When** the prompt is sent, **Then** the Commentary tab shows the proposed context additions and the agent's prompt is unchanged.
+2. **Given** a proposed addition the reviewer does not want, **When** the reviewer removes it, **Then** it no longer appears in the proposal.
+3. **Given** a prompt with nothing relevant stored, **When** enhanced, **Then** no proposal is shown.
+4. **Given** a prompt that already names the context, **When** enhanced, **Then** nothing is duplicated in the proposal.
 
 ---
 
@@ -116,23 +122,23 @@ The validator's prompt is strong and verified by evals covering three behaviours
 ### Functional Requirements
 
 - **FR-001**: System MUST pass every agent or worker response to the validator (Goal: observes continuously).
-- **FR-002**: Validator MUST answer an agent's question from the active spec and its resources, ADRs, memories and documents before the reviewer is asked (Rules: Sources).
+- **FR-002**: Validator MUST answer an agent's question from the active spec and its resources, ADRs, memories and documents, and show the answer in Commentary so the reviewer sees it before replying (Rules: Sources).
 - **FR-003**: Validator MUST keep the active spec's ultimate goal (Goal.md) in view for every answer.
 - **FR-004**: Validator MUST produce an answer as close as possible to the reviewer's own, plus observations, a summary and the impact.
 - **FR-005**: Validator MUST say when no source supports an answer instead of guessing.
 - **FR-006**: After a reviewer message, System MUST send the previous agent response and the reviewer's reply to the validator FIRST.
 - **FR-007**: Validator MUST compare the reviewer's reply with its prediction and record the difference.
 - **FR-008**: Validator MUST extract knowledge, rules, instructions and goals from reviewer replies and store them with the related spec, story or task, preferring memories over new files; examples MAY be captured.
-- **FR-009**: Validator MAY add to the reviewer's prompt the context to load; the reviewer MUST be able to see and remove additions.
+- **FR-009**: Validator MAY propose, in the Commentary tab, context to load with the reviewer's prompt; the reviewer MUST be able to see and remove proposed additions. In beta the proposal MUST NOT change the prompt the agent receives.
 - **FR-010**: Stored knowledge MUST be deduplicated and concise; the same fact MUST NOT be loaded in different forms.
 - **FR-011**: A reviewer decision that reverses a stored one MUST replace it.
-- **FR-012**: Validator responses MUST be visible in the UI, using the same shared components that show agent responses and observations elsewhere.
+- **FR-012**: Validator responses MUST be visible in the Commentary tab, using the same shared components that show agent responses and observations elsewhere.
 - **FR-013**: Validator cost (input, output, reasoning, cache, cost) MUST count in the shared usage banner.
 - **FR-014**: The validator MUST begin as a simple observer (a tool backed by an agent run); the interface seen by agents and the UI MUST NOT change when it later moves to the backend.
 - **FR-015**: The validator's prompt MUST be verified by evals for answering questions, improving the prompt and storing observations.
 - **FR-016**: Secrets MUST never reach the validator, its storage, its UI output or its cost records.
 - **FR-017**: A validator failure MUST NOT block the agent or reviewer flow and MUST be visible.
-- **FR-018**: Validator output MUST be advisory; it MUST NOT approve gates or trigger destructive actions on the reviewer's behalf [NEEDS CLARIFICATION: may the validator's answer be delivered straight to the agent without the reviewer seeing it first? Options: A) never, reviewer sees every answer before the agent acts; B) only above a confidence threshold the reviewer sets; C) always for questions answered from Rules.md, advisory otherwise].
+- **FR-018**: Validator output MUST be advisory; it MUST NOT approve gates or trigger destructive actions on the reviewer's behalf. In beta, validator answers MUST appear only in the Commentary tab and MUST NOT be sent to the agent; linking validator answers to the agent is out of scope for this spec's first release.
 
 ### Open Questions
 
@@ -151,12 +157,12 @@ The validator's prompt is strong and verified by evals covering three behaviours
 
 ### Measurable Outcomes
 
-- **SC-001**: At least 60% of agent questions are answered by the validator from existing artifacts, with no reviewer involvement (baseline measured in the first week).
-- **SC-002**: Repeat instructions from the reviewer (the same rule or requirement stated more than once) fall by at least 70% per week versus the week before launch.
+- **SC-001**: At least 60% of agent questions get a validator answer in Commentary from existing artifacts, with a named source (baseline measured in the first week).
+- **SC-002**: Once linking to the agent ships (after beta; not measurable in beta, when the agent receives nothing), repeat instructions from the reviewer (the same rule or requirement stated more than once) fall by at least 70% per week versus the week before linking.
 - **SC-003**: For answered questions, at least 80% of the validator's answers match the reviewer's reply on the decision made.
-- **SC-004**: A fresh agent started on a spec with stored knowledge needs no more than 1 follow-up question for context the reviewer already gave, down from the pre-launch average.
+- **SC-004**: For a fresh agent started on a spec with stored knowledge, no more than 1 question about context the reviewer already gave goes without a validator answer in Commentary that cites the stored knowledge, down from the pre-launch average of such repeats.
 - **SC-005**: Duplicate knowledge items across a spec's stored knowledge stay at 0 on audit, and enhanced prompts load no fact twice.
-- **SC-006**: 100% of validator runs show their response in the UI and their cost in the shared banner.
+- **SC-006**: 100% of validator runs show their response in the Commentary tab and their cost in the shared banner.
 - **SC-007**: Validator cost stays under 10% of the total cost of the agent work it observes.
 - **SC-008**: A validator failure delays the agent or reviewer flow by 0 blocking steps in all tested failure cases.
 - **SC-009**: Every prompt change passes the three eval sets (answering, improving, storing) with no behaviour below its baseline.
@@ -168,4 +174,5 @@ The validator's prompt is strong and verified by evals covering three behaviours
 - ADRs, memories, Goal.md, Rules.md and spec resources are already readable by the tools; this spec adds no new source type.
 - The shared usage banner and shared response and observation components already exist and are reused, not rebuilt (Consistent Experience).
 - Moving the validator to the backend and smoothing the process is a later spec, after tuning.
+- Linking the validator's answers and prompt additions to the agent is out of scope for the first release (beta, Commentary-only); it is a later release, added with cautions once the reviewer has confidence.
 - Per-spec cost and token fields recorded by earlier specs (005) are reused for the validator's cost.

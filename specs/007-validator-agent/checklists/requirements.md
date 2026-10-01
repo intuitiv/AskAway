@@ -13,8 +13,8 @@
 
 ## Requirement Completeness
 
-- [ ] CHK005 No [NEEDS CLARIFICATION] markers remain (3 open: FR-018, FR-019, FR-020, each with options)
-- [x] CHK006 Requirements are testable and unambiguous (except the three open items)
+- [ ] CHK005 No [NEEDS CLARIFICATION] markers remain (2 open: FR-019, FR-020, each with options; FR-018 resolved 2026-10-02)
+- [x] CHK006 Requirements are testable and unambiguous (except the two open items)
 - [x] CHK007 Success criteria are measurable
 - [x] CHK008 Success criteria are technology-agnostic
 - [x] CHK009 All acceptance scenarios are defined
@@ -24,7 +24,7 @@
 
 ## Feature Readiness
 
-- [x] CHK013 All functional requirements have clear acceptance criteria (FR-018 to FR-020 pending clarification)
+- [x] CHK013 All functional requirements have clear acceptance criteria (FR-019 and FR-020 pending clarification)
 - [x] CHK014 User stories cover primary flows and are independently testable in priority order
 - [x] CHK015 Every Goal.md outcome and Rules.md rule maps to a story or FR
 - [ ] CHK016 Success-criteria targets (60%, 70%, 80%, 10%) are reviewer-confirmed; they are proposed defaults
