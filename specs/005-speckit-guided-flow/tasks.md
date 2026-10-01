@@ -78,7 +78,7 @@ description: "Task list for 005 Spec Kit Guided Flow"
 - [x] T017 [P] [US6] `tools/command-patterns.cjs`: terminal-command bursts, families and the requests spent between burst commands in Copilot debug logs; run on the reviewer's recent conversations and decide bash/git worker vs standalone commands (EV-COMMAND-PATTERNS). Result 2026-10-01 (5 conversations): 158 commands, 103 in bursts, 59 full-context requests between burst commands = 342 AIU; git 34%, reads 34%. Decision proposed: no git/bash worker; a deterministic checkpoint script for diff→add→commit→status, read bursts go to `explore`.
 - [ ] T018 [US6] Keep a warm worker warm while the main chat is active and its knowledge fits pending work: minimal `POST /session/:id/message` ping before the 5-min TTL, ping cost in the ledger, stop at 300K context or after N unused pings (research 2026-10-01: a ping is a real request, cache read 0.1×, cold rewrite 1.25×; health checks do not refresh)
 - [ ] T022 [US6] Fork-for-parallel POC: a second request for a busy warm worker forks its OpenCode session and runs in parallel; verify both forks keep ~99-100% cache hits on Luna and Sonnet (`tools/poc-session-fork.cjs`); if confirmed, `submit` to a busy worker forks instead of queuing
-- [ ] T023 Reviewer requirements per UI component and feature in `tasksync-chat/docs/requirements/` (reviewer's quoted words, date, guarding test or `gap`); `test-requirements-docs.cjs` fails on a cited test id that does not exist (EV-REQUIREMENTS-DOCS)
+- [x] T023 Reviewer requirements per UI component and feature in `tasksync-chat/docs/requirements/` (reviewer's quoted words, date, guarding test or `gap`); `test-requirements-docs.cjs` fails on a cited test id that does not exist (EV-REQUIREMENTS-DOCS)
 
 ---
 
