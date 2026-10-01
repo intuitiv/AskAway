@@ -395,6 +395,27 @@ interface ToolShard {
 }
 
 const execFileAsync = promisify(execFile);
+// ── availability state (pure; the hook hooks/spec-context-inject.cjs reads the same file) ──
+export type AvailabilityState = { mode: 'here' | 'away' | 'offline'; until?: string; note?: string; setAt: string };
+export function availabilityFile(workspace: string, home: string = os.homedir()): string {
+    return path.join(home, '.askaway', 'availability', `${commentaryKey(workspace)}.json`);
+}
+export function readAvailability(workspace: string, home: string = os.homedir()): AvailabilityState | null {
+    try { return JSON.parse(fs.readFileSync(availabilityFile(workspace, home), 'utf8')); } catch { return null; }
+}
+export function writeAvailability(workspace: string, input: { mode?: unknown; until?: unknown; note?: unknown }, home: string = os.homedir()): AvailabilityState {
+    const mode = input.mode === 'away' || input.mode === 'offline' ? input.mode : 'here';
+    const state: AvailabilityState = { mode, setAt: new Date().toISOString() };
+    const until = typeof input.until === 'string' && Number.isFinite(Date.parse(input.until)) ? new Date(input.until).toISOString() : '';
+    const note = typeof input.note === 'string' ? input.note.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+    if (mode !== 'here' && until) { state.until = until; }
+    if (note) { state.note = note; }
+    const file = availabilityFile(workspace, home);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(state));
+    return state;
+}
+// ── end availability state ──
 /** Bump to force a one-time clean rebuild of the global month shard when fold logic changes. */
 const GLOBAL_FOLD_VERSION = 4;
 // Message types
@@ -403,6 +424,7 @@ type ToWebviewMessage =
     | { type: 'workersState'; data: WorkersState | null }
     | { type: 'workerTrace'; data: WorkerTrace }
     | { type: 'commentaryState'; data: CommentaryView | null }
+    | { type: 'availabilityState'; data: AvailabilityState | null }
     | { type: 'updateQueue'; queue: QueuedPrompt[]; enabled: boolean }
     | { type: 'updateWorkerQueue'; tasks: Array<{ id: string; role: 'command' | 'subagent'; task: string; status: 'pending' | 'running' | 'done'; createdAt: number }> }
     | { type: 'availableModels'; models: Array<{ id: string; name: string; vendor: string; family: string; maxInputTokens: number }> }
@@ -492,6 +514,7 @@ type FromWebviewMessage =
     | { type: 'restartOpenCodeServer' }
     | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
     | { type: 'requestCommentary' }
+    | { type: 'setAvailability'; mode: string; until: string; note: string }
     | { type: 'setCommentaryGoal'; goal: string }
     | { type: 'clearCommentary'; what: 'feed' | 'goal' | 'all' }
     | { type: 'clearPersistedHistory' }
@@ -1513,6 +1536,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     private _commentarySubscribed = false;
+
+    private _pushAvailability(): void {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        this._broadcast({ type: 'availabilityState', data: root ? readAvailability(root) : null });
+    }
 
     private _handleCommentary(action: 'request' | 'goal' | 'clear', value?: string): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -4750,7 +4778,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'requestCommentary':
                 this._handleCommentary('request');
+                this._pushAvailability();
                 break;
+            case 'setAvailability': {
+                const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (root) { writeAvailability(root, message); }
+                this._pushAvailability();
+                break;
+            }
             case 'setCommentaryGoal':
                 this._handleCommentary('goal', message.goal);
                 break;
@@ -6933,6 +6968,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         <!-- Commentary Panel (goal box + live orchestrator feed) -->
         <div class="tab-panel" id="panel-commentary">
             <div class="cm-shell">
+                <div class="cm-avail" id="cm-avail"></div>
                 <textarea class="cm-goal-input" id="cm-goal-input" rows="6" aria-label="Main goal" placeholder="Main goal: what should the orchestrator focus on? Saved as you type. Empty = the active spec cycle."></textarea>
                 <div class="cm-toolbar">
                     <button class="cm-icon-btn" id="cm-copy" title="Copy goal + feed as the next conversation's opener" aria-label="Copy opener"><span class="codicon codicon-copy"></span></button>

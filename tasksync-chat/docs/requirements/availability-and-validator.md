@@ -1,10 +1,10 @@
-# Availability modes and validator agent (availability hook built; selector and validator planned)
+# Availability modes and validator agent (availability hook and selector built; validator planned)
 
 | ID | Requirement (one plain sentence) | Reviewer's words (date) | Guarded by |
 |---|---|---|---|
 | R-PLAN-01 | An overnight run command makes the agent not stop for small choices, hand off at the end and report every decision. | "Do not stop for small choices, create handoff at the end of session, capture all decisions and report at the end" (2026-10-01) | EV-AVAILABILITY (`test-availability.cjs`: Offline prompt rules); gap: run command and actual agent execution |
 | R-PLAN-02 | The same mode exists for shorter absences (such as the next hour), where the reviewer is reachable on Telegram, unlike overnight. | "May be they need not be like overnight, i may also need similar stuff for next 1 hr" (2026-10-01) | EV-AVAILABILITY (`test-availability.cjs`: Away/Offline rules, note, until, expiry, Here and missing state); gap: actual Telegram question delivery |
-| R-PLAN-03 | An availability dropdown tells the agent the reviewer's plan so it can act accordingly. | "we can have an availability drop down, where I'll tell my plan" (2026-10-01) | gap |
+| R-PLAN-03 | An availability dropdown tells the agent the reviewer's plan so it can act accordingly. | "we can have an availability drop down, where I'll tell my plan" (2026-10-01) | EV-AVAILABILITY-UI (`test-availability-ui.cjs`: Commentary-tab select Here/Away/Offline + until + note, written to the state file the hook reads, badge "Away until HH:MM") |
 | R-PLAN-04 | ~~When the reviewer is away and input nears 300K, the agent hands off automatically.~~ Replaced 2026-10-01 by R-PLAN-04a. | "Handing off when i am away and input reaches around 300K." (2026-10-01) | gap |
 | R-PLAN-04a | On a long or overnight run, once input exceeds 300K the agent writes a handoff and continues in a new conversation; handoff is not tied to 300K otherwise. | "Hand off is not always near 300K. when we run for overnight or long, and it exceeds 300K it is better with new conversation so handoff." (2026-10-01) | EV-AVAILABILITY (`test-availability.cjs`: Offline long-run prompt rule); gap: token-count-triggered handoff, new conversation and Away notice |
 | R-PLAN-05 | A validator agent observes every agent response and answers from ADRs, memories, specs and documents. | "Validator agent should continuously observe agent response" (2026-10-01) | gap |

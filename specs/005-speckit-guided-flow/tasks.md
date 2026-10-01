@@ -80,12 +80,13 @@ description: "Task list for 005 Spec Kit Guided Flow"
 - [x] T022 [US6] Fork-for-parallel POC: a second request for a busy warm worker forks its OpenCode session and runs in parallel; verify both forks keep ~99-100% cache hits on Luna and Sonnet (`tools/poc-session-fork.cjs`); if confirmed, `submit` to a busy worker forks instead of queuing
 - [x] T023 Reviewer requirements per UI component and feature in `tasksync-chat/docs/requirements/` (reviewer's quoted words, date, guarding test or `gap`); `test-requirements-docs.cjs` fails on a cited test id that does not exist (EV-REQUIREMENTS-DOCS)
 - [x] T024 [US6] Command batching for the main agent (data: `tools/command-options.cjs`, option H saves 38 requests / $2.29 over 5 conversations): `tools/checkpoint.cjs` for commits (done, EV-CHECKPOINT), `tools/batch.cjs` for independent command sequences (EV-BATCH), worker `status` returns the report once finished; both agent prompts name them
+- [ ] T025 [US1] Stage stays `clarify` (next `/sk.check`) while spec.md has `[NEEDS CLARIFICATION]` markers; today spec-facts says next `/sk.plan` for 007 with 2 open markers (`stages.ts`, `test-spec-stages.cjs`)
 
 ---
 
 ## Phase 7: Reviewer requests 2026-10-01 — availability, handoff, validator
 
-- [ ] T019 [US3] Availability selector "Here · Away (Telegram) · Offline until <time>" per workspace, injected by the spec-context hook. Away/Offline rules: do not stop for small choices (decide, record in a decisions list), keep every lane busy, write a handoff at the end of the session, end with a report of decisions, open questions and cost. Offline never asks; questions are parked for the report. Test: hook output per mode. (Backend done 2026-10-01: state `~/.askaway/availability/<key>.json`, hook block, EV-AVAILABILITY; selector UI open.)
+- [x] T019 [US3] Availability selector "Here · Away (Telegram) · Offline until <time>" per workspace, injected by the spec-context hook. Away/Offline rules: do not stop for small choices (decide, record in a decisions list), keep every lane busy, write a handoff at the end of the session, end with a report of decisions, open questions and cost. Offline never asks; questions are parked for the report. Test: hook output per mode. (Backend done 2026-10-01: state `~/.askaway/availability/<key>.json`, hook block, EV-AVAILABILITY; selector UI open.)
 - [ ] T020 [US3] Long or overnight run (Away/Offline): once input exceeds 300K, write `/sk.handoff` and continue in a new conversation (reviewer: "Hand off is not always near 300K"; other handoffs are not tied to 300K); Telegram notice when Away; test with a stubbed token count
 - [x] T021 Spec 007 Validator agent: `/sk.specify` from `specs/007-validator-agent/Goal.md` and `Rules.md` (done 2026-10-01: spec.md Draft, 5 stories, 3 NEEDS CLARIFICATION → next `/sk.check`)
 

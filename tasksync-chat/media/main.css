@@ -4967,6 +4967,14 @@ button#send-btn:disabled {
 }
 .cm-goal-input:focus { outline: 1px solid #8b5cf6; }
 .cm-toolbar { display: flex; justify-content: flex-end; gap: 2px; }
+.cm-avail { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.cm-avail select, .cm-avail input {
+    font-family: inherit; font-size: 12px; padding: 2px 4px; min-width: 0;
+    background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, #8b5cf6); border-radius: 4px;
+}
+.cm-avail #cm-avail-note { flex: 1 1 80px; }
+.cm-avail-badge { font-size: 11px; font-weight: 700; color: var(--vscode-charts-yellow); }
 .cm-icon-btn {
     display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; padding: 0;
     border: none; border-radius: 4px; cursor: pointer; background: transparent; color: var(--vscode-foreground); opacity: 0.8;

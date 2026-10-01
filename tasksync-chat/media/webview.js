@@ -1469,6 +1469,9 @@
             case 'commentaryState':
                 applyCommentaryState(message.data);
                 break;
+            case 'availabilityState':
+                applyAvailabilityState(message.data);
+                break;
             case 'updateQueue':
                 promptQueue = message.queue || [];
                 queueEnabled = message.enabled !== false;
@@ -5275,6 +5278,33 @@
     }
     // ── end Commentary pure render ──
 
+    // ── Availability control + badge (pure; state file is read by hooks/spec-context-inject.cjs) ──
+    function availabilityControlHtml() {
+        return '<select id="cm-avail-mode" aria-label="Availability">' +
+            '<option value="here">Here</option><option value="away">Away (Telegram)</option><option value="offline">Offline</option></select>' +
+            '<input type="datetime-local" id="cm-avail-until" aria-label="Until" title="Until (optional)">' +
+            '<input type="text" id="cm-avail-note" maxlength="200" aria-label="Note" placeholder="Note">' +
+            '<span class="cm-avail-badge hidden" id="cm-avail-badge"></span>';
+    }
+    function availabilityBadge(state, now) {
+        if (!state || (state.mode !== 'away' && state.mode !== 'offline')) return '';
+        var label = state.mode === 'away' ? 'Away' : 'Offline';
+        if (!state.until) return label;
+        var until = new Date(state.until);
+        if (isNaN(until.getTime()) || until.getTime() < (now || Date.now())) return '';
+        var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+        var clock = pad(until.getHours()) + ':' + pad(until.getMinutes());
+        var sameDay = until.toDateString() === new Date(now || Date.now()).toDateString();
+        return label + ' until ' + (sameDay ? '' : pad(until.getMonth() + 1) + '-' + pad(until.getDate()) + ' ') + clock;
+    }
+    function availabilityLocalValue(iso) {
+        var d = new Date(iso);
+        if (!iso || isNaN(d.getTime())) return '';
+        var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+    // ── end Availability pure render ──
+
     // ── Commentary typewriter (shared with Storybook) ──
     function commentaryTypewrite(el, text, msPerChar) {
         var finalHtml = el.innerHTML;
@@ -5328,7 +5358,42 @@
         }
     }
 
+    function applyAvailabilityState(state) {
+        var mode = document.getElementById('cm-avail-mode');
+        if (!mode) return;
+        mode.value = state && state.mode ? state.mode : 'here';
+        var until = document.getElementById('cm-avail-until');
+        if (until) until.value = availabilityLocalValue(state && state.until);
+        var note = document.getElementById('cm-avail-note');
+        if (note && document.activeElement !== note) note.value = (state && state.note) || '';
+        var badge = document.getElementById('cm-avail-badge');
+        if (badge) {
+            var text = availabilityBadge(state);
+            badge.textContent = text;
+            badge.classList.toggle('hidden', !text);
+        }
+    }
+
+    function initAvailabilityControl() {
+        var host = document.getElementById('cm-avail');
+        if (!host) return;
+        host.innerHTML = availabilityControlHtml();
+        var save = function () {
+            var until = document.getElementById('cm-avail-until').value;
+            vscode.postMessage({
+                type: 'setAvailability',
+                mode: document.getElementById('cm-avail-mode').value,
+                until: until ? new Date(until).toISOString() : '',
+                note: document.getElementById('cm-avail-note').value
+            });
+        };
+        ['cm-avail-mode', 'cm-avail-until', 'cm-avail-note'].forEach(function (id) {
+            document.getElementById(id).addEventListener('change', save);
+        });
+    }
+
     function initCommentaryTab() {
+        initAvailabilityControl();
         var goal = document.getElementById('cm-goal-input');
         var on = function (id, handler) { var el = document.getElementById(id); if (el) el.addEventListener('click', handler); };
         var goalTimer = null;
