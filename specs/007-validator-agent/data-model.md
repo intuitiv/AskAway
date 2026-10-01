@@ -13,7 +13,7 @@ Names follow spec.md Key Entities. Persistence: knowledge in agentmemory (see re
 | observations, summary, impact | string | short |
 | sources | string[] | ADR/memory/doc/knowledge-item ids actually used |
 | contextSuggestions | ContextAddition[] | Story 3, dismissible |
-| usage | {input, output, reasoning, cacheRead, cacheWrite, cost} | feeds shared banner (FR-013) |
+| usage | {input, output, reasoning, cacheRead, cacheWrite, cost} | feeds shared banner (FR-013) via `SpecCostTurn` `source`, `reasoningTokens`, `cacheReadTokens`, `cacheWriteTokens`, turnKey `validator:<id>` |
 | skipped | boolean | true when the cheap check skipped it (FR-019); no answer, no cost |
 | error | string \| null | FR-017, visible, non-blocking |
 | ts | number | |
@@ -29,7 +29,7 @@ Names follow spec.md Key Entities. Persistence: knowledge in agentmemory (see re
 | text | concise canonical statement |
 | example | optional, same memory, labelled line |
 | specSlug / storyId / taskId | scope; at least specSlug. Tags `spec:`, `story:`, `task:` |
-| changed | true when it superseded an earlier item (FR-011) |
+| changed | derived: true when `remember` returned a `supersededId` from `/agentmemory/evolve` (FR-011); informational only, never a review flag |
 | from | reviewer reply id |
 No expiry field: kept until the reviewer changes it (FR-020). Dedup key: normalised text within spec scope (FR-010).
 

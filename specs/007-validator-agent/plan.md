@@ -66,10 +66,10 @@ tasksync-chat/
 │   ├── knowledgeStore.ts    # KnowledgeStore port + agentmemory REST adapter
 │   ├── redact.ts            # secret redaction (reuse existing if found)
 │   └── records.ts           # jsonl under .askaway/specs/<slug>/validator/
-├── src/commentary/commentary.ts   # + kind 'validator'
-├── src/specs/specCostLedger.ts    # + source 'validator' on recorded turns
+├── src/commentary/commentary.ts   # + item kind 'validator' via internal postValidator (NOT in COMMENTARY_KINDS), + detail, export CREDENTIAL_ANYWHERE
+├── src/specs/specCostLedger.ts    # SpecCostTurn + source, reasoning/cache fields; turnKey validator:<id>
 ├── src/workers/workerProfiles.ts  # + validator profile (read-only)
-├── evals/validator/               # answer, enhance, store cases
+├── evals/validator/               # answer, enhance, store, cheap-check, secret-leak cases
 └── storybook/                     # Commentary validator entry story
 ```
 
@@ -77,7 +77,7 @@ tasksync-chat/
 
 ## Phases and delivery order (maps to stories)
 
-1. **Spike (T-spike)**: verify agentmemory `/remember`, supersede, decay/auto-forget exemption, health, secret handling; record findings in research R-1. Gate for step 3.
+1. **Spike (T-spike)**: verify agentmemory `/remember`, supersede, and measure the three FR-020 options (dedicated instance, re-save job, `memoryStore.ts`), health, secret handling; record findings in research R-1. Reviewer chooses before step 3.
 2. **US1** observer + cheap check + Commentary entry + cost + beta isolation test.
 3. **US2** closeLoop, prediction/match (FR-021), KnowledgeStore writes, fresh-agent recall.
 4. **US3** context proposal (dismissible, prompt unchanged).
@@ -86,7 +86,7 @@ tasksync-chat/
 
 ## Risks
 
-- agentmemory decay/auto-forget vs FR-020: mitigated by spike; fallback is re-save job or revisiting the Decision (research R-1).
+- agentmemory decay/auto-forget vs FR-020: mitigated by spike; fallback is the reviewer's choice among a dedicated instance, re-save job or `memoryStore.ts`, measured by T001 (research R-1).
 - Extra local runtime (Node + iii engine, 4 ports): documented in quickstart; health shown in Commentary on failure.
 - Cheap-check misses a real question: skip rate audited in evals.
 

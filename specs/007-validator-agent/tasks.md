@@ -28,7 +28,7 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 
 **Purpose**: Resolve the agentmemory unknowns before any knowledge-store work.
 
-- [ ] T001 agentmemory spike (research R-1 VERIFY items): against a local agentmemory server confirm and record in `specs/007-validator-agent/research.md` (a) decay/consolidation/auto-forget can be disabled or exempted for `agentId` "validator" (FR-020), (b) exact `/agentmemory/remember` fields (`concepts`, `agentId`, `project`) and the supersede call, (c) project scoping in `smart-search`, (d) behaviour when port 3111 is taken by another instance and the `/health` response, (e) `AGENTMEMORY_SECRET` read from VS Code SecretStorage, never files. Outcome decides: adapter re-saves, or the store decision in research R-1 is revisited (then stop and ask the reviewer). Includes a re-runnable probe `tasksync-chat/test-agentmemory-spike.cjs` that skips with a named reason when no server runs.
+- [ ] T001 agentmemory spike, measure and report (research R-1 VERIFY items; it does NOT confirm an exemption, R-1 says none exists): against a local agentmemory server record in `specs/007-validator-agent/research.md` (a) a forced forget/consolidation/decay cycle against validator items for each FR-020 option, reported for the reviewer's choice: (a) a dedicated validator-only instance with `AUTO_FORGET_ENABLED=false` and `CONSOLIDATION_ENABLED=false` (own `--port`/`--data-dir`/`--instance`), (b) the shared instance plus a re-save job from `index.jsonl` (survives eviction, not consolidation rewrites), (c) the existing `memoryStore.ts` fallback; per option: items intact or not, wording rewritten or not, setup cost; (b) exact `/agentmemory/remember` fields (`concepts`, `agentId`, `project`) and the `/agentmemory/evolve` supersede call (answered in R-1, re-verify only), (c) project scoping in `smart-search` and the `AGENTMEMORY_AGENT_SCOPE=isolated` requirement, (d) behaviour when port 3111 is taken by another instance and the `/health` response, (e) `AGENTMEMORY_SECRET`: the server holds it in its env, the extension keeps its client copy in VS Code SecretStorage, never in files or logs. T001 only reports; the reviewer chooses (a), (b) or (c) (analyze A1) before T005. Includes a re-runnable probe `tasksync-chat/test-agentmemory-spike.cjs` that skips with a named reason when no server runs.
 
 ---
 
@@ -38,8 +38,8 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T002 [P] Secret redaction and records: `tasksync-chat/src/validator/redact.ts` (reuse the existing worker-transcript redaction if found; drop the whole item when uncertain, FR-016) and `tasksync-chat/src/validator/records.ts` (append-only jsonl under `.askaway/specs/<slug>/validator/`: responses, predictions, `index.jsonl`; data-model.md); test `tasksync-chat/test-validator-records.cjs` (a secret never reaches the file, records round-trip).
-- [ ] T003 [P] Reuse points: add Commentary kind `validator` in `tasksync-chat/src/commentary/commentary.ts` (20-word cap stays on `update`/`heads-up` only, R-3), source `validator` on `recordSpecTurn` in `tasksync-chat/src/specs/specCostLedger.ts` (R-4), and a read-only validator profile in `tasksync-chat/src/workers/workerProfiles.ts` (no send-to-agent tool, R-5); test `tasksync-chat/test-validator-foundation.cjs` (CommentaryStore accepts the kind, banner total includes validator cost, profile has no send tool).
+- [ ] T002 [P] Secret redaction and records: `tasksync-chat/src/validator/redact.ts` wraps the existing `CREDENTIAL_ANYWHERE` pattern in `tasksync-chat/src/commentary/commentary.ts` (a non-exported const today: export it, do not copy it; no worker-transcript redaction exists, R-6) and drops the whole item when uncertain (FR-016), applied to the reviewer's reply, the observed response and the sources read and `tasksync-chat/src/validator/records.ts` (append-only jsonl under `.askaway/specs/<slug>/validator/`: responses, predictions, `index.jsonl`; data-model.md); test `tasksync-chat/test-validator-records.cjs` (secrets seeded in reply, response and a source reach no sink: agentmemory body, jsonl, Commentary, cost; records round-trip).
+- [ ] T003 [P] Reuse points, three small edits. (1) Commentary in `tasksync-chat/src/commentary/commentary.ts`: keep `COMMENTARY_KINDS` (`update`/`heads-up`) as the agent-facing enum so the MCP `commentary` tool and `post()` keep refusing kind `validator`; widen `CommentaryItem.kind` to `CommentaryKind | 'validator'`, add optional `detail`, and add a separate internal `CommentaryStore.postValidator()` that is not an MCP tool (20-word cap stays on `update`/`heads-up` only, R-3; A2). (2) `SpecCostTurn` in `tasksync-chat/src/specs/specCostLedger.ts` gains optional backward-compatible `source`, `reasoningTokens`, `cacheReadTokens`, `cacheWriteTokens` (R-4); validator runs use `turnKey` `validator:<responseId>` so `recordSpecTurn` (upsert by turnKey+specSlug) never overwrites the observed turn's row (A3). (3) A read-only validator profile in `tasksync-chat/src/workers/workerProfiles.ts` with portable fields purpose, model, prompt, MCP tool policy (no send-to-agent tool), file scope, stop condition, evidence contract (R-5, A18); test `tasksync-chat/test-validator-foundation.cjs` (MCP `commentary` tool schema and `post()` REJECT kind `validator`; `postValidator` stores it with `detail`; banner total includes the validator row once and the observed row stays; old rows without `source` still total; profile has no send tool).
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -51,7 +51,8 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 
 **Independent Test**: Sample spec whose Rules.md decides X: a covered question gets a cited answer with observations/summary/impact in Commentary, an uncovered one is reported unanswerable, the agent received nothing, and the banner cost rose.
 
-- [ ] T004 [US1] Observer in `tasksync-chat/src/validator/observer.ts`: cheap check (R-2, skip counted), `observe()` answering from Goal.md, Rules.md, spec, ADRs, memories with cited source or "no source answers" (FR-001 to FR-005, FR-019), run through the worker run port with failures shown, not blocking (FR-014, FR-017), plus the Commentary validator entry per `contracts/commentary-validator-entry.md` with a Storybook story in `tasksync-chat/storybook/`; test `tasksync-chat/test-validator-observer.cjs` (covered/uncovered/no-question/worker response cases, banner cost rose, beta isolation: agent-send surface untouched, R-7, validator failure does not block).
+- [ ] T004a [US1] Observer in `tasksync-chat/src/validator/observer.ts`: cheap check (R-2, skip counted and visible in Commentary stats, A15), `observe()` answering from Goal.md, Rules.md, spec, ADRs, memories with cited source or "no source answers" (FR-001 to FR-005, FR-019), run through the worker run port with failures shown, not blocking (FR-014, FR-017); test `tasksync-chat/test-validator-observer.cjs` (covered/uncovered/no-question/worker response cases, banner cost rose once, beta isolation: agent-send surface untouched, R-7, validator failure does not block).
+- [ ] T004b [US1] Commentary validator entry per `contracts/commentary-validator-entry.md` (rendered through the shared trace-row block, written via `postValidator` from T003) with a Storybook story in `tasksync-chat/storybook/`; test `tasksync-chat/test-validator-commentary-entry.cjs` (render output contains the shared trace-row output, validator item after an `update` item, a failed run shows an error entry) (depends on T004a).
 
 **Checkpoint**: User Story 1 is functional and testable independently
 
@@ -63,8 +64,8 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 
 **Independent Test**: Reply with a decision differing from the prediction and containing a rule: mismatch recorded, rule stored with the spec, a fresh agent's question cites it.
 
-- [ ] T005 [US2] KnowledgeStore port and agentmemory REST adapter in `tasksync-chat/src/validator/knowledgeStore.ts` per `contracts/knowledge-store.md` and the T001 outcome (depends on T001; re-save or revised store decision), mirroring ids in `index.jsonl`; test `tasksync-chat/test-validator-knowledge-store.cjs` against a stub server (remember tags `spec:`/`story:`/`task:`, project scoping, health failure visible, secret from SecretStorage).
-- [ ] T006 [US2] `closeLoop()` in `tasksync-chat/src/validator/observer.ts`: pair delivered before the agent (FR-006), prediction vs reply match shown in Commentary (FR-007, FR-021), extraction of rules/instructions/goals/examples (FR-008), "ok" stores nothing, unrelated reply stores nothing (depends on T004, T005); test `tasksync-chat/test-validator-close-loop.cjs` (end to end: rule stored then cited by a fresh observer run).
+- [ ] T005 [US2] KnowledgeStore port and agentmemory REST adapter in `tasksync-chat/src/validator/knowledgeStore.ts` per `contracts/knowledge-store.md` and the T001 outcome (depends on T001 and the reviewer's A1 choice: dedicated instance, re-save job or `memoryStore.ts`), mirroring ids in `index.jsonl`; test `tasksync-chat/test-validator-knowledge-store.cjs` against a stub server (remember tags `spec:`/`story:`/`task:`, project scoping, recall for spec A never returns spec B items via a post-filter on the `spec:` tag, health failure visible, secret from SecretStorage and never logged).
+- [ ] T006 [US2] `closeLoop()` in `tasksync-chat/src/validator/observer.ts`: pair delivered before the agent (FR-006; ordering and timeout per the reviewer's A4 decision), prediction vs reply match shown in Commentary (FR-007, FR-021), extraction of rules/instructions/goals/examples (FR-008), "ok" stores nothing, unrelated reply stores nothing (depends on T004a, T004b, T005); test `tasksync-chat/test-validator-close-loop.cjs` (end to end: rule stored then cited by a fresh observer run; FR-018 isolation: no validator output reaches chat input, worker input, an MCP tool result or prompt text).
 
 **Checkpoint**: User Stories 1 AND 2 work independently
 
@@ -76,7 +77,7 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 
 **Independent Test**: With stored rules, a short prompt shows proposed additions, one removed, agent prompt byte-identical.
 
-- [ ] T007 [US3] `proposeContext()` in `tasksync-chat/src/validator/observer.ts` using KnowledgeStore recall (depends on T005), dismissal via the existing Commentary clear behaviour (FR-009); test `tasksync-chat/test-validator-propose-context.cjs` (proposal shown, dismiss works, nothing relevant means no proposal, named context not duplicated, prompt unchanged).
+- [ ] T007 [US3] `proposeContext()` in `tasksync-chat/src/validator/observer.ts` using KnowledgeStore recall (depends on T005 and T006: same file `observer.ts`, so sequential), dismissal via the existing Commentary clear behaviour (FR-009); test `tasksync-chat/test-validator-propose-context.cjs` (proposal shown, dismiss works, nothing relevant means no proposal, named context not duplicated, prompt byte-identical, FR-018 isolation: no proposal reaches an agent input).
 
 **Checkpoint**: User Stories 1 to 3 work independently
 
@@ -100,7 +101,8 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 
 **Independent Test**: Run the eval set per suite; a weakened prompt lowers its suite and is reported as a regression.
 
-- [ ] T009 [US5] Eval suites `tasksync-chat/evals/validator/` (answer, enhance, store) per `contracts/validator-evals.md`, scored through `tasksync-chat/src/workers/evalScoreboard.ts`, with baseline per behaviour and a way to add a real reviewer correction (FR-015); test `tasksync-chat/test-validator-evals.cjs` (three results reported, weakened prompt flagged as regression, added correction included in later runs) and wire all `test-validator-*.cjs` into `test:workers` in `tasksync-chat/package.json`.
+- [ ] T009a [US5] Eval suites `tasksync-chat/evals/validator/` (answer, enhance, store, plus a cheap-check skip case and a secret-leak case, A16) per `contracts/validator-evals.md`, scored through `tasksync-chat/src/workers/evalScoreboard.ts`; test `tasksync-chat/test-validator-evals.cjs` (three suite results reported, skip and secret cases present).
+- [ ] T009b [US5] Baseline per behaviour and a way to add a real reviewer correction (FR-015) in `tasksync-chat/evals/validator/`; test `tasksync-chat/test-validator-eval-baseline.cjs` (weakened prompt flagged as regression, added correction included in later runs); wire all `test-validator-*.cjs` into `test:workers` in `tasksync-chat/package.json` (depends on T009a).
 
 **Checkpoint**: All user stories are independently functional
 
@@ -116,21 +118,21 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 
 - **Setup**: T001 first; no dependencies. T005, T006, T007, T008 depend on T001 (knowledge-store tasks).
 - **Foundational (T002, T003)**: can run in parallel with T001; BLOCK all user stories.
-- **US1 (T004)** needs T002, T003. **US2 (T005, T006)**: T005 needs T001 and T002; T006 needs T004 and T005. **US3 (T007)** needs T005. **US4 (T008)** needs T005. **US5 (T009)** needs T004 to T007 for the three behaviours.
+- **US1 (T004a, T004b)** need T002, T003; T004b after T004a. **US2 (T005, T006)**: T005 needs T001 and T002; T006 needs T004a, T004b and T005. **US3 (T007)** needs T005 and T006 (same file `observer.ts`, sequential). **US4 (T008)** needs T005. **US5 (T009a, T009b)** need T004a to T007; T009b after T009a.
 - **Polish (T010)** after all stories.
 
 ## Parallel Example
 
 ```text
-T001 agentmemory spike  |  T002 redact+records  |  T003 commentary kind + cost source + profile
-After T005: T007 (US3) and T008 (US4) in parallel
+T001 agentmemory spike  |  T002 redact+records  |  T003 postValidator + cost source + profile
+After T006: T007 (US3, `observer.ts`) and T008 (US4, `knowledgeStore.ts`) in parallel
 ```
 
 ## Implementation Strategy
 
-- **MVP**: T001 to T004 (spike, foundation, US1): the reviewer reads validator answers and cost in Commentary.
+- **MVP**: T001 to T004b (spike, foundation, US1): the reviewer reads validator answers and cost in Commentary.
 - **Incremental**: add US2 (learning), US3 (proposal), US4 (dedup), US5 (evals); each ships with its test and keeps `test:workers` green.
-- If T001 shows decay cannot be disabled or exempted, stop before T005 and put the store decision back to the reviewer.
+- T001 reports the three FR-020 options; stop before T005 until the reviewer chooses (analyze A1).
 
 ## Notes
 

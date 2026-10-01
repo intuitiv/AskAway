@@ -46,17 +46,17 @@ Consequence: KnowledgeStore adapter must re-save / pin items when a shared insta
 - Rejected: only questions/decisions (misses implicit decisions); every response unfiltered (cost, SC-007).
 
 ## R-3 Commentary tab reuse
-- `src/commentary/commentary.ts` holds `CommentaryStore` with kinds `update | heads-up`, 20-word cap per item and a goal opener. Validator answers are longer (observations, summary, impact, sources, match). Decision: add a kind `validator` rendered by the same Commentary list component and trace-row renderer; the word cap applies only to the existing two kinds; no second tab or look-alike (Consistent Experience). Dismissal of a context suggestion reuses the existing item clear behaviour.
+- `src/commentary/commentary.ts` holds `CommentaryStore` with kinds `update | heads-up`, 20-word cap per item and a goal opener. Validator answers are longer (observations, summary, impact, sources, match). Decision: add a kind `validator` to `CommentaryItem` only, NOT to `COMMENTARY_KINDS` (verified: that array feeds the MCP `z.enum` and `post()` validation, so adding it would let an agent forge validator output). Written through a separate internal `postValidator()`; rendered by the same Commentary list component and trace-row renderer; the word cap applies only to the existing two kinds; no second tab or look-alike (Consistent Experience). Dismissal of a context suggestion reuses the existing item clear behaviour.
 
 ## R-4 Cost
-- `src/specs/specCostLedger.ts` (`recordSpecTurn`) already records turn cost per spec and feeds the shared banner. Decision: validator runs record a turn with source `validator`; the banner needs no new component. Per-source attribution covers the "several agents at once" edge case.
+- `src/specs/specCostLedger.ts` (`recordSpecTurn`) already records turn cost per spec and feeds the shared banner. Decision: validator runs record a turn with source `validator` under its own `turnKey` `validator:<responseId>` (the ledger upserts by turnKey+specSlug, so reusing the observed turn's key would overwrite it); the row gains optional `source`, `reasoningTokens`, `cacheReadTokens`, `cacheWriteTokens` (verified: `SpecCostTurn` today has only requests, inputTokens, outputTokens, nanoAiu). The banner needs no new component. Per-source attribution covers the "several agents at once" edge case.
 
 ## R-5 Run backend
 - Validator run = a worker via `src/workers/workerRouter.ts` / OpenCode runtime with a portable worker profile (`workerProfiles.ts`), read-only, no tool that can send to the agent (beta rule). Its prompt is stored with the profile and evaluated by the existing `evalScoreboard.ts` / `evals/` harness (three suites: answer, enhance, store).
 - Rejected: separate server per validator (AGENTS.md: one shared server per workspace).
 
 ## R-6 Secrets (FR-016)
-- Before any text reaches the validator, the store or Commentary, a redaction pass drops secret-shaped strings and the whole item if redaction is uncertain. Reuse the existing redaction used for worker transcripts if present (VERIFY by grep in T-spike); otherwise add one shared function.
+- Before any text reaches the validator, the store or Commentary, a redaction pass drops secret-shaped strings and the whole item if redaction is uncertain. Reuse `CREDENTIAL_ANYWHERE` in `src/commentary/commentary.ts` (verified: exists as a non-exported const, used by `promptExcerpt`; T002 exports it). There is no worker-transcript redaction to reuse. Coverage: the reviewer's reply, the observed response and the sources read (ADRs, memories).
 
 ## R-7 Beta boundary (FR-018)
 - No code path writes validator output to an agent or worker input. A test asserts the agent-send surface is untouched by a validator run.
