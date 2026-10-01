@@ -68,7 +68,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     const workers = { worker };
     assert.deepEqual(await call(worker, { action: 'list' }), []);
     assert.equal((await call(worker, { action: 'status' })).status, 'INVALID_INPUT', 'missing runId is refused before the runtime');
-    assert.equal((await call(worker, { action: 'wait', runId: 'r', timeoutSeconds: 999 })).status, 'INVALID_INPUT', 'wait above 240s is refused');
+    assert.equal((await call(worker, { action: 'wait', runId: 'r', timeoutSeconds: 999 })).status, 'UNKNOWN_RUN', 'wait above 240s is clamped, not refused');
     assert.equal((await call(worker, { action: 'start', profile: 'code' })).status, 'INVALID_INPUT');
     assert.equal((await call(worker, { runId: 'r' })).status, 'INVALID_INPUT', 'no action, no call');
 

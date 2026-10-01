@@ -124,19 +124,21 @@ let clock = 0;
 const newRouter = () => { clock = 0; return new WorkerRouter(fixtures, { now: () => clock }); };
 const req = (overrides = {}) => ({ workspacePath: pathA, profile: 'explore', packetId: 'p', estimatedSeconds: 30, ...overrides });
 
-// Wait bound: exactly 120s reuses, 121s creates a new worker.
+// start runs in parallel: a busy worker is never queued by start (reviewer, 2026-10-01); submit is the way to queue.
 let router = newRouter();
 const first = router.route(req({ estimatedSeconds: 120 }));
 assert.equal(first.status, 'CREATED');
-const atBound = router.route(req());
-assert.deepEqual([atBound.status, atBound.workerId, atBound.queuePosition, atBound.estimatedWaitSeconds], ['REUSED', first.workerId, 1, 120]);
+const parallel = router.route(req());
+assert.deepEqual([parallel.status, parallel.queuePosition], ['CREATED', 0], 'second start while the first runs gets its own worker');
+assert.notEqual(parallel.workerId, first.workerId);
+assert.equal(router.workers(pathA).filter((w) => w.profile === 'explore').length, 2, 'multiple workers per mode');
+const queued = router.submitTo(first.workerId, 'p', 30);
+assert.deepEqual([queued.status, queued.workerId, queued.queuePosition], ['REUSED', first.workerId, 1], 'submit queues on the named busy worker');
 router = newRouter();
 const slow = router.route(req({ estimatedSeconds: 121 }));
-const overBound = router.route(req());
-assert.equal(overBound.status, 'CREATED');
-assert.notEqual(overBound.workerId, slow.workerId, 'over the bound yields a second worker of the same mode');
+const overBound = router.submitTo(slow.workerId, 'p', 30);
+assert.equal(overBound.status, 'INELIGIBLE', 'submit past the wait bound refuses but keeps the busy worker');
 assert.match(overBound.reason, /estimated wait 121s > 120s/);
-assert.equal(router.workers(pathA).filter((w) => w.profile === 'explore').length, 2, 'multiple workers per mode');
 
 // Unavailable selection: explicit refusal and zero dispatches, never a substitute.
 router = newRouter();
@@ -194,8 +196,8 @@ assert.deepEqual(router.workers(pathB).map((w) => w.workerId), [inB.workerId]);
 // Serial queue: visible positions, cancel only before start, completion advances the queue.
 router = newRouter();
 const running = router.route(req({ estimatedSeconds: 10 }));
-const q1 = router.route(req({ packetId: 'q1', estimatedSeconds: 10 }));
-const q2 = router.route(req({ packetId: 'q2', estimatedSeconds: 10 }));
+const q1 = router.submitTo(running.workerId, 'q1', 10);
+const q2 = router.submitTo(running.workerId, 'q2', 10);
 assert.deepEqual([q1.queuePosition, q2.queuePosition], [1, 2]);
 assert.deepEqual(router.cancelQueued(running.workerId, running.runId), { status: 'NOT_QUEUED' }, 'running work is never cancelled by queue cancel');
 assert.deepEqual(router.cancelQueued(running.workerId, q1.runId), { status: 'CANCELLED' });
@@ -213,7 +215,7 @@ const replay = () => {
 };
 assert.deepEqual(replay(), replay());
 
-console.log('EV-008 BoundedReuseSelection: PASS reuseAt120s=REUSED createAt121s=CREATED unavailable=SELECTION_UNAVAILABLE fallbackDispatches=0 cacheBoundaryWorkers=3');
+console.log('EV-008 BoundedReuseSelection: PASS startWhileBusy=CREATED submitQueues=REUSED submitPastBound=INELIGIBLE unavailable=SELECTION_UNAVAILABLE fallbackDispatches=0 cacheBoundaryWorkers=3');
 console.log('EV-009 SelectionBehavior: PASS scenarios=9 effectiveSelectionExact=true workspaceIsolation=true queueCancelBeforeStartOnly=true deterministic=true');
 console.log('CAC-CY-003 WorkspaceBoundDispatchReady: PASS');
 

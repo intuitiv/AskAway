@@ -83,8 +83,9 @@ export class WorkerRouter {
         }
         const registryKey = workerRegistryKey(request.workspacePath, profile.name, selection);
         const rejections: string[] = [];
+        // start means parallel: only an idle worker is reused; queuing behind a busy one is what submit is for.
         const eligible = [...this.workersById.values()]
-            .filter((worker) => worker.registryKey === registryKey)
+            .filter((worker) => worker.registryKey === registryKey && !worker.active)
             .filter((worker) => {
                 const reason = this.ineligibility(worker);
                 if (reason) { rejections.push(`${worker.workerId}: ${reason}`); }
@@ -121,13 +122,14 @@ export class WorkerRouter {
         const worker = this.workersById.get(workerId);
         if (!worker) { return { status: 'INELIGIBLE', workerId, reason: 'unknown worker' }; }
         if (worker.state === 'RETIRED') { return { status: 'RETIRED', workerId, reason: worker.retiredReason || 'retired' }; }
-        const reason = this.ineligibility(worker);
+        const reason = this.ineligibility(worker, false);
         // A cold cache or an oversized context never recovers: retire so no later caller reuses it either.
         if (reason && worker.state !== 'ORPHANED') {
             this.retire(workerId, reason);
             return { status: 'RETIRED', workerId, reason: `${reason}; start a fresh worker (action start)` };
         }
-        if (reason) { return { status: 'INELIGIBLE', workerId, reason }; }
+        const busy = reason || this.ineligibility(worker);
+        if (busy) { return { status: 'INELIGIBLE', workerId, reason: busy }; }
         const estimatedWaitSeconds = this.estimatedWaitSeconds(worker);
         const entry: QueueEntry = { runId: this.nextId('run'), packetId, estimatedSeconds, enqueuedAt: this.now() };
         this.dispatches++;
@@ -216,10 +218,11 @@ export class WorkerRouter {
         return active + worker.queue.reduce((sum, entry) => sum + entry.estimatedSeconds, 0);
     }
 
-    private ineligibility(worker: RoutedWorker): string {
+    private ineligibility(worker: RoutedWorker, checkWait = true): string {
         if (worker.state === 'RETIRED' || worker.state === 'ORPHANED') { return worker.state.toLowerCase(); }
         if (worker.contextTokens > MAX_CONTEXT_TOKENS) { return `context ${worker.contextTokens} > ${MAX_CONTEXT_TOKENS}`; }
         if (!worker.active && this.now() - worker.lastActivityAt > this.cacheTtlMs) { return 'cache expired'; }
+        if (!checkWait) { return ''; }
         const wait = this.estimatedWaitSeconds(worker);
         if (wait > MAX_QUEUE_WAIT_SECONDS) { return `estimated wait ${wait}s > ${MAX_QUEUE_WAIT_SECONDS}s`; }
         return '';

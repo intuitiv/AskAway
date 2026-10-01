@@ -50,7 +50,7 @@ const call = viaWorkerTool(tools);
     assert.deepEqual(WORKER_ACTIONS.map((a) => `worker_${a}`), [...WORKER_TOOL_NAMES], 'the eight contract operations are its actions');
     assert.ok(!WORKER_ACTIONS.some((name) => /ask|respond/.test(name)), 'no Spec 003 messaging actions');
     assert.match(tools.get('worker').config.description, /240s/);
-    assert.throws(() => tools.get('worker').config.inputSchema.parse({ action: 'wait', runId: 'r', timeoutSeconds: 241 }), 'wait above 240s is rejected by the schema');
+    assert.doesNotThrow(() => tools.get('worker').config.inputSchema.parse({ action: 'wait', runId: 'r', timeoutSeconds: 900 }), 'wait above 240s is accepted and clamped by the handler');
     assert.throws(() => tools.get('worker').config.inputSchema.parse({ action: 'fly' }), 'unknown action rejected by the schema');
     const incomplete = await call('worker_start', { profile: 'verify' });
     assert.equal(incomplete.status, 'INVALID_INPUT', 'incomplete packet refused before the runtime');

@@ -129,9 +129,9 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
 
     register('worker_wait', {
         description: `Wait for a run to finish, at most ${MAX_WAIT_SECONDS}s. On the ceiling it returns STILL_RUNNING: end your turn and check back instead of waiting again.`,
-        inputSchema: z.object({ runId: z.string(), timeoutSeconds: z.number().min(0).max(MAX_WAIT_SECONDS).optional() }),
+        inputSchema: z.object({ runId: z.string(), timeoutSeconds: z.number().min(0).optional() }),
     }, async (args) => {
-        const requested = args.timeoutSeconds ?? MAX_WAIT_SECONDS;
+        const requested = Math.min(args.timeoutSeconds ?? MAX_WAIT_SECONDS, MAX_WAIT_SECONDS);
         const seconds = options.waitBudgetMs ? Math.min(requested, Math.floor(options.waitBudgetMs(requested * 1000) / 1000)) : requested;
         return (await runtime()).wait(args.runId, seconds);
     });
