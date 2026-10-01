@@ -2,7 +2,7 @@
 
 ## Packet file
 
-Path: `.askaway/specs/<slug>/packets/<taskId>-<n>.md` (`n` = queue attempt, starting at 1). Committed and pushed to the active PR branch before the comment is posted.
+Path: `.askaway/specs/<slug>/packets/<taskId>-<n>.md` (`n` = queue attempt, starting at 1). A task may be re-queued as attempt n+1 after Timed out or No response. The `base` field is the PR head sha before this packet commit; the packet is committed and pushed to the active PR branch before the comment is posted, and the comment references that packet commit sha.
 
 ```markdown
 ---
@@ -44,11 +44,13 @@ reportFormat: |
 - Change only `allowedPaths`. Do not change any `**Status**:` line.
 ```
 
-Required fields (SC-004 counts nine): `stage`, `story`, `task`, task details (body section), `base`, `allowedPaths`, `verify`, `stopCondition`, `reportFormat`. `draft: true` when `stage` is `specify`, `clarify` or `plan`.
+Required fields (SC-004 counts nine): `stage`, `story`, `task`, task details (body section), `base`, `allowedPaths`, `verify`, `stopCondition`, `reportFormat`. Full `draft` mapping: `true` for `specify`, `clarify`, `plan`, and `tasks`; `false` for `implement` and all later stages (including `converge`/readiness).
 
 ## Comment (≤ 5 lines)
 
 Line 1 states the task, its story and stage; lines 2-3 state what to do. Everything else is referenced from the committed packet, not repeated. The packet commit message carries the trailer `AskAway-Commit: packet`.
+
+The sha in the comment's packet reference is the packet commit sha, not the packet's `base` sha.
 
 ```
 @copilot Please do T014 (US2, stage implement) of 006-cloud-tasks: follow .askaway/specs/006-cloud-tasks/packets/T014-1.md at 1a2b3c4.

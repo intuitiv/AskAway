@@ -61,7 +61,7 @@ When `/sk.tasks` (from 005) writes tasks, it marks a task as cloud-eligible when
 
 ### User Story 3 - See cloud task status everywhere (Priority: P2)
 
-The extension polls the active PR periodically and moves each queued task through Queued → Working → Pushed → Checks passed / Checks failed → Needs review → Accepted / Returned. The state shows on the task row in the Specs tab, in the Workers-style feed (same shared components as other workers), and on Telegram, including a morning digest listing per task: PR, evidence, duration, model, blocker, and decision needed.
+The extension polls the active PR periodically and moves each queued task through Held → Queued → Working → Pushed → Checks passed / Checks failed → Needs review → Accepted / Returned, with Timed out and No response derived from elapsed-time rules. Timed out and No response runs may be queued again as attempt n+1. The state shows on the task row in the Specs tab, in the Workers-style feed (same shared components as other workers), and on Telegram, including a morning digest listing per task: PR, evidence, duration, model, blocker, and decision needed; cloud runs show no price in the card, Telegram status, or digest.
 
 **Why this priority**: Without status the developer cannot trust offline work, but the work itself (US2) already runs; status makes it visible and actionable.
 
@@ -117,9 +117,9 @@ The extension prevents unsafe overlap and runaway work: no two cloud tasks run o
 - The active PR is merged or closed while a cloud task is Working: merging is blocked while any cloud task on the active PR is Working; the Specs tab says which task and how long until its 59-minute cap. A PR closed outside the extension marks its Working tasks Returned.
 - The cloud agent opens a new branch or PR instead of pushing to the active branch: the task is marked Returned with "wrong branch" and nothing is merged automatically.
 - The developer lacks write access or the cloud agent is not enabled for the repository: queuing is refused with that reason before any commit or comment.
-- The cloud agent never responds to the comment: after a fixed wait the task shows "No response" as a blocker.
+- The cloud agent never responds to the comment: after a fixed 10-minute wait without a 👀 reaction or started-work event, the task shows "No response" as a blocker.
 - The base commit in the packet is behind the branch head when the cloud agent starts: the packet names its base commit; acceptance verifies on the current head.
-- The same task is queued twice: the second press is refused while the first is not Accepted or Returned.
+- The same task is queued again while an attempt is active: the press is refused; after an attempt reaches Timed out or No response, it may be re-queued as attempt n+1 (as may an Accepted or Returned task when otherwise eligible).
 - Polling fails (network, rate limit): the last known state stays with a "stale since" time; no state is guessed.
 - The cloud agent stops to ask a question (stop condition met): the task moves to Needs review with the question as "decision needed", never auto-answered.
 
@@ -135,19 +135,19 @@ The extension prevents unsafe overlap and runaway work: no two cloud tasks run o
 - **FR-006**: Queuing MUST post one short `@copilot` comment on the active PR that states the task, its story and stage and what to do, references the packet by path and commit and does not repeat its content.
 - **FR-007**: Queuing MUST use the active PR's branch; it MUST NOT create a branch, PR or issue. Issue assignment MUST NOT be the default route.
 - **FR-008**: The developer MUST be able to choose the model where GitHub allows it for the chosen route; where it does not, the extension MUST show the model that will run.
-- **FR-009**: A packet naming a spec or plan stage MUST produce output marked as draft; no human approval gate (spec, plan, converge/readiness) is passed by cloud work.
-- **FR-010**: The extension MUST poll the active PR periodically (comments, "started work" timeline events, commits, check runs) and derive task state Queued → Working → Pushed → Checks passed/failed → Needs review → Accepted/Returned, plus Timed out and No response.
+- **FR-009**: The packet's `draft` value MUST map all stages: `specify`, `clarify`, `plan`, and `tasks` → `true`; `implement` and every later stage (including `converge`/readiness) → `false`. Cloud work MUST NOT pass a human approval gate.
+- **FR-010**: The extension MUST poll the active PR periodically (comments, "started work" timeline events, commits, check runs) and derive task state Held → Queued → Working → Pushed → Checks passed/failed → Needs review → Accepted/Returned, plus Timed out and No response. No response is derived when neither a 👀 reaction nor a started-work event arrives within 10 minutes of the comment; Timed out is derived when the configured duration ceiling or 59-minute session limit is reached without a report.
 - **FR-011**: Task state MUST be shown on the Specs tab task row, in the Workers-style feed using the existing shared row/trace component, and in Telegram status messages.
 - **FR-012**: A Telegram morning digest MUST list, per cloud task that changed since the last digest: PR, evidence, duration, model, blocker and decision needed.
-- **FR-013**: Cloud cost MUST be shown as duration and model only; the extension MUST NOT display an invented price.
+- **FR-013**: Cloud runs MUST show duration and model only; the card, Telegram status messages, and digest MUST omit price, and the extension MUST NOT display an invented price.
 - **FR-014**: A cloud task MUST be ticked only after a local verify worker pulls the branch and the packet's named verification commands pass; otherwise it is Returned with failing evidence.
 - **FR-015**: Changes outside the packet's allowed paths MUST cause the task to be Returned.
 - **FR-016**: Story Checkpoint verification from 005 MUST apply unchanged to stories containing cloud tasks.
 - **FR-017**: From the first queuing story (US2), at most one cloud task per active PR MUST be Working at a time; further queued tasks are Held and are released as soon as the Working task stops working (reaches Needs review or a terminal state), so a task waiting for review never blocks the rest of the queue. After overlap detection ships, two cloud tasks MUST NOT be Working on overlapping allowed paths.
 - **FR-018**: The extension MUST detect and surface when the developer and the cloud agent push to the same branch during a Working task. Commits authored by the extension itself (packet, task tick, run record) MUST NOT count as developer pushes and MUST NOT raise a warning; the tick push is deferred while another task on the PR is Working.
-- **FR-019**: Each cloud task MUST have a duration ceiling not exceeding the cloud agent's 59-minute session limit; exceeding it marks the task Timed out.
+- **FR-019**: Each cloud task MUST have a duration ceiling not exceeding the cloud agent's 59-minute session limit; exceeding it marks the task Timed out. The default ceiling MUST be greater than the 45-minute eligibility bound.
 - **FR-020**: Packets and comments MUST NOT contain secrets; writing MUST be refused when a secret pattern or known credential is detected.
-- **FR-021**: Queuing MUST be refused, before any commit or comment, when there is no active PR, the developer lacks write access, or the task is already queued and not finished.
+- **FR-021**: Queuing MUST be refused, before any commit or comment, when there is no active PR, the developer lacks write access, or the task already has an active attempt; Timed out and No response attempts are finished and may be re-queued as attempt n+1.
 - **FR-022**: Per-task cloud facts (packet path, comment link, model, start/end time, duration, commits, state) MUST be stored per spec in `.askaway/`, mapped by spec name.
 - **FR-023**: Repository workflows MUST run automatically on cloud-agent pushes to the active PR, so check results are waiting for the developer; the task status shows their pass/fail.
 

@@ -15,6 +15,7 @@ See [contracts/cloud-run.schema.json](contracts/cloud-run.schema.json). Written 
 |---|---|---|
 | (new) | one-at-a-time rule (from US2) or overlap rule (US5) | Held |
 | Held | one-at-a-time: blocking task leaves Working/Pushed/Checks (enters Needs review or a terminal state); overlap: blocking task terminal | Queued (comment posted) |
+| Timed out / No response | same task queued again | new attempt n+1 with a new packet and run |
 | Queued | 👀 on our comment or started-work event | Working |
 | Queued | 10 min without either | No response |
 | Working / Pushed | agent commit after `base` on PR branch | Pushed |
@@ -26,7 +27,7 @@ See [contracts/cloud-run.schema.json](contracts/cloud-run.schema.json). Written 
 | Needs review | acceptance pass (starts automatically on entering Needs review) | Accepted |
 | Needs review | acceptance fail / out-of-scope / Status changed | Returned |
 
-Terminal: Accepted, Returned, Timed out, No response. Needs review is not terminal but does not count as Working, so it never blocks the queue.
+Terminal: Accepted, Returned, Timed out, No response. Needs review is not terminal but does not count as Working, so it never blocks the queue. Timed out and No response are finished attempts and do not prevent re-queueing as attempt n+1.
 
 Extension-authored commits (packet, tick, run record) carry the trailer `AskAway-Commit: <kind>` and are ignored by conflict detection (FR-018).
 
@@ -37,4 +38,4 @@ See [contracts/evidence-note.md](contracts/evidence-note.md).
 `<taskId> · <state> · PR #<n> · <duration> · <model> · evidence: <link|last verify line> · blocker: <text|none> · decision: <text|none>` — no price.
 
 ## 005 run record (on terminal state)
-`kind: worker`, `command: cloud:<taskId>`, `stageAfter: null`, `agentMs` = startedAt→endedAt, `cost: {nanoAiu: 0, requests: 0}`, plus `model` and `state` fields.
+`kind: worker`, `command: cloud:<taskId>`, `stageAfter: null`, `agentMs` = startedAt→endedAt, `cost: {nanoAiu: 0, requests: 0}` as internal bookkeeping only, plus `model` and `state` fields. Do not display price for cloud runs in the card, Telegram status, or digest.
