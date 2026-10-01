@@ -64,5 +64,22 @@ assert.equal(specs['005-tasked'].nextStep, '/sk.implement');
 assert.equal(specs['005-tasked'].mismatch, null);
 
 repo.cleanup();
+// T025: open [NEEDS CLARIFICATION] markers keep a spec at clarify (next /sk.check), even when a clarified section exists.
+const t025Root = fs.mkdtempSync(path.join(__dirname, '.t025-fixture-'));
+try {
+    const writeSpec = (slug, text) => {
+        fs.mkdirSync(path.join(t025Root, 'specs', slug), { recursive: true });
+        fs.writeFileSync(path.join(t025Root, 'specs', slug, 'spec.md'), text);
+    };
+    writeSpec('007-open', '# Feature Specification: Open\n\n## Clarifications\n\n- Q: a → A: b\n\n- **FR-1**: auth via [NEEDS CLARIFICATION: method?]\n- **FR-2**: keep [NEEDS CLARIFICATION: period?]\n');
+    writeSpec('008-resolved', '# Feature Specification: Resolved\n\n## Clarifications\n\n- Q: a → A: b\n');
+    const t025 = Object.fromEntries(scanSpecs(t025Root).specs.map(spec => [spec.slug, spec]));
+    assert.equal(t025['007-open'].specKitStage, 'clarify');
+    assert.equal(t025['007-open'].nextStep, '/sk.check');
+    assert.equal(t025['007-open'].stageButton, '');
+    assert.equal(t025['008-resolved'].nextStep, '/sk.plan');
+} finally {
+    fs.rmSync(t025Root, { recursive: true, force: true });
+}
 fs.rmSync(buildDir, { recursive: true, force: true });
 console.log('PASS test-spec-stages: 7 fixture stages, tags, stored-stage mismatch');

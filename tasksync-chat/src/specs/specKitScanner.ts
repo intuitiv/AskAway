@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readRunRecords, SpecFacts, specFacts } from './runRecords';
 import { specsStaleness, StaleEntry } from './staleness';
-import { impliedStage, nextStep, SpecArtifacts, SpecKitStage, stageButton, stageMismatch, StageMismatch } from './stages';
+import { effectiveStage, impliedStage, nextStep, SpecArtifacts, SpecKitStage, stageButton, stageMismatch, StageMismatch } from './stages';
 
 /** Derived from which artifacts exist and how many tasks are ticked — Spec Kit stores no status field. */
 export type SpecStage =
@@ -426,6 +426,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
         const artifacts: SpecArtifacts = {
             spec: specText.length > 0,
             clarified: /^##\s+Clarifications\b/m.test(specText),
+            openClarifications: countClarifications(specText),
             plan: hasPlan,
             checklists: hasMarkdown(path.join(dir, 'checklists')),
             tasks: hasTasks,
@@ -434,7 +435,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
         };
         const { records, skipped } = readRunRecords(workspaceRoot, entry.name);
         const facts = specFacts(records, skipped);
-        const specKitStage = facts.storedStage || impliedStage(artifacts);
+        const specKitStage = effectiveStage(facts.storedStage || impliedStage(artifacts), artifacts);
         specs.push({
             id: (/^\d+/.exec(entry.name) || [''])[0],
             slug: entry.name,

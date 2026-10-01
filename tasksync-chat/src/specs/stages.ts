@@ -5,6 +5,8 @@ export type SpecKitStage = typeof SPEC_STAGES[number];
 export interface SpecArtifacts {
     spec: boolean;
     clarified: boolean;
+    /** Count of `[NEEDS CLARIFICATION` markers still in spec.md. */
+    openClarifications?: number;
     plan: boolean;
     checklists: boolean;
     tasks: boolean;
@@ -63,14 +65,25 @@ function openTasks(a: SpecArtifacts): number {
     return Math.max(0, a.tasksTotal - a.tasksDone);
 }
 
+function hasOpenClarifications(a: SpecArtifacts): boolean {
+    return (a.openClarifications ?? 0) > 0;
+}
+
+/** While spec.md has open clarification markers a pre-plan spec stays at `clarify`. */
+export function effectiveStage(stage: SpecKitStage, a: SpecArtifacts): SpecKitStage {
+    return hasOpenClarifications(a) && stageIndex(stage) <= stageIndex('clarify') ? 'clarify' : stage;
+}
+
 /** The step to suggest after `stage`; open tasks keep implementation going. */
 export function nextStep(stage: SpecKitStage, artifacts: SpecArtifacts): string {
+    if (stage === 'clarify' && hasOpenClarifications(artifacts)) { return '/sk.check'; }
     if ((stage === 'implement' || stage === 'converge') && openTasks(artifacts) > 0) { return '/sk.implement'; }
     return NEXT_STEP[stage];
 }
 
 /** Label of the stage action button; empty when only `/sk.check` applies. */
 export function stageButton(stage: SpecKitStage, artifacts: SpecArtifacts): string {
+    if (stage === 'clarify' && hasOpenClarifications(artifacts)) { return ''; }
     if ((stage === 'implement' || stage === 'converge') && openTasks(artifacts) > 0) { return 'Implement'; }
     return BUTTON[stage];
 }
@@ -81,7 +94,7 @@ export function impliedStage(a: SpecArtifacts): SpecKitStage {
     if (a.tasks) { return 'tasks'; }
     if (a.plan && a.checklists) { return 'checklist'; }
     if (a.plan) { return 'plan'; }
-    if (a.clarified) { return 'clarify'; }
+    if (a.clarified || hasOpenClarifications(a)) { return 'clarify'; }
     return 'specify';
 }
 
