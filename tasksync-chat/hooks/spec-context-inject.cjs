@@ -36,6 +36,34 @@ function readCommentary(cwd) {
     }
 }
 
+function availabilityContext(cwd) {
+    try {
+        const state = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.askaway', 'availability', `${commentaryKey(cwd)}.json`), 'utf8'));
+        if (!['away', 'offline'].includes(state.mode)) { return ''; }
+        if (state.until && !(Date.parse(state.until) >= Date.now())) { return ''; }
+        const lines = [
+            '## Availability',
+            `Reviewer: ${state.mode === 'away' ? 'Away (reachable on Telegram)' : 'Offline (not reachable)'}.`,
+        ];
+        if (state.until) { lines.push(`Until: ${state.until}`); }
+        if (state.note) { lines.push(`Reviewer note: ${String(state.note).replace(/\s+/g, ' ').trim()}`); }
+        lines.push(
+            'Do not stop for small choices: decide and record each decision in a decisions list.',
+            'Keep every lane busy.',
+            state.mode === 'away'
+                ? 'Send questions to Telegram; work continues on other lanes.'
+                : 'Never ask questions; park open questions for the final report.',
+            'End the session with a handoff and a report of decisions, open questions, and cost.',
+        );
+        if (state.mode === 'offline') {
+            lines.push('On a long run, once input exceeds 300K, write /sk.handoff and continue in a new conversation.');
+        }
+        return lines.join('\n');
+    } catch {
+        return '';
+    }
+}
+
 // Each prompt starts a turn: the Commentary tab folds the lines so far and Telegram starts a new live message.
 // Same shape as CommentaryStore.markTurnStart in src/commentary/commentary.ts.
 const CREDENTIAL = /\bgh[pousr]_[A-Za-z0-9]{20,}|\bsk-[A-Za-z0-9]{20,}|\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}|\bsqu_[A-Za-z0-9]{20,}|\d{8,}:[A-Za-z0-9_-]{30,}/g;
@@ -117,6 +145,7 @@ function main() {
             : `${anchor}\nStay on it; treat unrelated requests as asides.`);
     }
 
+    parts.push(availabilityContext(cwd));
     const context = parts.filter(Boolean).join('\n');
     if (!context) { return; }
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: context } }));
