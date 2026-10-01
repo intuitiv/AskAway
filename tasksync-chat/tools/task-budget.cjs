@@ -40,6 +40,8 @@ if (require.main === module) {
         const feature = JSON.parse(fs.readFileSync(path.join(root, '.specify', 'feature.json'), 'utf8'));
         specDir = path.resolve(root, feature.feature_directory);
     }
+    // Accept the tasks.md path itself, not only its spec folder (a file path used to read nothing and PASS).
+    if (path.basename(specDir) === 'tasks.md') { specDir = path.dirname(specDir); }
     const tasksFile = path.join(specDir, 'tasks.md');
     // A spec that has not reached the tasks stage has no open tasks to budget.
     const result = budget(fs.existsSync(tasksFile) ? fs.readFileSync(tasksFile, 'utf8') : '', { maxOpen: flag('--max-open', 12), maxCycle: flag('--max-cycle', 6) });

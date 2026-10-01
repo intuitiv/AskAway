@@ -69,6 +69,25 @@ description: "Task list for 005 Spec Kit Guided Flow"
 
 ---
 
+## Phase 6: Reviewer requests 2026-10-01 — worker transparency and parallel lanes
+
+- [x] T013 [US6] `start` never queues behind a busy worker (reviewer: two starts queued on one worker instead of running in parallel); `submit` is the only way to queue; `submit` past the wait bound is INELIGIBLE, not RETIRED (`workerRouter.ts`, EV-008 in `test-worker-selection.cjs`)
+- [x] T014 [US6] `worker` wait accepts any `timeoutSeconds` and clamps to 240 s instead of rejecting (`workerTools.ts`, `test-worker-mcp-tools.cjs`)
+- [ ] T015 [US4] Worker spend in the shared chat banner and the Telegram status: current-turn worker requests and $ join the totals with the worker part shown; live turn timer; Metrics tab stays current-conversation only; trace credits shown as $ in Metrics and Workers (`usageSince`, `ObservabilityMetrics.workers/turnStartedAt`, banner block; EV-WORKER-TURN-SPEND + webview tests)
+- [ ] T016 [US1] Specs and commentary polish: one next-step button (labelled "Continue" when next = current stage), one plain stale line per upstream, pastel colour per Spec Kit stage; commentary text full width with time and count on a second, right-aligned line
+- [ ] T017 [P] [US6] `tools/command-patterns.cjs`: terminal-command bursts, families and the requests spent between burst commands in Copilot debug logs; run on the reviewer's recent conversations and decide bash/git worker vs standalone commands (EV-COMMAND-PATTERNS)
+- [ ] T018 [US6] Keep a warm worker warm while the main chat is active and its knowledge fits pending work: minimal `POST /session/:id/message` ping before the 5-min TTL, ping cost in the ledger, stop at 300K context or after N unused pings (research 2026-10-01: a ping is a real request, cache read 0.1×, cold rewrite 1.25×; health checks do not refresh)
+
+---
+
+## Phase 7: Reviewer requests 2026-10-01 — availability, handoff, validator
+
+- [ ] T019 [US3] Availability selector "Here · Away (Telegram) · Offline until <time>" per workspace, injected by the spec-context hook. Away/Offline rules: do not stop for small choices (decide, record in a decisions list), keep every lane busy, write a handoff at the end of the session, end with a report of decisions, open questions and cost. Offline never asks; questions are parked for the report. Test: hook output per mode.
+- [ ] T020 [US3] Auto-handoff near 300K input tokens while Away/Offline: write `/sk.handoff`, continue in a fresh session, Telegram notice when Away; test with a stubbed token count
+- [ ] T021 Spec 007 Validator agent: `/sk.specify` from `specs/007-validator-agent/Goal.md` and `Rules.md`
+
+---
+
 ## Dependencies & Execution Order
 
 - Setup → Foundational → US1 → US2 → (plan.md `## Later`: US3–US7, Polish).

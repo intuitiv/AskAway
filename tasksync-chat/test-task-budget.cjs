@@ -34,6 +34,9 @@ assert.equal(result.status, 1, 'one cycle may not hold 7 open tasks');
 assert.match(result.stdout, /overCycles=CY-001:7\/6/);
 
 assert.equal(run(workspace, [fatCycle, '--max-cycle', '8']).status, 0, 'limits are flags, not hard-coded');
+result = run(workspace, [path.join(fatCycle, 'tasks.md')]);
+assert.equal(result.status, 1, 'the tasks.md path itself is budgeted, not read as an empty spec');
+assert.match(result.stdout, /TASK-BUDGET 003-fat-cycle: FAIL open=7\/12/);
 
 // 005 US2: stories are the groups — 6 open in US1 and 6 in US2 pass; a 7th open US1 task fails as US1:7/6.
 const storyRows = (story, count, start) => Array.from({ length: count }, (_, i) => `- [ ] T${String(start + i).padStart(3, '0')} [${story}] Story work ${i}`);

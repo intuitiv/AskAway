@@ -1,0 +1,16 @@
+{"ts":1000,"dur":0,"sid":"s1","type":"user_message","name":"user_message","attrs":{"content":"check the repo and run tests"}}
+{"ts":1100,"dur":900,"sid":"s1","type":"llm_request","name":"gpt","attrs":{"model":"gpt-x","inputTokens":900,"outputTokens":50,"cachedTokens":800,"copilotUsageNanoAiu":1000000000}}
+{"ts":2000,"dur":300,"sid":"s1","type":"tool_call","name":"run_in_terminal","attrs":{"args":"{\"command\":\"rtk git status\"}"}}
+this line is not json
+{"ts":2400,"dur":800,"sid":"s1","type":"llm_request","name":"gpt","attrs":{"model":"gpt-x","inputTokens":1000,"outputTokens":40,"cachedTokens":900,"copilotUsageNanoAiu":2000000000}}
+{"ts":3000,"dur":300,"sid":"s1","type":"tool_call","name":"run_in_terminal","attrs":{"args":"{\"command\":\"git diff --stat\"}"}}
+{"ts":3400,"dur":800,"sid":"s1","type":"llm_request","name":"gpt","attrs":{"model":"gpt-x","inputTokens":1500,"outputTokens":40,"cachedTokens":1400,"copilotUsageNanoAiu":3000000000}}
+{"ts":4000,"dur":300,"sid":"s1","type":"tool_call","name":"run_in_terminal","attrs":{"args":"{\"command\":\"rtk git log -3\"}"}}
+{"ts":4200,"dur":800,"sid":"s1","type":"llm_request","name":"gpt","attrs":{"model":"gpt-x","inputTokens":1600,"outputTokens":40,"cachedTokens":1500,"copilotUsageNanoAiu":4000000000}}
+{"ts":5000,"dur":100,"sid":"s1","type":"tool_call","name":"read_file","attrs":{"args":"{\"filePath\":\"/a\"}"}}
+{"ts":5200,"dur":800,"sid":"s1","type":"llm_request","name":"gpt","attrs":{"model":"gpt-x","inputTokens":1700,"outputTokens":40,"cachedTokens":1600,"copilotUsageNanoAiu":5000000000}}
+{"ts":6000,"dur":9000,"sid":"s1","type":"tool_call","name":"run_in_terminal","attrs":{"args":"{\"command\":\"rtk npm --prefix tasksync-chat run test:workers\"}"}}
+{"ts":20000,"dur":0,"sid":"s1","type":"user_message","name":"user_message","attrs":{"content":"delegate that"}}
+{"ts":20100,"dur":800,"sid":"s1","type":"llm_request","name":"gpt","attrs":{"model":"gpt-x","inputTokens":2000,"outputTokens":60,"cachedTokens":1900,"copilotUsageNanoAiu":6000000000}}
+{"ts":21000,"dur":50,"sid":"s1","type":"tool_call","name":"worker","attrs":{"args":"{\"action\":\"start\",\"profile\":\"verify\"}"}}
+{"ts":21500,"dur":0,"sid":"s1","type":"turn_end","name":"x","attrs":{}}
