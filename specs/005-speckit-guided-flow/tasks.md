@@ -56,7 +56,7 @@ description: "Task list for 005 Spec Kit Guided Flow"
 
 - [x] T008 [P] [US2] Story model + story groups: `spec.stories[]` in the scanner (`### User Story N - <title> (Priority: Pn)` in spec.md, `[USn]` tags or story phase for tasks, Independent Test, SCs from `Verified by:`), Independent Test + SCs shown under each story phase by `renderSpecWork`; `test-spec-stories.cjs` in `test:workers`. Per-story task budget moved to T010.
 - [x] T010 [US2] `tools/task-budget.cjs` budgets open tasks per story (`[USn]`/story phase) instead of treating all untagged tasks as one "(no cycle)" group; extend `test-task-budget.cjs`
-- [ ] T009 [P] [US2] Rewrite `SPEC_KIT_PROMPTS` in `src/specs/specKitPromptAssets.ts` to the story structure (remove `acceptance`, `categories`, `gates` and every CY/PAC/CAC demand; D-18), regenerate user prompt copies; assert in `test-spec-planning-contract.cjs` that wrapper text has no `CY-`/`PAC-`/`CAC-` and names Setup, Foundational, `[USn]`, Polish
+- [x] T009 [P] [US2] Rewrite `SPEC_KIT_PROMPTS` in `src/specs/specKitPromptAssets.ts` to the story structure (remove `acceptance`, `categories`, `gates` and every CY/PAC/CAC demand; D-18), regenerate user prompt copies; assert in `test-spec-planning-contract.cjs` that wrapper text has no `CY-`/`PAC-`/`CAC-` and names Setup, Foundational, `[USn]`, Polish
 
 **Checkpoint**: US2 Independent Test passes; SC-003 checked.
 
@@ -64,7 +64,7 @@ description: "Task list for 005 Spec Kit Guided Flow"
 
 ## Phase 5: Pulled forward from `## Later` (worker-built)
 
-- [ ] T011 [P] [US3] `tools/spec-facts.cjs` per contracts/spec-facts-cli.md (same scanner as the Specs tab) with `test-spec-facts-cli.cjs` in `test:workers`
+- [x] T011 [P] [US3] `tools/spec-facts.cjs` per contracts/spec-facts-cli.md (same scanner as the Specs tab) with `test-spec-facts-cli.cjs` in `test:workers`
 - [x] T012 [P] [US7] `src/specs/readiness.ts` (`normalizeReadiness`: PASS without evidence → BLOCKED; `readinessLines` plain text shared by Specs tab, Telegram, PR text) with `test-spec-readiness.cjs` in `test:workers`
 
 ---
@@ -85,9 +85,9 @@ description: "Task list for 005 Spec Kit Guided Flow"
 
 ## Phase 7: Reviewer requests 2026-10-01 — availability, handoff, validator
 
-- [ ] T019 [US3] Availability selector "Here · Away (Telegram) · Offline until <time>" per workspace, injected by the spec-context hook. Away/Offline rules: do not stop for small choices (decide, record in a decisions list), keep every lane busy, write a handoff at the end of the session, end with a report of decisions, open questions and cost. Offline never asks; questions are parked for the report. Test: hook output per mode.
+- [ ] T019 [US3] Availability selector "Here · Away (Telegram) · Offline until <time>" per workspace, injected by the spec-context hook. Away/Offline rules: do not stop for small choices (decide, record in a decisions list), keep every lane busy, write a handoff at the end of the session, end with a report of decisions, open questions and cost. Offline never asks; questions are parked for the report. Test: hook output per mode. (Backend done 2026-10-01: state `~/.askaway/availability/<key>.json`, hook block, EV-AVAILABILITY; selector UI open.)
 - [ ] T020 [US3] Long or overnight run (Away/Offline): once input exceeds 300K, write `/sk.handoff` and continue in a new conversation (reviewer: "Hand off is not always near 300K"; other handoffs are not tied to 300K); Telegram notice when Away; test with a stubbed token count
-- [ ] T021 Spec 007 Validator agent: `/sk.specify` from `specs/007-validator-agent/Goal.md` and `Rules.md`
+- [x] T021 Spec 007 Validator agent: `/sk.specify` from `specs/007-validator-agent/Goal.md` and `Rules.md` (done 2026-10-01: spec.md Draft, 5 stories, 3 NEEDS CLARIFICATION → next `/sk.check`)
 
 ---
 
