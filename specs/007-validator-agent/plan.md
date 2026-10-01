@@ -4,6 +4,8 @@
 
 **Input**: Feature specification from `/specs/007-validator-agent/spec.md`
 
+**Status**: Approved by the reviewer 2026-10-02 ("Go ahead"); agentmemory is the knowledge store, pending the T001 spike outcome.
+
 ## Summary
 
 A read-only validator observes every agent/worker response, answers from the active spec's sources, predicts the reviewer's reply, learns from the actual reply, and records knowledge per spec/story/task in agentmemory (reviewer rule 2026-10-02). Beta: output appears only in the Commentary tab; nothing is sent to the agent. Reuses the Commentary tab, shared banner cost (`specCostLedger`), worker runtime and eval harness; adds one new module and one new Commentary kind.
