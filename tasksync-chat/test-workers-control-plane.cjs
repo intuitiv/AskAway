@@ -224,6 +224,22 @@ const packet = (overrides = {}) => ({
     assert.deepEqual([t1Rows[0].inputTokens, t1Rows[0].cachedTokens, t1Rows[0].dollars], [1250, 50, 0.0021], 'input is the full prompt, as in Metrics');
     assert.deepEqual([t1Rows[1].durMs, t1Rows[1].status, t1Rows[1].inputPreview, t1Rows[1].outputPreview], [1250, 'ok', '', ''], 'ledger facts carry no tool text');
     assert.ok(downView.includes(ui.trace(t1Rows, { openIds: {} })), 'ledger rows are exactly the Metrics trace rows');
+
+    // Reviewer 2026-10-01: Metrics showed AIU while Workers showed $. The shared block shows $ for both (100 AIU = $1).
+    const copilotEvents = [
+        { kind: 'request', id: 'REQ01', model: 'gpt-5', nanoAiu: 250_000_000_000, inputTokens: 1000, outputTokens: 10, cachedTokens: 500 },
+        { kind: 'request', id: 'SUB01', model: 'gpt-5-mini', nanoAiu: 50_000_000_000, inputTokens: 100, outputTokens: 5, cachedTokens: 0, subagentId: 'sa1' },
+        { kind: 'request', id: 'SUB02', model: 'gpt-5-mini', nanoAiu: 100_000_000_000, inputTokens: 100, outputTokens: 5, cachedTokens: 0, subagentId: 'sa1' },
+    ];
+    const copilotRows = ui.trace(copilotEvents, { openIds: {}, subagents: { sa1: { label: 'explore', done: true, durMs: 1000 } } });
+    assert.match(copilotRows, /<td[^>]*>\$2\.5000<\/td>/, 'a Copilot request shows dollars, not AIU');
+    assert.match(copilotRows, /title="cost \(USD\)">\$1\.5000<\/span>/, 'the sub-agent group row shows the summed dollars');
+    assert.doesNotMatch(copilotRows, /AIU/, 'no AIU anywhere in the trace');
+    assert.match(ui.trace([{ kind: 'request', id: 'W1', model: 'm', dollars: 0.0021, inputTokens: 1, outputTokens: 1, cachedTokens: 0 }], {}), /<td>\$0\.0021<\/td>/, 'a worker request shows the same dollars format');
+
+    // Chat banner (shared block) vs worker card: only the chat banner carries the worker part.
+    assert.match(ui.chatBanner({ requests: 34, dollars: 1.95, lastIn: 100, lastCached: 50, turnOut: 7, workers: { requests: 6, dollars: 0.42 } }), /^34 reqs &middot; <strong class="health-cost">\$1\.95<\/strong> <span class="health-workers"[^>]*>\(workers 6 &middot; \$0\.42\)<\/span> &middot;/);
+    assert.doesNotMatch(all, /workers \d/, 'worker cards keep the plain banner without a worker part');
     assert.match(downView, /<span class="obs-req-id">STEP1<\/span><\/td><td class="obs-scope">gpt-5\.6-terra<\/td><td>\$0\.0021<\/td><td>1\.25K<\/td><td>340<\/td><td>50<\/td><td class="obs-cache-risk">4%<\/td>/);
     const kept = ui.render(state, '', { [run1.workerId]: true }, false, { 't:EDIT1:1': true }, { [run1.workerId]: down });
     assert.match(kept, /data-eid="t:EDIT1:1" open>/, 'an expanded row stays open across the 1s re-render');

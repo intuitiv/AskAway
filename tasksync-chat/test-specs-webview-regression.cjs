@@ -59,6 +59,21 @@ assert.match(elements['common-turn-summary'].innerHTML, /4K last in \/ 2\.75K tu
 assert.match(elements['common-turn-summary'].innerHTML, /90% cache/);
 assert.match(elements['common-cache-age'].textContent, /^Age: 0:3\d warm$/);
 assert.equal(elements['cost-attribution-toggle'].textContent, 'Cost to: Spec 001');
+assert.doesNotMatch(elements['common-turn-summary'].innerHTML, /workers|Turn \d/, 'no worker part and no timer when the backend sends neither');
+
+// Reviewer 2026-10-01: totals include the turn's workers and name the worker part; a live timer runs from turnStartedAt.
+bannerContext.observabilityMetrics.workers = { requests: 6, dollars: 0.42, runs: 2 };
+bannerContext.observabilityMetrics.turnStartedAt = Date.now() - 83_000;
+vm.runInContext('renderConversationHealth()', bannerContext);
+const withWorkers = elements['common-turn-summary'].innerHTML.replace(/<[^>]+>/g, '').replaceAll('&middot;', '·');
+assert.match(withWorkers, /^9 reqs · \$2\.92 \(workers 6 · \$0\.42\) · 4K last in \/ 2\.75K turn out · 90% cache · Turn 1:2\d$/, 'requests and dollars include the workers, with the worker part named');
+bannerContext.observabilityMetrics.turnStartedAt = Date.now() - 5_000;
+vm.runInContext('renderCacheAge()', bannerContext);
+assert.match(elements['common-turn-summary'].innerHTML, /Turn 0:0[4-6]</, 'the existing cache-age tick refreshes the turn timer');
+bannerContext.observabilityMetrics.turnStartedAt = 0;
+vm.runInContext('renderConversationHealth()', bannerContext);
+assert.doesNotMatch(elements['common-turn-summary'].innerHTML, /Turn \d/, 'turnStartedAt 0 hides the timer');
+assert.match(elements['common-turn-summary'].innerHTML, /\(workers 6/, 'the worker part stays after the turn timer is hidden');
 
 const hierarchyContext = {
     specsShowDone: false,
@@ -175,16 +190,40 @@ console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=tr
     for (const [slug, bar] of Object.entries(bars)) {
         assert.match(bar, /Stage <strong>[a-z]+<\/strong>/, `${slug} shows a stage`);
         assert.match(bar, /data-cmd="\/sk\.check"/, `${slug} always offers /sk.check`);
-        assert.match(bar, /Next <code/, `${slug} suggests a next step`);
+        assert.doesNotMatch(bar, /Next <code|spec-next-step/, `${slug}: no separate Next chip duplicating the button`);
+        assert.match(bar, new RegExp(`spec-stage-name spec-stage-${bar.match(/Stage <strong>([a-z]+)</)[1]}"`), `${slug}: the stage name carries its stage colour class`);
     }
     assert.match(bars['001-specified'], /Stage <strong>specify<\/strong>.*\/sk\.check \(clarify\).*data-cmd="\/sk\.plan"/s, 'scenario 1');
     assert.match(bars['003-planned'], /Stage mismatch: stored stage tasks needs tasks\.md/, 'scenario 2');
-    assert.match(bars['005-tasked'], /plan\.md is stale: spec\.md has uncommitted edits/, 'dirty upstream shown');
-    assert.match(bars['005-tasked'], /tasks\.md is stale: spec\.md has uncommitted edits/);
+    assert.equal((bars['005-tasked'].match(/<details class="spec-stale">/g) || []).length, 1, 'one plain stale line per upstream, not one per file');
+    assert.match(bars['005-tasked'], /<summary>[^<]*<span class="codicon codicon-history"><\/span> spec\.md has uncommitted edits; 2 files built on it may be out of date; re-check them with \/sk\.check<\/summary>/, 'dirty upstream in plain words');
+    assert.match(bars['005-tasked'], /<ul class="spec-stale-files"><li>plan\.md<\/li><li>tasks\.md<\/li><\/ul>/, 'the file list sits inside the details');
+    assert.doesNotMatch(bars['005-tasked'], /is stale:/, 'the old per-file wording is gone');
     assert.doesNotMatch(bars['001-specified'], /stale/);
     const plain = makeSampleRepo();
     const plainScan = scanSpecs(plain.root);
     assert.match(hierarchyContext.renderStageBar(plainScan.specs[0], plainScan.stalenessAvailable), /not a git repository/);
+
+    // Reviewer 2026-10-01: "if next is implement why is the current stage implement" and "buttons at 2 places".
+    const bar = (fields) => hierarchyContext.renderStageBar({ slug: 's', ...fields });
+    const continuing = bar({ specKitStage: 'implement', nextStep: '/sk.implement', stageButton: 'Implement' });
+    assert.equal((continuing.match(/data-cmd="\/sk\.implement"/g) || []).length, 1, 'one button for the next step');
+    assert.match(continuing, />Continue \/sk\.implement<\/button>/, 'next step equal to the current stage reads as continuing');
+    assert.doesNotMatch(continuing, /Next <code/);
+    const advancing = bar({ specKitStage: 'analyze', nextStep: '/sk.implement', stageButton: 'Implement' });
+    assert.match(advancing, />\/sk\.implement<\/button>/, 'a different next step keeps the plain label');
+    assert.doesNotMatch(advancing, /Continue/);
+    const stale = (artifacts, reason) => bar({ specKitStage: 'tasks', nextStep: 'done', stageButton: '', stale: artifacts.map((artifact) => ({ artifact, upstream: 'plan.md', reason })) });
+    assert.match(stale(['tasks.md', 'a.md', 'b.md', 'c.md', 'd.md', 'e.md'], 'upstream-newer'), /6 files were written before the last plan\.md change; re-check them with \/sk\.check<\/summary><ul class="spec-stale-files">(<li>[a-z.]+<\/li>){6}<\/ul>/);
+    assert.match(stale(['tasks.md'], 'upstream-newer'), /1 file was written before the last plan\.md change; re-check it with \/sk\.check/);
+
+    // Pastel stage colours: one CSS variable per Spec Kit stage, applied to the card badge and the stage bar, with a dark-theme set.
+    for (const stage of ['specify', 'clarify', 'plan', 'checklist', 'tasks', 'analyze', 'implement', 'converge', 'done']) {
+        assert.match(css, new RegExp(`--spec-stage-${stage}-bg: #[0-9a-f]{6};[\\s\\S]*--spec-stage-${stage}-bg: #[0-9a-f]{6};`), `${stage} has a light and a dark colour`);
+        assert.match(css, new RegExp(`\\.spec-badge\\.spec-stage-${stage}, \\.spec-stage-name\\.spec-stage-${stage}[^{]*\\{ background: var\\(--spec-stage-${stage === 'converge' ? 'done' : stage}-bg\\)`), `${stage} colours the badge and the stage bar`);
+    }
+    assert.match(css, /body\.vscode-dark/, 'dark-theme palette');
+    assert.match(webview, /spec-badge spec-stage-' \+ escapeHtml\(spec\.specKitStage/, 'the card badge carries the stage class');
     assert.match(webview, /renderStageBar\(spec, specsState\.stalenessAvailable\)/, 'renderSpecs puts the stage bar on every card');
     assert.match(webview, /act === 'sk'/, 'stage buttons prefill their /sk.* command');
     assert.match(css, /\.spec-stage-bar/);

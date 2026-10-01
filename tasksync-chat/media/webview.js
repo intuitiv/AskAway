@@ -1707,6 +1707,11 @@
                         rtkSavedTokens: Number(message.metrics.rtkSavedTokens) || 0,
                         rtkSavingsPct: Number(message.metrics.rtkSavingsPct) || 0,
                         lastRequestTs: Number(message.metrics.lastRequestTs) || 0,
+                        turnStartedAt: Number(message.metrics.turnStartedAt) || 0,
+                        workers: (function (w) {
+                            w = w || {};
+                            return { requests: Number(w.requests) || 0, dollars: Number(w.dollars) || 0, runs: Number(w.runs) || 0 };
+                        })(message.metrics.workers),
                         gradle: (function (g) {
                             g = g || {};
                             return {
@@ -2862,16 +2867,52 @@
         if (abs >= 1000) { return sign + suffixed(abs / 1000, 'K'); }
         return sign + Math.round(abs).toLocaleString();
     }
-    // b: { requests, dollars, lastIn (full prompt of the last request), lastCached, turnOut }
+    // b: { requests, dollars, lastIn (full prompt of the last request), lastCached, turnOut, workers?: { requests, dollars } }
+    // `workers` (chat banner only) shows what the worker part of the totals is; worker cards omit it.
+    function bannerDollars(dollars) {
+        dollars = Number(dollars) || 0;
+        return '$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2);
+    }
     function usageBannerHtml(b) {
         var requests = Number(b.requests) || 0;
         var dollars = Number(b.dollars) || 0;
         var lastIn = Number(b.lastIn) || 0;
         var hit = lastIn > 0 ? Math.round((Number(b.lastCached) || 0) / lastIn * 100) + '%' : '\u2013';
+        var w = b.workers || {};
+        var workerReqs = Number(w.requests) || 0;
+        var workerDollars = Number(w.dollars) || 0;
+        var workerPart = (workerReqs > 0 || workerDollars > 0)
+            ? ' <span class="health-workers" title="Worker part of these totals">(workers ' + workerReqs + ' &middot; ' + bannerDollars(workerDollars) + ')</span>'
+            : '';
         return requests + ' req' + (requests === 1 ? '' : 's') +
-            ' &middot; <strong class="health-cost">$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2) + '</strong>' +
+            ' &middot; <strong class="health-cost">' + bannerDollars(dollars) + '</strong>' + workerPart +
             ' &middot; ' + formatObservabilityCompact(lastIn) + ' last in / ' + formatObservabilityCompact(b.turnOut) + ' turn out' +
             ' &middot; ' + hit + ' cache';
+    }
+    // Live turn timer: '' when no turn is running (turnStartedAt 0), else m:ss or h:mm:ss.
+    function turnTimerLabel(startedAt, now) {
+        var started = Number(startedAt) || 0;
+        if (started <= 0) { return ''; }
+        var secs = Math.max(0, Math.floor(((Number(now) || Date.now()) - started) / 1000));
+        var h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+        var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+        return 'Turn ' + (h ? h + ':' + pad(m) : m) + ':' + pad(s);
+    }
+    // Chat banner: this turn's requests plus its workers', with the worker part and the turn timer.
+    function chatBannerHtml(metrics, now) {
+        var turn = metrics.lastRequest || {};
+        var turnRequests = Array.isArray(metrics.turnRequests) ? metrics.turnRequests : [];
+        var latest = turnRequests.length ? turnRequests[turnRequests.length - 1] : turn;
+        var w = metrics.workers || {};
+        var workerReqs = Number(w.requests) || 0;
+        var workerDollars = Number(w.dollars) || 0;
+        var timer = turnTimerLabel(metrics.turnStartedAt, now);
+        return usageBannerHtml({
+            requests: (Number(turn.requestCount) || 0) + workerReqs,
+            dollars: (Number(turn.nanoAiu) || 0) / 1000000000 / 100 + workerDollars,
+            lastIn: latest.inputTokens, lastCached: latest.cachedTokens, turnOut: turn.outputTokens,
+            workers: { requests: workerReqs, dollars: workerDollars },
+        }) + (timer ? ' &middot; <span class="health-turn-timer" title="Time since this turn started">' + timer + '</span>' : '');
     }
     function cacheAgeLabel(secs) {
         var capped = Math.min(Math.max(0, secs), 300);
@@ -2895,9 +2936,11 @@
         var openIds = ctx.openIds || {};
         var now = ctx.now || Date.now();
         var tok = formatObservabilityCompact;
-        var aiu = function (nano) { return formatObservabilityCompact((Number(nano) || 0) / 1000000000); };
+        // One currency everywhere: dollars. Copilot reports nano-AIU; 100 AIU = $1, as in the chat banner.
+        var usd = function (dollars) { return '$' + (Number(dollars) || 0).toFixed(4); };
+        var nanoUsd = function (nano) { return (Number(nano) || 0) / 1000000000 / 100; };
         var sec = function (ms) { return ((Number(ms) || 0) / 1000).toFixed(2); };
-        var credits = function (ev) { return ev.dollars != null ? '$' + (Number(ev.dollars) || 0).toFixed(4) : aiu(ev.nanoAiu); };
+        var credits = function (ev) { return usd(ev.dollars != null ? ev.dollars : nanoUsd(ev.nanoAiu)); };
         var buildToolRow = function (ev, k) {
             var eid = 't:' + String(ev.id || '') + ':' + k;
             var openAttr = openIds[eid] ? ' open' : '';
@@ -3032,7 +3075,7 @@
                 '<span class="obs-tl-name"><span class="obs-req-id">' + traceEsc(String(item.id)) + '</span> ' + traceEsc(String(gLabel)) + ' ' + stateBadge + '</span>' +
                 modelBadge +
                 '<span class="obs-tl-metric" title="nested LLM requests / tool calls">' + grp.reqCount + ' req \u00b7 ' + grp.toolCount + ' tools</span>' +
-                '<span class="obs-tl-metric" title="credits (AIU)">' + aiu(grp.nano) + ' AIU</span>' +
+                '<span class="obs-tl-metric" title="cost (USD)">' + usd(nanoUsd(grp.nano)) + '</span>' +
                 '<span class="obs-tl-metric" title="output tokens">\u2191' + tok(gOut) + '</span>' +
                 '<span class="obs-tl-time' + (gCold ? ' obs-cache-risk' : '') + '" title="total wall time">' + sec(gDurMs) + 's</span>' +
                 '</summary>' +
@@ -3055,14 +3098,8 @@
 
     function renderConversationHealth() {
         var summary = document.getElementById('common-turn-summary');
-        var turn = observabilityMetrics.lastRequest || {};
         if (summary) {
-            var turnRequests = Array.isArray(observabilityMetrics.turnRequests) ? observabilityMetrics.turnRequests : [];
-            var latest = turnRequests.length ? turnRequests[turnRequests.length - 1] : turn;
-            summary.innerHTML = usageBannerHtml({
-                requests: turn.requestCount, dollars: (Number(turn.nanoAiu) || 0) / 1000000000 / 100,
-                lastIn: latest.inputTokens, lastCached: latest.cachedTokens, turnOut: turn.outputTokens,
-            });
+            summary.innerHTML = chatBannerHtml(observabilityMetrics, Date.now());
         }
         var attribution = document.getElementById('cost-attribution-toggle');
         if (attribution) {
@@ -3075,6 +3112,8 @@
     }
 
     function renderCacheAge() {
+        // The live turn timer is part of the chat banner; the 1s cache tick refreshes it while a turn runs.
+        if (Number(observabilityMetrics.turnStartedAt) > 0) { renderConversationHealth(); }
         var el = document.getElementById('obs-cache-age');
         var common = document.getElementById('common-cache-age');
         var ts = Number(observabilityMetrics.lastRequestTs) || 0;
@@ -5192,8 +5231,8 @@
         var flagged = commentaryIsHeadsUp(item);
         return '<div class="cm-item' + (flagged ? ' cm-heads-up' : '') + '" data-id="' + commentaryEsc(item.id) + '">' +
             '<div class="cm-body">' +
-            '<div class="cm-meta">' + (flagged ? '<span class="cm-heads-up-tag">HEADS-UP</span>' : '') + '<span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
             '<div class="cm-text">' + commentaryMarkup(item.text) + '</div>' +
+            '<div class="cm-meta">' + (flagged ? '<span class="cm-heads-up-tag">HEADS-UP</span>' : '') + '<span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
             '</div></div>';
     }
     // `openTurns[key]` records the reviewer's own clicks; otherwise earlier turns are collapsed.
@@ -5225,9 +5264,10 @@
             var flagged = turn.items.filter(commentaryIsHeadsUp).length;
             var clock = commentaryClock(first.ts).slice(0, 5) + (turn.items.length > 1 ? '–' + commentaryClock(last.ts).slice(0, 5) : '');
             html += dayDivider(first.ts) + '<details class="cm-turn" data-turn="' + commentaryEsc(turn.key) + '"' + (open ? ' open' : '') + '>' +
-                '<summary class="cm-turn-head"><span class="cm-turn-time">' + clock + '</span>' +
+                '<summary class="cm-turn-head">' +
                 '<span class="cm-turn-title">' + commentaryMarkup(first.text) + '</span>' +
-                '<span class="cm-turn-count">' + turn.items.length + (flagged ? ' · ' + flagged + ' heads-up' : '') + '</span></summary>' +
+                '<span class="cm-turn-meta"><span class="cm-turn-time">' + clock + '</span>' +
+                '<span class="cm-turn-count">' + turn.items.length + (flagged ? ' · ' + flagged + ' heads-up' : '') + '</span></span></summary>' +
                 turn.items.map(commentaryItemHtml).join('') + '</details>';
         });
         turns.current.forEach(function (item) { html += dayDivider(item.ts) + commentaryItemHtml(item); });
@@ -5768,23 +5808,49 @@
 
     var SPEC_STAGE_COMMAND = { Plan: '/sk.plan', Tasks: '/sk.tasks', Implement: '/sk.implement' };
 
-    // Always visible on a spec card: Spec Kit stage, suggested next step, the stage's action and /sk.check.
+    // One plain line per upstream file: how many later files are affected, with the names in a native <details>.
+    function staleSummaryHtml(stale) {
+        var groups = [];
+        stale.forEach(function(entry) {
+            var dirty = entry.reason === 'upstream-dirty';
+            var group = groups.filter(function(g) { return g.upstream === entry.upstream && g.dirty === dirty; })[0];
+            if (!group) { group = { upstream: entry.upstream, dirty: dirty, files: [] }; groups.push(group); }
+            group.files.push(entry.artifact);
+        });
+        return groups.map(function(g) {
+            var n = g.files.length;
+            var files = n + ' file' + (n === 1 ? '' : 's');
+            var upstream = escapeHtml(g.upstream);
+            var text = g.dirty
+                ? upstream + ' has uncommitted edits; ' + files + ' built on it may be out of date; re-check ' + (n === 1 ? 'it' : 'them') + ' with /sk.check'
+                : files + (n === 1 ? ' was' : ' were') + ' written before the last ' + upstream + ' change; re-check ' + (n === 1 ? 'it' : 'them') + ' with /sk.check';
+            return '<details class="spec-stale"><summary><span class="codicon codicon-history"></span> ' + text + '</summary>' +
+                '<ul class="spec-stale-files">' + g.files.map(function(f) { return '<li>' + escapeHtml(f) + '</li>'; }).join('') + '</ul></details>';
+        }).join('');
+    }
+
+    // Always visible on a spec card: the Spec Kit stage, then one button per step (the stage's next action and /sk.check).
     function renderStageBar(spec, stalenessAvailable) {
         var stage = spec.specKitStage || '';
         if (!stage) return '';
         var source = spec.stageSource === 'records' ? 'stored' : 'from artifacts';
+        var nextStep = spec.nextStep || '';
         var command = SPEC_STAGE_COMMAND[spec.stageButton] || '';
         var stale = Array.isArray(spec.stale) ? spec.stale : [];
+        var button = function(cmd, label, title) {
+            return '<button class="spec-action spec-stage-action" data-act="sk" data-cmd="' + escapeHtml(cmd) + '" title="' + escapeHtml(title) + '">' + escapeHtml(label) + '</button>';
+        };
+        // The button for the next step says so when it repeats the current stage, instead of a second "Next" chip.
+        var action = command
+            ? button(command, nextStep === command && command === '/sk.' + stage ? 'Continue ' + command : command, 'Next step: ' + command)
+            : '';
+        var checkIsNext = nextStep.indexOf('/sk.check') === 0;
+        var check = button('/sk.check', checkIsNext ? nextStep : '/sk.check', 'Check this spec' + (checkIsNext ? ' \u2014 next step' : ''));
         return '<div class="spec-stage-bar">' +
-            '<span class="spec-stage-name" title="Stage ' + escapeHtml(source) + '">Stage <strong>' + escapeHtml(stage) + '</strong></span>' +
-            '<span class="spec-next-step">Next <code class="inline-code">' + escapeHtml(spec.nextStep || '') + '</code></span>' +
-            (command ? '<button class="spec-action spec-stage-action" data-act="sk" data-cmd="' + command + '">' + escapeHtml(command) + '</button>' : '') +
-            '<button class="spec-action spec-stage-action" data-act="sk" data-cmd="/sk.check">/sk.check</button>' +
+            '<span class="spec-stage-name spec-stage-' + escapeHtml(stage) + '" title="Stage ' + escapeHtml(source) + '">Stage <strong>' + escapeHtml(stage) + '</strong></span>' +
+            (checkIsNext ? check + action : action + check) +
             (spec.mismatch ? '<div class="spec-stage-warn"><span class="codicon codicon-warning"></span> Stage mismatch: ' + escapeHtml(spec.mismatch.reason) + '</div>' : '') +
-            stale.map(function(entry) {
-                return '<div class="spec-stale"><span class="codicon codicon-history"></span> ' + escapeHtml(entry.artifact) + ' is stale: ' +
-                    escapeHtml(entry.upstream) + (entry.reason === 'upstream-dirty' ? ' has uncommitted edits' : ' changed later') + '</div>';
-            }).join('') +
+            staleSummaryHtml(stale) +
             (stalenessAvailable === false ? '<div class="spec-stale specs-muted">Staleness unknown: not a git repository</div>' : '') +
             '</div>';
     }

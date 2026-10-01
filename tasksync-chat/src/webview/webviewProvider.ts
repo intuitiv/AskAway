@@ -19,7 +19,7 @@ import { commentaryKey, commentaryView, CommentaryView } from '../commentary/com
 import { noteRequestStart } from '../observability/cacheClock';
 import { LogCursor, readLogIncrement } from '../observability/logCursor';
 import type { TurnActivity } from '../commentary/telegramLive';
-import { sharedCommentaryStore } from '../workers/workerHost';
+import { sharedCommentaryStore, workerSpendSince } from '../workers/workerHost';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
 
@@ -140,6 +140,10 @@ interface ObservabilityMetrics {
     toolCalls: ToolCallMetrics;
     /** Epoch ms of the newest llm_request seen — powers the live prompt-cache age clock. */
     lastRequestTs: number;
+    /** Worker spend since the current turn's user message (one ledger checkpoint = one model request). */
+    workers: { requests: number; dollars: number; runs: number };
+    /** Epoch ms of the current turn's user message; 0 when unknown. */
+    turnStartedAt: number;
     source: string;
     updatedAt: number;
 }
@@ -618,6 +622,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         gradle: { runs: 0, optimizedRuns: 0, tasksAvoided: 0, configCacheReuses: 0, savedTokens: 0 },
         toolCalls: { totalCalls: 0, totalOutputTokens: 0, byTool: [], turn: { totalCalls: 0, totalOutputTokens: 0, byTool: [] } },
         lastRequestTs: 0,
+        workers: { requests: 0, dollars: 0, runs: 0 },
+        turnStartedAt: 0,
         source: 'unavailable',
         updatedAt: 0
     };
@@ -2104,8 +2110,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     public getTurnActivity(): TurnActivity {
         const turn = this._deriveLastRequest();
         const latest = this._turnRequests[this._turnRequests.length - 1];
-        return { lastActivityAt: this._newestRequestTs, requests: this._turnRequests.length,
-            dollars: turn.nanoAiu / 1e9 / 100, lastIn: latest?.inputTokens ?? 0, turnOut: turn.outputTokens };
+        const workers = this._workerSpend();
+        return { lastActivityAt: this._newestRequestTs, requests: this._turnRequests.length + workers.requests,
+            dollars: turn.nanoAiu / 1e9 / 100 + workers.dollars, workerRequests: workers.requests,
+            lastIn: latest?.inputTokens ?? 0, turnOut: turn.outputTokens };
+    }
+
+    private _workerSpend(): { requests: number; dollars: number; runs: number } {
+        return workerSpendSince(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, this._lastSubmitTs);
     }
 
     public async getTurnMetricsSnapshot(): Promise<{ latestInputTokens: number; turnOutputTokens: number; turnNanoAiu: number }> {
@@ -2211,6 +2223,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             gradle: { runs: 0, optimizedRuns: 0, tasksAvoided: 0, configCacheReuses: 0, savedTokens: 0 },
             toolCalls: { totalCalls: 0, totalOutputTokens: 0, byTool: [], turn: { totalCalls: 0, totalOutputTokens: 0, byTool: [] } },
             lastRequestTs: 0,
+            workers: { requests: 0, dollars: 0, runs: 0 },
+            turnStartedAt: 0,
             source: 'unavailable',
             updatedAt: Date.now()
         });
@@ -2240,6 +2254,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 return {
                     ...base,
                     lastRequestTs: this._effectiveCacheActivityTs(),
+                    workers: this._workerSpend(),
+                    turnStartedAt: this._lastSubmitTs || 0,
                     requestCount: workspaceScope.requestCount,
                     inputTokens: workspaceScope.inputTokens,
                     outputTokens: workspaceScope.outputTokens,
@@ -2650,6 +2666,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 gradle: this._gradleWithSavings(gradleObs, toolObs),
                 toolCalls: toolObs,
                 lastRequestTs: this._newestRequestTs,
+                workers: this._workerSpend(),
+                turnStartedAt: this._lastSubmitTs || 0,
                 source: `ledger:${logFiles.length} logs`,
                 updatedAt: Date.now()
             };
