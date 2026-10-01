@@ -19,6 +19,8 @@ import { commentaryKey, commentaryView, CommentaryView } from '../commentary/com
 import { noteRequestStart } from '../observability/cacheClock';
 import { LogCursor, readLogIncrement } from '../observability/logCursor';
 import type { TurnActivity } from '../commentary/telegramLive';
+import { LongRunHandoff } from '../specs/handoffThreshold';
+import { HandoffNotifier } from '../services/handoffNotifier';
 import { sharedCommentaryStore, workerSpendSince } from '../workers/workerHost';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
@@ -2132,6 +2134,17 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             void this._broadcastMemoriesList();
         })();
         return this._observabilityScanPromise;
+    }
+
+    private readonly _longRunHandoff = new LongRunHandoff(text => HandoffNotifier.current?.postLongRunNotice(text));
+
+    /** Line for the ask/continue tool result when input is over 300K on a long (Away/Offline) run; also records lastIn for the hook. */
+    public longRunHandoffLine(): string {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) { return ''; }
+        const state = readAvailability(root);
+        const expired = !!state?.until && !(Date.parse(state.until) >= Date.now());
+        return this._longRunHandoff.check(availabilityFile(root), this.getTurnActivity().lastIn ?? 0, expired ? 'here' : state?.mode);
     }
 
     /** For the Telegram status line: the chat banner's turn numbers plus when the agent last made a model request. */

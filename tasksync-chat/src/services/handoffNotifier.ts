@@ -54,6 +54,8 @@ export function createHandoffTargets(
 }
 
 export class HandoffNotifier implements vscode.Disposable {
+    /** The running notifier, so the provider can send the long-run notice without extension wiring. */
+    public static current: HandoffNotifier | undefined;
     private _lastPostedTs = 0;
     private _lastPostedHandoff = '';
     private _watchTimer: NodeJS.Timeout | undefined;
@@ -68,12 +70,23 @@ export class HandoffNotifier implements vscode.Disposable {
 
     public start(): void {
         if (this._watchTimer) { return; }
+        HandoffNotifier.current = this;
         // Seed with the current stamp so activation never replays the previous turn.
         this._lastPostedTs = this._readStamp();
         this._watchTimer = setInterval(() => { void this._onTurnEnd(); }, WATCH_INTERVAL_MS);
     }
 
+    /** Telegram-only notice that a long Away run crossed 300K (decision lives in specs/handoffThreshold.ts). */
+    public async postLongRunNotice(text: string): Promise<boolean> {
+        const poster = this._targets.find(t => t.name === 'Telegram')?.get();
+        if (!poster?.isConfigured()) { return false; }
+        return poster.postText(`**AskAway**
+
+${text}`, `AskAway: ${text}`);
+    }
+
     public dispose(): void {
+        if (HandoffNotifier.current === this) { HandoffNotifier.current = undefined; }
         if (this._watchTimer) {
             clearInterval(this._watchTimer);
             this._watchTimer = undefined;

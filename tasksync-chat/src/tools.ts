@@ -515,6 +515,9 @@ export async function askUser(
         // Keep Copilot in the loop when there's an active plan task
         const hasActivePlan = !!provider.getActivePlanTaskId();
 
+        const handoffLine = provider.longRunHandoffLine();
+        if (handoffLine) { responseText += `\n\n${handoffLine}`; }
+
         return {
             response: responseText,
             attachments: validAttachments,

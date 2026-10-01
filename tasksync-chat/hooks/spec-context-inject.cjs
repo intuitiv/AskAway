@@ -55,8 +55,9 @@ function availabilityContext(cwd) {
                 : 'Never ask questions; park open questions for the final report.',
             'End the session with a handoff and a report of decisions, open questions, and cost.',
         );
-        if (state.mode === 'offline') {
-            lines.push('On a long run, once input exceeds 300K, write /sk.handoff and continue in a new conversation.');
+        // Same rule as handoffNeeded in src/specs/handoffThreshold.ts (the extension writes lastInputTokens into this file).
+        if (Number(state.lastInputTokens) > 300000) {
+            lines.push('Input exceeded 300K on a long run: write /sk.handoff now and continue in a new conversation.');
         }
         return lines.join('\n');
     } catch {

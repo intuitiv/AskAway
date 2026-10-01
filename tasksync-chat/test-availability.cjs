@@ -53,7 +53,7 @@ try {
     assert.ok(offline.includes(`Until: ${until}`));
     assert.match(offline, /Reviewer note: overnight/);
     assert.match(offline, /Never ask questions; park open questions for the final report/);
-    assert.match(offline, /On a long run, once input exceeds 300K, write \/sk\.handoff and continue in a new conversation/);
+    assert.doesNotMatch(offline, /exceeded 300K/, 'the 300K rule only fires after a request exceeded it (see test-long-run-handoff.cjs)');
     assert.doesNotMatch(offline, /Send questions to Telegram/);
 
     for (const mode of ['away', 'offline']) {
