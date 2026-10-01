@@ -20,6 +20,7 @@ const comments = dry.stdout.split(/--- comment \d[^\n]*\n/).slice(1).map((c) => 
 assert.equal(comments.length, 2, 'two comments: the task and the concurrency probe');
 for (const comment of comments) {
     assert.ok(comment.startsWith('@copilot Please do PROOF-1'), comment);
+    assert.match(comment.split('\n')[0], /^@copilot Please do PROOF-1\S* \(US1, stage implement\) of 006-cloud-tasks: follow /, 'first line states task, story and stage');
     assert.ok(comment.split('\n').length <= 5, 'comment is at most 5 lines');
     assert.ok(comment.includes('.askaway/specs/006-cloud-tasks/packets/'), 'comment references the packet by path');
 }

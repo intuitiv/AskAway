@@ -13,8 +13,8 @@ See [contracts/cloud-run.schema.json](contracts/cloud-run.schema.json). Written 
 
 | From | Signal | To |
 |---|---|---|
-| (new) | overlap / one-at-a-time rule | Held |
-| Held | blocking task terminal | Queued (comment posted) |
+| (new) | one-at-a-time rule (from US2) or overlap rule (US5) | Held |
+| Held | one-at-a-time: blocking task leaves Working/Pushed/Checks (enters Needs review or a terminal state); overlap: blocking task terminal | Queued (comment posted) |
 | Queued | 👀 on our comment or started-work event | Working |
 | Queued | 10 min without either | No response |
 | Working / Pushed | agent commit after `base` on PR branch | Pushed |
@@ -23,10 +23,12 @@ See [contracts/cloud-run.schema.json](contracts/cloud-run.schema.json). Written 
 | any active | agent comment `Report <taskId>` or question | Needs review |
 | any active | ceiling / 59 min exceeded | Timed out |
 | any active | PR closed/merged, agent opened a new PR/branch | Returned |
-| Needs review | acceptance pass | Accepted |
+| Needs review | acceptance pass (starts automatically on entering Needs review) | Accepted |
 | Needs review | acceptance fail / out-of-scope / Status changed | Returned |
 
-Terminal: Accepted, Returned, Timed out, No response.
+Terminal: Accepted, Returned, Timed out, No response. Needs review is not terminal but does not count as Working, so it never blocks the queue.
+
+Extension-authored commits (packet, tick, run record) carry the trailer `AskAway-Commit: <kind>` and are ignored by conflict detection (FR-018).
 
 ## Evidence note
 See [contracts/evidence-note.md](contracts/evidence-note.md).

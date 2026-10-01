@@ -132,7 +132,7 @@ The extension prevents unsafe overlap and runaway work: no two cloud tasks run o
 - **FR-003**: The Specs tab MUST show a "Queue in cloud" button on every cloud-eligible task in any stage once the task exists, and no button on ineligible tasks.
 - **FR-004**: Queuing MUST write exactly one packet per queued task under `.askaway/specs/<slug>/packets/`, committed and pushed to the spec's active PR branch.
 - **FR-005**: A packet MUST state: stage, story, task, the task's task-details section, base commit, allowed paths, exact verification commands, stop condition ("stop and ask on any undecided behaviour instead of guessing") and report format.
-- **FR-006**: Queuing MUST post one short `@copilot` comment on the active PR that references the packet by path and commit and does not repeat its content.
+- **FR-006**: Queuing MUST post one short `@copilot` comment on the active PR that states the task, its story and stage and what to do, references the packet by path and commit and does not repeat its content.
 - **FR-007**: Queuing MUST use the active PR's branch; it MUST NOT create a branch, PR or issue. Issue assignment MUST NOT be the default route.
 - **FR-008**: The developer MUST be able to choose the model where GitHub allows it for the chosen route; where it does not, the extension MUST show the model that will run.
 - **FR-009**: A packet naming a spec or plan stage MUST produce output marked as draft; no human approval gate (spec, plan, converge/readiness) is passed by cloud work.
@@ -143,8 +143,8 @@ The extension prevents unsafe overlap and runaway work: no two cloud tasks run o
 - **FR-014**: A cloud task MUST be ticked only after a local verify worker pulls the branch and the packet's named verification commands pass; otherwise it is Returned with failing evidence.
 - **FR-015**: Changes outside the packet's allowed paths MUST cause the task to be Returned.
 - **FR-016**: Story Checkpoint verification from 005 MUST apply unchanged to stories containing cloud tasks.
-- **FR-017**: Until overlap detection ships, at most one cloud task per active PR MUST be Working at a time; after it ships, two cloud tasks MUST NOT be Working on overlapping allowed paths.
-- **FR-018**: The extension MUST detect and surface when the developer and the cloud agent push to the same branch during a Working task.
+- **FR-017**: From the first queuing story (US2), at most one cloud task per active PR MUST be Working at a time; further queued tasks are Held and are released as soon as the Working task stops working (reaches Needs review or a terminal state), so a task waiting for review never blocks the rest of the queue. After overlap detection ships, two cloud tasks MUST NOT be Working on overlapping allowed paths.
+- **FR-018**: The extension MUST detect and surface when the developer and the cloud agent push to the same branch during a Working task. Commits authored by the extension itself (packet, task tick, run record) MUST NOT count as developer pushes and MUST NOT raise a warning; the tick push is deferred while another task on the PR is Working.
 - **FR-019**: Each cloud task MUST have a duration ceiling not exceeding the cloud agent's 59-minute session limit; exceeding it marks the task Timed out.
 - **FR-020**: Packets and comments MUST NOT contain secrets; writing MUST be refused when a secret pattern or known credential is detected.
 - **FR-021**: Queuing MUST be refused, before any commit or comment, when there is no active PR, the developer lacks write access, or the task is already queued and not finished.

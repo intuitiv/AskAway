@@ -44,7 +44,7 @@ function packetFor(taskId, base) {
 
 function commentFor(taskId, packetPath, sha, modelHint) {
     return [
-        `@copilot Please do ${taskId} of ${SLUG}: follow ${packetPath} at ${sha.slice(0, 7)}.`,
+        `@copilot Please do ${taskId} (US1, stage implement) of ${SLUG}: follow ${packetPath} at ${sha.slice(0, 7)}.`,
         "Work on this PR's branch only; stay inside allowedPaths; run the packet's verify commands.",
         `Stop and ask on anything undecided; reply using the packet's reportFormat.${modelHint ? ` ${modelHint}` : ''}`
     ].join('\n');

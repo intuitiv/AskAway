@@ -48,8 +48,10 @@ Required fields (SC-004 counts nine): `stage`, `story`, `task`, task details (bo
 
 ## Comment (≤ 5 lines)
 
+Line 1 states the task, its story and stage; lines 2-3 state what to do. Everything else is referenced from the committed packet, not repeated. The packet commit message carries the trailer `AskAway-Commit: packet`.
+
 ```
-@copilot Please do T014 of 006-cloud-tasks: follow .askaway/specs/006-cloud-tasks/packets/T014-1.md at 1a2b3c4.
+@copilot Please do T014 (US2, stage implement) of 006-cloud-tasks: follow .askaway/specs/006-cloud-tasks/packets/T014-1.md at 1a2b3c4.
 Work on this PR's branch only; stay inside allowedPaths; run the packet's verify commands.
 Stop and ask on anything undecided; reply using the packet's reportFormat.
 ```
