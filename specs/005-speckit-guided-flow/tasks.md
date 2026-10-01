@@ -81,6 +81,7 @@ description: "Task list for 005 Spec Kit Guided Flow"
 - [x] T023 Reviewer requirements per UI component and feature in `tasksync-chat/docs/requirements/` (reviewer's quoted words, date, guarding test or `gap`); `test-requirements-docs.cjs` fails on a cited test id that does not exist (EV-REQUIREMENTS-DOCS)
 - [x] T024 [US6] Command batching for the main agent (data: `tools/command-options.cjs`, option H saves 38 requests / $2.29 over 5 conversations): `tools/checkpoint.cjs` for commits (done, EV-CHECKPOINT), `tools/batch.cjs` for independent command sequences (EV-BATCH), worker `status` returns the report once finished; both agent prompts name them
 - [ ] T025 [US1] Stage stays `clarify` (next `/sk.check`) while spec.md has `[NEEDS CLARIFICATION]` markers; today spec-facts says next `/sk.plan` for 007 with 2 open markers (`stages.ts`, `test-spec-stages.cjs`)
+- [x] T026 Turn budget counts workers: `turn_budget` spent = main AIU + worker $ × 100 for the same turn (breakdown mainAiu/workerAiu/workerRuns), and worker `start`/`submit` return BUDGET_EXCEEDED once the total reaches `askaway.turnBudgetAiu` (reviewer 2026-10-02: stopped at 1000 AIU for main agent, total was 1900+; `turnBudget.ts`, EV-TURN-BUDGET-WORKERS)
 
 ---
 

@@ -11,8 +11,9 @@ import { dispatchGradle, GradleInput } from './gradle/gradleEngine';
 import { cacheSafeWaitMs } from './observability/cacheClock';
 import { commentaryToolDefinitions } from './commentary/commentary';
 import { registerLmToolDefinitions } from './workers/lmTools';
-import { sharedCommentaryStore, sharedWorkerRuntimeReady } from './workers/workerHost';
+import { sharedCommentaryStore, sharedWorkerRuntimeReady, workerSpendSince } from './workers/workerHost';
 import { workerTool } from './workers/workerTools';
+import { turnBudget as computeTurnBudget } from './workers/turnBudget';
 
 /**
  * Append a per-invocation record for an AskAway LM tool to
@@ -37,14 +38,22 @@ function logToolCall(tool: string, outputText: string, detail?: string): void {
     }
 }
 
+/** Main-agent AIU plus worker spend, both since the same turn start (the newest user_message in the debug log). */
+async function currentTurnBudget(context: vscode.ExtensionContext) {
+    const spend = await computeTurnSpend(context);
+    const worker = workerSpendSince(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, spend.turnStartTs);
+    const limit = Number(vscode.workspace.getConfiguration('askaway').get('turnBudgetAiu', 0)) || 0;
+    return { spend, budget: computeTurnBudget(spend.nanoAiu, worker.dollars, worker.runs, limit) };
+}
+
 /**
  * Compute how many credits (nanoAiu) the CURRENT turn has spent, straight from the
  * active Copilot debug log (independent of the webview being open). Finds the newest
  * debug-log session for this workspace, then sums copilotUsageNanoAiu of every
  * llm_request logged at/after the last user_message (= the current turn boundary).
  */
-async function computeTurnSpend(context: vscode.ExtensionContext): Promise<{ nanoAiu: number; requestCount: number; sessionId: string | null }> {
-    const empty = { nanoAiu: 0, requestCount: 0, sessionId: null as string | null };
+async function computeTurnSpend(context: vscode.ExtensionContext): Promise<{ nanoAiu: number; requestCount: number; sessionId: string | null; turnStartTs: number }> {
+    const empty = { nanoAiu: 0, requestCount: 0, sessionId: null as string | null, turnStartTs: 0 };
     const storageUriPath = context.storageUri?.fsPath;
     if (!storageUriPath) { return empty; }
     const debugRoot = path.join(path.dirname(storageUriPath), 'GitHub.copilot-chat', 'debug-logs');
@@ -99,7 +108,7 @@ async function computeTurnSpend(context: vscode.ExtensionContext): Promise<{ nan
             requestCount += 1;
         }
     }
-    return { nanoAiu, requestCount, sessionId: newest.sid };
+    return { nanoAiu, requestCount, sessionId: newest.sid, turnStartTs: lastSubmitTs };
 }
 
 
@@ -911,7 +920,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // Same definitions as the MCP surface, so the VS Code orchestrator reaches workers without the MCP server running.
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
     context.subscriptions.push(...registerLmToolDefinitions([
-        workerTool(() => sharedWorkerRuntimeReady(workspaceRoot), workspaceRoot, { waitBudgetMs: (ms) => cacheSafeWaitMs(ms) }),
+        workerTool(() => sharedWorkerRuntimeReady(workspaceRoot), workspaceRoot, { waitBudgetMs: (ms) => cacheSafeWaitMs(ms), turnBudget: async () => (await currentTurnBudget(context)).budget }),
         ...commentaryToolDefinitions(sharedCommentaryStore, workspaceRoot),
     ]));
 
@@ -1151,7 +1160,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // ── Register turn_budget tool (self-reported per-turn spend + soft limit) ──
     // Lets the agent check how many credits (AIU) it has burned this turn and
     // compare against a user-configured soft budget (askaway.turnBudgetAiu) so it
-    // can self-regulate (wrap up) before overspending. Advisory only — never blocks.
+    // can self-regulate (wrap up) before overspending. Worker start/submit are refused once the total (main + workers) reaches the limit.
     let turnBudgetTool: vscode.Disposable | undefined;
     try {
         turnBudgetTool = vscode.lm.registerTool('turn_budget', {
@@ -1159,14 +1168,17 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
                 return { invocationMessage: '💰 checking turn budget' };
             },
             async invoke(_options: vscode.LanguageModelToolInvocationOptions<Record<string, unknown>>, _token: vscode.CancellationToken) {
-                const spend = await computeTurnSpend(context);
-                const spentAiu = spend.nanoAiu / 1e9;
-                const limit = Number(vscode.workspace.getConfiguration('askaway').get('turnBudgetAiu', 0)) || 0;
+                const { spend, budget } = await currentTurnBudget(context);
+                const spentAiu = budget.spentAiu;
+                const limit = budget.limitAiu;
                 const remaining = limit > 0 ? Math.max(0, limit - spentAiu) : null;
-                const exceeded = limit > 0 && spentAiu >= limit;
+                const exceeded = budget.exceeded;
                 const pct = limit > 0 ? Math.round(spentAiu / limit * 100) : 0;
                 const result = {
                     spentAiu: Number(spentAiu.toFixed(2)),
+                    mainAiu: Number(budget.mainAiu.toFixed(2)),
+                    workerAiu: Number(budget.workerAiu.toFixed(2)),
+                    workerRuns: budget.workerRuns,
                     requestCount: spend.requestCount,
                     softLimitAiu: limit > 0 ? limit : null,
                     remainingAiu: remaining !== null ? Number(remaining.toFixed(2)) : null,

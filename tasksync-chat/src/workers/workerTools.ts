@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { MAX_WAIT_SECONDS, OpenCodeWorkerRuntime, WorkerPacket } from './openCodeRuntime';
 import { projectWorkersState } from './workersState';
+import type { TurnBudget } from './turnBudget';
 
 export const WORKER_TOOL_NAMES = ['worker_start', 'worker_submit', 'worker_list', 'worker_status', 'worker_wait', 'worker_cancel', 'worker_resume', 'worker_logs'] as const;
 /** Hosts see ONE `worker` tool; `action` selects the operation, like the `gradle` tool (reviewer, 2026-09-25). */
@@ -34,6 +35,19 @@ const packetShape = {
     workspacePath: z.string().optional().describe('Defaults to the current workspace.'),
 };
 
+
+/** The refusal a worker start/submit gets once the turn total reached the limit; null when dispatch is allowed. */
+export function workerBudgetRefusal(action: string, budget: Pick<TurnBudget, 'spentAiu' | 'limitAiu' | 'exceeded'> | null | undefined): Record<string, unknown> | null {
+    if ((action !== 'start' && action !== 'submit') || !budget || !budget.exceeded) { return null; }
+    const spent = Number(budget.spentAiu.toFixed(2));
+    return {
+        status: 'BUDGET_EXCEEDED',
+        spentAiu: spent,
+        limitAiu: budget.limitAiu,
+        reason: `Turn budget reached: ${spent}/${budget.limitAiu} AIU (main agent + workers). No new worker is dispatched; finish with what you have.`,
+    };
+}
+
 const reply = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
 
 /** Validates input against the contract, runs it, and returns the bounded JSON text every host sends back. */
@@ -57,7 +71,11 @@ export function registerWorkerTools(register: Register, runtime: () => RuntimeSo
 }
 
 /** `waitBudgetMs` caps a wait by the caller's prompt-cache clock; hosts whose callers keep their own cache omit it. */
-export interface WorkerToolOptions { waitBudgetMs?: (requestedMs: number) => number }
+export interface WorkerToolOptions {
+    waitBudgetMs?: (requestedMs: number) => number;
+    /** Live turn spend (main + workers) against askaway.turnBudgetAiu; start and submit are refused once exceeded. */
+    turnBudget?: () => TurnBudget | Promise<TurnBudget>;
+}
 
 /** The eight operations behind one tool: the host schema merges every field, then each action validates its own. */
 export function workerTool(source: () => RuntimeSource, defaultWorkspace: string, options: WorkerToolOptions = {}): ToolDefinition {
@@ -79,6 +97,10 @@ export function workerTool(source: () => RuntimeSource, defaultWorkspace: string
         inputSchema: z.object({ action: z.enum(WORKER_ACTIONS).describe('Which operation to run.'), ...shape }),
         run: async ({ action, ...args }) => {
             const operation = operations.get(action);
+            if (operation && options.turnBudget && (action === 'start' || action === 'submit')) {
+                const refusal = workerBudgetRefusal(action, await options.turnBudget());
+                if (refusal) { return refusal; }
+            }
             return operation ? JSON.parse(await invokeDefinition(operation, args)) : { status: 'INVALID_INPUT', reason: `action: one of ${WORKER_ACTIONS.join(', ')}` };
         },
     };
