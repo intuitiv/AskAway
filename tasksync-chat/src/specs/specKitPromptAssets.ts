@@ -1,7 +1,3 @@
-const acceptance = 'Every task has stable AC-TNNN-* acceptance IDs. Every acceptance criterion requires an objective observable assertion, an executable verification method/command, and an exact expected result. Prove execution with named nonzero test evidence, exact output/value/count, or an artifact predicate; exit 0 alone is insufficient. Add context only when relevant and omit empty boilerplate. Acceptance is the required outcome; Demo is proof after it passes and cannot replace acceptance.';
-const categories = 'Classify phases and tasks as design-high-care, logic, codegen, adr-docs, tests, small-change, or integration-ops. Design-high-care is serial, reviewer-gated, and states expected decisions, exclusions, rejected alternatives, and reviewer-owned choices.';
-const gates = 'Use task AC-TNNN-*, cycle CAC-CY-NNN-*, and phase PAC-PNN-* as separate completion gates. A task, cycle, or phase cannot close until every applicable assertion passes.';
-
 export const SPEC_KIT_PROMPTS: Record<string, string> = {
     'sk.new.prompt.md': `---
 agent: AskAway Build
@@ -39,11 +35,7 @@ description: Plan the active Spec Kit feature after resolving required clarifica
 
 Require a resolved Decision Register and Cloud Worker Packet usable by a fresh worker without chat history. Name an explicit base commit, tag, or remote ref and exact checkout value; never infer it from feature or branch metadata. Stop on [NEEDS CLARIFICATION], TBD, contradiction, unsupported assumption, or deferred decision. Do not generate tasks.
 
-Use a gated incremental waterfall: requirements/decisions, architecture/contracts, foundation, usable feature increments, integration/migration, release/operations. Every phase has entry criteria, an integrated demonstrable increment, stable PAC-PNN-* assertions, verification command, exact expected result, evidence, downstream unlocks, and one-writer boundaries. Every implementation phase delivers demonstrable value.
-
-${acceptance}
-${categories}
-${gates}
+Follow .specify/templates/plan-template.md. Plan dependencies around user stories and their Given/When/Then scenarios; verify each story's success metrics at its checkpoint. Use /sk.check for the checklist before /sk.tasks.
 `,
     'sk.tasks.prompt.md': `---
 agent: AskAway Build
@@ -52,22 +44,20 @@ description: Generate compact executable tasks and navigable task details for th
 
 # /sk.tasks
 
-Require a resolved Decision Register and Cloud Worker Packet. Generate tasks executable by a fresh local or cloud worker without chat history. Generate tasks in gated incremental-waterfall order with phase entry criteria, concrete deliverables, PAC-PNN-* assertions/evidence, and downstream unlocks. Keep tasks.md compact; use short plain-language task titles, ideally 3-8 words. Put paths, inputs, constraints, dependencies, acceptance, and demos in task-details.md.
+Require a resolved Decision Register and Cloud Worker Packet. Generate tasks executable by a fresh local or cloud worker without chat history. Follow .specify/templates/tasks-template.md: Setup, Foundational, one phase per [USn] with Independent Test + Checkpoint, then Polish. Mark independent parallel work [P]. Use short plain-language task titles; put execution details in task-details.md rather than repeating the template.
 
-${acceptance}
-${categories}
-Add CAC-CY-NNN-* integration acceptance for every cycle. Mark [direct-agent-ready] only when a fresh worker has self-contained paths, prerequisites, open gates, detailed non-vacuous AC, and applicable cloud context. Exclude manual, reviewer-owned, design-high-care, migration, destructive, security-sensitive, unresolved, and externally blocked work. Eligibility is not approval.
+Mark [direct-agent-ready] only for self-contained work with satisfied prerequisites and applicable cloud context. Exclude manual, reviewer-owned, destructive, security-sensitive, unresolved, and externally blocked work. Eligibility is not approval. Use /sk.check for analysis before implementation.
 `,
     'sk.implement.prompt.md': `---
 agent: AskAway Build
-description: Pitch and implement exactly one Spec Kit task or approved cycle.
+description: Pitch and implement exactly one Spec Kit task or approved story.
 ---
 
 # /sk.implement
 
-Require the Decision Register and Cloud Worker Packet. Give the worker only the packet, selected task row, and matching task-details section; never rely on chat history. Follow incremental-waterfall order and do not start a downstream phase before its predecessor gate passes. Pitch Task/Cycle, Plan, Value, and Demo unless already approved. Before editing, restate the phase entry gate and each AC-TNNN-* objective assertion, verification command, and exact expected result. Run every assertion and prove execution; zero matched tests is failure.
+Require the Decision Register and Cloud Worker Packet. Give the worker only the packet, selected task row, and matching task-details section; never rely on chat history. Follow .specify/templates/tasks-template.md and its story dependencies. Pitch Task/Story, Plan, Value, and Demo unless already approved. Before editing, state the observable assertion, verification command, and exact expected result. Prove execution; zero matched tests is failure.
 
-Check off a task only after all AC-TNNN-* pass. Close a cycle only after member AC and CAC-CY-NNN-* pass. Unlock a phase only after member work and PAC-PNN-* pass. [direct-agent-ready] never bypasses approval or gates.
+Check off a task only after its verification passes. At each story Checkpoint, run its Independent Test, prove its Given/When/Then scenarios, and verify its success metrics. [direct-agent-ready] never bypasses approval. Use /sk.check for convergence.
 `,
     'sk.check.prompt.md': `---
 agent: AskAway Build
@@ -76,12 +66,11 @@ description: Diagnose the active Spec Kit feature and offer approved acceptance 
 
 # /sk.check
 
-Inspect the active feature strictly read-only before approval. Before the user answers or approves a route, run no writer. Find [NEEDS CLARIFICATION], Open Question, TBD/Unknown/placeholders, contradictions, unsupported assumptions, and deferred decisions first. Ask up to five numbered questions when needed; product answers go through clarification and technical answers go into the plan Decision Register via /sk.plan. Report as Phase -> Cycle -> Tasks -> Finding with progress and blocked dependents. Put unmapped findings under Cross-cutting / Unassigned and never invent cycle membership.
+Inspect the active feature strictly read-only before approval. Before the user answers or approves a route, run no writer. Use Spec Kit's templates under .specify/templates/ for clarification, checklist, analysis, or convergence at the current stage. Find [NEEDS CLARIFICATION], Open Question, placeholders, contradictions, unsupported assumptions, and deferred decisions first. Ask up to five numbered questions; technical answers go into the plan Decision Register via /sk.plan. Report as Story -> Tasks -> Finding with progress and blocked dependents; put unmapped findings under Cross-cutting / Unassigned.
 
-After diagnosis finds no unresolved decisions, report open tasks, cycles, and phases with missing or invalid acceptance and ask exactly: Backfill AC for these open items? (yes/no). Remain read-only until the user answers yes. A yes answer internally performs the same exactly-one-spec backfill as /sk.check backfill-ac [NNN]; the alias remains supported for automation. Resolve exactly one selected/active spec. Backfill only unchecked tasks and affected open cycles/phases. Never touch completed tasks, valid acceptance, logs, code, or another spec.
+After resolving decisions, report missing task verification and ask: Backfill AC for these open items? (yes/no). Remain read-only until yes; then perform /sk.check backfill-ac [NNN] for exactly one selected/active spec, only unchecked tasks. Never touch completed tasks, valid acceptance, logs, code, or another spec.
 
-Every new or repaired AC-TNNN-*, CAC-CY-NNN-*, and PAC-PNN-* has Assert, Verify, and Expected fields plus non-vacuous execution proof. Exit 0 alone is invalid.
-Validate the incremental waterfall, phase predecessor gates, and all three completion levels. Report gaps under Phase -> Cycle -> Tasks -> Finding.
+Task AC-TNNN-* backfill uses Assert, Verify, Expected, and non-vacuous execution proof. Exit 0 alone is invalid. Validate story dependencies, Given/When/Then scenarios, Independent Test + Checkpoint, and success metrics against the standard templates.
 `,
     'sk.handoff.prompt.md': `---
 agent: AskAway Build
@@ -112,20 +101,10 @@ export const CLAUDE_SPEC_KIT_COMMANDS: Record<string, string> = {
     'sk.new.md': `${CLAUDE_HEADER}Create a numbered feature from $ARGUMENTS, preserve the previous feature_directory, separate branch identities and explicit cloud base revision, record genuine [NEEDS CLARIFICATION], and do not plan or implement.`,
     'sk.start.md': `${CLAUDE_HEADER}Select feature $ARGUMENTS in .specify/feature.json and report feature directory, Git branch, task branch, and cloud base revision separately.`,
     'sk.continue.md': `${CLAUDE_HEADER}Read implementation-log.md before tasks.md, exclude blocked/manual/reviewer/deferred work, and pitch exactly one eligible task.`,
-    'sk.plan.md': `${CLAUDE_HEADER}Require a resolved Decision Register and Cloud Worker Packet without chat history. Name an explicit base commit, tag, or remote ref and exact checkout value; never infer it from feature or branch metadata. Stop on [NEEDS CLARIFICATION] or unresolved decisions; route questions to /sk.check. Do not generate tasks.
-
-Use a gated incremental waterfall with phase entry criteria, integrated demonstrable increments, PAC-PNN-* assertions/evidence, predecessor gating, downstream unlocks, and one-writer boundaries.
-
-${acceptance}
-${categories}
-${gates}`,
-    'sk.tasks.md': `${CLAUDE_HEADER}Require a resolved Decision Register and Cloud Worker Packet. Generate tasks executable by a fresh local or cloud worker without chat history. Generate short plain-language task titles and gated incremental-waterfall tasks with PAC-PNN-* phase assertions and CAC-CY-NNN-* cycle acceptance.
-
-${acceptance}
-${categories}
-Mark [direct-agent-ready] only for self-contained, open-gate, non-vacuously accepted work; exclude manual, reviewer-owned, design-high-care, migration, destructive, security-sensitive, unresolved, external-blocked, or missing-cloud-context work. Eligibility is not approval.`,
-    'sk.implement.md': `${CLAUDE_HEADER}Require a resolved Decision Register and Cloud Worker Packet. Implement exactly the selected task or cycle through the /sk.implement pipeline. Follow incremental-waterfall order and do not start a downstream phase before its predecessor gate passes. Give a fresh worker only the packet, task row, and matching task-details section without chat history. Require the packet, phase entry gate, and each AC-TNNN-* objective assertion, verification command, and exact expected result before editing. Prove every assertion with non-vacuous evidence; exit 0 with zero matches fails. Require task AC, cycle CAC-CY-NNN-*, and phase PAC-PNN-* before completion.`,
-    'sk.check.md': `${CLAUDE_HEADER}Diagnose strictly read-only. Before the user answers or approves a route, run no writer. Find [NEEDS CLARIFICATION], Open Question, TBD/Unknown/placeholders, contradictions, unsupported assumptions, and deferred decisions. Ask up to five numbered questions; record technical answers in the plan Decision Register. Report as Phase -> Cycle -> Tasks -> Finding with progress, blocked phase/cycle counts, blocked dependents, and Cross-cutting / Unassigned for unmapped findings. After no unresolved decisions, report missing acceptance for open tasks/cycles/phases and ask: Backfill AC for these open items? (yes/no). Remain read-only until yes; yes internally performs exactly-one-spec /sk.check backfill-ac [NNN]. Resolve exactly one selected/active spec. Backfill only unchecked tasks and affected open cycles/phases. Never touch completed tasks or valid acceptance. Validate the incremental waterfall and separate AC-TNNN-*, CAC-CY-NNN-*, and PAC-PNN-* gates. New AC/CAC/PAC requires Assert, Verify, Expected, and non-vacuous proof; exit 0 alone is invalid.`,
+    'sk.plan.md': `${CLAUDE_HEADER}${SPEC_KIT_PROMPTS['sk.plan.prompt.md'].replace(/^---[\s\S]*?---\s*/, '')}`,
+    'sk.tasks.md': `${CLAUDE_HEADER}${SPEC_KIT_PROMPTS['sk.tasks.prompt.md'].replace(/^---[\s\S]*?---\s*/, '')}`,
+    'sk.implement.md': `${CLAUDE_HEADER}${SPEC_KIT_PROMPTS['sk.implement.prompt.md'].replace(/^---[\s\S]*?---\s*/, '')}`,
+    'sk.check.md': `${CLAUDE_HEADER}${SPEC_KIT_PROMPTS['sk.check.prompt.md'].replace(/^---[\s\S]*?---\s*/, '')}`,
     'sk.handoff.md': `${CLAUDE_HEADER}Use only established facts. Do not call tools or edit files; print a concise resume checkpoint.`,
     'sk.review.md': `${CLAUDE_HEADER}Review the selected spec's measured provider cost, AI time, requests, outcomes, and human waiting without changing product code.`
 };
