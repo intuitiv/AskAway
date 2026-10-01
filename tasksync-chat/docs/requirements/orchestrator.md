@@ -1,0 +1,23 @@
+# Orchestrator and AskAway Build agent
+
+| ID | Requirement (one plain sentence) | Reviewer's words (date) | Guarded by |
+|---|---|---|---|
+| R-ORCH-01 | The orchestrator plans and delegates; it has no code edit or search tools. | "Orchestrator plans, workers work." (Goal.md 001, 2026-09-24) | test-orchestrator-policy.cjs EV-022 |
+| R-ORCH-02 | The orchestrator stays lightweight so it can run long cheaply. | "keep the orchestrator lightweight and just plan" (2026-09-24) | test-orchestrator-policy.cjs EV-022 |
+| R-ORCH-03 | It uses no sub-agent tool; all delegation goes through workers. | "ignore subAgent tool from vscode or opencode" (2026-09-24) | test-orchestrator-policy.cjs EV-022 |
+| R-ORCH-04 | It may run one standalone terminal command; anything more goes to a build worker. | "it may run one standalone command (reviewer, 2026-09-30)" (2026-09-30) | test-orchestrator-policy.cjs EV-022 |
+| R-ORCH-05 | It may read Spec Kit artifacts so it can run speckit stages itself. | "orchestrator should be able to speckit tasks right? then why there is no file system or curl access?" (2026-09-29) | test-orchestrator-policy.cjs EV-022 |
+| R-ORCH-06 | It splits goals into small packets across parallel tracks, with a research step before code. | "In terms of planning Orchestrator should be very very smart." (2026-09-24) | test-eval-graders.cjs EV-023 |
+| R-ORCH-07 | It picks parallel tasks at a time, and never idles. | "Identifying paralell tasks and picking them at a time is very very important." (2026-10-01) | gap |
+| R-ORCH-08 | When no more parallel tasks exist it fills time with bookkeeping and quality work (merge-ready PR, dedup, memories, more unit tests). | "you can keep these filler tasks and do in between" (2026-10-01) | gap |
+| R-ORCH-09 | Work is accepted only after a different worker verified it by behaviour, not by inspection. | "validate them with another worker" and "orchestrator should know how to test what worker has done" (2026-09-24) | test-eval-graders.cjs EV-040 |
+| R-ORCH-10 | It does not stop for decisions while other executable tasks exist; it logs the decision and proceeds. | "Do not stop for decisions when other executable tasks exist." (Rules.md 001, 2026-09-24) | gap |
+| R-ORCH-11 | Commentary is 10-20 plain words, kinds update or heads-up only, with heads-ups naming the exact decision. | "Commentary is a tool call, not prose... 10-20 words" (Rules.md 001, 2026-09-24) | test-eval-graders.cjs EV-034 |
+| R-ORCH-12 | The main goal box anchors every prompt; side questions get a brief answer and work returns to the goal. | "Focus on main goal or dont get side tracked" (2026-09-24) | test-commentary-backend.cjs EV-031 |
+| R-ORCH-13 | Lasting lessons are captured to skill, memory, ADR or docs, with duplicates and unapproved ADRs refused. | "Collect durable knowledge in the spec" (Rules.md 001, 2026-09-24) | test-eval-graders.cjs EV-024 |
+| R-ORCH-14 | The orchestrator knows Spec Kit perfectly and drives stages by itself. | "Orchestrator should perfectly know about speckit." (2026-09-29) | gap |
+| R-ORCH-15 | AskAway Build uses workers for anything bigger than a small edit and has no sub-agent tool. | "build agent is not using workers at all. It even ran some sub agent... remove sub agent tool." (2026-09-30) | gap |
+| R-ORCH-16 | AskAway Build's prompt picks the right worker for the right task. | "Add good prompt to AskAway Build agent so that it will pick right worker for right task." (2026-09-30) | gap |
+| R-ORCH-17 | Both agents are tuned to think out of the box about parallel work, with examples. | "think out of the box for making things in parallel and use workers efficiently. Give some examples." (2026-10-01) | gap |
+| R-ORCH-18 | Every response ends with a handoff (Impact, Summary, Next) that can start a fresh conversation. | "prepare for handoff... identify next task for new conversation" (2026-09-24) | gap |
+| R-ORCH-19 | Every task is named with its cycle or story and progress toward completion is stated. | "always state progress toward completion." (Rules.md 001, 2026-09-24) | gap |

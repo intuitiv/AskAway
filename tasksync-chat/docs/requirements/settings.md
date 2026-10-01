@@ -1,0 +1,14 @@
+# Settings, switches, permissions, Telegram and routing
+
+| ID | Requirement (one plain sentence) | Reviewer's words (date) | Guarded by |
+|---|---|---|---|
+| R-SETTINGS-01 | Telegram opens a live status message on each new user message and edits it in place. | "we start new message on new user message and we stop polling when we get another new message" (2026-09-28) | test-telegram-turn-lifecycle.cjs EV-051 |
+| R-SETTINGS-02 | Telegram stops polling an old message once the reviewer answers in VS Code or queues a new message. | "i still see old messages on telegram and they are still being polled even though i replied to them here." (2026-09-28) | test-telegram-turn-lifecycle.cjs EV-051 |
+| R-SETTINGS-03 | Telegram refreshes status every 2 minutes and warns when the agent looks stuck. | "some timeer based thing to send like some updates every 2 min so that if agent is stuck or errored out, i'll can track" (2026-09-28) | test-telegram-live-commentary.cjs EV-048 |
+| R-SETTINGS-04 | A finished turn always notifies the phone. | "Sometimes i dont get telegram notification when task is finished" (2026-09-29) | test-telegram-turn-lifecycle.cjs EV-051 |
+| R-SETTINGS-05 | Queued messages are watched on Telegram and the turn closes when the next queued message arrives. | "most fo the times i'll queue some messages and watch on telegram" (2026-09-28) | test-telegram-turn-lifecycle.cjs EV-051 |
+| R-SETTINGS-06 | Telegram status messages carry cost and tokens. | "Telegram status messages carry cost and tokens with the status." (Rules.md 005, 2026-09-30) | test-telegram-turn-lifecycle.cjs EV-051 |
+| R-SETTINGS-07 | Workers may run curl, while git push, commit and reset ask for approval. | "curl we can allow. git push or reset can need appraoval" (2026-09-29) | gap |
+| R-SETTINGS-08 | Always pick Sonnet for workers while it works; Luna only for tiny, fully specified work. | "If sonnet is working always pick it." (2026-09-30) | gap |
+| R-SETTINGS-09 | The orchestrator uses no sub-agent tools and at most one standalone terminal command. | "ignore subAgent tool from vscode or opencode" (2026-09-24) | test-orchestrator-policy.cjs EV-022 |
+| R-SETTINGS-10 | An availability dropdown (away overnight, available on Telegram, and so on) tells the agent how long to run without asking. | "we can have an availability drop down, where I'll tell my plan" (2026-10-01) | gap |

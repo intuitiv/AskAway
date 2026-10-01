@@ -1,0 +1,24 @@
+# Workers tab
+
+| ID | Requirement (one plain sentence) | Reviewer's words (date) | Guarded by |
+|---|---|---|---|
+| R-WORKERS-01 | The worker trace looks and behaves exactly like the Metrics trace, built from the same render block. | "Why Trace is not using Metrics tab format? It should be exactly the same." (2026-09-24) | test-workers-control-plane.cjs EV-038 |
+| R-WORKERS-02 | The trace is split into one partition per run once a run finishes. | "as multiple run_ids are in same conversation, we can have some kind of partition, once a run is finished" (2026-09-24) | test-workers-control-plane.cjs EV-038 |
+| R-WORKERS-03 | Tool rows show their input and output and collapse on click. | "i dont se any input and output. Not just that, data for any tools are not showing up." (2026-09-24) | test-workers-control-plane.cjs EV-038 |
+| R-WORKERS-04 | Each worker shows a timer telling when it will be pruned (cache expiry). | "i dont see timer for worker, where i know when the worker need to pruned" (2026-09-24) | test-workers-control-plane.cjs EV-015 |
+| R-WORKERS-05 | The context size shown is the next input size, not the last cached or context figure. | "I dont think context of worker is accurate." (2026-09-24) | gap |
+| R-WORKERS-06 | Expired, cached-out workers are hidden by default. | "Always hide workers which are expired and cached out." (2026-09-24) | test-workers-control-plane.cjs EV-015 |
+| R-WORKERS-07 | Hidden workers are revealed by a toggle styled like the Specs tab's Show completed, not a "Show N expired workers" button. | "Show 5 expired workers button is ugly. Just show toggle from Show completed button in specs tab." (2026-09-24) | test-workers-control-plane.cjs EV-015 |
+| R-WORKERS-08 | Orphaned workers stay hidden while the show-completed toggle is off. | "i see orphaned workers even when show completed is unchecked." (2026-09-25) | gap |
+| R-WORKERS-09 | A not-running or detached shared server has a small restart/start icon. | "opencode is not running... can i have some small button or icon to restart" (2026-09-25) | test-shared-server-attach.cjs EV-036b |
+| R-WORKERS-10 | Each worker can open its session in VS Code and in the default terminal app. | "give a button(along with open in vscode,) to open in default terminal app?" (2026-09-24) | test-workers-control-plane.cjs EV-015 |
+| R-WORKERS-11 | A newly started live worker shows up in the tab. | "Why the new live worker you tested was not shown in workers?" (2026-09-24); "Workers tab is not showing anything" (2026-09-29) | test-workers-control-plane.cjs EV-014 |
+| R-WORKERS-12 | The tab answers how many workers exist and how to cut cost, via a short headline and concise tips. | "I come to worker tab to see how many are there and is there any thing we can do to optimise cost further." (2026-09-24) | test-workers-control-plane.cjs EV-015c |
+| R-WORKERS-13 | The "Save cost" reuse tips are concise or dropped, since each worker already shows the same facts. | "Make it concise and better. DO we need it? We already show some info in individual workers." (2026-09-25) | test-workers-control-plane.cjs EV-015c |
+| R-WORKERS-14 | A queued run can be cancelled from the tab until it starts. | "a per-worker task queue with enqueue and cancel-before-start" (Goal.md 001, 2026-09-24) | test-workers-control-plane.cjs EV-015b |
+| R-WORKERS-15 | Each worker shows what it cost, and a reused worker's earlier run cost does not leak into the next run. | "Worker should show how much it costed. But as we are reusing the worker, how are we removing the previous cost" (2026-10-01) | test-worker-observability.cjs EV-013 |
+| R-WORKERS-16 | Workers are never shared across workspaces. | "see workers are not shared across workspaces?" (2026-09-29) | test-worker-selection.cjs EV-009 |
+| R-WORKERS-17 | The tab does not rebuild OpenCode's conversation or approval UI. | "OpenCode owns its worker conversation UI, transcript, tool execution, and approval prompts" (AGENTS.md, 2026-09-24) | test-workers-control-plane.cjs EV-017 |
+| R-WORKERS-18 | The worker surface is one command-based tool with actions, not many tools. | "I want 1 command based tool not many. 1 tool with multiple commands in it." (2026-09-25) | test-worker-mcp-tools.cjs EV-012 |
+| R-WORKERS-19 | A wait longer than 4 minutes is clamped to 4 minutes. | "even if someone send timeout more than 4 min, reset to 4 min." (2026-10-01) | test-worker-turn-spend.cjs EV-WORKER-TURN-SPEND |
+| R-WORKERS-20 | The Workers UI should be better than awesome. | "UI for showing workers should be better than awesome." (2026-09-24) | test-workers-control-plane.cjs EV-016 |

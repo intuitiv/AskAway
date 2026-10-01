@@ -1,0 +1,14 @@
+# Observability (credits, RTK, cache clock, turn budget)
+
+| ID | Requirement (one plain sentence) | Reviewer's words (date) | Guarded by |
+|---|---|---|---|
+| R-OBS-01 | Observability is per workspace and never aggregates unrelated workspaces. | "Observability is per workspace — never aggregate logs across unrelated VS Code workspaceStorage folders." (copilot-instructions.md, 2026-09-30) | test-worker-observability.cjs EV-011 |
+| R-OBS-02 | Credit totals come from all readable current-workspace Copilot logs, skipping malformed lines. | "Skip malformed/corrupt JSONL lines; continue counting valid lines." (copilot-instructions.md, 2026-09-30) | test-log-cursor.cjs EV-LOG-CURSOR |
+| R-OBS-03 | Credits are `copilotUsageNanoAiu` divided by 1,000,000,000. | "Credit display = local aggregation of Copilot log copilotUsageNanoAiu ÷ 1_000_000_000 (AIU)." (copilot-instructions.md, 2026-09-30) | gap |
+| R-OBS-04 | RTK token savings are separate from Copilot credits and never added to them. | "Never count RTK savings as Copilot credits." (copilot-instructions.md, 2026-09-30) | gap |
+| R-OBS-05 | A turn is rebuilt after reload without double counting. | "shared banner is blank why? why it is not getting updated?" (2026-09-25) | test-turn-replay.cjs EV-OBS-RELOAD |
+| R-OBS-06 | Tool waits are budgeted from the provider's request start, so a 4-minute cache window is not missed. | "what if it is 1 min or more than llm response time. Then we'll get cache miss" (2026-09-29) | test-cache-clock-waits.cjs EV-CACHE-CLOCK |
+| R-OBS-07 | The sub-agent timer times only the child, never the parent or other windows. | "when age is more than 5:00 for some tool, I think it stops tracking" (2026-09-30) | test-subagent-timer.cjs EV-TIMER |
+| R-OBS-08 | Worker lifecycle and tool events are recorded by worker ID and session ID, with no transcript text or secrets. | "Never send secrets through worker messages, MCP arguments, transcripts, or telemetry." (AGENTS.md, 2026-09-24) | test-worker-observability.cjs EV-010 |
+| R-OBS-09 | A turn budget helps the orchestrator pace itself within a hard time limit. | "Call turn_budget at the start and around halfway purely to pace yourself" (2026-09-25) | gap |
+| R-OBS-10 | The same hooks feed the Metrics trace and the worker trace. | "we have same set of hooks" (2026-09-24) | test-workers-control-plane.cjs EV-038 |
