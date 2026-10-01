@@ -238,3 +238,31 @@ console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=tr
     fs.rmSync(buildDir, { recursive: true, force: true });
     console.log('EV-SPECS-STAGE-BAR: PASS allCardsStage+next+check=true mismatch=true staleDirty=true noGit=unknown switches=1/7/10');
 }
+
+// Reviewer 2026-10-01: "I still see buttons on top and at the bottom of the spec card." One action row: the stage bar.
+{
+    const listEl = element();
+    const cardContext = {
+        specsState: { stalenessAvailable: true, specs: [{
+            id: '001', slug: '001-example', dir: 'specs/001-example', title: 'Example', active: true, stage: 'in-progress',
+            specKitStage: 'implement', stageButton: 'Implement', nextStep: '/sk.implement', hasTasks: true,
+            nextTaskId: 'T081', nextTaskText: 'Wire the thing', total: 2, done: 1, percent: 50, tasks: [], cycles: []
+        }] },
+        specsExpanded: { '001-example': true }, specsShowDone: false, specsShowAll: false,
+        SPEC_STAGE_LABEL: {},
+        document: { getElementById: (id) => (id === 'specs-list' ? listEl : null) },
+        escapeHtml: hierarchyContext.escapeHtml
+    };
+    vm.createContext(cardContext);
+    vm.runInContext(between('function specAgo(ms)', 'function onSpecsListClick(e)'), cardContext);
+    vm.runInContext('renderSpecs()', cardContext);
+    const html = listEl.innerHTML;
+    const buttons = [...html.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
+    assert.deepEqual(buttons, ['Continue /sk.implement', '/sk.check'], 'each command button appears once per card, all in the stage bar');
+    assert.doesNotMatch(html, /\/start|\/continue|\/implement T081|spec-actions/, 'no bottom action row remains');
+    const barHtml = html.slice(html.indexOf('<div class="spec-stage-bar">'));
+    assert.match(barHtml, /\/sk\.check<\/button><a href="#" class="spec-file-link" data-act="open-spec">spec\.md<\/a><a href="#" class="spec-file-link" data-act="open-tasks">tasks\.md<\/a>/, 'spec.md and tasks.md are links after /sk.check');
+    assert.match(html, /<div class="spec-next"[^>]*><span class="spec-next-id">T081<\/span>Wire the thing/, 'the next-task line stays');
+    assert.ok(html.indexOf('spec-stage-bar') < html.indexOf('spec-next'), 'single row sits above the next-task line');
+    console.log('EV-SPECS-ONE-ACTION-ROW: PASS commandButtonsOncePerCard=true bottomRow=none fileLinksInStageBar=true');
+}

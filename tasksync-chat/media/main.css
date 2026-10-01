@@ -5294,6 +5294,8 @@ body.vscode-dark, body.vscode-high-contrast:not(.vscode-high-contrast-light) {
 }
 .spec-stage-bar .spec-stage-action { font-size: 10px; padding: 1px 6px; }
 .spec-stage-bar .spec-stage-name { padding: 1px 8px; border-radius: 8px; }
+.spec-stage-bar .spec-file-link { color: var(--vscode-textLink-foreground); text-decoration: none; cursor: pointer; font-family: var(--vscode-editor-font-family); }
+.spec-stage-bar .spec-file-link:hover { text-decoration: underline; }
 .spec-stale summary { cursor: pointer; }
 .spec-stale-files { margin: 2px 0 0; padding-left: 28px; font-family: var(--vscode-editor-font-family); }
 .spec-stage-warn, .spec-stale { flex-basis: 100%; }
@@ -5396,13 +5398,6 @@ body.vscode-dark, body.vscode-high-contrast:not(.vscode-high-contrast-light) {
     font-size: 10px;
     color: var(--vscode-descriptionForeground);
     padding: 1px 0;
-}
-
-.spec-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 7px;
 }
 
 .spec-action {

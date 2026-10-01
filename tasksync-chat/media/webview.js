@@ -5849,6 +5849,8 @@
         return '<div class="spec-stage-bar">' +
             '<span class="spec-stage-name spec-stage-' + escapeHtml(stage) + '" title="Stage ' + escapeHtml(source) + '">Stage <strong>' + escapeHtml(stage) + '</strong></span>' +
             (checkIsNext ? check + action : action + check) +
+            '<a href="#" class="spec-file-link" data-act="open-spec">spec.md</a>' +
+            (spec.hasTasks ? '<a href="#" class="spec-file-link" data-act="open-tasks">tasks.md</a>' : '') +
             (spec.mismatch ? '<div class="spec-stage-warn"><span class="codicon codicon-warning"></span> Stage mismatch: ' + escapeHtml(spec.mismatch.reason) + '</div>' : '') +
             staleSummaryHtml(stale) +
             (stalenessAvailable === false ? '<div class="spec-stale specs-muted">Staleness unknown: not a git repository</div>' : '') +
@@ -5936,13 +5938,7 @@
                 ? '<div class="spec-body">' +
                   (facts.length ? '<div class="spec-meta">' + escapeHtml(facts.join(' · ')) + '</div>' : '') +
                                     renderSpecWork(spec) +
-                  '<div class="spec-actions">' +
-                  '<button class="spec-action" data-act="start">/start</button>' +
-                  '<button class="spec-action" data-act="continue">/continue</button>' +
-                  (spec.nextTaskId ? '<button class="spec-action" data-act="implement">/implement ' + escapeHtml(spec.nextTaskId) + '</button>' : '') +
-                  '<button class="spec-action" data-act="open-spec">spec.md</button>' +
-                  (spec.hasTasks ? '<button class="spec-action" data-act="open-tasks">tasks.md</button>' : '') +
-                  '</div></div>'
+                  '</div>'
                 : '';
 
             return '' +
@@ -5972,7 +5968,6 @@
         var act = btn.getAttribute('data-act');
         var id = card.getAttribute('data-id');
         var dir = card.getAttribute('data-dir');
-        var next = card.getAttribute('data-next');
 
         if (act === 'toggle') {
             var slug = card.getAttribute('data-slug');
@@ -5986,15 +5981,11 @@
             e.preventDefault();
             e.stopPropagation();
             prefillChat(btn.getAttribute('data-cmd') + ' ' + id);
-        } else if (act === 'start') {
-            prefillChat('/start ' + id);
-        } else if (act === 'continue') {
-            prefillChat('/continue ' + id);
-        } else if (act === 'implement') {
-            prefillChat('/implement ' + next);
         } else if (act === 'open-spec') {
+            e.preventDefault();
             vscode.postMessage({ type: 'openSpecFile', dir: dir, file: 'spec.md' });
         } else if (act === 'open-tasks') {
+            e.preventDefault();
             vscode.postMessage({ type: 'openSpecFile', dir: dir, file: 'tasks.md' });
         }
     }

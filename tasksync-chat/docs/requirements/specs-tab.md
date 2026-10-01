@@ -3,7 +3,7 @@
 | ID | Requirement (one plain sentence) | Reviewer's words (date) | Guarded by |
 |---|---|---|---|
 | R-SPECS-01 | Every spec card shows its Spec Kit stage, the stage's button and `/sk.check`. | "The Specs tab shows the stage's button (plan, tasks, implement…) and /sk.check at all times" (Rules.md 005, 2026-09-29) | test-specs-webview-regression.cjs EV-SPECS-STAGE-BAR |
-| R-SPECS-02 | The next step has one button, not two places. | "Buttons at 2 places" (2026-10-01) | test-specs-webview-regression.cjs EV-SPECS-STAGE-BAR |
+| R-SPECS-02 | A spec card has one row of command buttons, the stage bar; `spec.md` / `tasks.md` are links in that row, with no bottom button row. | "Buttons at 2 places" (2026-10-01); "I still see buttons on top and at the bottom of the spec card." (2026-10-01) | test-specs-webview-regression.cjs EV-SPECS-STAGE-BAR, EV-SPECS-ONE-ACTION-ROW |
 | R-SPECS-03 | When the next step equals the current stage it reads as continuing, not as a contradiction. | "If next is Implement, why the current stage is implement." (2026-10-01) | test-specs-webview-regression.cjs EV-SPECS-STAGE-BAR |
 | R-SPECS-04 | Staleness is stated in plain words, once per upstream file. | "Lot of text like `changed later`, what do they mean?" (2026-10-01) | test-specs-webview-regression.cjs EV-SPECS-STAGE-BAR |
 | R-SPECS-05 | Each stage has its own pastel colour. | "different colors for different stages of spec. Use pastle colors" (2026-10-01) | test-specs-webview-regression.cjs EV-SPECS-STAGE-BAR |
