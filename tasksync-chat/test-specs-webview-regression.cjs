@@ -66,14 +66,14 @@ bannerContext.observabilityMetrics.workers = { requests: 6, dollars: 0.42, runs:
 bannerContext.observabilityMetrics.turnStartedAt = Date.now() - 83_000;
 vm.runInContext('renderConversationHealth()', bannerContext);
 const withWorkers = elements['common-turn-summary'].innerHTML.replace(/<[^>]+>/g, '').replaceAll('&middot;', '·');
-assert.match(withWorkers, /^9 reqs · \$2\.92 \(workers 6 · \$0\.42\) · 4K last in \/ 2\.75K turn out · 90% cache · Turn 1:2\d$/, 'requests and dollars include the workers, with the worker part named');
+assert.match(withWorkers, /^3 reqs · \$2\.92 \(2 workers · \$0\.42\) · 4K last in \/ 2\.75K turn out · 90% cache · Turn 1:2\d$/, 'own requests, dollars include the workers, with the worker count named');
 bannerContext.observabilityMetrics.turnStartedAt = Date.now() - 5_000;
 vm.runInContext('renderCacheAge()', bannerContext);
 assert.match(elements['common-turn-summary'].innerHTML, /Turn 0:0[4-6]</, 'the existing cache-age tick refreshes the turn timer');
 bannerContext.observabilityMetrics.turnStartedAt = 0;
 vm.runInContext('renderConversationHealth()', bannerContext);
 assert.doesNotMatch(elements['common-turn-summary'].innerHTML, /Turn \d/, 'turnStartedAt 0 hides the timer');
-assert.match(elements['common-turn-summary'].innerHTML, /\(workers 6/, 'the worker part stays after the turn timer is hidden');
+assert.match(elements['common-turn-summary'].innerHTML, /\(2 workers/, 'the worker part stays after the turn timer is hidden');
 
 const hierarchyContext = {
     specsShowDone: false,
@@ -209,7 +209,8 @@ console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=tr
     const bar = (fields) => hierarchyContext.renderStageBar({ slug: 's', ...fields });
     const continuing = bar({ specKitStage: 'implement', nextStep: '/sk.implement', stageButton: 'Implement' });
     assert.equal((continuing.match(/data-cmd="\/sk\.implement"/g) || []).length, 1, 'one button for the next step');
-    assert.match(continuing, />Continue \/sk\.implement<\/button>/, 'next step equal to the current stage reads as continuing');
+    assert.match(continuing, />\/sk\.implement<\/button>/, 'the stage button is the plain stage command');
+    assert.doesNotMatch(continuing, /Continue/);
     assert.doesNotMatch(continuing, /Next <code/);
     const advancing = bar({ specKitStage: 'analyze', nextStep: '/sk.implement', stageButton: 'Implement' });
     assert.match(advancing, />\/sk\.implement<\/button>/, 'a different next step keeps the plain label');
@@ -246,7 +247,7 @@ console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=tr
     const cardContext = {
         specsState: { stalenessAvailable: true, specs: [{
             id: '001', slug: '001-example', dir: 'specs/001-example', title: 'Example', active: true, stage: 'in-progress',
-            specKitStage: 'implement', stageButton: 'Implement', nextStep: '/sk.implement', hasTasks: true,
+            specKitStage: 'implement', stageButton: 'Implement', nextStep: '/sk.implement', hasPlan: true, hasTasks: true,
             nextTaskId: 'T081', nextTaskText: 'Wire the thing', total: 2, done: 1, percent: 50, tasks: [], cycles: []
         }] },
         specsExpanded: { '001-example': true }, specsShowDone: false, specsShowAll: false,
@@ -259,10 +260,10 @@ console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=tr
     vm.runInContext('renderSpecs()', cardContext);
     const html = listEl.innerHTML;
     const buttons = [...html.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
-    assert.deepEqual(buttons, ['Continue /sk.implement', '/sk.check'], 'each command button appears once per card, all in the stage bar');
+    assert.deepEqual(buttons, ['/sk.implement', '/sk.check'], 'each command button appears once per card, all in the stage bar');
     assert.doesNotMatch(html, /\/start|\/continue|\/implement T081|spec-actions/, 'no bottom action row remains');
     const barHtml = html.slice(html.indexOf('<div class="spec-stage-bar">'));
-    assert.match(barHtml, /\/sk\.check<\/button><a href="#" class="spec-file-link" data-act="open-spec">spec\.md<\/a><a href="#" class="spec-file-link" data-act="open-tasks">tasks\.md<\/a>/, 'spec.md and tasks.md are links after /sk.check');
+    assert.match(barHtml, /\/sk\.check<\/button><a href="#" class="spec-file-link" data-act="open-spec">spec\.md<\/a><a href="#" class="spec-file-link" data-act="open-plan">plan\.md<\/a><a href="#" class="spec-file-link" data-act="open-tasks">tasks\.md<\/a>/, 'spec.md, plan.md and tasks.md are links after /sk.check');
     assert.match(html, /<div class="spec-next"[^>]*><span class="spec-next-id">T081<\/span>Wire the thing/, 'the next-task line stays');
     assert.ok(html.indexOf('spec-stage-bar') < html.indexOf('spec-next'), 'single row sits above the next-task line');
     console.log('EV-SPECS-ONE-ACTION-ROW: PASS commandButtonsOncePerCard=true bottomRow=none fileLinksInStageBar=true');

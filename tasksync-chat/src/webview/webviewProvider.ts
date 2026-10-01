@@ -2112,7 +2112,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const latest = this._turnRequests[this._turnRequests.length - 1];
         const workers = this._workerSpend();
         return { lastActivityAt: this._newestRequestTs, requests: this._turnRequests.length + workers.requests,
-            dollars: turn.nanoAiu / 1e9 / 100 + workers.dollars, workerRequests: workers.requests,
+            dollars: turn.nanoAiu / 1e9 / 100 + workers.dollars, workerRuns: workers.runs,
             lastIn: latest?.inputTokens ?? 0, turnOut: turn.outputTokens };
     }
 

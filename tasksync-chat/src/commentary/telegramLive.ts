@@ -60,7 +60,7 @@ export function liveCommentaryHtml(workspaceName: string, prompt: string, items:
 }
 
 /** What the extension knows about the running turn: the chat banner's numbers, for the status line and the final header. */
-export interface TurnActivity { lastActivityAt: number; requests: number; dollars?: number; workerRequests?: number; lastIn?: number; turnOut?: number }
+export interface TurnActivity { lastActivityAt: number; requests: number; dollars?: number; workerRuns?: number; lastIn?: number; turnOut?: number }
 
 const STUCK_MS = 5 * 60 * 1000;
 
@@ -75,7 +75,7 @@ function tokens(n: number): string {
 
 /** Same facts, same order as the chat banner: requests · $ · last in / turn out. */
 export function usageLine(activity: TurnActivity): string {
-    const split = activity.workerRequests ? ` (${activity.workerRequests} by workers)` : '';
+    const split = activity.workerRuns ? ` · ${activity.workerRuns} worker${activity.workerRuns === 1 ? '' : 's'}` : '';
     return `${activity.requests} request${activity.requests === 1 ? '' : 's'}${split} · <b>$${(activity.dollars ?? 0).toFixed(2)}</b> · ${tokens(activity.lastIn ?? 0)} last in / ${tokens(activity.turnOut ?? 0)} turn out`;
 }
 

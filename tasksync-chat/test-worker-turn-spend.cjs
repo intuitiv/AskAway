@@ -44,9 +44,9 @@ const { usageLine } = require(path.join(buildDir, 'commentary', 'telegramLive.js
         assert.equal(spend.outputTokens, 30);
         assert.equal(runtime.usageSince(workspace, 0).requests, 5, 'earlier run is counted only when the window includes it');
 
-        const line = usageLine({ lastActivityAt: 0, requests: 34, workerRequests: 6, dollars: 1.95 });
-        assert.match(line, /34 requests \(6 by workers\) · <b>\$1\.95<\/b>/);
-        assert.doesNotMatch(usageLine({ lastActivityAt: 0, requests: 3, dollars: 1 }), /by workers/);
+        const line = usageLine({ lastActivityAt: 0, requests: 34, workerRuns: 3, dollars: 1.95 });
+        assert.match(line, /34 requests · 3 workers · <b>\$1\.95<\/b>/);
+        assert.doesNotMatch(usageLine({ lastActivityAt: 0, requests: 3, dollars: 1 }), / workers? · /);
 
         const waitTool = workerToolDefinitions(() => ({
             wait: async (_id, seconds) => ({ status: 'STILL_RUNNING', seconds }),

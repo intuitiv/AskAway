@@ -2867,7 +2867,7 @@
         if (abs >= 1000) { return sign + suffixed(abs / 1000, 'K'); }
         return sign + Math.round(abs).toLocaleString();
     }
-    // b: { requests, dollars, lastIn (full prompt of the last request), lastCached, turnOut, workers?: { requests, dollars } }
+    // b: { requests, dollars, lastIn (full prompt of the last request), lastCached, turnOut, workers?: { runs, dollars } }
     // `workers` (chat banner only) shows what the worker part of the totals is; worker cards omit it.
     function bannerDollars(dollars) {
         dollars = Number(dollars) || 0;
@@ -2879,10 +2879,10 @@
         var lastIn = Number(b.lastIn) || 0;
         var hit = lastIn > 0 ? Math.round((Number(b.lastCached) || 0) / lastIn * 100) + '%' : '\u2013';
         var w = b.workers || {};
-        var workerReqs = Number(w.requests) || 0;
+        var workerRuns = Number(w.runs) || 0;
         var workerDollars = Number(w.dollars) || 0;
-        var workerPart = (workerReqs > 0 || workerDollars > 0)
-            ? ' <span class="health-workers" title="Worker part of these totals">(workers ' + workerReqs + ' &middot; ' + bannerDollars(workerDollars) + ')</span>'
+        var workerPart = workerRuns > 0
+            ? ' <span class="health-workers" title="Workers spawned this turn and their cost (included in the total)">(' + workerRuns + ' worker' + (workerRuns === 1 ? '' : 's') + ' &middot; ' + bannerDollars(workerDollars) + ')</span>'
             : '';
         return requests + ' req' + (requests === 1 ? '' : 's') +
             ' &middot; <strong class="health-cost">' + bannerDollars(dollars) + '</strong>' + workerPart +
@@ -2898,20 +2898,20 @@
         var pad = function (n) { return (n < 10 ? '0' : '') + n; };
         return 'Turn ' + (h ? h + ':' + pad(m) : m) + ':' + pad(s);
     }
-    // Chat banner: this turn's requests plus its workers', with the worker part and the turn timer.
+    // Chat banner: this turn's own requests, its workers' count and dollars, with the worker part and the turn timer.
     function chatBannerHtml(metrics, now) {
         var turn = metrics.lastRequest || {};
         var turnRequests = Array.isArray(metrics.turnRequests) ? metrics.turnRequests : [];
         var latest = turnRequests.length ? turnRequests[turnRequests.length - 1] : turn;
         var w = metrics.workers || {};
-        var workerReqs = Number(w.requests) || 0;
+        var workerRuns = Number(w.runs) || 0;
         var workerDollars = Number(w.dollars) || 0;
         var timer = turnTimerLabel(metrics.turnStartedAt, now);
         return usageBannerHtml({
-            requests: (Number(turn.requestCount) || 0) + workerReqs,
+            requests: Number(turn.requestCount) || 0,
             dollars: (Number(turn.nanoAiu) || 0) / 1000000000 / 100 + workerDollars,
             lastIn: latest.inputTokens, lastCached: latest.cachedTokens, turnOut: turn.outputTokens,
-            workers: { requests: workerReqs, dollars: workerDollars },
+            workers: { runs: workerRuns, dollars: workerDollars },
         }) + (timer ? ' &middot; <span class="health-turn-timer" title="Time since this turn started">' + timer + '</span>' : '');
     }
     function cacheAgeLabel(secs) {
@@ -5839,16 +5839,14 @@
         var button = function(cmd, label, title) {
             return '<button class="spec-action spec-stage-action" data-act="sk" data-cmd="' + escapeHtml(cmd) + '" title="' + escapeHtml(title) + '">' + escapeHtml(label) + '</button>';
         };
-        // The button for the next step says so when it repeats the current stage, instead of a second "Next" chip.
-        var action = command
-            ? button(command, nextStep === command && command === '/sk.' + stage ? 'Continue ' + command : command, 'Next step: ' + command)
-            : '';
+        var action = command ? button(command, command, 'Next step: ' + command) : '';
         var checkIsNext = nextStep.indexOf('/sk.check') === 0;
         var check = button('/sk.check', checkIsNext ? nextStep : '/sk.check', 'Check this spec' + (checkIsNext ? ' \u2014 next step' : ''));
         return '<div class="spec-stage-bar">' +
             '<span class="spec-stage-name spec-stage-' + escapeHtml(stage) + '" title="Stage ' + escapeHtml(source) + '">Stage <strong>' + escapeHtml(stage) + '</strong></span>' +
             (checkIsNext ? check + action : action + check) +
             '<a href="#" class="spec-file-link" data-act="open-spec">spec.md</a>' +
+            (spec.hasPlan ? '<a href="#" class="spec-file-link" data-act="open-plan">plan.md</a>' : '') +
             (spec.hasTasks ? '<a href="#" class="spec-file-link" data-act="open-tasks">tasks.md</a>' : '') +
             (spec.mismatch ? '<div class="spec-stage-warn"><span class="codicon codicon-warning"></span> Stage mismatch: ' + escapeHtml(spec.mismatch.reason) + '</div>' : '') +
             staleSummaryHtml(stale) +
@@ -5983,6 +5981,9 @@
         } else if (act === 'open-spec') {
             e.preventDefault();
             vscode.postMessage({ type: 'openSpecFile', dir: dir, file: 'spec.md' });
+        } else if (act === 'open-plan') {
+            e.preventDefault();
+            vscode.postMessage({ type: 'openSpecFile', dir: dir, file: 'plan.md' });
         } else if (act === 'open-tasks') {
             e.preventDefault();
             vscode.postMessage({ type: 'openSpecFile', dir: dir, file: 'tasks.md' });
