@@ -225,22 +225,23 @@ const packet = (overrides = {}) => ({
     assert.deepEqual([t1Rows[1].durMs, t1Rows[1].status, t1Rows[1].inputPreview, t1Rows[1].outputPreview], [1250, 'ok', '', ''], 'ledger facts carry no tool text');
     assert.ok(downView.includes(ui.trace(t1Rows, { openIds: {} })), 'ledger rows are exactly the Metrics trace rows');
 
-    // Reviewer 2026-10-01: Metrics showed AIU while Workers showed $. The shared block shows $ for both (100 AIU = $1).
+    // Reviewer 2026-10-01: "Use credits in both." The shared block shows credits for Copilot and OpenCode rows (1 credit = $0.01).
     const copilotEvents = [
         { kind: 'request', id: 'REQ01', model: 'gpt-5', nanoAiu: 250_000_000_000, inputTokens: 1000, outputTokens: 10, cachedTokens: 500 },
         { kind: 'request', id: 'SUB01', model: 'gpt-5-mini', nanoAiu: 50_000_000_000, inputTokens: 100, outputTokens: 5, cachedTokens: 0, subagentId: 'sa1' },
         { kind: 'request', id: 'SUB02', model: 'gpt-5-mini', nanoAiu: 100_000_000_000, inputTokens: 100, outputTokens: 5, cachedTokens: 0, subagentId: 'sa1' },
     ];
     const copilotRows = ui.trace(copilotEvents, { openIds: {}, subagents: { sa1: { label: 'explore', done: true, durMs: 1000 } } });
-    assert.match(copilotRows, /<td[^>]*>\$2\.5000<\/td>/, 'a Copilot request shows dollars, not AIU');
-    assert.match(copilotRows, /title="cost \(USD\)">\$1\.5000<\/span>/, 'the sub-agent group row shows the summed dollars');
-    assert.doesNotMatch(copilotRows, /AIU/, 'no AIU anywhere in the trace');
-    assert.match(ui.trace([{ kind: 'request', id: 'W1', model: 'm', dollars: 0.0021, inputTokens: 1, outputTokens: 1, cachedTokens: 0 }], {}), /<td>\$0\.0021<\/td>/, 'a worker request shows the same dollars format');
+    assert.match(copilotRows, /<td[^>]*>250<\/td>/, 'a Copilot request shows whole credits');
+    assert.match(copilotRows, /title="cost \(credits\)">150<\/span>/, 'the sub-agent group row shows the summed credits');
+    assert.doesNotMatch(copilotRows, /AIU|\$\d/, 'no AIU or dollars anywhere in the trace');
+    assert.match(ui.trace([{ kind: 'request', id: 'W1', model: 'm', dollars: 0.0021, inputTokens: 1, outputTokens: 1, cachedTokens: 0 }], {}), /<td>0\.21<\/td>/, 'a worker request shows the same credits format (dollars x 100)');
+    assert.match(ui.trace([{ kind: 'request', id: 'W2', model: 'm', dollars: 0.25, inputTokens: 1, outputTokens: 1, cachedTokens: 0 }], {}), /<td>25<\/td>/, 'a worker request of $0.25 is 25 credits');
 
     // Chat banner (shared block) vs worker card: only the chat banner carries the worker part.
     assert.match(ui.chatBanner({ requests: 34, dollars: 1.95, lastIn: 100, lastCached: 50, turnOut: 7, workers: { requests: 6, dollars: 0.42 } }), /^34 reqs &middot; <strong class="health-cost">\$1\.95<\/strong> <span class="health-workers"[^>]*>\(workers 6 &middot; \$0\.42\)<\/span> &middot;/);
     assert.doesNotMatch(all, /workers \d/, 'worker cards keep the plain banner without a worker part');
-    assert.match(downView, /<span class="obs-req-id">STEP1<\/span><\/td><td class="obs-scope">gpt-5\.6-terra<\/td><td>\$0\.0021<\/td><td>1\.25K<\/td><td>340<\/td><td>50<\/td><td class="obs-cache-risk">4%<\/td>/);
+    assert.match(downView, /<span class="obs-req-id">STEP1<\/span><\/td><td class="obs-scope">gpt-5\.6-terra<\/td><td>0\.21<\/td><td>1\.25K<\/td><td>340<\/td><td>50<\/td><td class="obs-cache-risk">4%<\/td>/);
     const kept = ui.render(state, '', { [run1.workerId]: true }, false, { 't:EDIT1:1': true }, { [run1.workerId]: down });
     assert.match(kept, /data-eid="t:EDIT1:1" open>/, 'an expanded row stays open across the 1s re-render');
     const other = JSON.parse(JSON.stringify(await loadWorkerTrace(runtime, wsB, run1.workerId, async () => session)));

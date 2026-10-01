@@ -86,7 +86,7 @@ description: "Task list for 005 Spec Kit Guided Flow"
 ## Phase 7: Reviewer requests 2026-10-01 — availability, handoff, validator
 
 - [ ] T019 [US3] Availability selector "Here · Away (Telegram) · Offline until <time>" per workspace, injected by the spec-context hook. Away/Offline rules: do not stop for small choices (decide, record in a decisions list), keep every lane busy, write a handoff at the end of the session, end with a report of decisions, open questions and cost. Offline never asks; questions are parked for the report. Test: hook output per mode.
-- [ ] T020 [US3] Auto-handoff near 300K input tokens while Away/Offline: write `/sk.handoff`, continue in a fresh session, Telegram notice when Away; test with a stubbed token count
+- [ ] T020 [US3] Long or overnight run (Away/Offline): once input exceeds 300K, write `/sk.handoff` and continue in a new conversation (reviewer: "Hand off is not always near 300K"; other handoffs are not tied to 300K); Telegram notice when Away; test with a stubbed token count
 - [ ] T021 Spec 007 Validator agent: `/sk.specify` from `specs/007-validator-agent/Goal.md` and `Rules.md`
 
 ---

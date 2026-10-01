@@ -195,9 +195,10 @@ console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=tr
     }
     assert.match(bars['001-specified'], /Stage <strong>specify<\/strong>.*\/sk\.check \(clarify\).*data-cmd="\/sk\.plan"/s, 'scenario 1');
     assert.match(bars['003-planned'], /Stage mismatch: stored stage tasks needs tasks\.md/, 'scenario 2');
-    assert.equal((bars['005-tasked'].match(/<details class="spec-stale">/g) || []).length, 1, 'one plain stale line per upstream, not one per file');
-    assert.match(bars['005-tasked'], /<summary>[^<]*<span class="codicon codicon-history"><\/span> spec\.md has uncommitted edits; 2 files built on it may be out of date; re-check them with \/sk\.check<\/summary>/, 'dirty upstream in plain words');
-    assert.match(bars['005-tasked'], /<ul class="spec-stale-files"><li>plan\.md<\/li><li>tasks\.md<\/li><\/ul>/, 'the file list sits inside the details');
+    assert.equal((bars['005-tasked'].match(/<div class="spec-stale">/g) || []).length, 1, 'one plain stale line per upstream, not one per file');
+    assert.match(bars['005-tasked'], /<div class="spec-stale"><span class="codicon codicon-history"><\/span> spec\.md has uncommitted edits; 2 files built on it may be out of date; re-check them with \/sk\.check<\/div>/, 'dirty upstream in plain words');
+    // Reviewer 2026-10-01: "Why do we need file list in spec ... I didn't ask for it."
+    assert.doesNotMatch(bars['005-tasked'], /spec-stale-files|<li>|<details class="spec-stale"/, 'no file list in the stale line');
     assert.doesNotMatch(bars['005-tasked'], /is stale:/, 'the old per-file wording is gone');
     assert.doesNotMatch(bars['001-specified'], /stale/);
     const plain = makeSampleRepo();
@@ -214,7 +215,7 @@ console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=tr
     assert.match(advancing, />\/sk\.implement<\/button>/, 'a different next step keeps the plain label');
     assert.doesNotMatch(advancing, /Continue/);
     const stale = (artifacts, reason) => bar({ specKitStage: 'tasks', nextStep: 'done', stageButton: '', stale: artifacts.map((artifact) => ({ artifact, upstream: 'plan.md', reason })) });
-    assert.match(stale(['tasks.md', 'a.md', 'b.md', 'c.md', 'd.md', 'e.md'], 'upstream-newer'), /6 files were written before the last plan\.md change; re-check them with \/sk\.check<\/summary><ul class="spec-stale-files">(<li>[a-z.]+<\/li>){6}<\/ul>/);
+    assert.match(stale(['tasks.md', 'a.md', 'b.md', 'c.md', 'd.md', 'e.md'], 'upstream-newer'), /6 files were written before the last plan\.md change; re-check them with \/sk\.check<\/div>/);
     assert.match(stale(['tasks.md'], 'upstream-newer'), /1 file was written before the last plan\.md change; re-check it with \/sk\.check/);
 
     // Pastel stage colours: one CSS variable per Spec Kit stage, applied to the card badge and the stage bar, with a dark-theme set.

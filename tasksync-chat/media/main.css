@@ -4982,7 +4982,7 @@ button#send-btn:disabled {
 .cm-turn[open] > .cm-turn-head::before { content: '\25BE'; }
 .cm-turn-title { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.45; }
 .cm-turn[open] > .cm-turn-head .cm-turn-title { opacity: 0.6; }
-.cm-turn-meta { flex-basis: 100%; display: flex; justify-content: flex-end; gap: 8px; font-size: 10px; font-weight: 700; opacity: 0.7; }
+.cm-turn-meta { display: flex; padding: 4px 2px 4px 14px; justify-content: flex-end; gap: 8px; font-size: 10px; font-weight: 700; opacity: 0.7; }
 .cm-turn-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cm-turn-count { white-space: nowrap; }
 .cm-turn > .cm-item { padding-left: 14px; }
@@ -5296,8 +5296,6 @@ body.vscode-dark, body.vscode-high-contrast:not(.vscode-high-contrast-light) {
 .spec-stage-bar .spec-stage-name { padding: 1px 8px; border-radius: 8px; }
 .spec-stage-bar .spec-file-link { color: var(--vscode-textLink-foreground); text-decoration: none; cursor: pointer; font-family: var(--vscode-editor-font-family); }
 .spec-stage-bar .spec-file-link:hover { text-decoration: underline; }
-.spec-stale summary { cursor: pointer; }
-.spec-stale-files { margin: 2px 0 0; padding-left: 28px; font-family: var(--vscode-editor-font-family); }
 .spec-stage-warn, .spec-stale { flex-basis: 100%; }
 .spec-stage-warn { color: var(--vscode-editorWarning-foreground); }
 .spec-story-test { font-size: 10px; padding: 2px 0 4px 20px; color: var(--vscode-descriptionForeground); }

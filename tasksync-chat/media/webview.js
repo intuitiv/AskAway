@@ -2936,11 +2936,11 @@
         var openIds = ctx.openIds || {};
         var now = ctx.now || Date.now();
         var tok = formatObservabilityCompact;
-        // One currency everywhere: dollars. Copilot reports nano-AIU; 100 AIU = $1, as in the chat banner.
-        var usd = function (dollars) { return '$' + (Number(dollars) || 0).toFixed(4); };
-        var nanoUsd = function (nano) { return (Number(nano) || 0) / 1000000000 / 100; };
+        // One unit everywhere: credits. Copilot reports nano-AIU (1e9 = 1 credit); OpenCode reports dollars (1 credit = $0.01).
+        var fmtCredits = function (c) { c = Number(c) || 0; return c >= 10 ? String(Math.round(c)) : String(+c.toFixed(2)); };
+        var nanoCredits = function (nano) { return (Number(nano) || 0) / 1000000000; };
         var sec = function (ms) { return ((Number(ms) || 0) / 1000).toFixed(2); };
-        var credits = function (ev) { return usd(ev.dollars != null ? ev.dollars : nanoUsd(ev.nanoAiu)); };
+        var credits = function (ev) { return fmtCredits(ev.dollars != null ? ev.dollars * 100 : nanoCredits(ev.nanoAiu)); };
         var buildToolRow = function (ev, k) {
             var eid = 't:' + String(ev.id || '') + ':' + k;
             var openAttr = openIds[eid] ? ' open' : '';
@@ -3075,7 +3075,7 @@
                 '<span class="obs-tl-name"><span class="obs-req-id">' + traceEsc(String(item.id)) + '</span> ' + traceEsc(String(gLabel)) + ' ' + stateBadge + '</span>' +
                 modelBadge +
                 '<span class="obs-tl-metric" title="nested LLM requests / tool calls">' + grp.reqCount + ' req \u00b7 ' + grp.toolCount + ' tools</span>' +
-                '<span class="obs-tl-metric" title="cost (USD)">' + usd(nanoUsd(grp.nano)) + '</span>' +
+                '<span class="obs-tl-metric" title="cost (credits)">' + fmtCredits(nanoCredits(grp.nano)) + '</span>' +
                 '<span class="obs-tl-metric" title="output tokens">\u2191' + tok(gOut) + '</span>' +
                 '<span class="obs-tl-time' + (gCold ? ' obs-cache-risk' : '') + '" title="total wall time">' + sec(gDurMs) + 's</span>' +
                 '</summary>' +
@@ -5265,9 +5265,9 @@
             var clock = commentaryClock(first.ts).slice(0, 5) + (turn.items.length > 1 ? '–' + commentaryClock(last.ts).slice(0, 5) : '');
             html += dayDivider(first.ts) + '<details class="cm-turn" data-turn="' + commentaryEsc(turn.key) + '"' + (open ? ' open' : '') + '>' +
                 '<summary class="cm-turn-head">' +
-                '<span class="cm-turn-title">' + commentaryMarkup(first.text) + '</span>' +
-                '<span class="cm-turn-meta"><span class="cm-turn-time">' + clock + '</span>' +
-                '<span class="cm-turn-count">' + turn.items.length + (flagged ? ' · ' + flagged + ' heads-up' : '') + '</span></span></summary>' +
+                '<span class="cm-turn-title">' + commentaryMarkup(first.text) + '</span></summary>' +
+                '<div class="cm-turn-meta"><span class="cm-turn-time">' + clock + '</span>' +
+                '<span class="cm-turn-count">' + turn.items.length + (flagged ? ' · ' + flagged + ' heads-up' : '') + '</span></div>' +
                 turn.items.map(commentaryItemHtml).join('') + '</details>';
         });
         turns.current.forEach(function (item) { html += dayDivider(item.ts) + commentaryItemHtml(item); });
@@ -5808,7 +5808,7 @@
 
     var SPEC_STAGE_COMMAND = { Plan: '/sk.plan', Tasks: '/sk.tasks', Implement: '/sk.implement' };
 
-    // One plain line per upstream file: how many later files are affected, with the names in a native <details>.
+    // One plain line per upstream file: how many later files are affected.
     function staleSummaryHtml(stale) {
         var groups = [];
         stale.forEach(function(entry) {
@@ -5824,8 +5824,7 @@
             var text = g.dirty
                 ? upstream + ' has uncommitted edits; ' + files + ' built on it may be out of date; re-check ' + (n === 1 ? 'it' : 'them') + ' with /sk.check'
                 : files + (n === 1 ? ' was' : ' were') + ' written before the last ' + upstream + ' change; re-check ' + (n === 1 ? 'it' : 'them') + ' with /sk.check';
-            return '<details class="spec-stale"><summary><span class="codicon codicon-history"></span> ' + text + '</summary>' +
-                '<ul class="spec-stale-files">' + g.files.map(function(f) { return '<li>' + escapeHtml(f) + '</li>'; }).join('') + '</ul></details>';
+            return '<div class="spec-stale"><span class="codicon codicon-history"></span> ' + text + '</div>';
         }).join('');
     }
 

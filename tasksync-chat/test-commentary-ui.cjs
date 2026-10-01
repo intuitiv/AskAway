@@ -70,7 +70,7 @@ const turnView = { archivedCount: 0, items: [
     { id: 'b2', ts: today + 660_000, kind: 'update', text: '🚀 Root-cause worker started on the cheapest model.' },
 ] };
 const panes = (h) => [...h.matchAll(/<details class="cm-turn" data-turn="([^"]+)"( open)?>[\s\S]*?<\/details>/g)]
-    .map((m) => ({ key: m[1], open: Boolean(m[2]), ids: [...m[0].matchAll(/data-id="(\w+)"/g)].map((x) => x[1]), head: /<summary[\s\S]*?<\/summary>/.exec(m[0])[0] }));
+    .map((m) => ({ key: m[1], open: Boolean(m[2]), ids: [...m[0].matchAll(/data-id="(\w+)"/g)].map((x) => x[1]), head: /<summary[\s\S]*?<\/summary>/.exec(m[0])[0], body: m[0] }));
 const flat = (h) => [...h.replace(/<details[\s\S]*?<\/details>/g, '').matchAll(/data-id="([^"]+)"/g)].map((m) => m[1]);
 const turn1 = today - 30_000;
 const turn2 = today + 300_000;
@@ -79,12 +79,14 @@ const folded = ui.render({ ...turnView, turnStarts: [turn1, turn2] });
 const byTurn = panes(folded);
 assert.deepEqual(byTurn.map((p) => [p.ids, p.open]), [[['a1', 'a2', 'a3'], false]], 'a new turn wraps the earlier lines into one collapsed pane');
 assert.deepEqual(flat(folded), ['b1', 'b2'], 'the current turn stays flat below it');
-assert.match(byTurn[0].head, /<strong>two tracks<\/strong>[\s\S]*17:45–17:46[\s\S]*3 · 1 heads-up/, 'a collapsed pane still shows its first line, time and heads-up count');
-assert.match(byTurn[0].head, /^<summary class="cm-turn-head"><span class="cm-turn-title">[\s\S]*<\/span><span class="cm-turn-meta"><span class="cm-turn-time">17:45–17:46<\/span><span class="cm-turn-count">3 · 1 heads-up<\/span><\/span><\/summary>$/, 'turn head: text first, then one meta line holding time range and count');
+assert.match(byTurn[0].head, /<strong>two tracks<\/strong>/, 'a collapsed pane still shows its first line');
+// Reviewer 2026-10-01: "we can hide time and last text under collapse thing."
+assert.match(byTurn[0].head, /^<summary class="cm-turn-head"><span class="cm-turn-title">[\s\S]*<\/span><\/summary>$/, 'turn head: only the commentary text');
+assert.doesNotMatch(byTurn[0].head, /17:45|heads-up|cm-turn-meta/, 'time and count are not in the head');
+assert.match(byTurn[0].body, /<div class="cm-turn-meta"><span class="cm-turn-time">17:45–17:46<\/span><span class="cm-turn-count">3 · 1 heads-up<\/span><\/div>/, 'time range and count sit inside the expanded pane');
 const headCss = feedCss.match(/\.cm-turn-head \{[^}]*\}/)[0] + feedCss.match(/\.cm-turn-title \{[^}]*\}/)[0] + feedCss.match(/\.cm-turn-meta \{[^}]*\}/)[0] + feedCss.match(/\.cm-meta \{[^}]*\}/)[0];
-assert.match(headCss, /flex-wrap: wrap/, 'the meta line wraps below the text');
 assert.doesNotMatch(feedCss.match(/\.cm-turn-title \{[^}]*\}/)[0], /text-overflow|nowrap/, 'the commentary text is no longer cut');
-assert.match(feedCss.match(/\.cm-turn-meta \{[^}]*\}/)[0], /flex-basis: 100%[^}]*justify-content: flex-end[^}]*font-size: 10px[^}]*font-weight: 700/, 'time and count: second line, right-aligned, smaller bold');
+assert.match(feedCss.match(/\.cm-turn-meta \{[^}]*\}/)[0], /justify-content: flex-end[^}]*font-size: 10px[^}]*font-weight: 700/, 'time and count: right-aligned, smaller bold');
 assert.match(feedCss.match(/\.cm-meta \{[^}]*\}/)[0], /justify-content: flex-end[^}]*font-weight: 700/, 'single items use the same right-aligned meta line');
 const justStarted = ui.render({ ...turnView, turnStarts: [turn1, turn2, today + 900_000] });
 assert.deepEqual([panes(justStarted).map((p) => [p.ids.length, p.open]), flat(justStarted)], [[[3, false], [2, false]], []], 'the moment a prompt is sent, everything so far is folded');

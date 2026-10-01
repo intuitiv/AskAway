@@ -15,3 +15,4 @@
 | R-SPECS-11 | Run records are kept per spec under `.askaway/specs/`. | "in askaway folder, we store spec related data" (2026-09-29) | `PASS test-spec-run-records` |
 | R-SPECS-12 | The done gate shows one readiness receipt where a check that could not run is never a pass. | "a check that could not run is never a pass" (2026-09-29) | `PASS test-spec-readiness` |
 | R-SPECS-13 | Task creation stays small; speckit must not produce hundreds of tasks. | "speckit goes crazy and creates 100s of tasks. We should keep them in control." (2026-09-28) | test-task-budget.cjs EV-049 |
+| R-SPECS-14 | The stale line is one plain sentence with no file list. | "Why do we need file list in spec, we can get in some other way. I didn't ask for it." (2026-10-01) | test-specs-webview-regression.cjs EV-SPECS-STAGE-BAR |
