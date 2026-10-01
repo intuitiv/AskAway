@@ -5,6 +5,8 @@ export const MAX_CONTEXT_TOKENS = 300000;
 export const DEFAULT_CACHE_TTL_SECONDS = 300;
 /** A submit to a busy worker whose expected wait exceeds this forks the worker's session instead of queuing. */
 export const FORK_AFTER_SECONDS = 30;
+/** The one-line prompt of a keep-warm ping (spec 005 T018). */
+export const KEEP_WARM_PROMPT = 'ping, reply ok';
 
 export type RoutedWorkerState = 'IDLE' | 'RUNNING' | 'RETIRED' | 'ORPHANED';
 
@@ -230,6 +232,14 @@ export class WorkerRouter {
     cacheExpiresAt(worker: RoutedWorker): number {
         if (worker.active || worker.state === 'RETIRED' || worker.state === 'ORPHANED') { return 0; }
         return worker.lastActivityAt + this.cacheTtlMs;
+    }
+
+    /** A keep-warm ping refreshed the provider's cache: the idle worker's clock restarts and its context grew by the ping. */
+    touch(workerId: string, contextTokens: number): void {
+        const worker = this.workersById.get(workerId);
+        if (!worker || worker.active || worker.state !== 'IDLE') { return; }
+        worker.lastActivityAt = this.now();
+        if (contextTokens > 0) { worker.contextTokens = contextTokens; }
     }
 
     workers(workspacePath?: string): RoutedWorker[] {

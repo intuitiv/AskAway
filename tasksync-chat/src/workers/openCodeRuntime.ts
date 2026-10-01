@@ -3,7 +3,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { WorkerProfile } from './workerProfiles';
-import { RouteResult, WorkerRouter } from './workerRouter';
+import type { KeepWarmWorker } from './keepWarm';
+import { KEEP_WARM_PROMPT, RouteResult, WorkerRouter } from './workerRouter';
 
 export const MAX_WAIT_SECONDS = 240;
 const MAX_EVIDENCE_LINES = 25;
@@ -40,6 +41,8 @@ export interface LifecycleRecord {
     exitCode?: number;
     state?: RunState;
     reason?: string;
+    /** A keep-warm ping's checkpoint: a real request that only refreshed the prompt cache. */
+    ping?: boolean;
 }
 
 export interface WorkerPacket {
@@ -148,6 +151,7 @@ export async function forkSessionViaServer(baseUrl: string, sessionId: string, f
 
 const MAX_AUTO_RESUMES = 2;
 const FORK_HTTP_TIMEOUT_MS = 15000;
+const PING_HTTP_TIMEOUT_MS = 60000;
 const UNFINISHED_FEEDBACK = 'You stopped before finishing the packet. Continue from where you stopped, run the verification command, '
     + 'and end with the required report including a `Result: PASS | FAIL | BLOCKED` line.';
 
@@ -212,6 +216,9 @@ export class OpenCodeWorkerRuntime {
     readonly router: WorkerRouter;
     private readonly runs = new Map<string, RunRecord>();
     private readonly sessionsByWorker = new Map<string, string>();
+    /** Keep-warm pings sent since each worker's last real run, and the pings in flight. */
+    private readonly unusedPings = new Map<string, number>();
+    private readonly pinging = new Set<string>();
     private readonly rehydrated = new Set<string>();
     private readonly adopted = new Map<string, { workspace: string; profile: string; model: string; thinking: string; sessionId: string; contextTokens: number; lastTs: number; forkedFrom?: string }>();
     private readonly ledgerDir: string;
@@ -441,7 +448,7 @@ export class OpenCodeWorkerRuntime {
         }
         for (const [runId, records] of byRun) {
             const first = records[0];
-            const last = records[records.length - 1];
+            const last = records.filter((record) => !record.ping).pop() ?? records[records.length - 1];
             const usage = emptyUsage();
             let contextTokens = 0;
             let lastPromptTokens = 0;
@@ -464,12 +471,66 @@ export class OpenCodeWorkerRuntime {
                 usage, queuePosition: 0, reason, workspace, packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
                 lastPromptTokens, lastCachedTokens, ...(first.forkedFrom ? { forkedFrom: first.forkedFrom } : {}),
             });
+            const lastTs = records[records.length - 1].ts;
             const adopted = this.adopted.get(first.workerId);
-            if (!adopted || last.ts >= adopted.lastTs) {
+            if (!adopted || lastTs >= adopted.lastTs) {
                 this.adopted.set(first.workerId, { workspace, profile: first.profile, model: first.model, thinking: first.thinking,
-                    sessionId: sessionId || adopted?.sessionId || '', contextTokens: contextTokens || adopted?.contextTokens || 0, lastTs: last.ts,
+                    sessionId: sessionId || adopted?.sessionId || '', contextTokens: contextTokens || adopted?.contextTokens || 0, lastTs,
                     forkedFrom: first.forkedFrom ?? adopted?.forkedFrom });
             }
+        }
+    }
+
+    /** The workspace's workers as keep-warm inputs (see keepWarm.ts); a worker with no recorded session cannot be pinged. */
+    keepWarmWorkers(workspacePath: string): KeepWarmWorker[] {
+        return this.router.workers(canonical(workspacePath)).filter((worker) => this.sessionsByWorker.has(worker.workerId)).map((worker) => ({
+            workerId: worker.workerId, state: worker.state, active: !!worker.active, queued: worker.queue.length,
+            cacheExpiresAt: this.router.cacheExpiresAt(worker), nextInputTokens: worker.contextTokens,
+            unusedPings: this.unusedPings.get(worker.workerId) ?? 0, pinging: this.pinging.has(worker.workerId),
+        }));
+    }
+
+    /**
+     * One minimal message to the worker's OpenCode session (`POST /session/:id/message`, same agent and model) so the
+     * provider's prompt cache refreshes. Its step_finish usage goes to the ledger as a checkpoint tagged `ping`.
+     * Never pings a busy, queued, retired, orphaned or expired worker.
+     */
+    async ping(workerId: string, fetchImpl: typeof fetch = fetch): Promise<{ status: 'PINGED' | 'SKIPPED' | 'FAILED'; reason?: string }> {
+        const worker = this.router.worker(workerId);
+        const sessionId = this.sessionsByWorker.get(workerId) ?? '';
+        const run = [...this.runs.values()].filter((candidate) => candidate.workerId === workerId).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        if (!worker || !run || !this.attachUrl || !/^[A-Za-z0-9_-]+$/.test(sessionId)) { return { status: 'SKIPPED', reason: 'no attached session' }; }
+        const expires = this.router.cacheExpiresAt(worker);
+        if (worker.state !== 'IDLE' || worker.active || worker.queue.length > 0 || expires <= this.now() || this.pinging.has(workerId)) {
+            return { status: 'SKIPPED', reason: 'not an idle warm worker' };
+        }
+        const slash = run.model.indexOf('/');
+        this.pinging.add(workerId);
+        try {
+            const res = await fetchImpl(`${this.attachUrl.replace(/\/$/, '')}/session/${sessionId}/message`, {
+                method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(PING_HTTP_TIMEOUT_MS),
+                body: JSON.stringify({ agent: `aa-${run.profile}`, model: { providerID: run.model.slice(0, slash), modelID: run.model.slice(slash + 1) },
+                    variant: run.thinking, parts: [{ type: 'text', text: KEEP_WARM_PROMPT }] }),
+            });
+            if (!res.ok) { return { status: 'FAILED', reason: `HTTP ${res.status}` }; }
+            const text = await res.text();
+            let body: any = {};
+            try { body = text ? JSON.parse(text) : {}; } catch { /* the cache is refreshed even when the reply is unreadable */ }
+            const finish = (Array.isArray(body.parts) ? body.parts : []).find((part: any) => part?.type === 'step-finish') ?? {};
+            const tokens = finish.tokens ?? body.info?.tokens ?? {};
+            const usage: RunUsage = { input: tokens.input ?? 0, output: tokens.output ?? 0, reasoning: tokens.reasoning ?? 0,
+                cacheRead: tokens.cache?.read ?? 0, cacheWrite: tokens.cache?.write ?? 0, cost: finish.cost ?? body.info?.cost ?? 0, steps: 1 };
+            for (const key of Object.keys(usage) as Array<keyof RunUsage>) { run.usage[key] += usage[key]; }
+            const context = usage.input + usage.cacheRead + usage.cacheWrite + usage.output;
+            if (context > 0) { run.nextInputTokens = context; run.lastPromptTokens = usage.input + usage.cacheRead + usage.cacheWrite; run.lastCachedTokens = usage.cacheRead; }
+            this.record(run, { type: 'checkpoint', usage, ping: true, callId: finish.id ? String(finish.id) : undefined });
+            this.router.touch(workerId, context);
+            this.unusedPings.set(workerId, (this.unusedPings.get(workerId) ?? 0) + 1);
+            return { status: 'PINGED' };
+        } catch (error) {
+            return { status: 'FAILED', reason: (error as Error).message };
+        } finally {
+            this.pinging.delete(workerId);
         }
     }
 
@@ -518,6 +579,7 @@ export class OpenCodeWorkerRuntime {
 
     private launch(run: RunRecord, message: string): void {
         run.queuePosition = 0;
+        this.unusedPings.delete(run.workerId);
         run.startedAt = this.now();
         const sessionId = this.sessionsByWorker.get(run.workerId) || run.sessionId;
         // --print-logs is required: without it `opencode run` is SIGKILLed after ~14s.
