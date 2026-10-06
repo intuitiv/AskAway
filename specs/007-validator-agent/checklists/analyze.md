@@ -59,3 +59,51 @@ Tasks with no FR: T001 (spike, serves FR-020/FR-008), T010 (polish). All other t
 Beta rule FR-018: respected by T002–T010 by design (no task writes to agent input). Verified weakly: only T004 asserts it (A10); A2 shows a forgeable path via the Commentary kind.
 
 Naming drift vs repo: `CommentaryStore` and `recordSpecTurn` match; `workerProfiles.ts`, `evalScoreboard.ts` exist per R-4/R-5 reuse; the "worker transcript redaction" named in T002/R-6 does not exist, the real one is `CREDENTIAL_ANYWHERE` in `commentary.ts` (A9).
+
+## Re-run 2026-10-06
+
+Source: `/sk.check` re-run, read-only, before implement. Re-read Goal, Rules, spec, plan, research, data-model, contracts, tasks, checklists and the new `.specify/memory/constitution.md` v1.0.0 (ratified 2026-10-06). Budget: `TASK-BUDGET 007-validator-agent: PASS open=12/12 largestCycle=(NO CYCLE):4/6`. Code check: `tasksync-chat/src/validator/` does not exist yet; `COMMENTARY_KINDS` is still `update`/`heads-up` (`commentary.ts:8`) and `CREDENTIAL_ANYWHERE` is still non-exported (`commentary.ts:65`), so every "Fixed" below means fixed in the artifacts, not in code.
+
+### Status of A1-A20
+
+| ID | Status 2026-10-06 | Note |
+|---|---|---|
+| A1 | Still open (reviewer) | Store choice a/b/c not made; R-1 Consequence (research.md:24) still offers two paths. Blocks T005, T008 |
+| A2 | Fixed (artifacts) | tasks.md T003, R-3, contract agree |
+| A3 | Fixed (artifacts) | T003, R-4, data-model |
+| A4 | Still open (reviewer) | FR-006 ordering/timeout undecided. Blocks T006 |
+| A5 | Still open | spec.md wording (reviewer-owned) |
+| A6 | Fixed | contract and data-model aligned with R-1 evolve |
+| A7 | Fixed | T001(c), T005 test |
+| A8 | Fixed | T001(e), T005 test |
+| A9 | Fixed in tasks | FR-016 wording in spec.md still reviewer-owned |
+| A10 | Still open (spec side) | tasks isolation assertions done; new SC rows need spec.md |
+| A11 | Still open (reviewer) | SC-002/SC-004 baselines; affects T010 only |
+| A12 | Still open | Assumption in spec.md says "no new source type" |
+| A13 | Fixed | T004a/b, T009a/b; budget 12/12 verified |
+| A14 | Fixed | T007 depends on T006, no cycle |
+| A15 | Still open | task side done, definition is spec.md wording |
+| A16 | Fixed | T009a |
+| A17 | Still open | naming drift (prompt enhancement / improving the prompt / enhance / proposeContext) |
+| A18 | Fixed | T003 profile fields |
+| A19 | Still open | quickstart health step when T001 lands |
+| A20 | Still open (reviewer) | spec.md Status `Draft` vs plan approved; checklists unticked |
+
+Counts now: open 10 (A1, A4, A5, A10, A11, A12, A15, A17, A19, A20), fixed 10 (A2, A3, A6, A7, A8, A9, A13, A14, A16, A18). Of the open ones, reviewer decisions: A1, A4, A11, A20.
+
+### New findings
+
+| ID | Severity | Location | Finding | Recommendation | Status |
+|---|---|---|---|---|---|
+| N1 | MEDIUM | plan.md:33-40 Constitution Check | Plan still says the constitution is an unfilled template and gates on AGENTS.md. v1.0.0 now exists with principles I-VIII, and Governance says every plan Check verifies compliance. Principles VI (per-workspace observability) and VIII (portable profiles) are not named in the plan. | Rewrite the Check against I-VIII (PASS/NA per principle). plan.md is outside this packet: do it in the next plan edit. | Open |
+| N2 | MEDIUM | research.md R-1 (shared server, "not per-workspace"); constitution VI | One agentmemory server holding items of many workspaces, separated only by a `project` tag, sits against "never aggregate across unrelated workspaces" and against a single global forget setting. A dedicated instance with its own `--data-dir` per workspace (option A1-a) satisfies VI; shared (b) is weaker. | Count this in the A1 choice; if (a), T001/T005 use a per-workspace `--data-dir`/`--instance`. | Open (with A1) |
+| N3 | MEDIUM | tasks.md T003/T004a; constitution IV, VI | Validator runs record no lifecycle events by worker ID and session ID (start, before/after tool, stop, error) and the MCP tool policy, observability event and secret handling are not stated once at the boundary. T004a only tests the banner cost. | Add to T004a: validator run recorded by worker ID + OpenCode session ID through the existing worker-hook pipeline; test asserts the event. | Open |
+| N4 | LOW | tasks.md T009a; constitution I | `evals/validator/` is new, but existing evals are `run-evals.cjs`/`graders.cjs` with JSON cases; T009a scores through `evalScoreboard.ts` only. Unclear which runner executes the suites. | Name the runner in T009a (reuse `run-evals.cjs` format or `evalScoreboard.ts`). | Open |
+| N5 | LOW | tasks.md (budget) | Budget is 12/12 open; any new task (e.g. N3 as its own task) breaks the budget. | Fold N3 into T004a or split an existing task. | Open |
+| N6 | LOW | constitution Governance; spec.md | Constitution says reviewer approval gates apply; spec.md is still `Draft` (A20) and the reviewer has not ticked the three checklists. | Reviewer resolves with A20. | Open (with A20) |
+
+New counts: CRITICAL 0, HIGH 0 new (A1, A4 stay HIGH), MEDIUM 3 new, LOW 3 new.
+
+### Verdict
+
+Ready to implement now (not blocked by A1 or A4): T001 (spike, needs a local agentmemory server), T002, T003 (parallel), then T004a, T004b. Blocked: T005 and T008 by A1, T006 by A4 and T005, T007 by T005/T006, T009a/b by T004a to T007, T010 by all (A11 only for its baseline step). Fold N3 into T004a before starting it.
