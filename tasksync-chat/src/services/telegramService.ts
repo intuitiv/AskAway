@@ -85,6 +85,7 @@ export class TelegramService {
     private _heartbeatTimer: NodeJS.Timeout | undefined;
     private _heartbeatIntervalMs: number = 10 * 60 * 1000;  // 10 min default
     private _lastHeartbeatMsgId: number | undefined;
+    private readonly _editRedirect = new Map<number, number>();
     private _lastStatusSentAt: number = 0;
     private _lastTelegramReplyAt: number = 0;
     private _liveTurns: () => boolean = () => false;
@@ -261,6 +262,70 @@ export class TelegramService {
 
     private _apiUrl(method: string): string {
         return `${TELEGRAM_API}${this._botToken}/${method}`;
+    }
+
+    /**
+     * The one JSON sender for messages (reviewer 2026-10-06: "Telegram messages are occasionally dropping").
+     * Retries once without parse_mode on an entity parse error, waits out 429 `retry_after` (bounded),
+     * treats "message is not modified" as success and re-sends when the message to edit is gone.
+     */
+    private async _postTelegram(method: string, body: Record<string, unknown>): Promise<{ ok: boolean; status: number; messageId?: number; description?: string }> {
+        let payload = body;
+        let currentMethod = method;
+        let plainTried = false;
+        let rateLimited = 0;
+        for (;;) {
+            let resp: Response;
+            try {
+                resp = await fetch(this._apiUrl(currentMethod), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            } catch (error) {
+                const description = error instanceof Error ? error.message : String(error);
+                this._warn(`AskAway/Telegram: ${currentMethod} error: ${description}`);
+                return { ok: false, status: 0, description };
+            }
+            let data: any;
+            try { data = resp.ok ? await resp.json() : JSON.parse(await resp.text()); } catch { data = undefined; }
+            if (resp.ok) { return { ok: true, status: resp.status, messageId: data?.result?.message_id }; }
+            const description = String(data?.description ?? resp.statusText ?? '');
+            if (resp.status === 429 && rateLimited < 3) {
+                rateLimited++;
+                const seconds = Math.min(30, Math.max(0, Number(data?.parameters?.retry_after) || 1));
+                this._warn(`AskAway/Telegram: ${currentMethod} rate limited, retrying in ${seconds}s`);
+                await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+                continue;
+            }
+            if (resp.status === 400 && currentMethod === 'editMessageText' && /message is not modified/i.test(description)) {
+                return { ok: true, status: 200, messageId: payload.message_id as number };
+            }
+            if (resp.status === 400 && currentMethod === 'editMessageText' && /message to edit not found/i.test(description)) {
+                const { message_id: _gone, ...rest } = payload;
+                const topicId = this._topicIds.get(this._workspaceName());
+                payload = topicId && rest.message_thread_id === undefined ? { ...rest, message_thread_id: topicId } : rest;
+                currentMethod = 'sendMessage';
+                continue;
+            }
+            if (resp.status === 400 && !plainTried && payload.parse_mode && /can't parse entities|can't find end/i.test(description)) {
+                plainTried = true;
+                const { parse_mode: _mode, ...rest } = payload;
+                const plain = String(payload.text ?? '').replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+                payload = { ...rest, text: plain.slice(0, 4096) };
+                continue;
+            }
+            this._warn(`AskAway/Telegram: ${currentMethod} failed ${resp.status}: ${description}`);
+            return { ok: false, status: resp.status, description };
+        }
+    }
+
+    /** Markdown to Telegram HTML within `budget` characters: the markdown is cut BEFORE converting, so tags and entities stay whole. */
+    private _boundedHtml(markdown: string, budget: number, fallback = markdown): string {
+        const convert = (md: string): string => { try { return this._markdownToHtml(md); } catch { return this._escapeHtml(md); } };
+        let md = markdown;
+        let html = convert(md);
+        while (html.length > budget && md.length > 2) {
+            md = `${md.slice(0, Math.max(1, Math.min(md.length - 2, Math.floor(md.length * budget / html.length) - 8))).trimEnd()}…`;
+            html = convert(md);
+        }
+        return html.length > budget ? this._escapeHtml(fallback).slice(0, budget) : html;
     }
 
     /**
@@ -1763,32 +1828,13 @@ export class TelegramService {
     private async _sendFileAsDocument(msg: any, file: { absolute: string; relative: string }): Promise<void> {
         try {
             const fileData = await fs.promises.readFile(file.absolute);
-            const boundary = `----FormBoundary${Date.now()}`;
             const fileName = path.basename(file.relative);
-
-            // Build multipart form data
-            const parts: Buffer[] = [];
-            // chat_id
-            parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${this._chatId}\r\n`));
-            // reply_to_message_id
-            parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="reply_to_message_id"\r\n\r\n${msg.message_id}\r\n`));
-            // thread_id if applicable
-            if (msg.message_thread_id) {
-                parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="message_thread_id"\r\n\r\n${msg.message_thread_id}\r\n`));
-            }
-            // caption
-            parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n📄 ${file.relative}\r\n`));
-            // document
-            parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="document"; filename="${fileName}"\r\nContent-Type: application/octet-stream\r\n\r\n`));
-            parts.push(fileData);
-            parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
-
-            const body = Buffer.concat(parts);
+            const multipart = this._multipartDocument(fileName, fileData, `📄 ${file.relative}`, msg.message_thread_id, msg.message_id);
 
             const resp = await fetch(this._apiUrl('sendDocument'), {
                 method: 'POST',
-                headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
-                body
+                headers: { 'Content-Type': multipart.contentType },
+                body: multipart.data
             });
 
             if (!resp.ok) {
@@ -1974,34 +2020,22 @@ export class TelegramService {
     /** Post a one-off markdown message (turn-end handoff). Unlike the heartbeat this is never throttled or edited in place. */
     public async postText(markdown: string, fallback: string, replyTaskId?: string): Promise<boolean> {
         if (!this.isConfigured()) { return false; }
-        let html: string;
-        try {
-            html = this._markdownToHtml(markdown);
-        } catch {
-            html = this._escapeHtml(fallback);
-        }
         const workspaceName = this._workspaceName();
+        const head = `📋 <b>AskAway · ${this._escapeHtml(workspaceName)}</b>\n\n`;
+        const html = this._boundedHtml(markdown, 4000 - head.length, fallback);
         const threadId = await this._getTopicId(workspaceName);
         const body: Record<string, unknown> = {
             chat_id: this._chatId,
-            text: `📋 <b>AskAway · ${this._escapeHtml(workspaceName)}</b>\n\n${html}`.slice(0, 4000),
+            text: `${head}${html}`,
             parse_mode: 'HTML',
             disable_web_page_preview: true
         };
         if (threadId) { body.message_thread_id = threadId; }
         try {
-            const resp = await fetch(this._apiUrl('sendMessage'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-            if (!resp.ok) {
-                this._warn(`AskAway/Telegram: turn handoff send failed (${resp.status}): ${await resp.text()}`);
-                return false;
-            }
+            const sent = await this._postTelegram('sendMessage', body);
+            if (!sent.ok) { return false; }
             if (replyTaskId) {
-                const result = await resp.json() as any;
-                const messageId = result.result?.message_id;
+                const messageId = sent.messageId;
                 if (typeof messageId !== 'number') {
                     this._warn('AskAway/Telegram: turn handoff sent without a message_id; replies cannot be routed');
                     return false;
@@ -2035,38 +2069,53 @@ export class TelegramService {
         const body: any = { chat_id: this._chatId, text: html, parse_mode: 'HTML', disable_notification: silent };
         const threadId = await this._getTopicId(this._workspaceName());
         if (threadId) { body.message_thread_id = threadId; }
-        try {
-            const resp = await fetch(this._apiUrl('sendMessage'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-            if (!resp.ok) { this._warn(`AskAway/Telegram: live commentary send failed ${resp.status}: ${await resp.text()}`); return undefined; }
-            const data = await resp.json() as any;
-            return data.result?.message_id;
-        } catch (error) {
-            this._warn(`AskAway/Telegram: live commentary send error: ${error instanceof Error ? error.message : String(error)}`);
-            return undefined;
-        }
+        const sent = await this._postTelegram('sendMessage', body);
+        return sent.ok ? sent.messageId : undefined;
     }
 
     public async editLive(messageId: number, html: string): Promise<boolean> {
         if (!this.isConfigured()) { return false; }
+        const target = this._editRedirect.get(messageId) ?? messageId;
+        const edited = await this._postTelegram('editMessageText', { chat_id: this._chatId, message_id: target, text: html, parse_mode: 'HTML' });
+        // The edited message vanished and was re-sent: keep editing the new one.
+        if (edited.ok && edited.messageId !== undefined && edited.messageId !== target) { this._editRedirect.set(messageId, edited.messageId); }
+        return edited.ok;
+    }
+
+    /** Send a local file as a document to this workspace's topic (the turn-end response PDF). */
+    public async sendDocument(filePath: string, caption: string): Promise<boolean> {
+        if (!this.isConfigured()) { return false; }
         try {
-            const resp = await fetch(this._apiUrl('editMessageText'), {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: this._chatId, message_id: messageId, text: html, parse_mode: 'HTML' }),
-            });
-            if (!resp.ok) { this._warn(`AskAway/Telegram: live commentary edit failed ${resp.status}: ${await resp.text()}`); }
+            const fileData = await fs.promises.readFile(filePath);
+            const threadId = await this._getTopicId(this._workspaceName());
+            const body = this._multipartDocument(path.basename(filePath), fileData, caption, threadId);
+            const resp = await fetch(this._apiUrl('sendDocument'), { method: 'POST', headers: { 'Content-Type': body.contentType }, body: body.data });
+            if (!resp.ok) { this._warn(`AskAway/Telegram: sendDocument failed ${resp.status}: ${await resp.text()}`); }
             return resp.ok;
         } catch (error) {
-            this._warn(`AskAway/Telegram: live commentary edit error: ${error instanceof Error ? error.message : String(error)}`);
+            this._warn(`AskAway/Telegram: sendDocument error: ${error instanceof Error ? error.message : String(error)}`);
             return false;
         }
+    }
+
+    private _multipartDocument(fileName: string, fileData: Buffer, caption: string, threadId?: number, replyTo?: number): { data: Buffer; contentType: string } {
+        const boundary = `----FormBoundary${Date.now()}`;
+        const field = (name: string, value: string | number) => Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`);
+        const parts: Buffer[] = [field('chat_id', this._chatId ?? '')];
+        if (replyTo !== undefined) { parts.push(field('reply_to_message_id', replyTo)); }
+        if (threadId) { parts.push(field('message_thread_id', threadId)); }
+        parts.push(field('caption', caption));
+        parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="document"; filename="${fileName}"\r\nContent-Type: application/octet-stream\r\n\r\n`));
+        parts.push(fileData);
+        parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+        return { data: Buffer.concat(parts), contentType: `multipart/form-data; boundary=${boundary}` };
     }
 
     /** The final response replaces the turn's live message and is tracked for replies, like a posted handoff. */
     public async finishLive(liveMessageId: number, headHtml: string, finalMarkdown: string, replyTaskId: string): Promise<boolean> {
         if (!this.isConfigured()) { return false; }
-        let finalHtml: string;
-        try { finalHtml = this._markdownToHtml(finalMarkdown); } catch { finalHtml = this._escapeHtml(finalMarkdown); }
-        const text = `${headHtml}\n\n${finalHtml}`.slice(0, 4000);
+        const finalHtml = this._boundedHtml(finalMarkdown, Math.max(200, 4000 - headHtml.length - 2));
+        const text = `${headHtml}\n\n${finalHtml}`;
         // Edits never notify, so the final response is re-sent with sound and the silent live message removed.
         let messageId = await this.sendLive(text, false);
         if (messageId !== undefined) {
@@ -2113,42 +2162,16 @@ export class TelegramService {
         this._lastStatusSentAt = Date.now();
 
         const text = `<i>${this._escapeHtml(status)}</i>`;
-        try {
-            if (this._lastHeartbeatMsgId) {
-                // Edit existing status message
-                await fetch(this._apiUrl('editMessageText'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: this._chatId,
-                        message_id: this._lastHeartbeatMsgId,
-                        text,
-                        parse_mode: 'HTML'
-                    })
-                });
-            } else {
-                // Send new status message — route to workspace topic if forum
-                const wsName = this._workspaceName();
-                const threadId = this._topicIds.get(wsName);
-                const newMsgBody: any = {
-                    chat_id: this._chatId,
-                    text,
-                    parse_mode: 'HTML',
-                    disable_notification: true
-                };
-                if (threadId) { newMsgBody.message_thread_id = threadId; }
-                const resp = await fetch(this._apiUrl('sendMessage'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(newMsgBody)
-                });
-                if (resp.ok) {
-                    const data = await resp.json() as any;
-                    this._lastHeartbeatMsgId = data.result?.message_id;
-                }
-            }
-        } catch {
-            // Non-critical
+        if (this._lastHeartbeatMsgId) {
+            const edited = await this._postTelegram('editMessageText', { chat_id: this._chatId, message_id: this._lastHeartbeatMsgId, text, parse_mode: 'HTML' });
+            if (edited.ok) { this._lastHeartbeatMsgId = edited.messageId ?? this._lastHeartbeatMsgId; } else { this._lastHeartbeatMsgId = undefined; }
+        } else {
+            // New status message — route to workspace topic if forum
+            const threadId = this._topicIds.get(this._workspaceName());
+            const newMsgBody: Record<string, unknown> = { chat_id: this._chatId, text, parse_mode: 'HTML', disable_notification: true };
+            if (threadId) { newMsgBody.message_thread_id = threadId; }
+            const sent = await this._postTelegram('sendMessage', newMsgBody);
+            if (sent.ok) { this._lastHeartbeatMsgId = sent.messageId; }
         }
     }
 

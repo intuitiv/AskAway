@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { CONFIG_NAMESPACE } from '../constants/branding';
 import { createTelegramHandoffTaskId } from './telegramConversationReply';
+import { renderResponseFile, type ResponseFile } from './responsePdf';
 
 /**
  * Posts the agent's `Response Handoff` section to Webex and/or Telegram when a turn ends.
@@ -33,6 +34,8 @@ export interface TurnMetricsSnapshot {
 export interface HandoffPoster {
     isConfigured(): boolean;
     postText(markdown: string, fallback: string, replyTaskId?: string): Promise<boolean>;
+    /** Telegram only: the full response as a document. */
+    sendDocument?(filePath: string, caption: string): Promise<boolean>;
 }
 
 export interface HandoffTarget {
@@ -137,6 +140,9 @@ ${text}`, `AskAway: ${text}`);
                     target.name === 'Telegram' ? createTelegramHandoffTaskId(ts) : undefined
                 );
                 if (ok) { postedTargets++; }
+                if (ok && target.name === 'Telegram' && poster.sendDocument && parts.details) {
+                    await this._sendResponseDocument(poster.sendDocument.bind(poster), parts);
+                }
                 this._log(`Handoff notifier: posted to ${target.name} = ${ok}`, { chars: markdown.length });
             }
             if (configuredTargets === 0 || postedTargets > 0) {
@@ -149,6 +155,19 @@ ${text}`, `AskAway: ${text}`);
             this._log('Handoff notifier failed', err instanceof Error ? err.message : String(err));
         } finally {
             this._processing = false;
+        }
+    }
+
+    private async _sendResponseDocument(send: (file: string, caption: string) => Promise<boolean>, parts: HandoffParts): Promise<void> {
+        let rendered: ResponseFile | undefined;
+        try {
+            rendered = await renderResponseFile(fullResponseMarkdown(parts));
+            const ok = await send(rendered.file, rendered.kind === 'pdf' ? '📄 Full response' : '📄 Full response (markdown; PDF conversion unavailable)');
+            this._log(`Handoff notifier: sent full response ${rendered.kind} = ${ok}`);
+        } catch (err) {
+            this._log('Handoff notifier: full response document failed', err instanceof Error ? err.message : String(err));
+        } finally {
+            rendered?.cleanup();
         }
     }
 
@@ -219,11 +238,14 @@ export function telegramHandoffUpdate(parts: HandoffParts, metrics?: TurnMetrics
         ? `**${compactTokens(metrics.latestInputTokens)} last in · ${compactTokens(metrics.turnOutputTokens)} turn out · $${(metrics.turnNanoAiu / 1_000_000_000 / 100).toFixed(2)} turn**`
         : '**Turn metrics unavailable**';
     const handoff = parts.handoff.trim() || 'No Response Handoff provided.';
-    const prefix = `**AskAway**\n\n${banner}\n\n**Handoff**\n${handoff}\n\n**Details**\n`;
-    const remaining = Math.max(0, 3500 - prefix.length);
-    const details = parts.details.trim();
-    const boundedDetails = details.length > remaining ? `${details.slice(0, Math.max(0, remaining - 1))}…` : details;
-    return `${prefix}${boundedDetails || 'No additional details.'}`;
+    // Only the handoff travels as text; the full response goes along as a PDF document (see responsePdf.ts).
+    // Telegram HTML can outgrow raw markdown, and TelegramService bounds it before converting, so no details here.
+    return `**AskAway**\n\n${banner}\n\n**Handoff**\n${handoff}`;
+}
+
+/** The whole response, as the markdown that becomes the PDF. */
+export function fullResponseMarkdown(parts: HandoffParts): string {
+    return `${parts.details ? `${parts.details}\n\n` : ''}## Response Handoff\n\n${parts.handoff}\n`;
 }
 
 export function compactHandoffUpdate(handoff: string): string {

@@ -12,3 +12,4 @@
 | R-SETTINGS-08 | Always pick Sonnet for workers while it works; Luna only for tiny, fully specified work. | "If sonnet is working always pick it." (2026-09-30) | gap |
 | R-SETTINGS-09 | The orchestrator uses no sub-agent tools and at most one standalone terminal command. | "ignore subAgent tool from vscode or opencode" (2026-09-24) | test-orchestrator-policy.cjs EV-022 |
 | R-SETTINGS-10 | An availability dropdown (away overnight, available on Telegram, and so on) tells the agent how long to run without asking. | "we can have an availability drop down, where I'll tell my plan" (2026-10-01) | gap |
+| R-SETTINGS-11 | The Settings tab has an on/off switch for `askaway.workers.keepWarm` (default on), styled like the other toggles. | "add an on/off switch for askaway.workers.keepWarm in Settings" (2026-10-06) | test-webview-card-timer-settings.cjs EV-CARD-TIMER-SETTINGS |

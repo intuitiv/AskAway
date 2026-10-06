@@ -111,7 +111,8 @@ type RuntimeSource = OpenCodeWorkerRuntime | Promise<OpenCodeWorkerRuntime>;
 /** Exactly the eight Spec 001 worker operations. Results are bounded facts so the caller's context stays small. */
 export function workerToolDefinitions(source: () => RuntimeSource, defaultWorkspace: string, options: WorkerToolOptions = {}): ToolDefinition[] {
     const runtime = () => Promise.resolve(source());
-    const packetOf = (args: any): WorkerPacket => ({ ...args, workspacePath: args.workspacePath || defaultWorkspace, allowedFiles: args.allowedFiles ?? [] });
+    // The owner is the dispatching window's workspace; the packet's workspacePath only says where OpenCode runs.
+    const packetOf = (args: any): WorkerPacket => ({ ...args, workspacePath: defaultWorkspace || args.workspacePath, ...(args.workspacePath ? { cwd: args.workspacePath } : {}), allowedFiles: args.allowedFiles ?? [] });
     const definitions: ToolDefinition[] = [];
     const register = (name: string, config: { description: string; inputSchema: z.ZodObject<any> }, run: (args: any) => unknown | Promise<unknown>) => {
         definitions.push({ name, description: config.description, inputSchema: config.inputSchema, run });
@@ -134,7 +135,7 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
     }, async (args) => {
         const live = await runtime();
         const now = live.now();
-        return projectWorkersState(live, args.workspacePath || defaultWorkspace, () => now).workers
+        return projectWorkersState(live, defaultWorkspace || args.workspacePath, () => now).workers
             .filter((worker) => !worker.expired)
             .map((worker) => ({
                 workerId: worker.workerId, profile: worker.profile, model: worker.model, thinking: worker.thinking, state: worker.state,

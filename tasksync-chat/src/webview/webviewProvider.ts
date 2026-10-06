@@ -467,6 +467,7 @@ type ToWebviewMessage =
         extendedCacheTtlMessages?: boolean;
         cacheKeepWarmEnabled?: boolean;
         cacheKeepWarmProbes?: number;
+        workersKeepWarm?: boolean;
     }
     | { type: 'updateObservabilityMetrics'; metrics: ObservabilityMetrics }
     | { type: 'updateMemoriesList'; memories: Array<{ file: string; title: string; size: number; modified: number }> }
@@ -566,6 +567,7 @@ type FromWebviewMessage =
     | { type: 'updateExtendedCacheTtlMessages'; enabled: boolean }
     | { type: 'updateCacheKeepWarm'; enabled: boolean }
     | { type: 'updateCacheKeepWarmProbes'; value: number }
+    | { type: 'updateWorkersKeepWarm'; enabled: boolean }
     | { type: 'pingCache' }
     | { type: 'updateCavemanSetting'; enabled: boolean }
     | { type: 'updateResponseTimeout'; value: number }
@@ -2103,6 +2105,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             extendedCacheTtlMessages,
             cacheKeepWarmEnabled,
             cacheKeepWarmProbes,
+            workersKeepWarm: vscode.workspace.getConfiguration('askaway.workers').get<boolean>('keepWarm', true) !== false,
             webexStatus,
             telegramStatus
         } as any);
@@ -4928,6 +4931,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'updateCacheKeepWarmProbes':
                 this._handleUpdateCopilotChatSetting('agent.longToolCallCachePreservation.maxProbes', Math.max(0, Math.min(10, Math.round(message.value || 0))));
                 break;
+            case 'updateWorkersKeepWarm':
+                void this._handleUpdateWorkersKeepWarm(message.enabled);
+                break;
             case 'pingCache':
                 this._handlePingCache();
                 break;
@@ -6104,6 +6110,16 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         try {
             const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
             await config.update('responseTimeout', String(value), vscode.ConfigurationTarget.Global);
+            this._loadSettings();
+        } finally {
+            this._isUpdatingConfig = false;
+        }
+    }
+
+    private async _handleUpdateWorkersKeepWarm(enabled: boolean): Promise<void> {
+        this._isUpdatingConfig = true;
+        try {
+            await vscode.workspace.getConfiguration('askaway.workers').update('keepWarm', enabled === true, vscode.ConfigurationTarget.Global);
             this._loadSettings();
         } finally {
             this._isUpdatingConfig = false;

@@ -18,7 +18,10 @@ export interface RunUsage { input: number; output: number; reasoning: number; ca
 export interface LifecycleRecord {
     ts: number;
     type: LifecycleType;
+    /** The owner workspace (dispatching window). */
     workspace: string;
+    /** Directory OpenCode ran in, recorded only when it differs from the owner. */
+    cwd?: string;
     workerId: string;
     runId: string;
     sessionId: string;
@@ -46,7 +49,10 @@ export interface LifecycleRecord {
 }
 
 export interface WorkerPacket {
+    /** The OWNER: the dispatching window's workspace. Keys the ledger, Workers tab, banner and spend. */
     workspacePath: string;
+    /** Where OpenCode runs (e.g. a git worktree of the owner); defaults to the owner. */
+    cwd?: string;
     profile: string;
     model?: string;
     thinking?: string;
@@ -113,6 +119,7 @@ export interface RuntimeOptions {
 
 interface RunRecord extends RunView {
     workspace: string;
+    cwd: string;
     packet: string;
     evidence: string[];
     child?: ChildLike;
@@ -196,6 +203,22 @@ function workspaceKey(workspace: string): string {
 
 function canonical(workspace: string): string {
     try { return fs.realpathSync(workspace); } catch { return workspace; }
+}
+
+const worktreeCache = new Map<string, { at: number; paths: string[] }>();
+
+/** Other git worktrees of `workspace` (`git worktree list --porcelain`), cached 30s; empty when not a git repo. */
+function worktreesOf(workspace: string): string[] {
+    const cached = worktreeCache.get(workspace);
+    if (cached && Date.now() - cached.at < 30_000) { return cached.paths; }
+    let paths: string[] = [];
+    try {
+        const out = childProcess.execFileSync('git', ['-C', workspace, 'worktree', 'list', '--porcelain'], { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] });
+        paths = out.split('\n').filter((line) => line.startsWith('worktree ')).map((line) => canonical(line.slice('worktree '.length).trim()))
+            .filter((dir) => dir !== workspace);
+    } catch { /* not a git repo or git missing */ }
+    worktreeCache.set(workspace, { at: Date.now(), paths });
+    return paths;
 }
 
 function emptyUsage(): RunUsage {
@@ -468,7 +491,7 @@ export class OpenCodeWorkerRuntime {
             this.runs.set(runId, {
                 runId, workerId: first.workerId, sessionId, state, profile: first.profile, model: first.model, thinking: first.thinking,
                 dispatchTurnId: first.dispatchTurnId, track: first.track ?? '', startedAt: first.ts, endedAt: last.ts, updatedAt: last.ts, elapsedMs: last.ts - first.ts,
-                usage, queuePosition: 0, reason, workspace, packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
+                usage, queuePosition: 0, reason, workspace, cwd: workspace, packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
                 lastPromptTokens, lastCachedTokens, ...(first.forkedFrom ? { forkedFrom: first.forkedFrom } : {}),
             });
             const lastTs = records[records.length - 1].ts;
@@ -568,7 +591,7 @@ export class OpenCodeWorkerRuntime {
             runId: routed.runId, workerId: routed.workerId, sessionId: this.sessionsByWorker.get(routed.workerId) ?? '',
             state: 'STARTING', profile: packet.profile, model: routed.model, thinking: routed.thinking,
             dispatchTurnId: packet.dispatchTurnId, track: String(packet.track ?? '').trim().slice(0, 24), startedAt: this.now(), updatedAt: this.now(), elapsedMs: 0, usage: emptyUsage(),
-            queuePosition: routed.queuePosition, workspace, packet: renderPacket(packet), evidence: [], waiters: [],
+            queuePosition: routed.queuePosition, workspace, cwd: packet.cwd ? canonical(packet.cwd) : workspace, packet: renderPacket(packet), evidence: [], waiters: [],
             nextInputTokens: this.router.worker(routed.workerId)?.contextTokens ?? 0, knowledge, lastPromptTokens: 0, lastCachedTokens: 0,
             ...(this.router.worker(routed.workerId)?.forkedFrom ? { forkedFrom: this.router.worker(routed.workerId)?.forkedFrom } : {}),
         };
@@ -584,7 +607,7 @@ export class OpenCodeWorkerRuntime {
         const sessionId = this.sessionsByWorker.get(run.workerId) || run.sessionId;
         // --print-logs is required: without it `opencode run` is SIGKILLed after ~14s.
         const args = ['run', '--print-logs', '--log-level', 'ERROR', '--format', 'json', '--agent', `aa-${run.profile}`,
-            '--model', run.model, '--variant', run.thinking, '--dir', run.workspace, '--title', `${run.workerId}/${run.runId}`];
+            '--model', run.model, '--variant', run.thinking, '--dir', run.cwd, '--title', `${run.workerId}/${run.runId}`];
         if (sessionId) { args.push('--session', sessionId); }
         if (this.attachUrl) { args.push('--attach', this.attachUrl); }
         args.push(message);
@@ -706,7 +729,7 @@ export class OpenCodeWorkerRuntime {
 
     private record(run: RunRecord, fact: Pick<LifecycleRecord, 'type'> & Partial<LifecycleRecord>): void {
         const record: LifecycleRecord = {
-            ts: this.now(), workspace: run.workspace, workerId: run.workerId, runId: run.runId, sessionId: run.sessionId,
+            ts: this.now(), workspace: run.workspace, ...(run.cwd && run.cwd !== run.workspace ? { cwd: run.cwd } : {}), workerId: run.workerId, runId: run.runId, sessionId: run.sessionId,
             dispatchTurnId: run.dispatchTurnId, source: run.model.split('/')[0] || 'unknown', ...(run.track ? { track: run.track } : {}),
             ...(run.forkedFrom ? { forkedFrom: run.forkedFrom } : {}), profile: run.profile, model: run.model, thinking: run.thinking, ...fact,
         };
@@ -715,15 +738,21 @@ export class OpenCodeWorkerRuntime {
         fs.appendFileSync(path.join(this.ledgerDir, `${workspaceKey(run.workspace)}.jsonl`), `${JSON.stringify(record)}\n`);
     }
 
+    /**
+     * The owner's ledger plus the ledgers of its git worktrees: runs dispatched before owner/cwd were separated were
+     * keyed by the worktree path they ran in. Rule: a worktree is any path `git worktree list` reports for the owner.
+     */
     private readLedger(workspace: string): LifecycleRecord[] {
-        const file = path.join(this.ledgerDir, `${workspaceKey(workspace)}.jsonl`);
         const records: LifecycleRecord[] = [];
-        let text = '';
-        try { text = fs.readFileSync(file, 'utf8'); } catch { return records; }
-        for (const line of text.split('\n')) {
-            if (!line) { continue; }
-            try { records.push(JSON.parse(line)); } catch { /* skip malformed line */ }
+        for (const key of [workspace, ...worktreesOf(workspace)]) {
+            const file = path.join(this.ledgerDir, `${workspaceKey(key)}.jsonl`);
+            let text = '';
+            try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+            for (const line of text.split('\n')) {
+                if (!line) { continue; }
+                try { records.push(JSON.parse(line)); } catch { /* skip malformed line */ }
+            }
         }
-        return records;
+        return records.length > 1 ? records.sort((a, b) => a.ts - b.ts) : records;
     }
 }

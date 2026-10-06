@@ -19,6 +19,7 @@ type Phase = 'live' | 'final' | 'continued';
 
 const HEADS_UP = new Set(['heads-up', 'question', 'blocked']);
 const MAX_HTML = 3900; // Telegram rejects texts over 4096 chars
+const MAX_RETRIES = 5;
 
 function esc(text: string): string {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -94,6 +95,7 @@ export class TelegramLiveCommentary {
     private turn: { prompt: string; items: CommentaryItem[] } = { prompt: '', items: [] };
     private lastHtml = '';
     private lastEditAt = 0;
+    private failures = 0;
     private pending: NodeJS.Timeout | undefined;
     private ticker: NodeJS.Timeout | undefined;
     private footer = '';
@@ -103,7 +105,7 @@ export class TelegramLiveCommentary {
     constructor(
         private readonly poster: () => LiveMessagePoster | undefined,
         private readonly workspaceName: string,
-        private readonly options: { minEditMs?: number; now?: () => number; enabled?: () => boolean; activity?: () => TurnActivity; tickMs?: number } = {},
+        private readonly options: { minEditMs?: number; now?: () => number; enabled?: () => boolean; activity?: () => TurnActivity; tickMs?: number; retryMs?: number } = {},
     ) { }
 
     /** Serialized so a burst of events never opens two messages for one turn. */
@@ -184,7 +186,7 @@ export class TelegramLiveCommentary {
         if (html === this.lastHtml) { return; }
         if (this.messageId === undefined) {
             this.messageId = await poster.sendLive(html);
-            if (this.messageId !== undefined) { this.lastHtml = html; this.lastEditAt = this.now(); this.startTicker(); }
+            if (this.messageId !== undefined) { this.lastHtml = html; this.lastEditAt = this.now(); this.failures = 0; this.startTicker(); } else { this.retryLater(view); }
             return;
         }
         const wait = (this.options.minEditMs ?? 1500) - (this.now() - this.lastEditAt);
@@ -194,7 +196,15 @@ export class TelegramLiveCommentary {
             this.pending = setTimeout(() => { this.pending = undefined; void this.update(view); }, wait);
             return;
         }
-        if (await poster.editLive(this.messageId, html)) { this.lastHtml = html; this.lastEditAt = this.now(); }
+        if (await poster.editLive(this.messageId, html)) { this.lastHtml = html; this.lastEditAt = this.now(); this.failures = 0; } else { this.retryLater(view); }
+    }
+
+    /** A failed send/edit would otherwise drop this update until the next event; try again shortly, a few times. */
+    private retryLater(view: CommentaryView): void {
+        if (this.finished || this.failures >= MAX_RETRIES) { return; }
+        this.failures++;
+        this.cancelPending();
+        this.pending = setTimeout(() => { this.pending = undefined; void this.update(view); }, this.options.retryMs ?? 5000);
     }
 
     private cancelPending(): void {
@@ -207,9 +217,10 @@ export class TelegramLiveCommentary {
 }
 
 /** The Telegram handoff target: the final response lands in the turn's live message, or a new message when there is none. */
-export function telegramTurnTarget(relay: TelegramLiveCommentary, telegram: () => (LiveMessagePoster & { postText(markdown: string, fallback: string, replyTaskId?: string): Promise<boolean> }) | undefined) {
+export function telegramTurnTarget(relay: TelegramLiveCommentary, telegram: () => (LiveMessagePoster & { postText(markdown: string, fallback: string, replyTaskId?: string): Promise<boolean>; sendDocument?(filePath: string, caption: string): Promise<boolean> }) | undefined) {
     return {
         isConfigured: () => telegram()?.isConfigured() ?? false,
+        sendDocument: async (filePath: string, caption: string): Promise<boolean> => await telegram()?.sendDocument?.(filePath, caption) ?? false,
         postText: async (markdown: string, fallback: string, replyTaskId?: string): Promise<boolean> =>
             (replyTaskId !== undefined && await relay.finish(markdown, replyTaskId)) || (await telegram()?.postText(markdown, fallback, replyTaskId) ?? false),
     };

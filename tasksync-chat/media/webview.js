@@ -49,6 +49,8 @@
     let extendedCacheTtlMessages = false;
     let cacheKeepWarmEnabled = false;
     let cacheKeepWarmProbes = 1;
+    let workersKeepWarmEnabled = true; // askaway.workers.keepWarm (package.json default true)
+    let workersKeepWarmToggle;
     let toolScopeMode = 'month'; // 'month' | 'turn' — toggles the tool-call table scope
     let obsView = 'turn'; // 'turn' | 'month' — drives the whole Observability panel
     let observabilityMetrics = {
@@ -547,6 +549,19 @@
             '<div class="settings-subrow"><label for="cache-keep-warm-probes">Max probes</label>' +
             '<input type="number" id="cache-keep-warm-probes" min="0" max="10" step="1" class="settings-number-input" /></div>';
         modalContent.appendChild(keepWarmSection);
+
+        // Keep idle workers warm — askaway.workers.keepWarm (one minimal ping before a worker's cache expires).
+        var workersKeepWarmSection = document.createElement('div');
+        workersKeepWarmSection.className = 'settings-section';
+        workersKeepWarmSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title">' +
+            '<span class="codicon codicon-flame"></span> Keep workers warm' +
+            '<span class="settings-info-icon" title="While the main chat is active, send one minimal ping to an idle worker whose prompt cache is about to expire, so it stays warm for reuse. A ping is a real request (cost shown in worker spend). Sets askaway.workers.keepWarm.">' +
+            '<span class="codicon codicon-info"></span></span>' +
+            '</div>' +
+            '<div class="toggle-switch" id="workers-keep-warm-toggle" role="switch" aria-checked="true" aria-label="Keep workers warm" tabindex="0"></div>' +
+            '</div>';
+        modalContent.appendChild(workersKeepWarmSection);
         var approvalSection = document.createElement('div');
         approvalSection.className = 'settings-section';
         approvalSection.innerHTML = '<div class="settings-section-header">' +
@@ -770,6 +785,7 @@
         extendedCacheTtlMessagesToggle = document.getElementById('extended-cache-ttl-messages-toggle');
         cacheKeepWarmToggle = document.getElementById('cache-keep-warm-toggle');
         cacheKeepWarmProbesInput = document.getElementById('cache-keep-warm-probes');
+        workersKeepWarmToggle = document.getElementById('workers-keep-warm-toggle');
     }
 
     // Build the Observability ("Metrics") tab: the credits table, RTK/Gradle savings,
@@ -1006,6 +1022,12 @@
             cacheKeepWarmToggle.addEventListener('click', toggleCacheKeepWarm);
             cacheKeepWarmToggle.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCacheKeepWarm(); }
+            });
+        }
+        if (workersKeepWarmToggle) {
+            workersKeepWarmToggle.addEventListener('click', toggleWorkersKeepWarm);
+            workersKeepWarmToggle.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleWorkersKeepWarm(); }
             });
         }
         if (cacheKeepWarmProbesInput) {
@@ -1533,6 +1555,7 @@
                 extendedCacheTtl = message.extendedCacheTtl === true;
                 extendedCacheTtlMessages = message.extendedCacheTtlMessages === true;
                 cacheKeepWarmEnabled = message.cacheKeepWarmEnabled === true;
+                workersKeepWarmEnabled = message.workersKeepWarm !== false;
                 cacheKeepWarmProbes = Number(message.cacheKeepWarmProbes);
                 if (!isFinite(cacheKeepWarmProbes)) { cacheKeepWarmProbes = 1; }
                 if (message.observabilityMetrics && typeof message.observabilityMetrics === 'object') {
@@ -2817,7 +2840,17 @@
         vscode.postMessage({ type: 'updateCacheKeepWarm', enabled: cacheKeepWarmEnabled });
     }
 
+    function toggleWorkersKeepWarm() {
+        workersKeepWarmEnabled = !workersKeepWarmEnabled;
+        updateCacheSettingsUI();
+        vscode.postMessage({ type: 'updateWorkersKeepWarm', enabled: workersKeepWarmEnabled });
+    }
+
     function updateCacheSettingsUI() {
+        if (workersKeepWarmToggle) {
+            workersKeepWarmToggle.classList.toggle('active', workersKeepWarmEnabled);
+            workersKeepWarmToggle.setAttribute('aria-checked', workersKeepWarmEnabled ? 'true' : 'false');
+        }
         if (extendedCacheTtlToggle) {
             extendedCacheTtlToggle.classList.toggle('active', extendedCacheTtl);
             extendedCacheTtlToggle.setAttribute('aria-checked', extendedCacheTtl ? 'true' : 'false');
@@ -2893,10 +2926,23 @@
             ' &middot; ' + hit + ' cache';
     }
     // Live turn timer: '' when no turn is running (turnStartedAt 0), else m:ss or h:mm:ss.
-    function turnTimerLabel(startedAt, now) {
+    // A turn is finished once its prompt cache went cold (no request for 5 minutes): the timer then shows the final
+    // duration (turn start -> last request of the turn) instead of growing forever.
+    var TURN_IDLE_MS = 300000;
+    function turnTimerActive(startedAt, lastRequestTs, now) {
+        var started = Number(startedAt) || 0;
+        if (started <= 0) { return false; }
+        var last = Number(lastRequestTs) || 0;
+        return (Number(now) || Date.now()) - Math.max(started, last) < TURN_IDLE_MS;
+    }
+    function turnTimerLabel(startedAt, now, lastRequestTs) {
         var started = Number(startedAt) || 0;
         if (started <= 0) { return ''; }
-        var secs = Math.max(0, Math.floor(((Number(now) || Date.now()) - started) / 1000));
+        var at = Number(now) || Date.now();
+        if (lastRequestTs !== undefined && !turnTimerActive(started, lastRequestTs, at)) {
+            at = Math.max(started, Number(lastRequestTs) || 0);
+        }
+        var secs = Math.max(0, Math.floor((at - started) / 1000));
         var h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
         var pad = function (n) { return (n < 10 ? '0' : '') + n; };
         return 'Turn ' + (h ? h + ':' + pad(m) : m) + ':' + pad(s);
@@ -2909,7 +2955,7 @@
         var w = metrics.workers || {};
         var workerRuns = Number(w.runs) || 0;
         var workerDollars = Number(w.dollars) || 0;
-        var timer = turnTimerLabel(metrics.turnStartedAt, now);
+        var timer = turnTimerLabel(metrics.turnStartedAt, now, Number(metrics.lastRequestTs) || 0);
         return usageBannerHtml({
             requests: Number(turn.requestCount) || 0,
             dollars: (Number(turn.nanoAiu) || 0) / 1000000000 / 100 + workerDollars,
@@ -3116,7 +3162,8 @@
 
     function renderCacheAge() {
         // The live turn timer is part of the chat banner; the 1s cache tick refreshes it while a turn runs.
-        if (Number(observabilityMetrics.turnStartedAt) > 0) { renderConversationHealth(); }
+        // Ticks while the turn is active; the render right after it goes cold freezes the final duration.
+        if (Number(observabilityMetrics.turnStartedAt) > 0 && Date.now() - Math.max(Number(observabilityMetrics.turnStartedAt), Number(observabilityMetrics.lastRequestTs) || 0) < TURN_IDLE_MS + 1500) { renderConversationHealth(); }
         var el = document.getElementById('obs-cache-age');
         var common = document.getElementById('common-cache-age');
         var ts = Number(observabilityMetrics.lastRequestTs) || 0;
@@ -5897,7 +5944,6 @@
     function renderStageBar(spec, stalenessAvailable) {
         var stage = spec.specKitStage || '';
         if (!stage) return '';
-        var source = spec.stageSource === 'records' ? 'stored' : 'from artifacts';
         var nextStep = spec.nextStep || '';
         var command = SPEC_STAGE_COMMAND[spec.stageButton] || '';
         var stale = Array.isArray(spec.stale) ? spec.stale : [];
@@ -5908,7 +5954,6 @@
         var checkIsNext = nextStep.indexOf('/sk.check') === 0;
         var check = button('/sk.check', checkIsNext ? nextStep : '/sk.check', 'Check this spec' + (checkIsNext ? ' \u2014 next step' : ''));
         return '<div class="spec-stage-bar">' +
-            '<span class="spec-stage-name spec-stage-' + escapeHtml(stage) + '" title="Stage ' + escapeHtml(source) + '">Stage <strong>' + escapeHtml(stage) + '</strong></span>' +
             (checkIsNext ? check + action : action + check) +
             '<a href="#" class="spec-file-link" data-act="open-spec">spec.md</a>' +
             (spec.hasPlan ? '<a href="#" class="spec-file-link" data-act="open-plan">plan.md</a>' : '') +
@@ -5986,7 +6031,7 @@
 
             var next = spec.nextTaskId || spec.nextTaskText
                 ? '<div class="spec-next" title="' + escapeHtml(spec.nextTaskText) + '"><span class="spec-next-id">' +
-                  escapeHtml(spec.nextTaskId || 'next') + '</span>' + escapeHtml(spec.nextTaskText) + '</div>'
+                  escapeHtml(spec.nextTaskId || 'next') + '</span>' + formatSpecInline(spec.nextTaskText) + '</div>'
                 : '<div class="spec-next specs-muted">' + (spec.hasTasks ? 'All tasks done' : 'No tasks yet') + '</div>';
 
             var facts = [];

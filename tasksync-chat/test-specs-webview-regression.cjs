@@ -188,12 +188,11 @@ console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=tr
     const scan = scanSpecs(repo.root);
     const bars = Object.fromEntries(scan.specs.map((s) => [s.slug, hierarchyContext.renderStageBar(s, scan.stalenessAvailable)]));
     for (const [slug, bar] of Object.entries(bars)) {
-        assert.match(bar, /Stage <strong>[a-z]+<\/strong>/, `${slug} shows a stage`);
+        assert.doesNotMatch(bar, /Stage <strong>|spec-stage-name/, `${slug}: the header badge is the only stage element`);
         assert.match(bar, /data-cmd="\/sk\.check"/, `${slug} always offers /sk.check`);
         assert.doesNotMatch(bar, /Next <code|spec-next-step/, `${slug}: no separate Next chip duplicating the button`);
-        assert.match(bar, new RegExp(`spec-stage-name spec-stage-${bar.match(/Stage <strong>([a-z]+)</)[1]}"`), `${slug}: the stage name carries its stage colour class`);
     }
-    assert.match(bars['001-specified'], /Stage <strong>specify<\/strong>.*\/sk\.check \(clarify\).*data-cmd="\/sk\.plan"/s, 'scenario 1');
+    assert.match(bars['001-specified'], /\/sk\.check \(clarify\).*data-cmd="\/sk\.plan"/s, 'scenario 1');
     assert.match(bars['003-planned'], /Stage mismatch: stored stage tasks needs tasks\.md/, 'scenario 2');
     assert.equal((bars['005-tasked'].match(/<div class="spec-stale">/g) || []).length, 1, 'one plain stale line per upstream, not one per file');
     assert.match(bars['005-tasked'], /<div class="spec-stale"><span class="codicon codicon-history"><\/span> spec\.md has uncommitted edits; 2 files built on it may be out of date; re-check them with \/sk\.check<\/div>/, 'dirty upstream in plain words');

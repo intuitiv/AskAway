@@ -100,9 +100,8 @@ notifier._findHandoff = () => stamp === 1234 ? ({
     assert.match(postedMarkdown, /12\.5K last in · 2\.75K turn out · \$2\.50 turn/);
     assert.match(postedMarkdown, /Impact.*Telegram receives the first handoff/s);
     assert.match(postedMarkdown, /Next.*Continue\?/s);
-    assert.match(postedMarkdown, /Details.*Completed the first requested work/s);
+    assert.doesNotMatch(postedMarkdown, /Details|Completed the first requested work/, 'Details travel in the PDF document, not the text.');
     assert.ok(postedMarkdown.indexOf('last in') < postedMarkdown.indexOf('Handoff'));
-    assert.ok(postedMarkdown.indexOf('Handoff') < postedMarkdown.indexOf('Details'));
 
     stamp = 5678;
     await notifier._onTurnEnd();
@@ -111,10 +110,10 @@ notifier._findHandoff = () => stamp === 1234 ? ({
     assert.equal(replyTaskId, 'handoff:5678');
     assert.match(postedMarkdown, /Impact.*Telegram receives the current handoff/s);
     assert.match(postedMarkdown, /Next.*Reply now\?/s);
-    assert.match(postedMarkdown, /Details.*Completed the second requested work/s);
+    assert.doesNotMatch(postedMarkdown, /Details|Completed the second requested work/);
     assert.match(providerSource, /await this\._broadcastObservabilityMetrics\(\)/);
     assert.match(providerSource, /_observabilityScanPromise/);
-    console.log('EV-TELEGRAM-HANDOFF: PASS order=banner>handoff>details metrics=last-input+turn-output+turn-cost retry=same-turn');
+    console.log('EV-TELEGRAM-HANDOFF: PASS order=banner>handoff details=pdf-only metrics=last-input+turn-output+turn-cost retry=same-turn');
 }
 
 main().catch(error => {
