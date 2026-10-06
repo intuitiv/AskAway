@@ -4,7 +4,7 @@
 
 **Input**: Feature specification from `specs/006-cloud-tasks/spec.md`; binding rules from `specs/005-speckit-guided-flow/Rules.md` § "Cloud tasks (GitHub)".
 
-**Status**: Draft (awaiting reviewer approval at the "how" gate)
+**Status**: Approved by the reviewer 2026-10-06 (F11 consistency check passed: F1–F4 HIGH Fixed, no [NEEDS CLARIFICATION] in spec.md, plan references match tasks.md)
 
 ## Summary
 
@@ -16,7 +16,7 @@ Queue a flagged task to the GitHub Copilot cloud agent by committing one packet 
 |---|---|
 | Feature directory / slug | `specs/006-cloud-tasks` / `006-cloud-tasks` |
 | Checked-out branch at planning | `main` (HEAD `f8e37ab`) |
-| `tasks.md` branch provenance | not yet generated |
+| `tasks.md` branch provenance | generated on `main` at `1fc06d1` (see tasks.md) |
 | Target work branch (building 006 itself) | the 006 story PR branch, one active PR per 005 rules (e.g. `006-us1-proof`) |
 | Cloud worker branch (runtime) | the head branch of the spec's active PR, read with `gh pr view <pr> --json headRefName` at queue time — never inferred from the local checkout |
 | Cloud worker base (runtime) | the PR head sha before the packet commit is pushed; written into the packet as `base`. The PR comment references the packet commit sha, not `base`. |
@@ -41,14 +41,17 @@ Queue a flagged task to the GitHub Copilot cloud agent by committing one packet 
 
 ## Constitution Check
 
-Constitution file is the unfilled template; the gate uses the binding repo rules (same table as 005 plan). Specific to 006:
+Gate: `.specify/memory/constitution.md` v1.0.0 (ratified 2026-10-06). Checked per principle:
 
-| Rule (source) | This plan |
+| Principle (constitution) | This plan |
 |---|---|
-| Consistent Experience: reuse the existing component (AGENTS.md) | Cloud tasks render through the existing worker trace row (`traceRowsHtml`) after converting cloud-run state to its input format (C-20). PASS |
-| Every feature ships an outside-in test (AGENTS.md) | State machine tested from recorded real signals; acceptance tested on git fixtures. PASS |
-| Never send secrets through worker messages/MCP/transcripts (AGENTS.md Hooks) | Secret gate before any packet/comment write (C-16). PASS |
-| OpenCode owns worker conversation UI (AGENTS.md boundary) | Cloud agent UI stays on GitHub; AskAway shows status + links only. PASS |
+| II. Consistent Experience: reuse the existing component | Cloud tasks render through the existing worker trace row (`traceRowsHtml`) after converting cloud-run state to its input format (C-20). PASS |
+| I. Tests from the caller's view | State machine tested from recorded real signals; acceptance tested on git fixtures. PASS |
+| V. No secrets in transit | Secret gate before any packet/comment write (C-16). PASS |
+| III. Worker runtime boundary | Cloud agent UI stays on GitHub; AskAway shows status + links only. PASS |
+| IV. Shared tools at the MCP boundary | No new worker tool; `src/cloud/` is extension code. PASS |
+| VI. Per-workspace observability | Cloud-run state stored per spec under `.askaway/` (C-7). PASS |
+| VII. RTK vs credits | Cloud runs show duration and model, no price. PASS |
 | Workers never commit or push (AskAway Build) | The extension (main process, reviewer-initiated button) commits the packet; verify worker only reads and runs tests. PASS |
 | New store/framework needs ADR | None (files + gh CLI). PASS |
 
@@ -77,6 +80,7 @@ Constitution file is the unfilled template; the gate uses the binding repo rules
 | C-19 | Actions on cloud pushes? | Requires repo admin to turn off "Require approval for workflow runs" (Settings → Copilot → Cloud agent). The poller reports check runs with conclusion `action_required` as state "Checks waiting for approval" (blocker). US1 records the setting state. | Docs: default requires approval. | spec FR-023, Clarification |
 | C-20 | Feed rendering? | Convert a cloud run into the Workers trace-row input (`label`, `state`, `startedAt`, `rows[]` of signals with timestamps and links) at the data boundary; render with existing `traceRowsHtml`. | AGENTS.md consistency. | spec FR-011 |
 | C-21 | Pre-queue refusals and order? | Checked in this order before any commit/comment: `gh auth` ok → active PR open → push permission (`gh api repos/{o}/{r} --jq .permissions.push`) → task eligible → no active attempt (Timed out and No response are finished and may be queued as attempt n+1) → secret gate. The one-at-a-time rule (from US2) and the overlap rule (US5) do not refuse: they make the task Held. Refusal message names the failed check. | FR-021. | spec FR-021 |
+| C-23 | Run ceiling? | Per cloud task wall-clock cap (FR-024): packet `ceilingMinutes` default 50, max 59; the T004 proof budget is 61 minutes (59-minute session plus margin). | Reviewer 2026-10-06: "61 minutes is okay. I think it is reasonable to have cap on time." | spec FR-024, Rules.md |
 | C-22 | Is cloud-agent enablement checkable before queuing? | No documented API; not checked up front. If disabled, the task becomes No response (C-17) with hint "Copilot cloud agent may be disabled for this repository". US1 records the observed behaviour. | No guessing an API. | spec Edge Cases |
 
 No open questions block planning. Reviewer-owned setup items (not code): enable required status `askaway/cloud-task` (C-8), turn off workflow approval for Copilot (C-19).
@@ -187,7 +191,8 @@ specs/006-cloud-tasks/
 ├── spec.md plan.md research.md data-model.md quickstart.md
 ├── contracts/ (packet.md, cloud-run.schema.json, evidence-note.md)
 ├── evidence/  (US1 output)
-└── tasks.md   (next: /sk.tasks)
+├── tasks.md   (T001–T005 for US1; US2–US6 under ## Later)
+├── Goal.md Rules.md reviewer-brief.md
 
 tasksync-chat/
 ├── src/cloud/  gh.ts cloudState.ts cloudPoller.ts cloudQueue.ts packet.ts cloudAccept.ts cloudDigest.ts
@@ -210,4 +215,5 @@ Moved out of tasks.md by the task budget; each becomes tasks after US1's go.
 - US3: `pollPr` (C-4, C-6); pure `deriveCloudState` (including Held, Timed out and No response derivation from elapsed-time rules in data-model transitions); cloud-run store reads/writes `.askaway/specs/<slug>/cloud/<taskId>-<n>.json` (FR-022); feed adapter to `traceRowsHtml` (C-20); Telegram live + `digestLines` (C-18); `test-cloud-state.cjs` replaying the US1 fixture and asserting no cloud price in card/Telegram/digest.
 - US4: `acceptCloudTask` (worktree, verify worker, `outOfScope`, Status-line check); tick + run record + push on pass; `test-cloud-accept.cjs` on pass/fail/out-of-scope fixtures.
 - US5: overlap hold on allowed paths (replaces the US2 one-at-a-time hold only where paths do not overlap); conflict detection (ignores `AskAway-Commit` commits); duration-ceiling policy and configuration (default 50 min, max 59); commit status `askaway/cloud-task` + "merge blocked" line; `test-cloud-safety.cjs`.
+- US6 (ultimate goal, reviewer 2026-10-06): delegate a whole user story to GitHub (cloud agent in Actions) on the active PR branch once the spec is in implement; the PR merges into the branch and runs in GitHub Actions. Built on the per-task route after US5; its own plan and tasks are written after US1's go.
 - Polish: Storybook task-row states and digest; README "Cloud tasks" incl. reviewer setup; quickstart + deploy.

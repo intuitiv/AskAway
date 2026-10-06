@@ -20,6 +20,12 @@
 - Q: What happens to a cloud task when the active PR is merged or closed mid-run? → A: Block merging the active PR while any cloud task on it is Working (reviewer chose the recommended option C; at most one merge per story, and a session is capped at 59 minutes).
 - Q: Should Actions run on cloud-agent pushes? → A: Yes, automatically: "GitHub Actions automatically will run on any PR. No much choice here." Checks on cloud pushes run without the developer; US1's live proof confirms it on a real PR.
 
+### Session 2026-10-06
+
+- Q: Time cap on cloud runs? → A: Reviewer: "61 minutes is okay. I think it is reasonable to have cap on time." Recorded as FR-024 and in Rules.md.
+- Q: Is a model picker required (plan C-3 fallback)? → A: Reviewer: "Sure" — the PR-default model fallback is accepted per FR-008 "where GitHub allows".
+- Q: Issue delegation / a whole story in GitHub? → A: Reviewer: "I want to implement a user story in github. Once the spec is in implement phase, we merge them to the branch and run it in github actions. Thats my ultimate goal." Added as Later User Story 6; scope extended, not excluded.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Live proof of the cloud route (Priority: P1)
@@ -112,6 +118,14 @@ The extension prevents unsafe overlap and runaway work: no two cloud tasks run o
 
 ---
 
+### User Story 6 - Delegate a whole user story to GitHub (Priority: Later)
+
+Once a spec is in the implement stage, the developer delegates a whole user story (not one task) to the GitHub cloud agent running in Actions on the active PR branch; the work is merged to that branch and runs in GitHub Actions. This is the reviewer's ultimate goal (see Goal.md). It is built after US1's go and US2–US5, on the same per-task route, packet, status and acceptance rules; its own scenarios are written when it is planned.
+
+**Independent Test**: With a spec in implement and an active PR, delegate one story; its tasks land on the PR branch, Actions run, and the story checkpoint verification from 005 passes locally before acceptance.
+
+---
+
 ### Edge Cases
 
 - The active PR is merged or closed while a cloud task is Working: merging is blocked while any cloud task on the active PR is Working; the Specs tab says which task and how long until its 59-minute cap. A PR closed outside the extension marks its Working tasks Returned.
@@ -150,6 +164,7 @@ The extension prevents unsafe overlap and runaway work: no two cloud tasks run o
 - **FR-021**: Queuing MUST be refused, before any commit or comment, when there is no active PR, the developer lacks write access, or the task already has an active attempt; Timed out and No response attempts are finished and may be re-queued as attempt n+1.
 - **FR-022**: Per-task cloud facts (packet path, comment link, model, start/end time, duration, commits, state) MUST be stored per spec in `.askaway/`, mapped by spec name.
 - **FR-023**: Repository workflows MUST run automatically on cloud-agent pushes to the active PR, so check results are waiting for the developer; the task status shows their pass/fail.
+- **FR-024**: Every cloud task MUST have a wall-clock cap per run; no run continues past it (default 50 min, never above the 59-minute session limit). The US1 live proof has a 61-minute budget (reviewer, 2026-10-06: "61 minutes is okay. I think it is reasonable to have cap on time.").
 
 ### Key Entities
 
@@ -198,7 +213,7 @@ The extension prevents unsafe overlap and runaway work: no two cloud tasks run o
 
 ## Out of Scope
 
-- Issue-based delegation (new branch and PR per task) as a default route.
+- Issue-based delegation (new branch and PR per task) as a default route. Whole-story delegation on the active PR branch is Later User Story 6, not excluded.
 - Creating, merging or closing PRs; opening a new PR after a story checkpoint (005 owns this).
 - Passing any human approval gate offline or auto-answering the cloud agent's questions.
 - Showing or estimating a monetary price per cloud task.

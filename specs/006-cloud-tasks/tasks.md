@@ -39,7 +39,7 @@ description: "Task list for 006 Cloud Tasks"
 **Independent Test**: spec.md US1.
 
 - [x] T003 [US1] `tools/cloud-proof.cjs --pr <n> --task PROOF-1 [--dry-run]`: commit a trivial packet (append one line to `specs/006-cloud-tasks/evidence/proof-target.md`), post the C-12 comment (one variant names a model), then a second comment 1 min later (concurrency probe, C-5); poll every 60 s up to 59 min; write raw polls to `test-fixtures/cloud-signals-<date>.json`; `--dry-run` prints the packet and comment without posting; dry-run covered by `test-cloud-proof.cjs` in `test:workers`
-- [ ] T004 [US1] Live run on a reviewer-chosen open PR (reviewer action: posts to GitHub) and write `specs/006-cloud-tasks/evidence/proof-<date>.md` per contracts/evidence-note.md with no "unknown" rows
+- [ ] T004 [US1] Live run (proof budget 61 min, FR-024) on a reviewer-chosen open PR (reviewer action: posts to GitHub) and write `specs/006-cloud-tasks/evidence/proof-<date>.md` per contracts/evidence-note.md with no "unknown" rows
 - [ ] T005 [US1] Fold observed facts into plan C-3, C-4, C-5, C-15, C-19 (event name, agent login, model selectability, concurrency, Actions behaviour) and record go/no-go; update the spec Assumption currently marked "UNVERIFIED" and the packet/comment contracts to reflect the observed route and model-selection behavior
 
 **Checkpoint**: SC-001; SC-002 part 1. No-go → stop for reviewer.
