@@ -10,6 +10,16 @@ export interface SpecCostTurn {
     inputTokens: number;
     outputTokens: number;
     nanoAiu: number;
+    /** Optional, backward compatible: absent on rows written before spec 007. Validator rows use `source: 'validator'`. */
+    source?: string;
+    reasoningTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+}
+
+/** A validator run's own row: its turnKey never equals the observed turn's, so recordSpecTurn cannot overwrite that row. */
+export function validatorTurnKey(responseId: string): string {
+    return `validator:${responseId}`;
 }
 
 export interface SpecCostTotals {

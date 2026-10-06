@@ -12,7 +12,8 @@ export const MIN_COMMENTARY_WORDS = 3;
 const MAX_GOAL_CHARS = 2000;
 const OPENER_ITEMS = 30;
 
-export interface CommentaryItem { id: string; ts: number; kind: CommentaryKind; text: string; turnId: string }
+/** `validator` items are written only by `postValidator()`; `detail` is the validator's expandable trace rows. */
+export interface CommentaryItem { id: string; ts: number; kind: CommentaryKind | 'validator'; text: string; turnId: string; detail?: Record<string, unknown> }
 
 /** Persisted per workspace so the next conversation's hook can carry goal and feed over. */
 export interface CommentaryState {
@@ -21,6 +22,11 @@ export interface CommentaryState {
     goalUpdatedAt: number;
     clearedAt: number;
     items: CommentaryItem[];
+    /**
+     * Validator items live apart from `items`: the conversation hook and `buildOpener` read `items` and inject it into the
+     * agent's prompt, and beta validator output must never reach the agent. Only `commentaryView` (the tab) merges them.
+     */
+    validatorItems?: CommentaryItem[];
 }
 
 export type PostResult = { status: 'POSTED'; id: string } | { status: 'REJECTED'; reason: string };
@@ -32,6 +38,7 @@ export function commentaryKey(workspacePath: string): string {
     return resolved.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
 }
 
+/** The agent-facing feed: validator items are excluded (beta isolation). */
 export function uncleared(state: CommentaryState): CommentaryItem[] {
     return state.items.filter((item) => item.ts > state.clearedAt);
 }
@@ -55,14 +62,16 @@ export function buildOpener(state: CommentaryState): string {
 export interface CommentaryView { goal: string; goalUpdatedAt: number; items: CommentaryItem[]; archivedCount: number; opener: string; turnStarts: number[]; currentPrompt: string }
 
 export function commentaryView(state: CommentaryState, turnStarts: number[] = [], currentPrompt = ''): CommentaryView {
-    const items = uncleared(state);
-    return { goal: state.goal, goalUpdatedAt: state.goalUpdatedAt, items, archivedCount: state.items.length - items.length, opener: buildOpener(state), turnStarts, currentPrompt };
+    const agentItems = uncleared(state);
+    const validator = (state.validatorItems ?? []).filter((item) => item.ts > state.clearedAt);
+    const items = validator.length ? [...agentItems, ...validator].sort((a, b) => a.ts - b.ts) : agentItems;
+    return { goal: state.goal, goalUpdatedAt: state.goalUpdatedAt, items, archivedCount: state.items.length - agentItems.length, opener: buildOpener(state), turnStarts, currentPrompt };
 }
 
 /** Same turns-file shape as hooks/spec-context-inject.cjs writes: parallel `starts` and `prompts`, newest last. */
 const MAX_TURNS = 200;
 const PROMPT_CHARS = 300;
-const CREDENTIAL_ANYWHERE = new RegExp(CREDENTIAL.source, 'g');
+export const CREDENTIAL_ANYWHERE = new RegExp(CREDENTIAL.source, 'g');
 export function promptExcerpt(text: string): string {
     const oneLine = String(text ?? '').replace(/\s+/g, ' ').trim().replace(CREDENTIAL_ANYWHERE, '[redacted]');
     return oneLine.length > PROMPT_CHARS ? `${oneLine.slice(0, PROMPT_CHARS - 1)}…` : oneLine;
@@ -147,6 +156,25 @@ export class CommentaryStore {
         const item: CommentaryItem = { id: `c-${ts.toString(36)}-${++this.sequence}`, ts, kind: input.kind as CommentaryKind, text,
             turnId: input.turnId ?? '' };
         state.items.push(item);
+        this.write(state);
+        return { status: 'POSTED', id: item.id };
+    }
+
+    /**
+     * Internal only (never an MCP tool): the validator's one-line summary plus expandable `detail`. No word cap (R-3);
+     * a credential anywhere in text or detail drops the whole item. Stored apart from agent-facing items.
+     */
+    postValidator(workspacePath: string, input: { text: string; detail?: Record<string, unknown>; turnId?: string }): PostResult {
+        const text = String(input.text ?? '').replace(/\s+/g, ' ').trim();
+        if (!text) { return { status: 'REJECTED', reason: 'empty text' }; }
+        const body = `${text}\n${JSON.stringify(input.detail ?? {})}`;
+        if (body.replace(CREDENTIAL_ANYWHERE, '') !== body) { return { status: 'REJECTED', reason: 'text contains a credential' }; }
+        const state = this.read(workspacePath);
+        const validatorItems = state.validatorItems ?? [];
+        const ts = Math.max(this.now(), (validatorItems[validatorItems.length - 1]?.ts ?? 0) + 1, state.clearedAt + 1);
+        const item: CommentaryItem = { id: `v-${ts.toString(36)}-${++this.sequence}`, ts, kind: 'validator', text, turnId: input.turnId ?? '',
+            ...(input.detail ? { detail: input.detail } : {}) };
+        state.validatorItems = [...validatorItems, item];
         this.write(state);
         return { status: 'POSTED', id: item.id };
     }
