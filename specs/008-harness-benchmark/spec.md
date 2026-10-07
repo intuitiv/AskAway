@@ -12,11 +12,11 @@
 
 ### Questions for reviewer
 
-- **OPEN — efficiency formula**: Which number should represent harness efficiency?
-  - **(a)** Prompt tokens processed per output token (context amplification, price-independent).
-  - **(b)** $ per accepted task on the benchmark.
-  - **(c)** Both, with (a) live in the banner and (b) on the scoreboard.
-  - **Recommendation: (c)**, separating context amplification from the cost of accepted work across a model mix. This is not a confirmed decision; cache/reasoning token treatment and zero-denominator display must be defined with the selected formula.
+- **Efficiency score (defined by agent at reviewer's request, 2026-10-07: "i dont care about the formula, i want you to define and give me some sample")**:
+  - **Score = $ per accepted task** (lower is better): all spend of every agent and model, failed attempts included, divided by tasks that pass the hidden checks.
+  - **Quality bar**: a configuration with pass rate below 80% is shown but not ranked ("cheap but unfinished").
+  - The banner's live "Efficiency" (tokens read per token written) stays a context-weight hint, not the benchmark score.
+  - Pending reviewer confirmation of the 80% bar.
 
 ## User Scenarios & Testing *(mandatory)*
 
