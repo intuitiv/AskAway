@@ -7,9 +7,12 @@ function slice(text, start, end, label) {
 }
 
 export function buildCommentaryKit({ webviewSrc, providerSrc }) {
-    const code = slice(webviewSrc, '// ── Commentary tab: pure render', '// ── end Commentary pure render ──', 'render block')
+    const code = slice(webviewSrc, '// ── Usage banner', '// ── end Usage banner ──', 'usage banner block')
+        + '\n' + slice(webviewSrc, '// ── Turn trace rows: pure render', '// ── end Turn trace rows ──', 'trace rows block')
+        + '\n' + slice(webviewSrc, '// ── Workers tab: pure render', '// ── end Workers pure render ──', 'workers block')
+        + '\n' + slice(webviewSrc, '// ── Commentary tab: pure render', '// ── end Commentary pure render ──', 'render block')
         + '\n' + slice(webviewSrc, '// ── Commentary typewriter', '// ── end Commentary typewriter ──', 'typewriter block');
-    const fns = new Function(`${code}\nreturn { renderCommentaryHtml, commentaryOpenCount, commentaryTypewrite, commentaryAnimateNew };`)();
+    const fns = new Function(`${code}\nreturn { renderCommentaryHtml, validatorTraceRows, traceRowsHtml, commentaryOpenCount, commentaryTypewrite, commentaryAnimateNew };`)();
     const panelHtml = slice(providerSrc, '<div class="tab-panel" id="panel-commentary">', '</div><!-- End panel-commentary -->', 'panel markup')
         .replace('class="tab-panel"', 'class="tab-panel active"');
     return { ...fns, panelHtml };

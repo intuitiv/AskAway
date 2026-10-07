@@ -169,6 +169,7 @@ export class ValidatorObserver {
                 text: headline,
                 detail: { observedId: response.observedId, source: response.source, answer: response.answer, sources: response.sources,
                     observations: response.observations, summary: response.summary, impact: response.impact, error: response.error,
+                    contextSuggestions: response.contextSuggestions,
                     usage: response.usage, workerId: response.workerId, sessionId: response.sessionId },
             });
         } catch { /* Commentary failure never blocks */ }

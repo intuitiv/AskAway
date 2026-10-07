@@ -29,7 +29,7 @@ Decisions the reviewer stated (2026-09-29 and 2026-09-30). Change a rule only wh
 - The orchestrator may use the terminal only for one standalone command; anything needing more commands goes to a `build` worker.
 - A `build` worker has the tools of AskAway Build but runs in OpenCode. Two independent tasks may go to two build workers; guard against abuse (at most two at once per track, disjoint files only).
 - Workers are not limited to Luna: use Sonnet (or the right tier) when the work needs it.
-- Model tiers (reviewer, 2026-09-30): Opus 5.5 is the top, Luna 6 the cheapest. The cheap-and-smart middle changes over time: always pick Sonnet while it works; when Sonnet is unavailable, use Sol 6.1.
+- Model tiers (reviewer, 2026-09-30; corrected 2026-10-07): Opus 5.5 is the top, Luna 6 the cheapest. "Sol 6.1 as default only instead of Sonnet. It is not a replacement for Opus." Sol 6.1 is the middle default; Sonnet only by explicit choice; Opus stays the top tier where a stated reason needs it.
 - A worker that runs longer than 4 minutes must not block the orchestrator: the call returns an ID and the orchestrator checks back later.
 
 ## Specs tab and Telegram

@@ -705,6 +705,7 @@ export class OpenCodeWorkerRuntime {
             }
             if (record.type !== 'checkpoint' || !record.usage) { continue; }
             total.requests++;
+            workerIds.add(record.workerId);
             total.dollars += record.usage.cost;
             total.inputTokens += record.usage.input + record.usage.cacheRead + record.usage.cacheWrite;
             total.outputTokens += record.usage.output;

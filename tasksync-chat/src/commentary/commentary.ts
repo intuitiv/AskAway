@@ -171,7 +171,8 @@ export class CommentaryStore {
         if (body.replace(CREDENTIAL_ANYWHERE, '') !== body) { return { status: 'REJECTED', reason: 'text contains a credential' }; }
         const state = this.read(workspacePath);
         const validatorItems = state.validatorItems ?? [];
-        const ts = Math.max(this.now(), (validatorItems[validatorItems.length - 1]?.ts ?? 0) + 1, state.clearedAt + 1);
+        const ts = Math.max(this.now(), (validatorItems[validatorItems.length - 1]?.ts ?? 0) + 1,
+            (state.items[state.items.length - 1]?.ts ?? 0) + 1, state.clearedAt + 1);
         const item: CommentaryItem = { id: `v-${ts.toString(36)}-${++this.sequence}`, ts, kind: 'validator', text, turnId: input.turnId ?? '',
             ...(input.detail ? { detail: input.detail } : {}) };
         state.validatorItems = [...validatorItems, item];

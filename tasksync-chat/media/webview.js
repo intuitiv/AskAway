@@ -5304,16 +5304,34 @@
         });
         return { earlier: earlier, current: current };
     }
-    function commentaryItemHtml(item) {
+    function validatorTraceRows(item) {
+        var detail = item.detail || {};
+        var rows = [];
+        ['answer', 'sources', 'observations', 'summary', 'impact', 'match', 'contextSuggestions', 'error'].forEach(function (field) {
+            var value = detail[field];
+            if (field === 'answer' && !value && !detail.error) value = 'no source answers this question';
+            if (value == null || value === '' || (Array.isArray(value) && !value.length)) return;
+            rows.push({ kind: 'tool', id: item.id + ':' + field, tool: field,
+                status: field === 'error' ? 'error' : 'ok', inputPreview: detail.observedId || 'validator',
+                outputPreview: typeof value === 'string' ? value : JSON.stringify(value, null, 2) });
+        });
+        var usage = detail.usage;
+        if (usage) rows.push({ kind: 'request', id: item.id + ':usage', model: 'validator', dollars: usage.cost,
+            inputTokens: usage.input, outputTokens: usage.output, cachedTokens: usage.cacheRead });
+        return rows;
+    }
+    function commentaryItemHtml(item, openIds) {
         var flagged = commentaryIsHeadsUp(item);
         return '<div class="cm-item' + (flagged ? ' cm-heads-up' : '') + '" data-id="' + commentaryEsc(item.id) + '">' +
             '<div class="cm-body">' +
             '<div class="cm-text">' + commentaryMarkup(item.text) + '</div>' +
+            (item.kind === 'validator' ? '<table class="observability-table obs-timeline-table">' + TRACE_HEAD +
+                '<tbody>' + traceRowsHtml(validatorTraceRows(item), { openIds: openIds }) + '</tbody></table>' : '') +
             '<div class="cm-meta">' + (flagged ? '<span class="cm-heads-up-tag">HEADS-UP</span>' : '') + '<span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
             '</div></div>';
     }
     // `openTurns[key]` records the reviewer's own clicks; otherwise earlier turns are collapsed.
-    function renderCommentaryHtml(view, openTurns) {
+    function renderCommentaryHtml(view, openTurns, openIds) {
         if (!view) return '<div class="cm-empty">Commentary is not available for this workspace.</div>';
         var all = view.items || [];
         var headsUp = commentaryOpenCount(view);
@@ -5345,9 +5363,9 @@
                 '<span class="cm-turn-title">' + commentaryMarkup(first.text) + '</span></summary>' +
                 '<div class="cm-turn-meta"><span class="cm-turn-time">' + clock + '</span>' +
                 '<span class="cm-turn-count">' + turn.items.length + (flagged ? ' · ' + flagged + ' heads-up' : '') + '</span></div>' +
-                turn.items.map(commentaryItemHtml).join('') + '</details>';
+                turn.items.map(function (item) { return commentaryItemHtml(item, openIds); }).join('') + '</details>';
         });
-        turns.current.forEach(function (item) { html += dayDivider(item.ts) + commentaryItemHtml(item); });
+        turns.current.forEach(function (item) { html += dayDivider(item.ts) + commentaryItemHtml(item, openIds); });
         return html;
     }
     // ── end Commentary pure render ──
@@ -5414,7 +5432,7 @@
         var feed = document.getElementById('cm-feed');
         if (feed) {
             var pinned = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
-            feed.innerHTML = renderCommentaryHtml(commentaryView, commentaryOpenTurns);
+            feed.innerHTML = renderCommentaryHtml(commentaryView, commentaryOpenTurns, traceOpenIds(feed));
             // Lines already on screen at first load appear at once; only new arrivals type in.
             if (commentarySeen) { commentaryAnimateNew(feed, commentarySeen, 18); } else {
                 commentarySeen = {};

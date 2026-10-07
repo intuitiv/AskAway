@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { resolveSelection, workerRegistryKey, WorkerProfile } from './workerProfiles';
+import { resolveSelection, workerRegistryKey, WorkerProfile, workerProfileRefresh } from './workerProfiles';
 
 export const MAX_QUEUE_WAIT_SECONDS = 120;
 export const MAX_CONTEXT_TOKENS = 300000;
@@ -84,6 +84,7 @@ export interface RouterOptions {
 export class WorkerRouter {
     private readonly workersById = new Map<string, RoutedWorker>();
     private readonly profiles: Map<string, WorkerProfile>;
+    private readonly refreshProfiles: () => WorkerProfile[] | undefined;
     private readonly now: () => number;
     private readonly cacheTtlMs: number;
     private sequence = 0;
@@ -92,11 +93,17 @@ export class WorkerRouter {
 
     constructor(profiles: WorkerProfile[], options: RouterOptions = {}) {
         this.profiles = new Map(profiles.map((profile) => [profile.name, profile]));
+        this.refreshProfiles = workerProfileRefresh(profiles);
         this.now = options.now ?? Date.now;
         this.cacheTtlMs = (options.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS) * 1000;
     }
 
     route(request: RouteRequest): RouteResult {
+        const refreshed = this.refreshProfiles();
+        if (refreshed) {
+            this.profiles.clear();
+            for (const profile of refreshed) { this.profiles.set(profile.name, profile); }
+        }
         const profile = this.profiles.get(request.profile);
         if (!profile) {
             return { status: 'SELECTION_UNAVAILABLE', reason: `unknown profile ${request.profile}` };

@@ -102,6 +102,24 @@ export function loadWorkerProfiles(dir: string): WorkerProfile[] {
         .map((file) => parseWorkerProfile(fs.readFileSync(path.join(dir, file), 'utf8'), path.join(dir, file)));
 }
 
+/** Selection-time refresh for file-backed profiles; in-memory fixture profiles stay unchanged. */
+export function workerProfileRefresh(profiles: WorkerProfile[]): () => WorkerProfile[] | undefined {
+    const dirs = [...new Set(profiles.filter(p => p.source).map(p => path.dirname(p.source)))];
+    const signature = () => dirs.map(dir => fs.readdirSync(dir).filter(file => file.endsWith('.md')).sort()
+        .map(file => {
+            const stat = fs.statSync(path.join(dir, file));
+            return `${dir}/${file}:${stat.mtimeMs}:${stat.size}`;
+        }).join('|')).join('|');
+    let previous = signature();
+    return () => {
+        const current = signature();
+        if (current === previous) { return undefined; }
+        const refreshed = [...profiles.filter(p => !p.source), ...dirs.flatMap(loadWorkerProfiles)];
+        previous = current;
+        return refreshed;
+    };
+}
+
 /** Resolves the requested selection exactly. There is no fallback to another model or thinking level. */
 export function resolveSelection(profile: WorkerProfile, request: WorkerSelection = {}): SelectionResult {
     const model = request.model ?? profile.model;
