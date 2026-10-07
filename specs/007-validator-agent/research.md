@@ -2,6 +2,24 @@
 
 ## R-1 agentmemory evaluation (reviewer rule, 2026-10-02)
 
+### T001 result — spike 2026-10-07; binding adapter decision
+
+Reviewer: "Lets keep them under an interface and use agentmemory for now. We can migrate to others if needed." This decision and the real local agentmemory **0.9.30** spike supersede the older R-1 assumptions below about project persistence, filtered search and verified evolve/history contracts. Spike artifacts: `.askaway/analyst/agentmemory-spike.cjs`, `agentmemory-README.md`, `agentmemory-routes.txt`; today's observed results supplied in the implementation packet, not a new live probe in T005.
+
+- Local spike ran zero-LLM with `EMBEDDING_PROVIDER=local` and provider keys unset. This avoids the earlier inherited-key OpenAI attempt; it is not proof of embedding-cache network isolation or restart durability.
+- `POST /agentmemory/remember` returned HTTP 201 and `id`; stored `agentId`, but **not project**. Use `project:<name>` in `concepts`, alongside optional `spec:`, `story:`, `task:` and `kind:` tags. Never depend on the server's project field for isolation.
+- `POST /agentmemory/search` has no documented project/agent request filters. README lines 1553–1562 describe shared/isolated modes and `?agentId=` on isolated endpoints, not a `/search` body contract. Retrieval ranked mostly lexically; paraphrase recall was weak. Over-fetch ranked candidates, then filter against our authoritative project/agent/spec ledger; unknown IDs are never trusted.
+- No verified supersede/update/history request contract. README 1057, 1084, 1390 and 1809–1833 claim version chains/features, but do not establish callable contracts; route names alone are insufficient. Do not guess `/evolve` bodies.
+- Export/import exists; `POST /agentmemory/import` with `strategy=skip` worked non-destructively. Cross-store migration remains unverified.
+- Bearer authentication uses the existing local secret at `~/.agentmemory/secret`; the adapter receives it via its constructor, never reads that file, logs it or puts it in request bodies/records. Only the Authorization header carries it.
+- `/agentmemory/consolidation/status.enabled=false` confirmed. Auto-forget/decay status and occupied-port adoption are not claimed verified by this result; lifecycle and disabling retention automation belong to T011.
+
+**T005 design**: `knowledgeStore.ts` owns the portable `remember(fact, scope)`, `recall(query, scope, limit)`, `supersede(id, newFact)`, `history(id)`, `export()` interface; scope is `{project, agentId, spec?}`. `agentmemoryStore.ts` uses agentmemory only as the search index. `ValidatorRecords` writes redacted append-only `index.jsonl` under the workspace's `.askaway/specs/_no-spec/validator/`; each row includes the fact, exact scope, returned memory ID, root version ID and optional superseded ID. The shared workspace ledger also supports facts without an active spec. New versions append, preserving old statements; recall excludes every superseded ID and post-filters exact scope. History/export read the authoritative ledger, not undocumented server history/export shapes. Remember/recall throw typed visible errors on index failure; no offline recall fallback. No automatic expiry, LLM calls, guessed version APIs or legacy-memory migration in this adapter.
+
+**Evidence**: `rtk node tasksync-chat/test-knowledge-store.cjs` → `PASS EV-KNOWLEDGE-STORE: HTTP scope isolation, append-only supersede/history, secret gate, visible server-down errors`. Fake HTTP server mimics unfiltered stale/duplicate candidates, 201 IDs without project metadata and index outages; ledger reopening retains history and supersede filtering. This proves adapter behaviour, not stronger upstream search guarantees.
+
+### Historical evaluation (2026-10-02; superseded where noted above)
+
 Source: upstream `main` README, generated REST/config references, and source at https://github.com/rohitg00/agentmemory (checked 2026-10-02).
 
 **What it is**: a persistent memory server for coding agents ("Your coding agent remembers everything"), built on the iii engine. Captures observations (via hooks), compresses them into searchable memory, and recalls context. Works with OpenCode, Copilot CLI, Claude Code, Cursor and any MCP client; all agents share one server.

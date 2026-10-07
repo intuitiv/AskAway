@@ -37,6 +37,7 @@ export interface SpecCycleTask {
     phase: string;
     specId: string;
     specSlug: string;
+    tags: string[];
 }
 
 export interface SpecCycleSummary {
@@ -481,7 +482,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
         for (const task of tasksBySlug.get(spec.slug) || []) {
             if (!task.cycleId) { continue; }
             const members = cycles.get(task.cycleId) || [];
-            members.push({ id: task.id, text: task.text, done: task.done, phase: task.phase, specId: spec.id, specSlug: spec.slug });
+            members.push({ id: task.id, text: task.text, done: task.done, phase: task.phase, specId: spec.id, specSlug: spec.slug, tags: task.tags });
             cycles.set(task.cycleId, members);
         }
     }

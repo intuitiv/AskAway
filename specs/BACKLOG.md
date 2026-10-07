@@ -78,10 +78,10 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 | T011 | US6 memory server lifecycle started by AskAway, local-only | BLOCKED | Depends on T001; FR-024, FR-025 | specs/007-validator-agent/tasks.md |
 | T012 | US6 seed from md files + MCP access for Copilot and OpenCode | BLOCKED | Depends on T005, T008, T011 | specs/007-validator-agent/tasks.md |
 | T013 | US6 switch prompts from /memories to the store | BLOCKED | Depends on T012 | specs/007-validator-agent/tasks.md |
-| DATA-2WS | Analyst must cover the two workspaces the reviewer uses (AppLogic and TaskSync), including main-agent Copilot logs | READY | Extend `tasksync-chat/tools/worker-analyst.cjs` inputs beyond worker ledgers | Reviewer ask, 2026-10-07 |
+| DATA-2WS | Analyst must cover the two workspaces the reviewer uses (AppLogic and TaskSync), including main-agent Copilot logs | DONE | `tools/copilot-usage-extract.cjs` + analyst Main agent/Harness sections (EV-COPILOT-USAGE-EXTRACT, fbdd080) | Reviewer ask, 2026-10-07 |
 | NEW-4 | Harness efficiency number | NEEDS-DECISION | Reviewer: "Show me a sample to approve" | Reviewer ask, 2026-10-07 |
 | BUG-1 | Banner request count excludes worker requests | IN-PROGRESS | Reviewer: "I still dont see total number of requests including worker requests" | 2026-10-07 |
-| BUG-2 | app-logic runs 99fd4i-7/8 hung with no events; orchestrator (Opus, 200K) waited ~23 min | IN-PROGRESS | RCA running; banner $0.05 was correct (those runs spent nothing) | 2026-10-07 |
+| BUG-2 | app-logic runs 99fd4i-7/8 hung with no events; orchestrator (Opus, 200K) waited ~23 min | DONE | Cause: session reused from another dir (proven by hand); fix CWD_MISMATCH + STALLED after 60 s (9126ad5) | 2026-10-07 |
 | R1 | Reuse an idle worker even if the new packet asks a different thinking level | DECIDED | Reviewer 2026-10-07: "if we use the same worker, we reuse all those config things. Do not lose cache" | RCA run-7cxp1q-16 |
 | R2 | Reuse an expired worker (<100K) instead of pinging | DECIDED (IN-PROGRESS) | Reviewer 2026-10-07: "only for 3-4 times ... do not use workers which are more than few hours old" (pings limited to 3-4 times; no workers older than a few hours); implementation in progress | RCA run-7cxp1q-16 |
 | M1 | One agentmemory server for agents + validator, or two | DECIDED | Reviewer 2026-10-07: "agentmemory is replacement for all memory needs. Validator also uses it." One server; D15 superseded; "Use agentmemory or anything better which has good reviews" | 2026-10-07 |
@@ -89,5 +89,6 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 | M3 | Memory migration as its own spec (009) | DECIDED | Reviewer 2026-10-07: "Do it in 007. We have to many specs. It belongs there." No spec 009; US6 in spec 007 | 2026-10-07 |
 | M4 | How agentmemory stays running (login item vs started by AskAway) | DECIDED | Reviewer 2026-10-07: "Askaway starts it like we start opencode server." FR-025 in spec 007 | 2026-10-07 |
 | T004-C | Cloud proof uses throwaway PR and tests approval behaviour | DONE | "use throwaway PR. And cloud agent is enabled, but not sure if it require approval or not, but try and test it"; #1608 demo done, copilot Actions ran/no hold observed; setting not captured | specs/006-cloud-tasks/evidence/proof-2026-10-07.md |
+| AG-1 | Route some workers to Antigravity (org Pro licence) behind a settings toggle | NEEDS-DECISION | Technically feasible: official `agy` CLI has headless `-p --output-format stream-json`, `--conversation <id>` resume, `--model`/`--effort`, token usage (no $), MCP. BLOCKER: Antigravity terms say third-party software/tools accessing the service breach the agreement → needs org/Google confirmation before use | Reviewer ask, 2026-10-07 |
 
 Counts: see the reviewer's latest decision list; NEEDS-DECISION rows above are the open questions.

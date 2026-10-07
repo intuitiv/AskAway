@@ -5852,6 +5852,15 @@
         return allCycles ? 'Cycles' : 'Phases';
     }
 
+    function renderCloudEligibility(task, specSlug) {
+        var tags = Array.isArray(task.tags) ? task.tags : [];
+        var local = tags.filter(function(tag) { return /^local:/i.test(tag); })[0];
+        if (local) return '<span class="specs-muted" title="' + escapeHtml(local.replace(/^local:\s*/i, '')) + '">Local</span>';
+        if (!task.id || !tags.some(function(tag) { return /^cloud$/i.test(tag); })) return '';
+        return '<button class="spec-action spec-task-run" data-act="queue-cloud" data-ref="' + escapeHtml(task.id) +
+            '" data-spec-slug="' + escapeHtml(specSlug) + '" title="Only queues on an explicit reviewer request">Queue in cloud</button>';
+    }
+
     function renderSpecWork(spec) {
         var cycles = Array.isArray(spec.cycles) ? spec.cycles : [];
         if (cycles.length) {
@@ -5892,6 +5901,7 @@
                                 (task.done ? '<span class="spec-done-label">Done</span>' : '') + '</span>' +
                                 (!task.done && task.id ? '<button class="spec-task-run" data-act="implement-ref" data-ref="' + escapeHtml(task.id) +
                                     '" title="Implement ' + escapeHtml(task.id) + '" aria-label="Implement ' + escapeHtml(task.id) + '"><span class="codicon codicon-play"></span></button>' : '') +
+                                renderCloudEligibility(task, task.specSlug || spec.slug) +
                                 '</div>';
                         }).join('');
                         return '<details class="spec-cycle" data-work-key="' + escapeHtml(cycleKey) + '"' + (cycleOpen ? ' open' : '') + '>' +
@@ -5941,7 +5951,8 @@
                         (task.done ? 'codicon-check' : 'codicon-circle-large-outline') + '"></span><span class="spec-work-id">' +
                         escapeHtml(task.id || '') + '</span><span class="spec-work-text">' + formatSpecInline(task.text || task.id) + '</span>' +
                         (!task.done && task.id ? '<button class="spec-task-run" data-act="implement-ref" data-ref="' + escapeHtml(task.id) +
-                            '" title="Implement ' + escapeHtml(task.id) + '" aria-label="Implement ' + escapeHtml(task.id) + '"><span class="codicon codicon-play"></span></button>' : '') + '</div>';
+                            '" title="Implement ' + escapeHtml(task.id) + '" aria-label="Implement ' + escapeHtml(task.id) + '"><span class="codicon codicon-play"></span></button>' : '') +
+                        renderCloudEligibility(task, spec.slug) + '</div>';
                 }).join('') + '</details>';
         }).join('') + '</div>';
     }
