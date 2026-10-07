@@ -26,7 +26,7 @@
 - Memory access: "if it uses as memory store, agent should be able to call it for memory needs". Agents can query the same store for memory needs, without receiving validator outputs.
 - A11: "I'll manually see them few days". No automated baseline in beta; the reviewer manually assesses quality.
 - A5: "keep older versions also, hide them". Retain superseded versions, hidden from recall and default views.
-- A10 / A15: "Sure" — draft missing success criteria and observed/skipped definitions; drafted by agent, reviewer to approve.
+- A10 / A15 Resolved: A10: "I review the validator response in comentary. And memory should give respond to agent as memory tool." A15: "We should only worry about last agent repsonse not intermittent agent response. As in turn end. Whatever we send to telegram that should be sent to validate. Observation is agent previous turn reply and user response should be observed. Observing intermittent things is also fine but they are not really like unconfirmed by user (some times we can store). So validator should only come into the picture in following cases. - When turn ends - When turn starts - When agent calls the tool for memory" SC-010 is pull-only; SC-011 remains draft pending reviewer approval.
 - A12 / D22: "memories md files are source of truth, we can seed memories built so far from them, but we dont use or update them going forward... We are changing memory solution and at the same time, we are using the same for validator also." Migration below; earlier OPEN topology question resolved by M1: ONE server.
 
 ### Session 2026-10-07 (decisions, later)
@@ -161,7 +161,7 @@ One local agentmemory server (or a better-reviewed alternative chosen after rese
 
 ### Functional Requirements
 
-- **FR-001**: System MUST pass every agent or worker response to the validator (Goal: observes continuously).
+- **FR-001**: System MUST run the validator at exactly three triggers: turn end validates the final agent reply, the same text sent to Telegram; turn start observes the previous turn's final agent reply together with the user's response; an agent's memory tool call. Intermediate agent responses MUST NOT be sent to the validator.
 - **FR-002**: Validator MUST answer an agent's question from the active spec and its resources, ADRs, memories and documents, and show the answer in Commentary so the reviewer sees it before replying (Rules: Sources).
 - **FR-003**: Validator MUST keep the active spec's ultimate goal (Goal.md) in view for every answer.
 - **FR-004**: Validator MUST produce an answer as close as possible to the reviewer's own, plus observations, a summary and the impact.
@@ -180,7 +180,7 @@ One local agentmemory server (or a better-reviewed alternative chosen after rese
 - **FR-017**: A validator failure MUST NOT block the agent or reviewer flow and MUST be visible.
 - **FR-018**: Validator output MUST be advisory; it MUST NOT approve gates or trigger destructive actions on the reviewer's behalf. In beta, validator answers MUST appear only in the Commentary tab and MUST NOT be sent to the agent; linking validator answers to the agent is out of scope for this spec's first release.
 
-- **FR-019**: System MUST observe every agent or worker response, running a cheap check first that skips pure progress updates (no question, decision or new information) before the validator answers.
+- **FR-019**: System MUST use the three triggers in FR-001, not a per-response cheap check. Intermediate agent responses MUST NOT be validated; observing them is allowed, but anything learned from them is unconfirmed by the user.
 - **FR-020**: System MUST keep stored knowledge without automatic expiry or review flags (the reviewer is the only authority). Reviewer changes supersede the current version; older versions MUST be retained but hidden from recall and default views. The agentmemory server MUST have auto-forget off (FR-024).
 - **FR-021**: In Commentary, the validator MUST show how closely its prediction matched the reviewer's actual reply (the match measure of FR-007), so the reviewer can build confidence before linking.
 - **FR-022**: Agents MUST be able to query the same memory store for their memory needs; this MUST NOT route validator outputs to agent channels in beta. Topology resolved: ONE server (M1, Session 2026-10-07).
@@ -189,7 +189,7 @@ One local agentmemory server (or a better-reviewed alternative chosen after rese
 - **FR-025**: AskAway MUST start or attach to one detached memory server on first use, with the port as the cross-window mutex, exactly like the shared OpenCode server (M4: "Askaway starts it like we start opencode server."). No server per window, worker or agent.
 - **FR-026**: Agent and worker prompts and profiles MUST point to the memory store, not to `/memories`, once seeding is done.
 
-**Observed vs skipped (draft — drafted by agent, reviewer to approve; A15)**: observed means a response has passed through the cheap check. Skipped means it was checked but not sent to the answering validator because it contains only progress (no question, decision or new information). Skipped responses remain counted and visible in Commentary stats; observed does not mean answered.
+**Validator triggers (resolved 2026-10-07; A15)**: The validator runs at exactly three triggers: turn end validates the final agent reply, using the same text sent to Telegram; turn start observes the previous turn's final agent reply paired with the user's response; an agent's memory tool call returns the answer only to the calling agent through the requested memory tool result. Intermediate agent responses are not validated. Observing them is allowed, and observations may be stored, but anything learned from them is unconfirmed by the user.
 
 ### Key Entities
 
@@ -214,7 +214,7 @@ The numeric targets below (60%, 70%, 80%, 10%) remain provisional. Reviewer 2026
 - **SC-007**: Validator cost stays under 10% of the total cost of the agent work it observes.
 - **SC-008**: A validator failure delays the agent or reviewer flow by 0 blocking steps in all tested failure cases.
 - **SC-009**: Every prompt change provides results from the three eval sets (answering, improving, storing) for manual quality review in beta; no automated baseline comparison is required.
-- **SC-010 (draft — drafted by agent, reviewer to approve; A10)**: 0 validator outputs reach any agent channel in beta, including chat input, worker input, MCP tool results, hooks and prompt text, across observe, close-loop and context-proposal paths.
+- **SC-010 (resolved 2026-10-07; A10)**: 0 validator outputs are pushed into any agent channel, including chat input, worker input, hooks and prompt text, across observe, close-loop and context-proposal paths. The reviewer reviews validator responses in Commentary. Memory tool results requested by the agent are the one allowed path from memory/validator to that calling agent; nothing is sent to any other agent.
 - **SC-011 (draft — drafted by agent, reviewer to approve; A10)**: 0 seeded secrets from agent responses, reviewer replies or sources reach any sink: validator input, agentmemory requests/storage, jsonl records, Commentary/UI, logs or cost records.
 
 ## Assumptions
