@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { WorkerProfile } from './workerProfiles';
 import type { KeepWarmWorker } from './keepWarm';
-import { KEEP_WARM_PROMPT, RouteResult, WorkerRouter } from './workerRouter';
+import { KEEP_WARM_PROMPT, MAX_PARALLEL_WORKERS, RouteResult, WorkerRouter } from './workerRouter';
 
 export const MAX_WAIT_SECONDS = 240;
 const MAX_EVIDENCE_LINES = 25;
@@ -269,9 +269,18 @@ export class OpenCodeWorkerRuntime {
         this.attachUrl = url || undefined;
     }
 
-    start(packet: WorkerPacket): RunView | { status: 'SELECTION_UNAVAILABLE' | 'INELIGIBLE'; reason: string } {
+    private capRefusal(adding: number): { status: 'PARALLEL_CAP'; running: number; max: number; reason: string } | undefined {
+        const running = this.router.runningCount();
+        if (running + adding <= MAX_PARALLEL_WORKERS) { return undefined; }
+        return { status: 'PARALLEL_CAP', running, max: MAX_PARALLEL_WORKERS,
+            reason: `${running} workers running; ${adding} more would exceed the cap of ${MAX_PARALLEL_WORKERS}. Wait for a worker to finish.` };
+    }
+
+    start(packet: WorkerPacket): RunView | { status: 'SELECTION_UNAVAILABLE' | 'INELIGIBLE'; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>> {
         const invalid = validatePacket(packet);
         if (invalid) { return { status: 'INELIGIBLE', reason: invalid }; }
+        const capped = this.capRefusal(1);
+        if (capped) { return capped; }
         const workspace = canonical(packet.workspacePath);
         const routed = this.router.route({ workspacePath: workspace, profile: packet.profile, model: packet.model, thinking: packet.thinking,
             packetId: packet.objective.slice(0, 40), estimatedSeconds: packet.estimatedSeconds ?? 60 });
@@ -279,9 +288,12 @@ export class OpenCodeWorkerRuntime {
         return this.admit(routed, workspace, packet);
     }
 
-    submit(workerId: string, packet: WorkerPacket): RunView | { status: 'RETIRED' | 'INELIGIBLE'; workerId?: string; reason: string } {
+    submit(workerId: string, packet: WorkerPacket): RunView | { status: 'RETIRED' | 'INELIGIBLE'; workerId?: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>> {
         const invalid = validatePacket(packet);
         if (invalid) { return { status: 'INELIGIBLE', workerId, reason: invalid }; }
+        // Queuing behind a running worker adds no parallelism; starting on an idle one does.
+        const capped = this.router.worker(workerId)?.active ? undefined : this.capRefusal(1);
+        if (capped) { return capped; }
         const routed = this.router.submitTo(workerId, packet.objective.slice(0, 40), packet.estimatedSeconds ?? 60);
         if (!('runId' in routed)) {
             return { status: routed.status === 'RETIRED' ? 'RETIRED' : 'INELIGIBLE', workerId, reason: routed.reason };
@@ -298,6 +310,8 @@ export class OpenCodeWorkerRuntime {
         | (RunView & { forkSkipped: string })> {
         const candidate = validatePacket(packet) ? undefined : this.router.forkCandidate(workerId);
         if (!candidate) { return this.submit(workerId, packet); }
+        const forkCapped = this.capRefusal(1);
+        if (forkCapped) { return forkCapped; }
         const parentSession = this.sessionsByWorker.get(workerId);
         const fork = this.forkSession ?? (this.attachUrl ? ((id: string) => forkSessionViaServer(this.attachUrl as string, id)) : undefined);
         let forkedSession = '';
@@ -319,6 +333,51 @@ export class OpenCodeWorkerRuntime {
         const view = this.admit(routed, workspace, packet, parentKnowledge);
         this.record(this.runs.get(view.runId) as RunRecord, { type: 'fork', reason: `forked from ${workerId} (session ${parentSession})` });
         return { ...this.view(this.runs.get(view.runId) as RunRecord), status: 'FORKED', forkedFrom: workerId };
+    }
+
+    /**
+     * Warm-then-fan-out: forks an IDLE warm worker's session once per packet. Every fork is a new worker with the warm
+     * worker's profile, model and thinking (the point is to reuse its prompt cache), runs in parallel, and stays reusable.
+     * Refused whole (nothing forked or started) on any mismatch, on the parallel cap, or when a fork fails.
+     */
+    async fanout(workerId: string, packets: WorkerPacket[]): Promise<{ status: 'FANNED_OUT'; workerId: string; runs: Array<RunView & { forkedFrom: string }> }
+        | { status: 'INELIGIBLE' | 'MODEL_MISMATCH'; workerId: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>>> {
+        const refuse = (status: 'INELIGIBLE' | 'MODEL_MISMATCH', reason: string) => ({ status, workerId, reason });
+        if (packets.length < 2 || packets.length > MAX_PARALLEL_WORKERS) { return refuse('INELIGIBLE', `fanout needs 2..${MAX_PARALLEL_WORKERS} packets, got ${packets.length}`); }
+        const parentReason = this.router.fanoutRefusal(workerId);
+        if (parentReason) { return refuse('INELIGIBLE', parentReason); }
+        const parent = this.router.worker(workerId) as NonNullable<ReturnType<WorkerRouter['worker']>>;
+        for (const [index, packet] of packets.entries()) {
+            const invalid = validatePacket(packet);
+            if (invalid) { return refuse('INELIGIBLE', `packet ${index + 1}: ${invalid}`); }
+            const mismatch = packet.profile !== parent.profile ? `profile ${packet.profile} != ${parent.profile}`
+                : packet.model && packet.model !== parent.model ? `model ${packet.model} != ${parent.model}`
+                : packet.thinking && packet.thinking !== parent.thinking ? `thinking ${packet.thinking} != ${parent.thinking}` : '';
+            if (mismatch) { return refuse('MODEL_MISMATCH', `packet ${index + 1}: ${mismatch}; forks reuse the warm worker's cache, so they keep its profile, model and thinking`); }
+        }
+        const capped = this.capRefusal(packets.length);
+        if (capped) { return capped; }
+        const parentSession = this.sessionsByWorker.get(workerId);
+        const fork = this.forkSession ?? (this.attachUrl ? ((id: string) => forkSessionViaServer(this.attachUrl as string, id)) : undefined);
+        if (!parentSession) { return refuse('INELIGIBLE', 'the warm worker has no OpenCode session yet'); }
+        if (!fork) { return refuse('INELIGIBLE', 'no shared OpenCode server attached'); }
+        let sessions: string[];
+        try { sessions = (await Promise.all(packets.map(() => fork(parentSession)))).map((forked) => forked.sessionId); }
+        catch (error) { return refuse('INELIGIBLE', `fork failed: ${(error as Error).message}`); }
+        // The forks awaited above may have let other dispatches in: re-check so the cap holds.
+        const recapped = this.capRefusal(packets.length);
+        if (recapped) { return recapped; }
+        const parentKnowledge = [...this.runs.values()].filter((run) => run.workerId === workerId && run.knowledge).pop()?.knowledge ?? '';
+        const runs: Array<RunView & { forkedFrom: string }> = [];
+        for (const [index, packet] of packets.entries()) {
+            const routed = this.router.startFork(workerId, packet.objective.slice(0, 40), packet.estimatedSeconds ?? 60);
+            if (!routed || !('runId' in routed)) { continue; }
+            this.sessionsByWorker.set(routed.workerId, sessions[index]);
+            const view = this.admit(routed, canonical(packet.workspacePath), packet, parentKnowledge);
+            this.record(this.runs.get(view.runId) as RunRecord, { type: 'fork', reason: `fanned out from ${workerId} (session ${parentSession})` });
+            runs.push({ ...this.view(this.runs.get(view.runId) as RunRecord), forkedFrom: workerId });
+        }
+        return { status: 'FANNED_OUT', workerId, runs };
     }
 
     status(runId: string): (RunView & { evidence?: string[] }) | undefined {

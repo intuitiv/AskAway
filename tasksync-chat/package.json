@@ -442,7 +442,7 @@
         ],
         "toolReferenceName": "worker",
         "displayName": "Worker",
-        "modelDescription": "Control async OpenCode workers. Pick `action`:\n- start: run one self-contained packet (profile, dispatchTurnId, baseRevision, objective, allowedFiles, acceptance, expected, command; optional model, thinking, track). Returns a handle at once.\n- submit: same packet plus workerId, queued on a warm worker (reuses its session, ~4x cheaper).\n- list: live workers with knowledge, nextInputTokens, warmForSeconds; check before start.\n- status | wait | cancel | resume | logs: by runId. status adds the report (evidence) once the run is terminal. wait blocks at most 240s (timeoutSeconds), then STILL_RUNNING: end your turn. logs: facts only (limit).\nReplies are bounded JSON facts, never transcripts.",
+        "modelDescription": "Control async OpenCode workers. Pick `action`:\n- start: run one self-contained packet (profile, dispatchTurnId, baseRevision, objective, allowedFiles, acceptance, expected, command; optional model, thinking, track). Returns a handle at once.\n- submit: same packet plus workerId, queued on a warm worker (reuses its session, ~4x cheaper).\n- list: live workers with knowledge, nextInputTokens, warmForSeconds; check before start.\n- fanout: ONLY when you explicitly want parallel copies of one warm worker: workerId (an IDLE warm worker holding the shared context) + packets (2..8, same fields as start; model/thinking must match the warm worker or be omitted). Forks its session once per packet, each a new worker on the same model so the cache is reused. Max 8 workers run at once (PARALLEL_CAP).\n- status | wait | cancel | resume | logs: by runId. status adds the report (evidence) once the run is terminal. wait blocks at most 240s (timeoutSeconds), then STILL_RUNNING: end your turn. logs: facts only (limit).\nReplies are bounded JSON facts, never transcripts.",
         "canBeReferencedInPrompt": true,
         "icon": "$(server-process)",
         "inputSchema": {
@@ -458,7 +458,8 @@
                 "wait",
                 "cancel",
                 "resume",
-                "logs"
+                "logs",
+                "fanout"
               ],
               "description": "Which operation to run."
             },
@@ -526,6 +527,89 @@
             },
             "workerId": {
               "type": "string"
+            },
+            "packets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "profile": {
+                    "type": "string",
+                    "description": "Worker mode: build, code, test, explore, research, verify, gradle, rca, review, quality, perf, authoring, devx."
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "provider/model; must be allowed by the mode. Omit for the mode default."
+                  },
+                  "thinking": {
+                    "type": "string",
+                    "description": "Reasoning variant; must be allowed by the mode."
+                  },
+                  "dispatchTurnId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The orchestrator turn this work is attributed to."
+                  },
+                  "baseRevision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Explicit commit, tag, or remote ref."
+                  },
+                  "objective": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "allowedFiles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Files the worker may change; empty means read-only."
+                  },
+                  "acceptance": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "One observable assertion."
+                  },
+                  "expected": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The exact expected result."
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?!\\s*cd\\s)[^&|;<>]+$",
+                    "description": "One simple verification command run from the repo root, e.g. `rtk npm --prefix tasksync-chat run test:workers`. No cd, &&, |, ; or redirects."
+                  },
+                  "estimatedSeconds": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "track": {
+                    "type": "string",
+                    "maxLength": 24,
+                    "description": "Your plan's track for this packet, e.g. \"A\"; the Workers tab shows one lane per track."
+                  },
+                  "workspacePath": {
+                    "type": "string",
+                    "description": "Defaults to the current workspace."
+                  }
+                },
+                "required": [
+                  "profile",
+                  "dispatchTurnId",
+                  "baseRevision",
+                  "objective",
+                  "allowedFiles",
+                  "acceptance",
+                  "expected",
+                  "command"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 2,
+              "maxItems": 8
             },
             "runId": {
               "type": "string"
@@ -975,7 +1059,7 @@
     "compile": "tsc -p ./",
     "watch": "node esbuild.js --watch",
     "lint": "eslint src --ext ts",
-    "test:workers": "node test-worker-selection.cjs && node test-worker-observability.cjs && node test-worker-mcp-tools.cjs && node test-worker-turn-spend.cjs && node test-worker-fork.cjs && node test-worker-runtime-contract.cjs && node test-workers-control-plane.cjs && node test-commentary-backend.cjs && node test-vscode-tool-bridge.cjs && node test-commentary-ui.cjs && node test-subagent-timer.cjs && node test-shared-server-attach.cjs && node test-async-subagent-runner-e2e.cjs && node test-conversation-hooks.cjs && node test-orchestrator-policy.cjs && node test-turn-replay.cjs && node test-mcp-port-reclaim.cjs && node test-telegram-live-commentary.cjs && node test-telegram-conversation-reply.cjs && node test-telegram-turn-lifecycle.cjs && node test-telegram-delivery.cjs && node test-task-budget.cjs && node test-specs-webview-regression.cjs && node test-webview-card-timer-settings.cjs && node test-spec-stages.cjs && node test-spec-run-records.cjs && node test-spec-staleness.cjs && node test-spec-stories.cjs && node test-spec-readiness.cjs && node test-cloud-gh.cjs && node test-cloud-secrets.cjs && node test-cloud-proof.cjs && node test-eval-graders.cjs && node test-pr-daily-facts.cjs && node test-cache-clock-waits.cjs && node test-log-cursor.cjs && node test-command-patterns.cjs && node test-checkpoint.cjs && node test-requirements-docs.cjs && node test-batch.cjs && node test-spec-facts-cli.cjs && node test-spec-planning-contract.cjs && node test-availability.cjs && node test-availability-ui.cjs && node test-turn-budget-workers.cjs && node test-worker-keep-warm.cjs && node test-long-run-handoff.cjs && node test-worker-worktree-visibility.cjs && node test-validator-records.cjs && node test-validator-foundation.cjs && node test-validator-observer.cjs"
+    "test:workers": "node test-worker-selection.cjs && node test-worker-observability.cjs && node test-worker-mcp-tools.cjs && node test-worker-turn-spend.cjs && node test-worker-fork.cjs && node test-worker-runtime-contract.cjs && node test-workers-control-plane.cjs && node test-commentary-backend.cjs && node test-vscode-tool-bridge.cjs && node test-commentary-ui.cjs && node test-subagent-timer.cjs && node test-shared-server-attach.cjs && node test-async-subagent-runner-e2e.cjs && node test-conversation-hooks.cjs && node test-orchestrator-policy.cjs && node test-turn-replay.cjs && node test-mcp-port-reclaim.cjs && node test-telegram-live-commentary.cjs && node test-telegram-conversation-reply.cjs && node test-telegram-turn-lifecycle.cjs && node test-telegram-delivery.cjs && node test-task-budget.cjs && node test-specs-webview-regression.cjs && node test-webview-card-timer-settings.cjs && node test-spec-stages.cjs && node test-spec-run-records.cjs && node test-spec-staleness.cjs && node test-spec-stories.cjs && node test-spec-readiness.cjs && node test-cloud-gh.cjs && node test-cloud-secrets.cjs && node test-cloud-proof.cjs && node test-eval-graders.cjs && node test-pr-daily-facts.cjs && node test-cache-clock-waits.cjs && node test-log-cursor.cjs && node test-command-patterns.cjs && node test-checkpoint.cjs && node test-requirements-docs.cjs && node test-batch.cjs && node test-spec-facts-cli.cjs && node test-spec-planning-contract.cjs && node test-availability.cjs && node test-availability-ui.cjs && node test-turn-budget-workers.cjs && node test-worker-keep-warm.cjs && node test-long-run-handoff.cjs && node test-worker-worktree-visibility.cjs && node test-validator-records.cjs && node test-validator-foundation.cjs && node test-validator-observer.cjs && node test-worker-fanout.cjs && node test-worker-analyst.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",

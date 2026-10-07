@@ -5,6 +5,8 @@ export const MAX_CONTEXT_TOKENS = 300000;
 export const DEFAULT_CACHE_TTL_SECONDS = 300;
 /** A submit to a busy worker whose expected wait exceeds this forks the worker's session instead of queuing. */
 export const FORK_AFTER_SECONDS = 30;
+/** Most workers executing at once; start, submit-fork and fanout refuse with PARALLEL_CAP beyond it. */
+export const MAX_PARALLEL_WORKERS = 8;
 /** The one-line prompt of a keep-warm ping (spec 005 T018). */
 export const KEEP_WARM_PROMPT = 'ping, reply ok';
 
@@ -171,7 +173,20 @@ export class WorkerRouter {
         this.dispatches++;
         this.start(worker, entry);
         return { status: 'CREATED', workerId: worker.workerId, runId: entry.runId, model: worker.model, thinking: worker.thinking,
-            queuePosition: 0, estimatedWaitSeconds: 0, reason: `forked from busy worker ${parentId}`, forkedFrom: parentId };
+            queuePosition: 0, estimatedWaitSeconds: 0, reason: `forked from worker ${parentId}`, forkedFrom: parentId };
+    }
+
+    /** Workers executing a run right now (running or starting); queued entries add no parallelism. */
+    runningCount(): number {
+        return [...this.workersById.values()].filter((worker) => worker.active).length;
+    }
+
+    /** Why an idle worker cannot be the warm parent of a fan-out; empty when it can. */
+    fanoutRefusal(workerId: string): string {
+        const worker = this.workersById.get(workerId);
+        if (!worker) { return 'unknown worker'; }
+        if (worker.active || worker.state !== 'IDLE') { return `worker is ${worker.active ? 'running' : worker.state.toLowerCase()}, fan-out needs an idle warm worker`; }
+        return this.ineligibility(worker, false);
     }
 
     /** Only a not-yet-started entry can be cancelled; running work is never cancelled here. */

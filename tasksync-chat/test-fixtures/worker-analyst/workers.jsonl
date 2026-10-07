@@ -1,0 +1,24 @@
+{"ts":0,"type":"start","workerId":"hit","runId":"h1","profile":"code","model":"model-a"}
+{"ts":1000,"type":"checkpoint","workerId":"hit","runId":"h1","usage":{"input":10,"cacheRead":80,"cacheWrite":10,"output":10,"cost":1}}
+{"ts":2000,"type":"stop","workerId":"hit","runId":"h1","state":"COMPLETED"}
+{"ts":10000,"type":"start","workerId":"miss","runId":"m1","profile":"test","model":"model-b"}
+{"ts":11000,"type":"checkpoint","workerId":"miss","runId":"m1","usage":{"input":20,"cacheRead":60,"cacheWrite":20,"output":20,"cost":2}}
+{"ts":12000,"type":"stop","workerId":"miss","runId":"m1","state":"COMPLETED"}
+not valid JSON
+{"ts":20000,"type":"start","workerId":"expired","runId":"e1","profile":"test","model":"model-b"}
+{"ts":21000,"type":"checkpoint","workerId":"expired","runId":"e1","usage":{"input":20,"cacheRead":60,"cacheWrite":20,"output":20,"cost":2}}
+{"ts":22000,"type":"stop","workerId":"expired","runId":"e1","state":"COMPLETED"}
+{"ts":240000,"type":"checkpoint","workerId":"hit","runId":"h1","ping":true,"usage":{"input":0,"cacheRead":100,"cacheWrite":0,"output":10,"cost":0.25}}
+{"ts":250000,"type":"checkpoint","workerId":"miss","runId":"m1","ping":true,"usage":{"input":0,"cacheRead":100,"cacheWrite":0,"output":10,"cost":0.5}}
+{"ts":400000,"type":"start","workerId":"hit","runId":"h2","profile":"code","model":"model-a"}
+{"ts":401000,"type":"checkpoint","workerId":"hit","runId":"h2","usage":{"input":10,"cacheRead":80,"cacheWrite":10,"output":10,"cost":1}}
+{"ts":402000,"type":"stop","workerId":"hit","runId":"h2","state":"COMPLETED"}
+{"ts":600000,"type":"start","workerId":"miss","runId":"m2","profile":"test","model":"model-b"}
+{"ts":601000,"type":"checkpoint","workerId":"miss","runId":"m2","usage":{"input":20,"cacheRead":60,"cacheWrite":20,"output":20,"cost":2}}
+{"ts":602000,"type":"stop","workerId":"miss","runId":"m2","state":"COMPLETED"}
+{"ts":900000,"type":"start","workerId":"archived","runId":"a1","profile":"code","model":"model-a"}
+{"ts":901000,"type":"stop","workerId":"archived","runId":"a1","state":"COMPLETED"}
+{"ts":902000,"type":"archive","workerId":"archived"}
+{"ts":903000,"type":"start","workerId":"retired","runId":"r1","profile":"code","model":"model-a"}
+{"ts":904000,"type":"error","workerId":"retired","runId":"r1","state":"FAILED"}
+{"ts":1000000,"type":"start","workerId":"active","runId":"live","profile":"code","model":"model-a"}

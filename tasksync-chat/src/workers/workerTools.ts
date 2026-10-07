@@ -3,9 +3,9 @@ import { MAX_WAIT_SECONDS, OpenCodeWorkerRuntime, WorkerPacket } from './openCod
 import { projectWorkersState } from './workersState';
 import type { TurnBudget } from './turnBudget';
 
-export const WORKER_TOOL_NAMES = ['worker_start', 'worker_submit', 'worker_list', 'worker_status', 'worker_wait', 'worker_cancel', 'worker_resume', 'worker_logs'] as const;
+export const WORKER_TOOL_NAMES = ['worker_start', 'worker_submit', 'worker_list', 'worker_status', 'worker_wait', 'worker_cancel', 'worker_resume', 'worker_logs', 'worker_fanout'] as const;
 /** Hosts see ONE `worker` tool; `action` selects the operation, like the `gradle` tool (reviewer, 2026-09-25). */
-export const WORKER_ACTIONS = WORKER_TOOL_NAMES.map((name) => name.slice('worker_'.length)) as ['start', 'submit', 'list', 'status', 'wait', 'cancel', 'resume', 'logs'];
+export const WORKER_ACTIONS = WORKER_TOOL_NAMES.map((name) => name.slice('worker_'.length)) as ['start', 'submit', 'list', 'status', 'wait', 'cancel', 'resume', 'logs', 'fanout'];
 
 type Register = (name: string, config: { description: string; inputSchema: z.ZodTypeAny }, handler: (args: any) => Promise<{ content: Array<{ type: 'text'; text: string }> }>) => unknown;
 
@@ -38,7 +38,7 @@ const packetShape = {
 
 /** The refusal a worker start/submit gets once the turn total reached the limit; null when dispatch is allowed. */
 export function workerBudgetRefusal(action: string, budget: Pick<TurnBudget, 'spentAiu' | 'limitAiu' | 'exceeded'> | null | undefined): Record<string, unknown> | null {
-    if ((action !== 'start' && action !== 'submit') || !budget || !budget.exceeded) { return null; }
+    if ((action !== 'start' && action !== 'submit' && action !== 'fanout') || !budget || !budget.exceeded) { return null; }
     const spent = Number(budget.spentAiu.toFixed(2));
     return {
         status: 'BUDGET_EXCEEDED',
@@ -92,12 +92,13 @@ export function workerTool(source: () => RuntimeSource, defaultWorkspace: string
             + '- start: run one self-contained packet (profile, dispatchTurnId, baseRevision, objective, allowedFiles, acceptance, expected, command; optional model, thinking, track). Returns a handle at once.\n'
             + '- submit: same packet plus workerId, queued on a warm worker (reuses its session, ~4x cheaper).\n'
             + '- list: live workers with knowledge, nextInputTokens, warmForSeconds; check before start.\n'
+            + '- fanout: ONLY when you explicitly want parallel copies of one warm worker: workerId (an IDLE warm worker holding the shared context) + packets (2..8, same fields as start; model/thinking must match the warm worker or be omitted). Forks its session once per packet, each a new worker on the same model so the cache is reused. Max 8 workers run at once (PARALLEL_CAP).\n'
             + `- status | wait | cancel | resume | logs: by runId. status adds the report (evidence) once the run is terminal. wait blocks at most ${MAX_WAIT_SECONDS}s (timeoutSeconds), then STILL_RUNNING: end your turn. logs: facts only (limit).\n`
             + 'Replies are bounded JSON facts, never transcripts.',
         inputSchema: z.object({ action: z.enum(WORKER_ACTIONS).describe('Which operation to run.'), ...shape }),
         run: async ({ action, ...args }) => {
             const operation = operations.get(action);
-            if (operation && options.turnBudget && (action === 'start' || action === 'submit')) {
+            if (operation && options.turnBudget && (action === 'start' || action === 'submit' || action === 'fanout')) {
                 const refusal = workerBudgetRefusal(action, await options.turnBudget());
                 if (refusal) { return refusal; }
             }
@@ -127,6 +128,11 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
         description: 'Queue a packet on an existing warm worker (reuses its OpenCode session). If that worker is busy for more than ~30s the session is forked into a new parallel worker instead (status FORKED, forkedFrom). Refuses explicitly if the worker is retired or ineligible.',
         inputSchema: z.object({ workerId: z.string(), ...packetShape }),
     }, async (args) => (await runtime()).submitForking(args.workerId, packetOf(args)));
+
+    register('worker_fanout', {
+        description: 'Warm-then-fan-out: fork an idle warm worker\'s session once per packet (2..8). Each fork is a new parallel worker with the same profile, model and thinking. Refused whole on a model mismatch or when it would exceed 8 running workers (PARALLEL_CAP). Use only when explicitly wanted.',
+        inputSchema: z.object({ workerId: z.string(), packets: z.array(z.object(packetShape)).min(2).max(8) }),
+    }, async (args) => (await runtime()).fanout(args.workerId, args.packets.map(packetOf)));
 
     register('worker_list', {
         description: 'List this workspace\'s live workers (running or still warm) so you can reuse one: mode, model, state, what it knows, '
