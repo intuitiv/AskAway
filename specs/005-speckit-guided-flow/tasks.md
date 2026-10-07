@@ -21,7 +21,7 @@ description: "Task list for 005 Spec Kit Guided Flow"
 ## Phase 1: Setup
 
 - [x] T001 Sample-repo fixture builder `test-fixtures/specs-sample.cjs` (specs at every stage, legacy cycle spec, optional git history)
-- [ ] T002 [P] Track `.askaway/specs/` in git and ignore `.askaway/specs/*/cloud/` in `.gitignore` (plan D-17; waits for reviewer confirmation)
+- [x] T002 [P] Track `.askaway/specs/` in git and ignore `.askaway/specs/*/cloud/` in `.gitignore` (plan D-17). Won't do: reviewer 2026-10-07 'No'
 
 ---
 

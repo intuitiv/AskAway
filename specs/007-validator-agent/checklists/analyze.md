@@ -89,7 +89,7 @@ Source: `/sk.check` re-run, read-only, before implement. Re-read Goal, Rules, sp
 | A19 | Still open | quickstart health step when T001 lands |
 | A20 | Still open (reviewer) | spec.md Status `Draft` vs plan approved; checklists unticked |
 
-Counts now: open 10 (A1, A4, A5, A10, A11, A12, A15, A17, A19, A20), fixed 10 (A2, A3, A6, A7, A8, A9, A13, A14, A16, A18). Of the open ones, reviewer decisions: A1, A4, A11, A20.
+Counts as of 2026-10-06 (historical): open 10 (A1, A4, A5, A10, A11, A12, A15, A17, A19, A20), fixed 10 (A2, A3, A6, A7, A8, A9, A13, A14, A16, A18). See the 2026-10-07 status update below.
 
 ### New findings
 
@@ -107,3 +107,22 @@ New counts: CRITICAL 0, HIGH 0 new (A1, A4 stay HIGH), MEDIUM 3 new, LOW 3 new.
 ### Verdict
 
 Ready to implement now (not blocked by A1 or A4): T001 (spike, needs a local agentmemory server), T002, T003 (parallel), then T004a, T004b. Blocked: T005 and T008 by A1, T006 by A4 and T005, T007 by T005/T006, T009a/b by T004a to T007, T010 by all (A11 only for its baseline step). Fold N3 into T004a before starting it.
+
+## Reviewer decisions 2026-10-07 — current statuses
+
+This update supersedes the historical statuses and verdict above. Decisions are recorded in spec.md and Rules.md; changes to tasks, research, contracts and plan are outside this docs packet.
+
+| ID | Current status | Reviewer decision / remaining work |
+|---|---|---|
+| A1 | Resolved (reviewer) | "a separate agentmemory server only for the validator, with auto-forget off"; install approved. Dedicated validator server selected; see OPEN topology question under A12. |
+| A4 | Resolved (reviewer) | "Validator for few turns it is more like trial basis. I manually see the quality of validator how it is responding on behalf of me." FR-006 and US2 now run alongside, never blocking the reviewer's reply. |
+| A5 | Resolved (reviewer) | "keep older versions also, hide them". FR-011/FR-020 and US4 retain superseded versions, hidden from recall and default views; changed flag informational. |
+| A10 | Drafted by agent, reviewer to approve | Reviewer said "Sure". SC-010: 0 validator outputs reach any agent channel (chat/worker input, MCP results, hooks, prompt text); SC-011: 0 seeded secrets in any sink (validator input, agentmemory, jsonl, Commentary/UI, logs, cost). |
+| A11 | Resolved (reviewer) | "I'll manually see them few days". Manual quality review, no automated baseline in beta; SC-002 deferred until linking. |
+| A12 / D22 | Resolved migration decision; topology OPEN | "memories md files are source of truth, we can seed memories built so far from them, but we dont use or update them going forward... We are changing memory solution and at the same time, we are using the same for validator also." Assumption and FR-023 draft: agentmemory replaces VS Code `/memories` md files for agents, seeded once then frozen. OPEN: shared agent/validator server conflicts with A1's "only for the validator". Rebuild-from-index is not decided by this statement. |
+| A15 | Drafted by agent, reviewer to approve | Reviewer said "Sure". Observed = passed through cheap check; skipped = checked pure progress not sent to answering validator; skips counted and visible in Commentary stats. |
+| A20 / N6 | Needs reviewer — more details requested | Spec stays Draft; checklist approval/defer decisions are not inferred. |
+
+New FR-022 records: "if it uses as memory store, agent should be able to call it for memory needs" — agents can query the same store, without routing validator output to agent channels.
+
+Current A1–A20 counts: resolved/fixed 15, awaiting approval or otherwise open 5 (A10, A15, A17, A19, A20). A12's migration decision is resolved, but server topology and rebuild-from-index remain OPEN; N2 workspace isolation is not implicitly resolved. A1/A4 no longer block on reviewer choice; installation/spike and task dependencies still apply.

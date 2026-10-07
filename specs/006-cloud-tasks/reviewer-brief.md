@@ -5,6 +5,7 @@
 - 2026-09-30, spec Clarifications: block merging the active PR while a cloud task is Working; Actions run on cloud pushes: "GitHub Actions automatically will run on any PR. No much choice here."
 - 2026-10-06, today: "I want to implement a user story in github. Once the spec is in implement phase, we merge them to the branch and run it in github actions. Thats my ultimate goal."
 - 2026-10-06, today: "61 minutes is okay. I think it is reasonable to have cap on time."
+- 2026-10-07: "Okay. We dont want to be more than that also." Confirmed default 50 min, hard max 59 min, never above (including T004); supersedes the earlier 61-minute budget.
 
 ## The design in short
 - `/sk.tasks` marks a task `[cloud]` or `[local: reason]`; eligible tasks get a "Queue in cloud" button.
@@ -24,10 +25,12 @@
 - F11: plan approved after a check (HIGH findings Fixed, no open clarification, plan matches tasks).
 - F13: "Sure" — the model fallback to the PR default is accepted.
 - F22: story-level delegation added as Later US6.
-- Time cap: FR-024 and Rules.md; T004 budget 61 min.
+- Time cap: FR-024 and Rules.md; confirmed 2026-10-07: default 50 min, hard max 59 min, never above.
+- T004 PR (reviewer-named 2026-10-07): https://github.com/Pega-ProductEngineering/model-calculation-service-app-logic/pull/1603.
 
 ## Remaining questions
+- 2026-10-07: F7 and F21 still need reviewer decisions; reviewer asked for more details on both. The recommendations below are not approvals.
 - **F7 — merge block scope.** Today the plan posts a required status on every PR head. Options: (a) block merge on all PRs; (b) only PRs that have a cloud task. Recommend (b): fewer surprises, same safety where it matters; it needs the extension to post `success` on other PRs only when a task exists.
 - **F21 — go/no-go.** T004 measures what GitHub really does when the extension posts a comment: same-branch push, which model ran and whether we could choose it, which signals appear and in what order, whether Actions ran or waited for approval, whether two comments run two sessions at once, and the duration. Criteria: same branch (must), signals observable (must), Actions behaviour (known, may be limit), model selectable (nice), concurrency (nice). Go: US2 starts. No-go: we stop and bring you the evidence. Option (a): go only if model is selectable and concurrency is yes; (b): go on any working route and record gaps as limits. Recommend (b); the model fallback is already accepted (F13) and one-at-a-time is the default.
 - **F18 — tags on 006's own tasks.** Options: (a) tag `[cloud]`/`[local: reason]` when the `/sk.tasks` asset ships; (b) tag now by hand. Recommend (a): the tag format is defined by that asset.
-- **T004 prerequisites (yours).** Options per item; recommend all four before the run: (1) name an open PR to post on (a throwaway PR is safest); (2) confirm the Copilot cloud agent is enabled for the repo; (3) turn off "Require approval for workflow runs" (Settings → Copilot → Cloud agent), or leave on and record the held state; (4) name the model to request in the model-probe comment, or accept the PR default.
+- **T004 prerequisites (yours).** (1) PR named: https://github.com/Pega-ProductEngineering/model-calculation-service-app-logic/pull/1603 (reviewer, 2026-10-07); still confirm (2) the Copilot cloud agent is enabled for the repo; (3) turn off "Require approval for workflow runs" (Settings → Copilot → Cloud agent), or leave on and record the held state; (4) name the model to request in the model-probe comment, or accept the PR default.
