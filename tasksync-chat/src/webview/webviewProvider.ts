@@ -25,6 +25,7 @@ import type { TurnActivity } from '../commentary/telegramLive';
 import { LongRunHandoff } from '../specs/handoffThreshold';
 import { HandoffNotifier } from '../services/handoffNotifier';
 import { sharedCommentaryStore, workerSpendSince } from '../workers/workerHost';
+import { turnTotals } from '../workers/turnBudget';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
 
@@ -2160,8 +2161,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const turn = this._deriveLastRequest();
         const latest = this._turnRequests[this._turnRequests.length - 1];
         const workers = this._workerSpend();
-        return { lastActivityAt: this._newestRequestTs, requests: this._turnRequests.length + workers.requests,
-            dollars: turn.nanoAiu / 1e9 / 100 + workers.dollars, workerRuns: workers.runs,
+        return { ...turnTotals(turn, workers), lastActivityAt: this._newestRequestTs,
             lastIn: latest?.inputTokens ?? 0, turnOut: turn.outputTokens };
     }
 

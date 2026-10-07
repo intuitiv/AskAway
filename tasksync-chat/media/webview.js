@@ -1736,7 +1736,9 @@
                         turnStartedAt: Number(message.metrics.turnStartedAt) || 0,
                         workers: (function (w) {
                             w = w || {};
-                            return { requests: Number(w.requests) || 0, dollars: Number(w.dollars) || 0, runs: Number(w.runs) || 0 };
+                            return { requests: Number(w.requests) || 0, dollars: Number(w.dollars) || 0, runs: Number(w.runs) || 0,
+                                workers: Number(w.workers) || 0, workerIds: Array.isArray(w.workerIds) ? w.workerIds.filter(function (id) { return typeof id === 'string'; }) : [],
+                                inputTokens: Number(w.inputTokens) || 0, outputTokens: Number(w.outputTokens) || 0 };
                         })(message.metrics.workers),
                         gradle: (function (g) {
                             g = g || {};

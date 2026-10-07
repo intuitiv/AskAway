@@ -1071,6 +1071,7 @@
     }
   },
   "scripts": {
+    "pretest:workers": "node test-turn-totals-reconcile.cjs",
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.js",
     "compile": "tsc -p ./",

@@ -13,7 +13,7 @@ import { commentaryToolDefinitions } from './commentary/commentary';
 import { registerLmToolDefinitions } from './workers/lmTools';
 import { sharedCommentaryStore, sharedWorkerRuntimeReady, workerSpendSince } from './workers/workerHost';
 import { workerTool } from './workers/workerTools';
-import { turnBudget as computeTurnBudget } from './workers/turnBudget';
+import { turnBudget as computeTurnBudget, turnTotals } from './workers/turnBudget';
 
 /**
  * Append a per-invocation record for an AskAway LM tool to
@@ -43,7 +43,7 @@ async function currentTurnBudget(context: vscode.ExtensionContext) {
     const spend = await computeTurnSpend(context);
     const worker = workerSpendSince(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, spend.turnStartTs);
     const limit = Number(vscode.workspace.getConfiguration('askaway').get('turnBudgetAiu', 0)) || 0;
-    return { spend, budget: computeTurnBudget(spend.nanoAiu, worker.dollars, worker.runs, limit) };
+    return { spend, totals: turnTotals(spend, worker), budget: computeTurnBudget(spend.nanoAiu, worker.dollars, worker.runs, limit) };
 }
 
 /**
@@ -52,8 +52,8 @@ async function currentTurnBudget(context: vscode.ExtensionContext) {
  * debug-log session for this workspace, then sums copilotUsageNanoAiu of every
  * llm_request logged at/after the last user_message (= the current turn boundary).
  */
-async function computeTurnSpend(context: vscode.ExtensionContext): Promise<{ nanoAiu: number; requestCount: number; sessionId: string | null; turnStartTs: number }> {
-    const empty = { nanoAiu: 0, requestCount: 0, sessionId: null as string | null, turnStartTs: 0 };
+async function computeTurnSpend(context: vscode.ExtensionContext): Promise<{ nanoAiu: number; requestCount: number; inputTokens: number; outputTokens: number; sessionId: string | null; turnStartTs: number }> {
+    const empty = { nanoAiu: 0, requestCount: 0, inputTokens: 0, outputTokens: 0, sessionId: null as string | null, turnStartTs: 0 };
     const storageUriPath = context.storageUri?.fsPath;
     if (!storageUriPath) { return empty; }
     const debugRoot = path.join(path.dirname(storageUriPath), 'GitHub.copilot-chat', 'debug-logs');
@@ -94,21 +94,23 @@ async function computeTurnSpend(context: vscode.ExtensionContext): Promise<{ nan
         }
     } catch { return empty; }
 
-    let nanoAiu = 0, requestCount = 0;
+    let nanoAiu = 0, requestCount = 0, inputTokens = 0, outputTokens = 0;
     for (const file of childFiles) {
         let data: string;
         try { data = await fs.promises.readFile(file, 'utf8'); } catch { continue; }
         for (const line of data.split('\n')) {
             if (line.indexOf('llm_request') === -1) { continue; }
-            let p: { ts?: number; attrs?: { copilotUsageNanoAiu?: number } };
+            let p: { ts?: number; attrs?: { copilotUsageNanoAiu?: number; inputTokens?: number; outputTokens?: number } };
             try { p = JSON.parse(line); } catch { continue; }
             const ts = typeof p.ts === 'number' ? p.ts : 0;
             if (ts < lastSubmitTs) { continue; }
             nanoAiu += typeof p.attrs?.copilotUsageNanoAiu === 'number' ? p.attrs.copilotUsageNanoAiu : 0;
             requestCount += 1;
+            inputTokens += p.attrs?.inputTokens ?? 0;
+            outputTokens += p.attrs?.outputTokens ?? 0;
         }
     }
-    return { nanoAiu, requestCount, sessionId: newest.sid, turnStartTs: lastSubmitTs };
+    return { nanoAiu, requestCount, inputTokens, outputTokens, sessionId: newest.sid, turnStartTs: lastSubmitTs };
 }
 
 
@@ -1171,7 +1173,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
                 return { invocationMessage: '💰 checking turn budget' };
             },
             async invoke(_options: vscode.LanguageModelToolInvocationOptions<Record<string, unknown>>, _token: vscode.CancellationToken) {
-                const { spend, budget } = await currentTurnBudget(context);
+                const { totals, budget } = await currentTurnBudget(context);
                 const spentAiu = budget.spentAiu;
                 const limit = budget.limitAiu;
                 const remaining = limit > 0 ? Math.max(0, limit - spentAiu) : null;
@@ -1182,7 +1184,12 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
                     mainAiu: Number(budget.mainAiu.toFixed(2)),
                     workerAiu: Number(budget.workerAiu.toFixed(2)),
                     workerRuns: budget.workerRuns,
-                    requestCount: spend.requestCount,
+                    requestCount: totals.requests,
+                    dollars: totals.dollars,
+                    workers: totals.workers,
+                    workerIds: totals.workerIds,
+                    inputTokens: totals.inputTokens,
+                    outputTokens: totals.outputTokens,
                     softLimitAiu: limit > 0 ? limit : null,
                     remainingAiu: remaining !== null ? Number(remaining.toFixed(2)) : null,
                     usedPct: limit > 0 ? pct : null,

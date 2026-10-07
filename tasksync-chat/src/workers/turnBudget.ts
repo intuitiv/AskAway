@@ -1,6 +1,12 @@
 /** Same conversion as the chat banner (media/webview.js chatBannerHtml): $1 = 100 AIU. */
 export const AIU_PER_DOLLAR = 100;
 
+export function turnTotals(main: { requestCount: number; nanoAiu: number; inputTokens?: number; outputTokens?: number }, worker: { requests: number; dollars: number; runs: number; workers?: number; workerIds?: string[]; inputTokens?: number; outputTokens?: number }) {
+    return { requests: main.requestCount + worker.requests, dollars: main.nanoAiu / 1e9 / AIU_PER_DOLLAR + worker.dollars,
+        workers: worker.workers ?? 0, workerIds: worker.workerIds ?? [], workerRuns: worker.runs,
+        inputTokens: (main.inputTokens ?? 0) + (worker.inputTokens ?? 0), outputTokens: (main.outputTokens ?? 0) + (worker.outputTokens ?? 0) };
+}
+
 export interface TurnBudget {
     mainAiu: number;
     workerAiu: number;
