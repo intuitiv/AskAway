@@ -5902,7 +5902,7 @@
                                 (!task.done && task.id ? '<button class="spec-task-run" data-act="implement-ref" data-ref="' + escapeHtml(task.id) +
                                     '" title="Implement ' + escapeHtml(task.id) + '" aria-label="Implement ' + escapeHtml(task.id) + '"><span class="codicon codicon-play"></span></button>' : '') +
                                 renderCloudEligibility(task, task.specSlug || spec.slug) +
-                                '</div>';
+                                '</div>' + (task.cloud ? '<table class="obs-event-table"><tbody>' + traceRowsHtml(task.cloud.events) + '</tbody></table>' : '');
                         }).join('');
                         return '<details class="spec-cycle" data-work-key="' + escapeHtml(cycleKey) + '"' + (cycleOpen ? ' open' : '') + '>' +
                             '<summary class="spec-cycle-main"><span class="codicon codicon-chevron-right spec-cycle-caret"></span>' +
@@ -5952,7 +5952,8 @@
                         escapeHtml(task.id || '') + '</span><span class="spec-work-text">' + formatSpecInline(task.text || task.id) + '</span>' +
                         (!task.done && task.id ? '<button class="spec-task-run" data-act="implement-ref" data-ref="' + escapeHtml(task.id) +
                             '" title="Implement ' + escapeHtml(task.id) + '" aria-label="Implement ' + escapeHtml(task.id) + '"><span class="codicon codicon-play"></span></button>' : '') +
-                        renderCloudEligibility(task, spec.slug) + '</div>';
+                        renderCloudEligibility(task, spec.slug) + '</div>' +
+                        (task.cloud ? '<table class="obs-event-table"><tbody>' + traceRowsHtml(task.cloud.events) + '</tbody></table>' : '');
                 }).join('') + '</details>';
         }).join('') + '</div>';
     }
@@ -6119,6 +6120,10 @@
             var slug = card.getAttribute('data-slug');
             specsExpanded[slug] = !specsExpanded[slug];
             renderSpecs();
+        } else if (act === 'queue-cloud') {
+            e.preventDefault();
+            e.stopPropagation();
+            vscode.postMessage({ type: 'queueCloudTask', slug: btn.getAttribute('data-spec-slug'), taskId: btn.getAttribute('data-ref') });
         } else if (act === 'implement-ref') {
             e.preventDefault();
             e.stopPropagation();

@@ -12,6 +12,9 @@ import { Plan, PlanTask, PlanTaskStatus, createPlan, createTask, findTaskById, g
 import { PlanEditorProvider } from '../plan/planEditorProvider';
 import { getUserMemoryDir, summarizeAndStoreMemory, listMemories } from '../memory/memoryStore';
 import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
+import { CloudSpecsController, shouldPollCloud } from '../cloud/cloudSpecs';
+import { defaultIO } from '../cloud/cloudQueue';
+import { PacketTask } from '../cloud/packet';
 import { sessionOpenCommand, WorkersState, WorkerTrace } from '../workers/workersState';
 import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
 import { openInTerminalApp } from '../workers/terminalApp';
@@ -489,6 +492,7 @@ type ToWebviewMessage =
 type FromWebviewMessage =
     | { type: 'requestSpecs' }
     | { type: 'openSpecFile'; dir: string; file: string }
+    | { type: 'queueCloudTask'; slug: string; taskId: string }
     | { type: 'submit'; value: string; attachments: AttachmentInfo[] }
     | { type: 'addQueuePrompt'; prompt: string; id: string; attachments?: AttachmentInfo[] }
     | { type: 'removeQueuePrompt'; promptId: string }
@@ -3930,7 +3934,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /** Spec Kit overview: rescan `specs/` and push to the webview. Auto-detected — no sentinel file. */
-    private _refreshSpecs(): void {
+    private async _refreshSpecs(): Promise<void> {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) {
             this._broadcast({ type: 'specsData', data: { enabled: false, specsRoot: '', activeSlug: '', repositoryUrl: '', stalenessAvailable: false, specs: [] } });
@@ -3945,7 +3949,52 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 spec.cost = { requests: measured.requests, nanoAiu: measured.nanoAiu, turns: measured.turns, days: measured.days };
             }
         }
-        this._broadcast({ type: 'specsData', data });
+        this._broadcast({ type: 'specsData', data: await this._cloudSpecs.refresh(root, data) });
+        this._scheduleCloudPoll(root);
+    }
+
+    private _cloudSpecs = new CloudSpecsController();
+    private _cloudPollTimer: NodeJS.Timeout | undefined;
+
+    private async _queueCloudTask(slug: string, taskId: string): Promise<void> {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) { return; }
+        const spec = scanSpecs(root).specs.find(spec => spec.slug === slug);
+        const task = spec?.tasks.find(task => task.id === taskId);
+        if (!spec || !task || task.done) { return; }
+        const config = vscode.workspace.getConfiguration('askaway.cloud');
+        if (!config.get<boolean>('enabled', false)) { vscode.window.showWarningMessage('Cloud tasks disabled: enable askaway.cloud.enabled first.'); return; }
+        const input = await vscode.window.showInputBox({ prompt: 'Cloud packet fields (JSON): allowedPaths, verify, expect, ceilingMinutes. Copy exact commands; do not guess.',
+            value: JSON.stringify({ allowedPaths: [], verify: [], expect: '', ceilingMinutes: 45 }) });
+        if (!input) { return; }
+        try {
+            const fields = JSON.parse(input) as Pick<PacketTask, 'allowedPaths' | 'verify' | 'expect' | 'ceilingMinutes'>;
+            if (!Array.isArray(fields.allowedPaths) || !fields.allowedPaths.length || !fields.allowedPaths.every(value => typeof value === 'string') ||
+                !Array.isArray(fields.verify) || !fields.verify.length || !fields.verify.every(value => typeof value === 'string') || !fields.expect) { throw new Error('Packet scope, exact verification commands and expected result are required'); }
+            const lines = fs.readFileSync(path.join(spec.dir, 'tasks.md'), 'utf8').split(/\r?\n/);
+            const start = lines.findIndex(line => new RegExp('^\\s*- \\[.\\] ' + taskId + '\\b').test(line));
+            if (start < 0) { throw new Error('Task details not found'); }
+            let end = start + 1;
+            while (end < lines.length && !/^\s*- \[.\] T|^##/.test(lines[end])) { end++; }
+            const result = await this._cloudSpecs.click({ root, slug, pr: spec.pullRequestUrl, enabled: true, explicitRequest: true,
+                task: { ...fields, taskId, stage: spec.specKitStage, details: lines.slice(start, end).join('\n'), tags: task.tags },
+                story: { story: task.story, independentTest: spec.stories.find(story => story.id === task.story)?.independentTest ?? '' } });
+            if (result.refusal) { vscode.window.showWarningMessage(result.refusal); }
+            await this._refreshSpecs();
+        } catch (error) { vscode.window.showWarningMessage((error as Error).message); }
+    }
+
+    private async _scheduleCloudPoll(root: string): Promise<void> {
+        if (this._cloudPollTimer) { clearTimeout(this._cloudPollTimer); this._cloudPollTimer = undefined; }
+        const config = vscode.workspace.getConfiguration('askaway.cloud');
+        if (!shouldPollCloud(config.get<boolean>('enabled', false), await defaultIO.load(root))) { return; }
+        this._cloudPollTimer = setTimeout(async () => {
+            this._cloudPollTimer = undefined;
+            const current = vscode.workspace.getConfiguration('askaway.cloud');
+            try { await this._cloudSpecs.poll(root, current.get<boolean>('enabled', false), current.get<string[]>('agentLogins', ['Copilot'])); }
+            catch (error) { console.warn('Cloud poll failed:', (error as Error).message); }
+            await this._refreshSpecs();
+        }, Math.max(1, config.get<number>('pollMinutes', 1)) * 60000);
     }
 
     private _specsWatcher: vscode.FileSystemWatcher | undefined;
@@ -4134,6 +4183,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      * Clean up resources when the provider is disposed
      */
     public dispose(): void {
+        if (this._cloudPollTimer) { clearTimeout(this._cloudPollTimer); }
         // Save session history BEFORE clearing arrays
         // This ensures tool calls are persisted when VS Code reloads
         this.saveCurrentSessionToHistory();
@@ -4811,6 +4861,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'openSpecFile':
                 this._openSpecFile(message.dir, message.file);
+                break;
+            case 'queueCloudTask':
+                void this._queueCloudTask(message.slug, message.taskId);
                 break;
             case 'submit':
                 this._handleSubmit(message.value, message.attachments || []);
