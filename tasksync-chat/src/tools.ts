@@ -12,7 +12,7 @@ import { cacheSafeWaitMs } from './observability/cacheClock';
 import { commentaryToolDefinitions } from './commentary/commentary';
 import { registerLmToolDefinitions } from './workers/lmTools';
 import { sharedCommentaryStore, sharedWorkerRuntimeReady, workerSpendSince } from './workers/workerHost';
-import { workerTool } from './workers/workerTools';
+import { workerTool, ToolDefinition } from './workers/workerTools';
 import { turnBudget as computeTurnBudget, turnTotals } from './workers/turnBudget';
 
 /**
@@ -803,7 +803,8 @@ function runReadDoc(input: ReadDocInput): string {
         + `Read any span with mode:"section" (startLine/endLine) or filter with mode:"search" query:"…".`;
 }
 
-export function registerTools(context: vscode.ExtensionContext, provider: AskAwayWebviewProvider) {
+export function registerTools(context: vscode.ExtensionContext, provider: AskAwayWebviewProvider, memory?: ToolDefinition) {
+    if (memory) context.subscriptions.push(...registerLmToolDefinitions([memory]));
     let askUserTool: vscode.Disposable | undefined;
     try {
         askUserTool = vscode.lm.registerTool('ask_user', {

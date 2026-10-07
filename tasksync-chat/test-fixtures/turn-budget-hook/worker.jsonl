@@ -1,0 +1,5 @@
+{"type":"checkpoint","ts":9000,"usage":{"cost":99}}
+{"type":"checkpoint","ts":10000,"usage":{"cost":0.2}}
+{"type":"checkpoint","ts":13000,"ping":true,"usage":{"cost":0.1}}
+{"type":"stop","ts":14000}
+malformed

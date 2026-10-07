@@ -5,6 +5,11 @@ import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
 import { registerTools } from './tools';
+import { memoryTool } from './validator/memoryTool';
+import { seedMemories } from './validator/memorySeed';
+import { ensureMemoryServer, MEMORY_SERVER_URL } from './validator/memoryServer';
+import { AgentmemoryStore } from './validator/agentmemoryStore';
+import { DedupKnowledgeStore, KnowledgeStore } from './validator/knowledgeStore';
 import { SUBAGENT_TIMER_INJECT_SCRIPT } from './hooks/subagentTimerScript';
 import { McpServerManager } from './mcp/mcpServer';
 import { killAllGradleRuns } from './gradle/gradleEngine';
@@ -195,8 +200,15 @@ try {
     if (!(limit > 0)) { process.exit(0); }
     const wsRoot = (fs.readFileSync(path.join(cfg, 'workspace-storage-root'), 'utf8') || '').trim();
     if (!wsRoot) { process.exit(0); }
+    let workspace = process.env.ASKAWAY_WORKSPACE_PATH || process.cwd();
+    try { workspace = fs.realpathSync(workspace); } catch (e) {}
+    const workspaceKey = workspace.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
     let newest = null;
     for (const h of safeReaddir(wsRoot)) {
+        try {
+            const metadata = JSON.parse(fs.readFileSync(path.join(wsRoot, h, 'workspace.json'), 'utf8'));
+            if (metadata.folder && decodeURIComponent(new URL(metadata.folder).pathname) !== workspace) { continue; }
+        } catch (e) {}
         const dl = path.join(wsRoot, h, 'GitHub.copilot-chat', 'debug-logs');
         for (const s of safeReaddir(dl)) {
             const m = path.join(dl, s, 'main.jsonl');
@@ -221,7 +233,22 @@ try {
     // and expose the previous turn as context. Live in-turn spend comes from the turn_budget tool.
     // One line of NUMBERS only. The how-to guidance is static and lives in the cached
     // AskAway Build agent instructions (## Turn Budget), so it costs ~0 per turn here.
-    const prevSpent = nano / 1e9;
+    let prevSpent;
+    try {
+        const totals = JSON.parse(fs.readFileSync(path.join(cfg, 'turn-totals', workspaceKey + '.json'), 'utf8'));
+        if (lastSubmit > 0 && totals.turnStartedAt === lastSubmit && Number.isFinite(totals.spentAiu)) { prevSpent = totals.spentAiu; }
+    } catch (e) {}
+    if (prevSpent === undefined) {
+        let workerDollars = 0;
+        try {
+            const ledger = fs.readFileSync(path.join(cfg, 'worker-ledger', workspaceKey + '.jsonl'), 'utf8');
+            for (const line of ledger.split('\\n')) {
+                let record; try { record = JSON.parse(line); } catch (e) { continue; }
+                if (record.ts >= lastSubmit && record.type === 'checkpoint' && record.usage) { workerDollars += Number(record.usage.cost) || 0; }
+            }
+        } catch (e) {}
+        prevSpent = nano / 1e9 + workerDollars * 100;
+    }
     const pctPrev = Math.round(prevSpent / limit * 100);
     const ctx = lastSubmit === 0
         ? 'Turn budget: ' + limit + ' AIU'
@@ -1061,7 +1088,26 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Register VS Code LM Tools (critical for Copilot — must be early)
         logRuntime('Registering language model tools');
-        registerTools(context, provider);
+        const memoryProject = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || context.globalStorageUri.fsPath;
+        let memoryReady: Promise<KnowledgeStore> | undefined;
+        const memory = memoryTool(() => {
+            memoryReady ??= (async () => {
+                const secret = await context.secrets.get('agentmemory.token') || '';
+                await ensureMemoryServer(undefined, secret);
+                const store = new DedupKnowledgeStore(new AgentmemoryStore(memoryProject, MEMORY_SERVER_URL, secret));
+                const config = vscode.workspace.getConfiguration('askaway');
+                const user = config.get<string>('userMemoryDirectory');
+                const repo = config.get<string>('repoMemoryDirectory');
+                const sources = [
+                    ...(user ? [{ directory: user, scope: { project: '_user', agentId: 'agents' } }] : []),
+                    ...(repo ? [{ directory: repo, scope: { project: memoryProject, agentId: 'agents' } }] : []),
+                ];
+                if (sources.length) await seedMemories(store, { marker: vscode.Uri.joinPath(context.storageUri || context.globalStorageUri, 'memory-seeded-v1').fsPath, sources });
+                return store;
+            })().catch(error => { memoryReady = undefined; throw error; });
+            return memoryReady;
+        }, memoryProject);
+        registerTools(context, provider, memory);
 
         // Initialize Plan Board editor (lightweight, no I/O at init)
         logRuntime('Creating PlanEditorProvider', { type: typeof PlanEditorProvider });
@@ -1415,7 +1461,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             // MCP Server initialization should not block other services.
             try {
-                mcpServer = new McpServerManager(provider);
+                mcpServer = new McpServerManager(provider, memory);
                 const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
                 const mcpEnabled = config.get<boolean>('mcpEnabled', false);
                 const autoStartIfClients = config.get<boolean>('mcpAutoStartIfClients', true);

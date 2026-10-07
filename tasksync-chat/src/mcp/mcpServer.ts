@@ -16,7 +16,7 @@ import { listenWhenFree } from './sharedPort';
 import { OpenCodeWorkerRuntime } from '../workers/openCodeRuntime';
 import { fetchSessionMessages, observeWorkers, restartSharedServer, sharedCommentaryStore, sharedWorkerRuntime, sharedWorkerRuntimeReady } from '../workers/workerHost';
 import { cancelQueuedRun, loadWorkerTrace, projectWorkersState } from '../workers/workersState';
-import { registerToolDefinitions, registerWorkerTools } from '../workers/workerTools';
+import { registerToolDefinitions, registerWorkerTools, ToolDefinition } from '../workers/workerTools';
 import { commentaryToolDefinitions } from '../commentary/commentary';
 import { registerVsCodeToolBridge, registerWindow } from '../workers/vscodeToolBridge';
 import { loadEvalScoreboard } from '../workers/evalScoreboard';
@@ -154,7 +154,8 @@ export class McpServerManager {
     private _isRunning: boolean = false;
 
     constructor(
-        private provider: AskAwayWebviewProvider
+        private provider: AskAwayWebviewProvider,
+        private memory?: ToolDefinition
     ) {
         provider.setWorkersStateSource((workspacePath) => {
             void observeWorkers(workspacePath);
@@ -293,6 +294,7 @@ export class McpServerManager {
 
             registerWorkerTools((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), () => sharedWorkerRuntimeReady(gradleWorkspaceRoot), gradleWorkspaceRoot);
             registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), commentaryToolDefinitions(sharedCommentaryStore, ''));
+            if (this.memory) registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), [this.memory]);
             registerVsCodeToolBridge((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), { selfPort: this.port });
                 return mcpServer;
             };

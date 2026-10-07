@@ -833,7 +833,7 @@
             '<thead><tr><th>ID</th><th>Model / Tool</th><th>Credits</th><th>Input</th><th>Output</th><th>Cached</th><th title="cached / input">Hit%</th></tr></thead>' +
             '<tbody id="obs-turn-event-tbody"><tr><td colspan="7" class="obs-na">No events yet</td></tr></tbody>' +
             '</table>' +
-            '<div class="observability-model-note">Tool calls this turn</div>' +
+            '<div class="observability-model-note">Tool calls this turn (main + workers)</div>' +
             '<table class="observability-table observability-model-table">' +
             '<thead><tr><th>Tool</th><th>Calls</th><th>Out tok</th><th>avg s</th><th>min s</th><th>max s</th><th>err</th></tr></thead>' +
             '<tbody id="obs-turn-tool-tbody"><tr><td colspan="7" class="obs-na">No data yet</td></tr></tbody>' +
@@ -853,7 +853,7 @@
             '<thead><tr><th>Model</th><th>Reqs</th><th>Credits</th><th>Input</th><th>Output</th><th>Cached</th></tr></thead>' +
             '<tbody id="observability-model-tbody"><tr><td colspan="6" class="obs-na">No data yet</td></tr></tbody>' +
             '</table>' +
-            '<div class="observability-model-note">Tool calls this month</div>' +
+            '<div class="observability-model-note">Tool calls this month (main + workers)</div>' +
             '<table class="observability-table observability-model-table">' +
             '<thead><tr><th>Tool</th><th>Calls</th><th>Out tok</th><th>avg s</th><th>min s</th><th>max s</th><th>err</th></tr></thead>' +
             '<tbody id="obs-month-tool-tbody"><tr><td colspan="7" class="obs-na">No data yet</td></tr></tbody>' +
@@ -1738,7 +1738,9 @@
                             w = w || {};
                             return { requests: Number(w.requests) || 0, dollars: Number(w.dollars) || 0, runs: Number(w.runs) || 0,
                                 workers: Number(w.workers) || 0, workerIds: Array.isArray(w.workerIds) ? w.workerIds.filter(function (id) { return typeof id === 'string'; }) : [],
-                                inputTokens: Number(w.inputTokens) || 0, outputTokens: Number(w.outputTokens) || 0 };
+                                inputTokens: Number(w.inputTokens) || 0, outputTokens: Number(w.outputTokens) || 0,
+                                cachedTokens: Number(w.cachedTokens) || 0, cacheMisses: Number(w.cacheMisses) || 0,
+                                perModel: w.perModel || {}, toolCalls: Array.isArray(w.toolCalls) ? w.toolCalls : [] };
                         })(message.metrics.workers),
                         gradle: (function (g) {
                             g = g || {};
@@ -2915,7 +2917,8 @@
         var requests = Number(b.requests) || 0;
         var dollars = Number(b.dollars) || 0;
         var lastIn = Number(b.lastIn) || 0;
-        var hit = lastIn > 0 ? Math.round((Number(b.lastCached) || 0) / lastIn * 100) + '%' : '\u2013';
+        var cacheInput = b.cacheInput === undefined ? lastIn : Number(b.cacheInput) || 0;
+        var hit = cacheInput > 0 ? Math.round((Number(b.lastCached) || 0) / cacheInput * 100) + '%' : '\u2013';
         var w = b.workers || {};
         var workerRuns = Number(w.workers) || 0;
         var workerDollars = Number(w.dollars) || 0;
@@ -2927,7 +2930,7 @@
         var flag = b.flagContext ? workerContextFlag(lastIn) : { over: false };
         var lastInHtml = flag.over
             ? '<span class="' + flag.cls.trim() + '" title="' + flag.title + '">' + formatObservabilityCompact(lastIn) + '</span>'
-            : formatObservabilityCompact(lastIn);
+            : b.mainContext ? '<span title="Main agent own context length">' + formatObservabilityCompact(lastIn) + '</span>' : formatObservabilityCompact(lastIn);
         return requests + ' req' + (requests === 1 ? '' : 's') +
             ' &middot; <strong class="health-cost">' + bannerDollars(dollars) + '</strong>' + workerPart +
             ' &middot; ' + lastInHtml + ' last in / ' + formatObservabilityCompact(b.turnOut) + ' turn out' +
@@ -2962,6 +2965,7 @@
         var turnRequests = Array.isArray(metrics.turnRequests) ? metrics.turnRequests : [];
         var latest = turnRequests.length ? turnRequests[turnRequests.length - 1] : turn;
         var w = metrics.workers || {};
+        var totals = turnTotalsLead(turn, w);
         var workerRuns = Number(w.workers) || 0;
         var workerDollars = Number(w.dollars) || 0;
         var workerRequests = Number(w.requests) || 0;
@@ -2969,11 +2973,12 @@
         return usageBannerHtml({
             requests: (Number(turn.requestCount) || 0) + workerRequests,
             dollars: (Number(turn.nanoAiu) || 0) / 1000000000 / 100 + workerDollars,
-            lastIn: latest.inputTokens, lastCached: latest.cachedTokens, turnOut: turn.outputTokens,
+            mainContext: true, lastIn: latest.inputTokens, lastCached: totals.cachedTokens,
+            cacheInput: totals.inputTokens, turnOut: totals.outputTokens,
             workers: { workers: workerRuns, requests: workerRequests, dollars: workerDollars },
             timer: timer,
-            efficiencyInput: (Number(turn.inputTokens) || 0) + (Number(w.inputTokens) || 0),
-            efficiencyOutput: (Number(turn.outputTokens) || 0) + (Number(w.outputTokens) || 0),
+            efficiencyInput: totals.inputTokens,
+            efficiencyOutput: totals.outputTokens,
         });
     }
     function cacheAgeLabel(secs) {
@@ -2989,7 +2994,10 @@
         var wReq = Number(workers && workers.requests) || 0;
         var total = main + wReq;
         var text = total + ' request' + (total === 1 ? '' : 's') + (wReq > 0 ? ' (main ' + main + ' \u00b7 workers ' + wReq + ')' : '');
-        return { total: total, text: text, usd: (Number(scope && scope.nanoAiu) || 0) / 1e9 / 100 + (Number(workers && workers.dollars) || 0) };
+        return { total: total, text: text, usd: (Number(scope && scope.nanoAiu) || 0) / 1e9 / 100 + (Number(workers && workers.dollars) || 0),
+            inputTokens: (Number(scope && scope.inputTokens) || 0) + (Number(workers && workers.inputTokens) || 0),
+            outputTokens: (Number(scope && scope.outputTokens) || 0) + (Number(workers && workers.outputTokens) || 0),
+            cachedTokens: (Number(scope && scope.cachedTokens) || 0) + (Number(workers && workers.cachedTokens) || 0) };
     }
     // Worker card: a last prompt this large is re-sent on every step, so the figure is flagged (observability only).
     var WORKER_CONTEXT_WARN_TOKENS = 100000;
@@ -3473,7 +3481,7 @@
             if (subagentN) { extra += ' \u00b7 <span class="obs-tag-subagent">' + subagentN + ' sub-agent' + (subagentN === 1 ? '' : 's') + '</span>'; }
             turnSummary.innerHTML = n
                 ? (turnTotals.text + ' \u00b7 ' + aiu(usd * 100 * 1e9) + ' AIU ' + usdStr + ' \u00b7 ' +
-                    tok(lastScope.inputTokens) + ' in / ' + tok(lastScope.outputTokens) + ' out \u00b7 ' + hitPct(lastScope) + ' cache hit' + extra)
+                    tok(turnTotals.inputTokens) + ' in / ' + tok(turnTotals.outputTokens) + ' out \u00b7 ' + hitPct(turnTotals) + ' cache hit' + extra)
                 : 'No requests yet this turn';
         }
         // Live prompt-cache age clock: ticks up client-side from the last request ts. The Anthropic
@@ -3512,8 +3520,8 @@
         if (compEl) {
             var cc = Number(comp.count) || 0;
             compEl.innerHTML = cc
-                ? 'Compaction: <span class="obs-tag-compaction">' + num(cc) + ' request' + (cc === 1 ? '' : 's') + '</span> \u00b7 ' + aiu(comp.nanoAiu) + ' AIU spent auto-summarizing context this month'
-                : 'Compaction: 0 requests this month';
+                ? 'Main agent compaction: <span class="obs-tag-compaction">' + num(cc) + ' request' + (cc === 1 ? '' : 's') + '</span> \u00b7 ' + aiu(comp.nanoAiu) + ' AIU spent auto-summarizing main context this month'
+                : 'Main agent compaction: 0 requests this month';
         }
         renderToolTable('obs-month-tool-tbody', tc);
 

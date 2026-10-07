@@ -25,7 +25,7 @@ import type { TurnActivity } from '../commentary/telegramLive';
 import { LongRunHandoff } from '../specs/handoffThreshold';
 import { HandoffNotifier } from '../services/handoffNotifier';
 import { sharedCommentaryStore, workerSpendSince } from '../workers/workerHost';
-import { turnTotals } from '../workers/turnBudget';
+import { turnTotals, usageScope, mergeToolUsage, persistTurnTotals } from '../workers/turnBudget';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
 
@@ -2131,6 +2131,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 nextMetrics.lastRequest = this._deriveLastRequest();
                 this._observabilityCache = this._stabilizeObservabilityMetrics(nextMetrics);
                 this._observabilityLastReadAt = Date.now();
+                const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (root) {
+                    try { persistTurnTotals(root, this._lastSubmitTs, turnTotals(this._observabilityCache.lastRequest, this._observabilityCache.workers)); }
+                    catch (error) { console.warn('[AskAway] Could not persist turn totals:', error); }
+                }
 
                 this._broadcast({
                     type: 'updateObservabilityMetrics',
@@ -2161,8 +2166,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const turn = this._deriveLastRequest();
         const latest = this._turnRequests[this._turnRequests.length - 1];
         const workers = this._workerSpend();
-        return { ...turnTotals(turn, workers), lastActivityAt: this._newestRequestTs,
-            lastIn: latest?.inputTokens ?? 0, turnOut: turn.outputTokens };
+        const totals = turnTotals(turn, workers);
+        return { ...totals, lastActivityAt: this._newestRequestTs,
+            lastIn: latest?.inputTokens ?? 0, turnOut: totals.outputTokens };
     }
 
     private _workerSpend(): ReturnType<typeof workerSpendSince> {
@@ -2175,10 +2181,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             await this._broadcastObservabilityMetrics();
             const turn = this._deriveLastRequest();
             const latest = this._turnRequests[this._turnRequests.length - 1];
+            const totals = turnTotals(turn, this._workerSpend());
             snapshot = {
                 latestInputTokens: latest?.inputTokens ?? turn.inputTokens,
-                turnOutputTokens: turn.outputTokens,
-                turnNanoAiu: turn.nanoAiu
+                turnOutputTokens: totals.outputTokens,
+                turnNanoAiu: Math.round(totals.dollars * 100 * 1e9)
             };
             if (snapshot.latestInputTokens > 0 || snapshot.turnOutputTokens > 0 || snapshot.turnNanoAiu > 0) {
                 return snapshot;
@@ -2322,7 +2329,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     rtkSavedTokens: rtk.savedTokens,
                     rtkSavingsPct: rtk.savingsPct,
                     gradle: this._gradleWithSavings(gradleObs, toolObs),
-                    toolCalls: toolObs,
+                    toolCalls: this._withWorkerTools(toolObs),
                     source: ledger.requestCount > 0 ? 'ledger:last good' : 'unavailable'
                 };
             }
@@ -2713,7 +2720,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 rtkSavedTokens: rtk.savedTokens,
                 rtkSavingsPct: rtk.savingsPct,
                 gradle: this._gradleWithSavings(gradleObs, toolObs),
-                toolCalls: toolObs,
+                toolCalls: this._withWorkerTools(toolObs),
                 lastRequestTs: this._newestRequestTs,
                 workers: this._workerSpend(),
                 turnStartedAt: this._lastSubmitTs || 0,
@@ -2726,6 +2733,16 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /** Returns the aggregate of all llm_requests since the user's last submit (current turn). */
+    private _withWorkerTools(main: ToolCallMetrics): ToolCallMetrics {
+        const now = new Date();
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const merge = (scope: ToolScope, since: number): ToolScope => {
+            const byTool = mergeToolUsage(scope.byTool, (workerSpendSince(root, since).toolCalls ?? []).map(row => ({ ...row, groups: [] })));
+            return { ...scope, byTool, totalCalls: byTool.reduce((n, row) => n + row.calls, 0), totalOutputTokens: byTool.reduce((n, row) => n + row.outputTokens, 0) };
+        };
+        return { ...merge(main, new Date(now.getFullYear(), now.getMonth(), 1).getTime()), turn: merge(main.turn, this._lastSubmitTs) };
+    }
+
     private _deriveLastRequest(): ScopeMetrics {
         return { ...this._lastRequestMetrics };
     }
@@ -2741,7 +2758,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private async _computeOverallMonth(currentMonth: string): Promise<{ totals: ScopeMetrics; perModel: ModelBreakdown[]; compaction: { count: number; nanoAiu: number } }> {
         const now = Date.now();
         if (now - this._overallLastComputedAt < this._OVERALL_RECOMPUTE_MS) {
-            return this._overallCache;
+            return this._withMonthWorkers(this._overallCache, currentMonth);
         }
         this._overallLastComputedAt = now;
 
@@ -2809,7 +2826,17 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             .sort((a, b) => b.nanoAiu - a.nanoAiu);
 
         this._overallCache = { totals, perModel, compaction };
-        return this._overallCache;
+        return this._withMonthWorkers(this._overallCache, currentMonth);
+    }
+
+    private _withMonthWorkers(main: { totals: ScopeMetrics; perModel: ModelBreakdown[]; compaction: { count: number; nanoAiu: number } }, month: string) {
+        const workers = workerSpendSince(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, new Date(month + '-01T00:00:00').getTime());
+        const models = new Map(main.perModel.map(row => [row.model, { ...row }]));
+        for (const [model, worker] of Object.entries(workers.perModel ?? {})) {
+            models.set(model, { model, ...usageScope(models.get(model) ?? this._emptyScope(), worker) });
+        }
+        return { ...main, totals: { ...usageScope(main.totals, workers), cacheMisses: (main.totals.cacheMisses ?? 0) + (workers.cacheMisses ?? 0) },
+            perModel: [...models.values()].sort((a, b) => b.nanoAiu - a.nanoAiu) };
     }
 
     /** Month key one month before the given `YYYY-MM`. */
@@ -5220,7 +5247,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     /** Freezes the closing turn's measured usage onto the active spec. Attribution is prospective. */
     private _recordSpecTurnCost(): void {
-        const turn = this._lastRequestMetrics;
+        const turn = turnTotals(this._lastRequestMetrics, this._workerSpend());
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root || !this._lastSubmitTs) { return; }
         try {
@@ -5228,10 +5255,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 specSlug: readActiveSpecSlug(root),
                 turnKey: String(this._lastSubmitTs),
                 day: new Date(this._lastSubmitTs).toISOString().slice(0, 10),
-                requests: turn.requestCount,
+                requests: turn.requests,
                 inputTokens: turn.inputTokens,
                 outputTokens: turn.outputTokens,
-                nanoAiu: turn.nanoAiu
+                nanoAiu: Math.round(turn.dollars * 100 * 1e9)
             });
         } catch (error) {
             console.error('[AskAway] Failed to record spec turn cost:', error);

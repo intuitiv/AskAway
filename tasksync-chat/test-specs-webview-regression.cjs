@@ -55,8 +55,8 @@ vm.runInContext(
 );
 assert.match(elements['common-turn-summary'].innerHTML, /3 req/);
 assert.match(elements['common-turn-summary'].innerHTML, /\$2\.50/);
-assert.match(elements['common-turn-summary'].innerHTML, /4K last in \/ 2\.75K turn out/, 'the real shared formatter, not a test double');
-assert.match(elements['common-turn-summary'].innerHTML, /90% cache/);
+assert.match(elements['common-turn-summary'].innerHTML, /<span title="Main agent own context length">4K<\/span> last in \/ 2\.75K turn out/, 'the real shared formatter labels main context, not a test double');
+assert.match(elements['common-turn-summary'].innerHTML, /80% cache/, 'turn cache is 18000 / 22500, not the latest request 3600 / 4000');
 assert.match(elements['common-cache-age'].textContent, /^Age: 0:3\d warm$/);
 assert.equal(elements['cost-attribution-toggle'].textContent, 'Cost to: Spec 001');
 assert.doesNotMatch(elements['common-turn-summary'].innerHTML, /health-workers|Turn \d/, 'no worker part and no timer when the backend sends neither');
@@ -66,7 +66,7 @@ bannerContext.observabilityMetrics.workers = { requests: 6, dollars: 0.42, worke
 bannerContext.observabilityMetrics.turnStartedAt = Date.now() - 83_000;
 vm.runInContext('renderConversationHealth()', bannerContext);
 const withWorkers = elements['common-turn-summary'].innerHTML.replace(/<[^>]+>/g, '').replaceAll('&middot;', '·');
-assert.match(withWorkers, /^9 reqs · \$2\.92 \(2 workers · 6 reqs · \$0\.42\) · 4K last in \/ 2\.75K turn out · 90% cache · Turn 1:2\d · Efficiency 8$/, 'total requests include worker requests (reviewer 2026-10-07), dollars include the workers, with the worker part named');
+assert.match(withWorkers, /^9 reqs · \$2\.92 \(2 workers · 6 reqs · \$0\.42\) · 4K last in \/ 2\.75K turn out · 80% cache · Turn 1:2\d · Efficiency 8$/, 'total requests include worker requests (reviewer 2026-10-07), dollars include the workers, with the worker part named');
 bannerContext.observabilityMetrics.turnStartedAt = Date.now() - 5_000;
 vm.runInContext('renderCacheAge()', bannerContext);
 assert.match(elements['common-turn-summary'].innerHTML, /Turn 0:0[4-6]</, 'the existing cache-age tick refreshes the turn timer');

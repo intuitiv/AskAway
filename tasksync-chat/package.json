@@ -48,6 +48,27 @@
   "contributes": {
     "languageModelTools": [
       {
+        "name": "askaway_memory",
+        "toolReferenceName": "memory2",
+        "displayName": "AskAway Memory",
+        "modelDescription": "Shared local memory. view, search, remember, update (supersede), history, export JSONL. User/repo scope; agentId agents shares agent memory, validator is isolated.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string", "enum": ["view", "search", "remember", "update", "history", "export"] },
+            "scope": { "type": "string", "enum": ["user", "repo"] },
+            "agentId": { "type": "string" },
+            "spec": { "type": "string" },
+            "query": { "type": "string" },
+            "text": { "type": "string" },
+            "id": { "type": "string" },
+            "limit": { "type": "integer", "minimum": 1 }
+          },
+          "required": ["action"]
+        }
+      },
+      {
         "name": "ask_user",
         "tags": [
           "confirmation",
@@ -694,6 +715,16 @@
           "default": true,
           "description": "Automatically start MCP server if external client configurations are detected (Kiro, Cursor, Antigravity)."
         },
+        "askaway.userMemoryDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "User markdown memory source directory, read only during one-time migration."
+        },
+        "askaway.repoMemoryDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Repository markdown memory source directory, read only during one-time migration."
+        },
         "askaway.mcpPort": {
           "type": "number",
           "default": 3579,
@@ -1071,7 +1102,7 @@
     }
   },
   "scripts": {
-    "pretest:workers": "node test-turn-totals-reconcile.cjs",
+    "pretest:workers": "node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs",
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.js",
     "compile": "tsc -p ./",

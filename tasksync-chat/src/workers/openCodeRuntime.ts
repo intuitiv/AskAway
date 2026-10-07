@@ -693,12 +693,26 @@ export class OpenCodeWorkerRuntime {
     }
 
     /** Worker spend since a moment (the turn start): one checkpoint is one model request; session totals are never used. */
-    usageSince(workspacePath: string, sinceMs: number): { requests: number; dollars: number; runs: number; workers: number; workerIds: string[]; inputTokens: number; outputTokens: number } {
-        const total = { requests: 0, dollars: 0, runs: 0, workers: 0, workerIds: [] as string[], inputTokens: 0, outputTokens: 0 };
+    usageSince(workspacePath: string, sinceMs: number): { requests: number; dollars: number; runs: number; workers: number; workerIds: string[]; inputTokens: number; outputTokens: number; cachedTokens?: number; cacheMisses?: number; perModel?: Record<string, { requests: number; dollars: number; runs: number; inputTokens: number; outputTokens: number; cachedTokens: number }>; toolCalls?: Array<{ tool: string; calls: number; outputTokens: number; avgMs: number; minMs: number; maxMs: number; errors: number; cacheRisk: boolean }> } {
+        const total = { requests: 0, dollars: 0, runs: 0, workers: 0, workerIds: [] as string[], inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheMisses: 0 };
+        const perModel: NonNullable<ReturnType<OpenCodeWorkerRuntime['usageSince']>['perModel']> = {};
+        const tools = new Map<string, NonNullable<ReturnType<OpenCodeWorkerRuntime['usageSince']>['toolCalls']>[number]>();
+        const models = new Map<string, string>();
         const runIds = new Set<string>();
         const workerIds = new Set<string>();
         for (const record of this.readLedger(canonical(workspacePath))) {
+            if (record.type === 'start') { models.set(record.runId, record.model); }
             if (record.ts < sinceMs) { continue; }
+            if (record.type === 'after_tool') {
+                const name = record.tool ?? 'unknown';
+                const ms = record.durMs ?? 0;
+                const tool = tools.get(name) ?? { tool: name, calls: 0, outputTokens: 0, avgMs: 0, minMs: ms, maxMs: ms, errors: 0, cacheRisk: false };
+                tool.avgMs = (tool.avgMs * tool.calls + ms) / (tool.calls + 1);
+                tool.calls++; tool.outputTokens += record.toolTokens?.output ?? 0;
+                tool.minMs = Math.min(tool.minMs, ms); tool.maxMs = Math.max(tool.maxMs, ms);
+                tool.errors += record.status === 'error' ? 1 : 0;
+                tools.set(name, tool);
+            }
             if (record.type === 'start' || (record.type === 'checkpoint' && !record.ping)) {
                 runIds.add(record.runId);
                 workerIds.add(record.workerId);
@@ -709,11 +723,18 @@ export class OpenCodeWorkerRuntime {
             total.dollars += record.usage.cost;
             total.inputTokens += record.usage.input + record.usage.cacheRead + record.usage.cacheWrite;
             total.outputTokens += record.usage.output;
+            total.cachedTokens += record.usage.cacheRead;
+            if (record.usage.cacheRead < (record.usage.input + record.usage.cacheRead + record.usage.cacheWrite) / 2) { total.cacheMisses++; }
+            const model = models.get(record.runId) ?? record.model ?? 'unknown';
+            const bucket = perModel[model] ??= { requests: 0, dollars: 0, runs: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+            bucket.requests++; bucket.dollars += record.usage.cost;
+            bucket.inputTokens += record.usage.input + record.usage.cacheRead + record.usage.cacheWrite;
+            bucket.outputTokens += record.usage.output; bucket.cachedTokens += record.usage.cacheRead;
         }
         total.runs = runIds.size;
         total.workerIds = [...workerIds];
         total.workers = workerIds.size;
-        return total;
+        return { ...total, perModel, toolCalls: [...tools.values()] };
     }
 
     private admit(routed: Extract<RouteResult, { runId: string }>, workspace: string, packet: WorkerPacket, knowledge = ''): RunView {

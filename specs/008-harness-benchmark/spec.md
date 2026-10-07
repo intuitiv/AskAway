@@ -16,6 +16,13 @@
 - The scoreboard reuses the SAME Efficiency score as the shared banner: the same formula and the same render component, per AGENTS.md consistent experience. Show it together with work completion (accepted tasks / fixed task count); $ and tokens remain raw columns. This replaces the agent-defined $ per accepted task score and 80% quality bar.
 - More benchmark input from the reviewer is pending.
 
+### Reviewer input 2026-10-07 (2) — supersedes the block above
+
+- Reviewer: "benchamrk is, comeup with number of effective utilisation of agentic framework. and comeup with some formula, it should have total cost, cache %, cache misses, total input tokens, total output tokens, requests and more importantly context length of main agent."
+- Reviewer: "run the benchmark, this is where we know exactly what does it mean by task is complete. So, we optimise orchetsration, tools, workers models and so on to increase the efficiency score at the end of benchmark task completion. This is where we do agentic loop. ... we can have different level of tasks, complex, simple, medium and 1 task and 20 tasks in one message and so on."
+- **Proposed by agent, reviewer to approve**: Score = 100 × Cache hit × Context factor ÷ Cost ($), counted only when every hidden check of the level passes (otherwise "incomplete k/n", no score). Context factor = 64K ÷ max(64K, average main-agent prompt per main request). Cost, cache hit, cache misses, input, output, requests and main context are all computed from the same turn-totals source as the banner (main + workers) and shown beside the score.
+- Levels proposed: simple (1 small task), medium (multi-file change), complex (spec-bearing feature with tests), batch (20 small tasks in one message).
+
 ## User Scenarios & Testing *(mandatory)*
 
 Each story is an independently testable slice, delivered in priority order. Comparisons use one fixed simulated workspace and task set, not different problems for different agents.

@@ -1,0 +1,2 @@
+{"type":"user_message","ts":10000}
+{"type":"llm_request","ts":10001,"attrs":{"copilotUsageNanoAiu":20000000000}}
