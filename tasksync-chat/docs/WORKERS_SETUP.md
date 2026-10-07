@@ -84,7 +84,7 @@ description: "Read-only research and code exploration"
 tier: light
 model: github-copilot/gpt-5.6-luna
 thinking: low
-models: [github-copilot/gpt-5.6-luna, github-copilot/gpt-5.6-terra]
+models: [github-copilot/gpt-5.6-luna, github-copilot/gpt-6.1-sol]
 thinkingOptions: [low, high]
 edit: deny
 bash: ask

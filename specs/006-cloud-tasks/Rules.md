@@ -22,5 +22,9 @@ Decisions the reviewer stated. Binding 005 rules: `specs/005-speckit-guided-flow
 ## Model (2026-10-06)
 - "Sure": the PR-default model fallback is accepted per FR-008 "where GitHub allows" (analyze F13).
 
+## Model preference (2026-10-07)
+- Reviewer: "Regarding sonnet, use Sol 6.1 instead of Terra. Using Sonnet is also okay in some cases."
+- Prefer Sol 6.1 (`github-copilot/gpt-6.1-sol`) for mid-tier work; Claude Sonnet 5.5 remains an explicit option where GitHub allows selection. Historical model self-reports above are observations, not recommendations; selection enforcement remains unverified.
+
 ## Scope (2026-10-06)
 - Whole-story delegation to GitHub is wanted, not excluded (Goal.md; Later US6; analyze F22).

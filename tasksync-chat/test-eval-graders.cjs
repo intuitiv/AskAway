@@ -34,13 +34,14 @@ assert.equal(gradeWorker({ grade: { toolsForbidden: ['edit'] } }, fake('ok', { t
 assert.equal(gradeWorker({ grade: {} }, fake('ok', { errors: ['signal SIGKILL'] })).pass, false, 'a killed run never passes');
 
 assert.equal(modelTier('github-copilot/gpt-5.6-luna'), 'light');
-assert.equal(modelTier('github-copilot/gpt-5.6-terra'), 'mid');
+assert.equal(modelTier('github-copilot/gpt-6.1-sol'), 'mid');
+assert.equal(modelTier('github-copilot/claude-sonnet-5.5'), 'mid');
 assert.equal(modelTier('github-copilot/claude-opus-5.5'), 'heavy');
 
 const modes = {
-    explore: { models: ['github-copilot/gpt-5.6-luna', 'github-copilot/gpt-5.6-terra'] },
+    explore: { models: ['github-copilot/gpt-5.6-luna', 'github-copilot/gpt-6.1-sol'] },
     verify: { models: ['github-copilot/gpt-5.6-luna'] },
-    code: { models: ['github-copilot/gpt-5.6-terra', 'github-copilot/claude-opus-5.5'] },
+    code: { models: ['github-copilot/gpt-6.1-sol', 'github-copilot/claude-opus-5.5'] },
 };
 const packet = (overrides) => ({ id: 'p', mode: 'explore', model: 'github-copilot/gpt-5.6-luna', thinking: 'low', reason: 'cheap lookup',
     objective: 'o', assertion: 'a', expected: 'e', command: 'c', dependsOn: [], ...overrides });
@@ -52,7 +53,7 @@ const planText = (tracks, commentary = FEED) => `Plan:\n\`\`\`json\n${JSON.strin
 const good = planText([
     { id: 'T1', parallel: true, packets: [packet({ id: 'e1' })] },
     { id: 'T2', parallel: true, packets: [
-        packet({ id: 'c1', mode: 'code', model: 'github-copilot/gpt-5.6-terra', thinking: 'high', verifyBy: 'v1' }),
+        packet({ id: 'c1', mode: 'code', model: 'github-copilot/gpt-6.1-sol', thinking: 'high', verifyBy: 'v1' }),
         packet({ id: 'v1', mode: 'verify', dependsOn: ['c1'] }),
     ] },
 ]);
@@ -60,8 +61,9 @@ const graded = gradePlan({ grade: { minTracks: 2, minParallelTracks: 2, requireM
 assert.equal(graded.pass, true, JSON.stringify(graded.checks.filter((c) => !c.pass)));
 
 const failing = (tracks, grade = {}) => gradePlan({ grade }, planText(tracks), modes).pass;
-assert.equal(failing([{ id: 'T', packets: [packet({ model: 'github-copilot/gpt-5.6-terra' })] }]), false, 'explore on mid tier is overspending');
-assert.equal(failing([{ id: 'T', packets: [packet({ id: 'c', mode: 'code', model: 'github-copilot/gpt-5.6-terra' })] }]), false, 'code without an independent verify packet');
+assert.equal(failing([{ id: 'T', packets: [packet({ model: 'github-copilot/gpt-6.1-sol' })] }]), false, 'explore on mid tier is overspending');
+assert.equal(failing([{ id: 'T', packets: [packet({ id: 'c', mode: 'code', model: 'github-copilot/gpt-6.1-sol' })] }]), false, 'code without an independent verify packet');
+assert.equal(gradePlan({ grade: { forbidHeavy: true } }, good, modes).pass, true, 'Sol code with an independent verifier is mid tier, not heavy');
 assert.equal(failing([{ id: 'T', packets: [packet({ id: 'c', mode: 'code', model: 'github-copilot/claude-opus-5.5', reason: 'hard', verifyBy: 'v' }), packet({ id: 'v', mode: 'verify' })] }]), false, 'heavy tier needs a real reason');
 assert.equal(failing([{ id: 'T', packets: [packet({ dependsOn: ['ghost'] })] }]), false, 'dangling dependency');
 assert.equal(failing([{ id: 'T', packets: [packet({ mode: 'dance' })] }]), false, 'unknown mode');
@@ -70,22 +72,22 @@ assert.equal(failing([{ id: 'T', packets: [packet({}), packet({ id: 'q' }), pack
 assert.equal(gradePlan({ grade: {} }, 'I would start by reading the code.', modes).pass, false, 'prose instead of a plan');
 
 // T040: work is judged by running it, with a verifier suited to the kind of work.
-const behaviourModes = { ...modes, gradle: { models: ['github-copilot/gpt-5.6-luna'] }, review: { models: ['github-copilot/gpt-5.6-terra'] }, authoring: { models: ['github-copilot/gpt-5.6-terra'] }, devx: { models: ['github-copilot/gpt-5.6-terra'] } };
+const behaviourModes = { ...modes, gradle: { models: ['github-copilot/gpt-5.6-luna'] }, review: { models: ['github-copilot/gpt-6.1-sol'] }, authoring: { models: ['github-copilot/gpt-6.1-sol'] }, devx: { models: ['github-copilot/gpt-6.1-sol'] } };
 const judged = (implMode, verifier) => gradePlan({ grade: {} }, planText([{ id: 'T', packets: [
-    packet({ id: 'w', mode: implMode, model: 'github-copilot/gpt-5.6-terra', verifyBy: 'v' }), packet({ id: 'v', dependsOn: ['w'], ...verifier })] }]), behaviourModes);
+    packet({ id: 'w', mode: implMode, model: 'github-copilot/gpt-6.1-sol', verifyBy: 'v' }), packet({ id: 'v', dependsOn: ['w'], ...verifier })] }]), behaviourModes);
 const verdictOf = (implMode, verifier) => judged(implMode, verifier).checks.find((c) => c.name === 'mutationsVerifiedByBehaviour').pass;
 assert.equal(verdictOf('code', { mode: 'gradle', command: "./gradlew :svc:test --tests '*.SlugTest'" }), true, 'code checked by a gradle worker running the tests');
 assert.equal(verdictOf('code', { mode: 'verify', command: 'node slug.test.js' }), true);
-assert.equal(verdictOf('code', { mode: 'review', model: 'github-copilot/gpt-5.6-terra', command: 'review the diff' }), false, 'a review is not a behaviour check');
+assert.equal(verdictOf('code', { mode: 'review', model: 'github-copilot/gpt-6.1-sol', command: 'review the diff' }), false, 'a review is not a behaviour check');
 assert.equal(verdictOf('code', { mode: 'verify', command: 'git diff HEAD' }), false, 'reading the diff is not running it');
 assert.equal(verdictOf('code', { mode: 'verify', command: 'cat src/slug.ts' }), false);
-assert.equal(verdictOf('authoring', { mode: 'devx', model: 'github-copilot/gpt-5.6-terra', command: 'devx e2e Priority field' }), true, 'authoring checked end to end in DevX');
+assert.equal(verdictOf('authoring', { mode: 'devx', model: 'github-copilot/gpt-6.1-sol', command: 'devx e2e Priority field' }), true, 'authoring checked end to end in DevX');
 assert.equal(verdictOf('authoring', { mode: 'gradle', command: './gradlew test' }), false, 'gradle cannot judge an authoring change');
 const docsVerdict = (writes, verifier) => gradePlan({ grade: {} }, planText([{ id: 'T', packets: [
-    packet({ id: 'w', mode: 'code', model: 'github-copilot/gpt-5.6-terra', verifyBy: 'v', writes }), packet({ id: 'v', dependsOn: ['w'], ...verifier })] }]), behaviourModes)
+    packet({ id: 'w', mode: 'code', model: 'github-copilot/gpt-6.1-sol', verifyBy: 'v', writes }), packet({ id: 'v', dependsOn: ['w'], ...verifier })] }]), behaviourModes)
     .checks.find((c) => c.name === 'mutationsVerifiedByBehaviour').pass;
 assert.equal(docsVerdict('docs', { mode: 'verify', command: "grep -c -F 'exactly one OpenCode server' docs/adr/0014.md" }), true, 'a docs write is checked by its text');
-assert.equal(docsVerdict('docs', { mode: 'review', model: 'github-copilot/gpt-5.6-terra', command: 'review the ADR' }), false, 'a review is still not a check');
+assert.equal(docsVerdict('docs', { mode: 'review', model: 'github-copilot/gpt-6.1-sol', command: 'review the ADR' }), false, 'a review is still not a check');
 assert.equal(docsVerdict(undefined, { mode: 'verify', command: "grep -F 'retry' src/retry.ts" }), false, 'grepping code is not running it');
 console.log('EV-040 VerifiedByBehaviour: PASS codeByGradle=true codeByReview=false inspectionOnly=false authoringByDevx=true authoringByGradle=false');
 
@@ -116,7 +118,7 @@ const researchModes = { ...modes, research: { models: ['github-copilot/gpt-5.6-l
 const researchVerdict = (packets) => gradePlan({ grade: { researchBeforeWork: true } }, planText([{ id: 'T', packets }]), researchModes)
     .checks.find((c) => c.name === 'researchBeforeWork').pass;
 const research = packet({ id: 'r', mode: 'research' });
-const change = (deps) => packet({ id: 'c', mode: 'code', model: 'github-copilot/gpt-5.6-terra', verifyBy: 'v', dependsOn: deps });
+const change = (deps) => packet({ id: 'c', mode: 'code', model: 'github-copilot/gpt-6.1-sol', verifyBy: 'v', dependsOn: deps });
 const check_ = packet({ id: 'v', mode: 'verify', dependsOn: ['c'] });
 assert.equal(researchVerdict([research, change(['r']), check_]), true, 'research \u2192 code \u2192 independent verify');
 assert.equal(researchVerdict([research, packet({ id: 'e', dependsOn: ['r'] }), change(['e']), check_]), true, 'the edge may run through an explore step');

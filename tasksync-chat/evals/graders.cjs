@@ -1,9 +1,11 @@
 // Deterministic graders for worker and orchestrator evals. No model judges: every check is a predicate.
 const LIGHT = [/gpt-5\.6-luna/, /gpt-6-luna/, /gemini-.*-flash/];
+const MID = [/gpt-6\.1-sol/, /claude-sonnet/];
 const HEAVY = [/claude-opus/, /gpt-6-sol/];
 
 function modelTier(model) {
     if (LIGHT.some((re) => re.test(model))) { return 'light'; }
+    if (MID.some((re) => re.test(model))) { return 'mid'; }
     if (HEAVY.some((re) => re.test(model))) { return 'heavy'; }
     return 'mid';
 }

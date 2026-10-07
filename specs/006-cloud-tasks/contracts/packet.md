@@ -52,6 +52,8 @@ Required fields (SC-004 counts nine): `stage`, `story`, `task`, task details (bo
 
 ## Comment (≤ 5 lines)
 
+Where GitHub allows model selection, prefer Sol 6.1 (`github-copilot/gpt-6.1-sol`) for mid-tier work; Claude Sonnet 5.5 remains an explicit option (reviewer 2026-10-07). This preference does not establish comment-text selection or enforcement; retain the read-only PR-default fallback below.
+
 Line 1 states the task, its story and stage; lines 2-3 state what to do. Everything else is referenced from the committed packet, not repeated. The packet commit message carries the trailer `AskAway-Commit: packet`.
 
 The sha in the comment's packet reference is the packet commit sha, not the packet's `base` sha.
