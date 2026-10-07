@@ -7,9 +7,11 @@ import type { KeepWarmWorker } from './keepWarm';
 import { KEEP_WARM_PROMPT, MAX_PARALLEL_WORKERS, RouteResult, WorkerRouter } from './workerRouter';
 
 export const MAX_WAIT_SECONDS = 240;
+/** A run whose process emitted no event this long after spawn is STALLED (OpenCode is silent on a session/directory mismatch). */
+export const STALL_AFTER_SECONDS = 60;
 const MAX_EVIDENCE_LINES = 25;
 
-export type RunState = 'STARTING' | 'RUNNING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+export type RunState = 'STARTING' | 'RUNNING' | 'STALLED' | 'WAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type LifecycleType = 'start' | 'message_update' | 'before_tool' | 'after_tool' | 'checkpoint' | 'approval' | 'stop' | 'error' | 'archive' | 'fork';
 
 export interface RunUsage { input: number; output: number; reasoning: number; cacheRead: number; cacheWrite: number; cost: number; steps: number }
@@ -44,6 +46,9 @@ export interface LifecycleRecord {
     exitCode?: number;
     state?: RunState;
     reason?: string;
+    /** The spawned OpenCode process and its run directory, on the start fact written at spawn. */
+    pid?: number;
+    dir?: string;
     /** A keep-warm ping's checkpoint: a real request that only refreshed the prompt cache. */
     ping?: boolean;
 }
@@ -97,6 +102,7 @@ export interface RunView {
 }
 
 export interface ChildLike {
+    pid?: number;
     stdout: NodeJS.ReadableStream | null;
     stderr?: NodeJS.ReadableStream | null;
     on(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
@@ -115,6 +121,8 @@ export interface RuntimeOptions {
     attachUrl?: string;
     /** Defaults to the shared server's HTTP API at the attach URL; tests inject a fake. */
     forkSession?: ForkSession;
+    /** One-shot timer for the stall detector; tests inject a manual one. Returns its canceller. */
+    setTimer?: (fire: () => void, ms: number) => () => void;
 }
 
 interface RunRecord extends RunView {
@@ -197,6 +205,11 @@ export function renderPacket(packet: WorkerPacket): string {
     ].join('\n');
 }
 
+/** The directory OpenCode runs a packet in: its cwd, else the owner workspace. Session reuse is keyed by it. */
+function runDir(packet: WorkerPacket): string {
+    return canonical(packet.cwd || packet.workspacePath);
+}
+
 function workspaceKey(workspace: string): string {
     return workspace.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
 }
@@ -243,12 +256,13 @@ export class OpenCodeWorkerRuntime {
     private readonly unusedPings = new Map<string, number>();
     private readonly pinging = new Set<string>();
     private readonly rehydrated = new Set<string>();
-    private readonly adopted = new Map<string, { workspace: string; profile: string; model: string; thinking: string; sessionId: string; contextTokens: number; lastTs: number; forkedFrom?: string }>();
+    private readonly adopted = new Map<string, { workspace: string; profile: string; model: string; thinking: string; sessionId: string; contextTokens: number; lastTs: number; forkedFrom?: string; cwd: string }>();
     private readonly ledgerDir: string;
     readonly now: () => number;
     private readonly spawner: Spawner;
     private attachUrl?: string;
     private readonly forkSession?: ForkSession;
+    private readonly setTimer: (fire: () => void, ms: number) => () => void;
 
     constructor(profiles: WorkerProfile[], options: RuntimeOptions = {}) {
         this.now = options.now ?? Date.now;
@@ -257,6 +271,7 @@ export class OpenCodeWorkerRuntime {
         this.spawner = options.spawner ?? defaultSpawner;
         this.attachUrl = options.attachUrl;
         this.forkSession = options.forkSession;
+        this.setTimer = options.setTimer ?? ((fire, ms) => { const timer = setTimeout(fire, ms); timer.unref?.(); return () => clearTimeout(timer); });
     }
 
     /** The shared OpenCode server workers attach to; empty when each run hosts its own. */
@@ -283,22 +298,22 @@ export class OpenCodeWorkerRuntime {
         this.refreshFromLedger(workspace);
         const capped = this.capRefusal(1);
         if (capped) { return capped; }
-        const routed = this.router.route({ workspacePath: workspace, profile: packet.profile, model: packet.model, thinking: packet.thinking,
+        const routed = this.router.route({ workspacePath: workspace, cwd: runDir(packet), profile: packet.profile, model: packet.model, thinking: packet.thinking,
             packetId: packet.objective.slice(0, 40), estimatedSeconds: packet.estimatedSeconds ?? 60 });
         if (routed.status === 'SELECTION_UNAVAILABLE') { return routed; }
         return this.admit(routed, workspace, packet);
     }
 
-    submit(workerId: string, packet: WorkerPacket): RunView | { status: 'RETIRED' | 'INELIGIBLE'; workerId?: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>> {
+    submit(workerId: string, packet: WorkerPacket): RunView | { status: 'RETIRED' | 'INELIGIBLE' | 'CWD_MISMATCH'; workerId?: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>> {
         const invalid = validatePacket(packet);
         if (invalid) { return { status: 'INELIGIBLE', workerId, reason: invalid }; }
         this.refreshFromLedger(canonical(packet.workspacePath));
         // Queuing behind a running worker adds no parallelism; starting on an idle one does.
         const capped = this.router.worker(workerId)?.active ? undefined : this.capRefusal(1);
         if (capped) { return capped; }
-        const routed = this.router.submitTo(workerId, packet.objective.slice(0, 40), packet.estimatedSeconds ?? 60);
+        const routed = this.router.submitTo(workerId, packet.objective.slice(0, 40), packet.estimatedSeconds ?? 60, runDir(packet));
         if (!('runId' in routed)) {
-            return { status: routed.status === 'RETIRED' ? 'RETIRED' : 'INELIGIBLE', workerId, reason: routed.reason };
+            return { status: routed.status === 'RETIRED' || routed.status === 'CWD_MISMATCH' ? routed.status : 'INELIGIBLE', workerId, reason: routed.reason };
         }
         return this.admit(routed, canonical(packet.workspacePath), packet);
     }
@@ -310,6 +325,8 @@ export class OpenCodeWorkerRuntime {
      */
     async submitForking(workerId: string, packet: WorkerPacket): Promise<ReturnType<OpenCodeWorkerRuntime['submit']> | (RunView & { status: 'FORKED'; forkedFrom: string })
         | (RunView & { forkSkipped: string })> {
+        const mismatch = validatePacket(packet) ? '' : this.router.cwdMismatch(workerId, runDir(packet));
+        if (mismatch) { return { status: 'CWD_MISMATCH', workerId, reason: mismatch }; }
         const candidate = validatePacket(packet) ? undefined : this.router.forkCandidate(workerId);
         if (!candidate) { return this.submit(workerId, packet); }
         const forkCapped = this.capRefusal(1);
@@ -343,8 +360,8 @@ export class OpenCodeWorkerRuntime {
      * Refused whole (nothing forked or started) on any mismatch, on the parallel cap, or when a fork fails.
      */
     async fanout(workerId: string, packets: WorkerPacket[]): Promise<{ status: 'FANNED_OUT'; workerId: string; runs: Array<RunView & { forkedFrom: string }> }
-        | { status: 'INELIGIBLE' | 'MODEL_MISMATCH'; workerId: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>>> {
-        const refuse = (status: 'INELIGIBLE' | 'MODEL_MISMATCH', reason: string) => ({ status, workerId, reason });
+        | { status: 'INELIGIBLE' | 'MODEL_MISMATCH' | 'CWD_MISMATCH'; workerId: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>>> {
+        const refuse = (status: 'INELIGIBLE' | 'MODEL_MISMATCH' | 'CWD_MISMATCH', reason: string) => ({ status, workerId, reason });
         if (packets.length < 2 || packets.length > MAX_PARALLEL_WORKERS) { return refuse('INELIGIBLE', `fanout needs 2..${MAX_PARALLEL_WORKERS} packets, got ${packets.length}`); }
         const parentReason = this.router.fanoutRefusal(workerId);
         if (parentReason) { return refuse('INELIGIBLE', parentReason); }
@@ -352,6 +369,8 @@ export class OpenCodeWorkerRuntime {
         for (const [index, packet] of packets.entries()) {
             const invalid = validatePacket(packet);
             if (invalid) { return refuse('INELIGIBLE', `packet ${index + 1}: ${invalid}`); }
+            const wrongDir = this.router.cwdMismatch(workerId, runDir(packet));
+            if (wrongDir) { return refuse('CWD_MISMATCH', `packet ${index + 1}: ${wrongDir}`); }
             const mismatch = packet.profile !== parent.profile ? `profile ${packet.profile} != ${parent.profile}`
                 : packet.model && packet.model !== parent.model ? `model ${packet.model} != ${parent.model}`
                 : packet.thinking && packet.thinking !== parent.thinking ? `thinking ${packet.thinking} != ${parent.thinking}` : '';
@@ -404,13 +423,14 @@ export class OpenCodeWorkerRuntime {
     async wait(runId: string, timeoutSeconds = MAX_WAIT_SECONDS): Promise<
         | { status: 'COMPLETED'; runId: string; evidence: string[] }
         | { status: 'FAILED' | 'CANCELLED'; runId: string; reason: string }
+        | { status: 'STALLED'; runId: string; workerId: string; sessionId: string; reason: string }
         | { status: 'STILL_RUNNING'; runId: string; workerId: string; state: RunState; waitedSeconds: number }
         | { status: 'UNKNOWN_RUN'; runId: string }> {
         const run = this.runs.get(runId);
         if (!run) { return { status: 'UNKNOWN_RUN', runId }; }
         const bound = Math.min(Math.max(0, timeoutSeconds), MAX_WAIT_SECONDS);
         const started = this.now();
-        if (!this.terminal(run.state)) {
+        if (!this.terminal(run.state) && run.state !== 'STALLED') {
             await new Promise<void>((resolve) => {
                 const timer = setTimeout(resolve, bound * 1000);
                 run.waiters.push(() => { clearTimeout(timer); resolve(); });
@@ -418,6 +438,7 @@ export class OpenCodeWorkerRuntime {
         }
         if (run.state === 'COMPLETED') { return { status: 'COMPLETED', runId, evidence: run.evidence }; }
         if (run.state === 'FAILED' || run.state === 'CANCELLED') { return { status: run.state, runId, reason: run.reason ?? run.state.toLowerCase() }; }
+        if (run.state === 'STALLED') { return { status: 'STALLED', runId, workerId: run.workerId, sessionId: run.sessionId, reason: run.reason ?? 'stalled' }; }
         return { status: 'STILL_RUNNING', runId, workerId: run.workerId, state: run.state, waitedSeconds: Math.round((this.now() - started) / 1000) };
     }
 
@@ -456,7 +477,9 @@ export class OpenCodeWorkerRuntime {
     logs(runId: string): LifecycleRecord[] {
         const run = this.runs.get(runId);
         if (!run) { return []; }
-        return this.readLedger(run.workspace).filter((record) => record.runId === runId);
+        // The spawn-time start fact of a fresh session is written before OpenCode names it: readers see the run's session on it.
+        return this.readLedger(run.workspace).filter((record) => record.runId === runId)
+            .map((record) => (record.sessionId || !run.sessionId ? record : { ...record, sessionId: run.sessionId }));
     }
 
     /** Every lifecycle fact of a workspace, in the order they happened. */
@@ -481,7 +504,7 @@ export class OpenCodeWorkerRuntime {
             const reason = !serverLive ? 'shared OpenCode server not reachable after reload'
                 : !adopted.sessionId ? 'no OpenCode session was recorded before reload' : '';
             this.router.adopt({ workerId, workspacePath: workspace, profile: adopted.profile, model: adopted.model, thinking: adopted.thinking,
-                contextTokens: adopted.contextTokens, lastActivityAt: adopted.lastTs, forkedFrom: adopted.forkedFrom }, reason ? 'ORPHANED' : 'IDLE', reason || undefined);
+                contextTokens: adopted.contextTokens, lastActivityAt: adopted.lastTs, forkedFrom: adopted.forkedFrom, cwd: adopted.cwd }, reason ? 'ORPHANED' : 'IDLE', reason || undefined);
             if (reason) { result.orphaned.push({ workerId, reason }); } else {
                 this.sessionsByWorker.set(workerId, adopted.sessionId);
                 result.reconnected.push(workerId);
@@ -533,7 +556,7 @@ export class OpenCodeWorkerRuntime {
             if (unfinishedWorkers.has(workerId)) { continue; }
             if (!known) {
                 this.router.adopt({ workerId, workspacePath: workspace, profile: adopted.profile, model: adopted.model, thinking: adopted.thinking,
-                    contextTokens: adopted.contextTokens, lastActivityAt: adopted.lastTs, forkedFrom: adopted.forkedFrom }, adopted.sessionId ? 'IDLE' : 'ORPHANED',
+                    contextTokens: adopted.contextTokens, lastActivityAt: adopted.lastTs, forkedFrom: adopted.forkedFrom, cwd: adopted.cwd }, adopted.sessionId ? 'IDLE' : 'ORPHANED',
                     adopted.sessionId ? undefined : 'no OpenCode session was recorded');
                 if (adopted.sessionId) { this.sessionsByWorker.set(workerId, adopted.sessionId); }
             } else {
@@ -587,13 +610,13 @@ export class OpenCodeWorkerRuntime {
             this.runs.set(runId, {
                 runId, workerId: first.workerId, sessionId, state, profile: first.profile, model: first.model, thinking: first.thinking,
                 dispatchTurnId: first.dispatchTurnId, track: first.track ?? '', startedAt: first.ts, endedAt: last.ts, updatedAt: last.ts, elapsedMs: last.ts - first.ts,
-                usage, queuePosition: 0, reason, workspace, cwd: workspace, packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
+                usage, queuePosition: 0, reason, workspace, cwd: first.cwd ?? workspace, packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
                 lastPromptTokens, lastCachedTokens, ...(first.forkedFrom ? { forkedFrom: first.forkedFrom } : {}),
             });
             const lastTs = records[records.length - 1].ts;
             const adopted = this.adopted.get(first.workerId);
             if (!adopted || lastTs >= adopted.lastTs) {
-                this.adopted.set(first.workerId, { workspace, profile: first.profile, model: first.model, thinking: first.thinking,
+                this.adopted.set(first.workerId, { workspace, cwd: first.cwd ?? workspace, profile: first.profile, model: first.model, thinking: first.thinking,
                     sessionId: sessionId || adopted?.sessionId || '', contextTokens: contextTokens || adopted?.contextTokens || 0, lastTs,
                     forkedFrom: first.forkedFrom ?? adopted?.forkedFrom });
             }
@@ -710,6 +733,9 @@ export class OpenCodeWorkerRuntime {
         args.push(message);
         const child = this.spawner(args);
         run.child = child;
+        // The start fact is written at spawn, so a run that never speaks is still in the ledger with its pid, session and directory.
+        this.record(run, { type: 'start', sessionId, pid: child.pid, dir: run.cwd });
+        const cancelStall = this.setTimer(() => this.stall(run, sessionId), STALL_AFTER_SECONDS * 1000);
         // Headless OpenCode rejects anything that would ask and then ends the run; that rejection is the real reason.
         const rejected: string[] = [];
         let errBuffer = '';
@@ -736,7 +762,8 @@ export class OpenCodeWorkerRuntime {
                     run.sessionId = event.sessionID;
                     this.sessionsByWorker.set(run.workerId, event.sessionID);
                 }
-                if (!started) { started = true; run.state = 'RUNNING'; this.record(run, { type: 'start' }); }
+                if (!started) { started = true; cancelStall(); }
+                if (run.state === 'STARTING' || run.state === 'STALLED') { run.state = 'RUNNING'; run.reason = undefined; }
                 const part = event?.part ?? {};
                 if (event?.type === 'text' && part.text) {
                     lastText = String(part.text);
@@ -773,6 +800,7 @@ export class OpenCodeWorkerRuntime {
             }
         });
         child.on('exit', (code, signal) => {
+            cancelStall();
             run.evidence = lastText.trim().split('\n').slice(-MAX_EVIDENCE_LINES);
             // Only a `Result:` line ends a packet; text that stops mid-thought is an unfinished run, not a completion.
             const hasResult = run.evidence.some((line) => /^\W*Result:\s*(PASS|FAIL|BLOCKED)\b/i.test(line));
@@ -804,6 +832,15 @@ export class OpenCodeWorkerRuntime {
                 if (queued && queued.state === 'STARTING') { this.launch(queued, queued.packet); }
             }
         });
+    }
+
+    /** No stdout event STALL_AFTER_SECONDS after spawn: surface it at once. The process is never killed automatically. */
+    private stall(run: RunRecord, sessionId: string): void {
+        if (run.state !== 'STARTING') { return; }
+        run.state = 'STALLED';
+        run.reason = `no event ${STALL_AFTER_SECONDS} s after spawn (session ${sessionId || run.sessionId || 'none'}, dir ${run.cwd})`;
+        this.record(run, { type: 'error', state: 'STALLED', reason: run.reason });
+        for (const waiter of run.waiters.splice(0)) { waiter(); }
     }
 
     private finish(run: RunRecord, state: RunState, reason?: string): void {

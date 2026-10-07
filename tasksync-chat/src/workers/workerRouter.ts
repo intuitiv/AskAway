@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import { resolveSelection, workerRegistryKey, WorkerProfile } from './workerProfiles';
 
 export const MAX_QUEUE_WAIT_SECONDS = 120;
@@ -9,6 +10,11 @@ export const FORK_AFTER_SECONDS = 30;
 export const MAX_PARALLEL_WORKERS = 8;
 /** The one-line prompt of a keep-warm ping (spec 005 T018). */
 export const KEEP_WARM_PROMPT = 'ping, reply ok';
+
+/** Equal directories compare equal through symlinks; a missing path keeps its literal value. */
+function realDir(dir: string): string {
+    try { return fs.realpathSync(dir); } catch { return dir; }
+}
 
 export type RoutedWorkerState = 'IDLE' | 'RUNNING' | 'RETIRED' | 'ORPHANED';
 
@@ -23,6 +29,8 @@ export interface QueueEntry {
 export interface RoutedWorker {
     workerId: string;
     registryKey: string;
+    /** Directory its OpenCode session runs in. A session is only ever reused for this same directory. */
+    cwd: string;
     workspacePath: string;
     profile: string;
     model: string;
@@ -41,6 +49,8 @@ export interface RoutedWorker {
 
 export interface RouteRequest {
     workspacePath: string;
+    /** Run directory; defaults to the owner workspace. */
+    cwd?: string;
     profile: string;
     model?: string;
     thinking?: string;
@@ -93,9 +103,10 @@ export class WorkerRouter {
         }
         const registryKey = workerRegistryKey(request.workspacePath, profile.name, selection);
         const rejections: string[] = [];
+        const cwd = realDir(request.cwd || request.workspacePath);
         // start means parallel: only an idle worker is reused; queuing behind a busy one is what submit is for.
         const eligible = [...this.workersById.values()]
-            .filter((worker) => worker.registryKey === registryKey && !worker.active)
+            .filter((worker) => worker.registryKey === registryKey && worker.cwd === cwd && !worker.active)
             .filter((worker) => {
                 const reason = this.ineligibility(worker);
                 if (reason) { rejections.push(`${worker.workerId}: ${reason}`); }
@@ -104,7 +115,7 @@ export class WorkerRouter {
             .sort((a, b) => this.estimatedWaitSeconds(a) - this.estimatedWaitSeconds(b) || a.workerId.localeCompare(b.workerId));
 
         const reused = eligible[0];
-        const worker = reused ?? this.createWorker(registryKey, request.workspacePath, profile.name, selection.model, selection.thinking);
+        const worker = reused ?? this.createWorker(registryKey, request.workspacePath, profile.name, selection.model, selection.thinking, cwd);
         const estimatedWaitSeconds = this.estimatedWaitSeconds(worker);
         const entry: QueueEntry = { runId: this.nextId('run'), packetId: request.packetId, estimatedSeconds: request.estimatedSeconds, enqueuedAt: this.now() };
         this.dispatches++;
@@ -127,11 +138,13 @@ export class WorkerRouter {
         };
     }
 
-    /** Queues work on one named worker, refusing explicitly when that worker is no longer eligible. */
-    submitTo(workerId: string, packetId: string, estimatedSeconds: number): RouteResult | { status: 'RETIRED' | 'INELIGIBLE'; workerId: string; reason: string } {
+    /** Queues work on one named worker, refusing explicitly when that worker is no longer eligible or runs in another directory. */
+    submitTo(workerId: string, packetId: string, estimatedSeconds: number, cwd?: string): RouteResult | { status: 'RETIRED' | 'INELIGIBLE' | 'CWD_MISMATCH'; workerId: string; reason: string } {
         const worker = this.workersById.get(workerId);
         if (!worker) { return { status: 'INELIGIBLE', workerId, reason: 'unknown worker' }; }
         if (worker.state === 'RETIRED') { return { status: 'RETIRED', workerId, reason: worker.retiredReason || 'retired' }; }
+        const mismatch = this.cwdMismatch(workerId, cwd);
+        if (mismatch) { return { status: 'CWD_MISMATCH', workerId, reason: mismatch }; }
         const reason = this.ineligibility(worker, false);
         // A cold cache or an oversized context never recovers: retire so no later caller reuses it either.
         if (reason && worker.state !== 'ORPHANED') {
@@ -153,6 +166,16 @@ export class WorkerRouter {
         return { status: 'REUSED', workerId, runId: entry.runId, model: worker.model, thinking: worker.thinking, queuePosition, estimatedWaitSeconds, reason: 'submitted to named worker' };
     }
 
+    /**
+     * OpenCode silently emits nothing when a session is reused from another directory, so a worker (its session, forks
+     * and pings) only ever serves its own run directory. Empty when `cwd` matches or is not given.
+     */
+    cwdMismatch(workerId: string, cwd?: string): string {
+        const worker = this.workersById.get(workerId);
+        if (!worker || !cwd || realDir(cwd) === worker.cwd) { return ''; }
+        return `worker ${workerId} runs in ${worker.cwd}, the packet in ${cwd}; a session is never reused across directories (start a new worker for that directory)`;
+    }
+
     /** The running worker a submit should fork instead of queue behind: its expected wait is past FORK_AFTER_SECONDS. */
     forkCandidate(workerId: string): { parent: RoutedWorker; waitSeconds: number } | undefined {
         const worker = this.workersById.get(workerId);
@@ -168,7 +191,7 @@ export class WorkerRouter {
     startFork(parentId: string, packetId: string, estimatedSeconds: number): (RouteResult & { forkedFrom: string }) | undefined {
         const parent = this.workersById.get(parentId);
         if (!parent) { return undefined; }
-        const worker = this.createWorker(parent.registryKey, parent.workspacePath, parent.profile, parent.model, parent.thinking);
+        const worker = this.createWorker(parent.registryKey, parent.workspacePath, parent.profile, parent.model, parent.thinking, parent.cwd);
         worker.contextTokens = parent.contextTokens;
         worker.forkedFrom = parentId;
         const entry: QueueEntry = { runId: this.nextId('run'), packetId, estimatedSeconds, enqueuedAt: this.now() };
@@ -224,7 +247,7 @@ export class WorkerRouter {
     }
 
     /** Re-registers a worker known from the ledger after a reload. It keeps its identity and never re-runs work. */
-    adopt(record: Pick<RoutedWorker, 'workerId' | 'workspacePath' | 'profile' | 'model' | 'thinking' | 'contextTokens' | 'lastActivityAt' | 'forkedFrom'>,
+    adopt(record: Pick<RoutedWorker, 'workerId' | 'workspacePath' | 'profile' | 'model' | 'thinking' | 'contextTokens' | 'lastActivityAt' | 'forkedFrom'> & { cwd?: string },
         state: 'IDLE' | 'ORPHANED', reason?: string): void {
         const existing = this.workersById.get(record.workerId);
         if (existing) {
@@ -232,7 +255,7 @@ export class WorkerRouter {
             return;
         }
         this.workersById.set(record.workerId, {
-            ...record, registryKey: workerRegistryKey(record.workspacePath, record.profile, record), state, retiredReason: reason, queue: [],
+            ...record, cwd: realDir(record.cwd || record.workspacePath), registryKey: workerRegistryKey(record.workspacePath, record.profile, record), state, retiredReason: reason, queue: [],
         });
     }
 
@@ -298,9 +321,9 @@ export class WorkerRouter {
         return '';
     }
 
-    private createWorker(registryKey: string, workspacePath: string, profile: string, model: string, thinking: string): RoutedWorker {
+    private createWorker(registryKey: string, workspacePath: string, profile: string, model: string, thinking: string, cwd: string): RoutedWorker {
         const worker: RoutedWorker = {
-            workerId: this.nextId('worker'), registryKey, workspacePath, profile, model, thinking,
+            workerId: this.nextId('worker'), registryKey, workspacePath, cwd, profile, model, thinking,
             state: 'IDLE', contextTokens: 0, lastActivityAt: this.now(), queue: [],
         };
         this.workersById.set(worker.workerId, worker);

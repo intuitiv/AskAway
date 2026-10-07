@@ -125,7 +125,7 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
     }, async (args) => (await runtime()).start(packetOf(args)));
 
     register('worker_submit', {
-        description: 'Queue a packet on an existing warm worker (reuses its OpenCode session). If that worker is busy for more than ~30s the session is forked into a new parallel worker instead (status FORKED, forkedFrom). Refuses explicitly if the worker is retired or ineligible.',
+        description: 'Queue a packet on an existing warm worker (reuses its OpenCode session). If that worker is busy for more than ~30s the session is forked into a new parallel worker instead (status FORKED, forkedFrom). Refuses explicitly if the worker is retired or ineligible, or CWD_MISMATCH when the packet run directory (workspacePath) differs from the worker one: a session is never reused across directories.',
         inputSchema: z.object({ workerId: z.string(), ...packetShape }),
     }, async (args) => (await runtime()).submitForking(args.workerId, packetOf(args)));
 
@@ -157,7 +157,7 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
     }, async (args) => (await runtime()).status(args.runId) ?? { status: 'UNKNOWN_RUN', runId: args.runId });
 
     register('worker_wait', {
-        description: `Wait for a run to finish, at most ${MAX_WAIT_SECONDS}s. On the ceiling it returns STILL_RUNNING: end your turn and check back instead of waiting again.`,
+        description: `Wait for a run to finish, at most ${MAX_WAIT_SECONDS}s. On the ceiling it returns STILL_RUNNING: end your turn and check back instead of waiting again. Returns STALLED at once when the worker process emitted no event 60 s after spawn (it is not killed; cancel it or resume).`,
         inputSchema: z.object({ runId: z.string(), timeoutSeconds: z.number().min(0).optional() }),
     }, async (args) => {
         const requested = Math.min(args.timeoutSeconds ?? MAX_WAIT_SECONDS, MAX_WAIT_SECONDS);

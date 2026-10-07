@@ -8,7 +8,13 @@ Decisions the reviewer stated. Binding 005 rules: `specs/005-speckit-guided-flow
 
 ## Live proof and open decisions (2026-10-07)
 - T004 reviewer-named PR: https://github.com/Pega-ProductEngineering/model-calculation-service-app-logic/pull/1603.
-- F7 (merge block scope) and F21 (go/no-go criteria) still need reviewer decisions; the reviewer asked for more details.
+- F7 and F21: decided 2026-10-07, see below.
+
+## Merging (2026-10-07, F7)
+- "PR merge is done by human. Not done automatically." / "do not merge PRs." AskAway never merges a PR. The plan's required-status merge block (C-8) is dropped; the Specs tab only shows that a cloud task is still working.
+
+## Go/no-go (2026-10-07, F21)
+- "I want a demo for it, before i enable it in production." T004 is a demo run with the reviewer; cloud tasks stay off in production until the reviewer approves after that demo.
 
 ## Model (2026-10-06)
 - "Sure": the PR-default model fallback is accepted per FR-008 "where GitHub allows" (analyze F13).

@@ -2917,12 +2917,18 @@
         var w = b.workers || {};
         var workerRuns = Number(w.runs) || 0;
         var workerDollars = Number(w.dollars) || 0;
+        var workerRequests = Number(w.requests) || 0;
+        var workerReqPart = w.requests === undefined ? '' : ' &middot; ' + workerRequests + ' req' + (workerRequests === 1 ? '' : 's');
         var workerPart = workerRuns > 0
-            ? ' <span class="health-workers" title="Workers spawned this turn and their cost (included in the total)">(' + workerRuns + ' worker' + (workerRuns === 1 ? '' : 's') + ' &middot; ' + bannerDollars(workerDollars) + ')</span>'
+            ? ' <span class="health-workers" title="Workers spawned this turn, their requests and cost (included in the total)">(' + workerRuns + ' worker' + (workerRuns === 1 ? '' : 's') + workerReqPart + ' &middot; ' + bannerDollars(workerDollars) + ')</span>'
             : '';
+        var flag = b.flagContext ? workerContextFlag(lastIn) : { over: false };
+        var lastInHtml = flag.over
+            ? '<span class="' + flag.cls.trim() + '" title="' + flag.title + '">' + formatObservabilityCompact(lastIn) + '</span>'
+            : formatObservabilityCompact(lastIn);
         return requests + ' req' + (requests === 1 ? '' : 's') +
             ' &middot; <strong class="health-cost">' + bannerDollars(dollars) + '</strong>' + workerPart +
-            ' &middot; ' + formatObservabilityCompact(lastIn) + ' last in / ' + formatObservabilityCompact(b.turnOut) + ' turn out' +
+            ' &middot; ' + lastInHtml + ' last in / ' + formatObservabilityCompact(b.turnOut) + ' turn out' +
             ' &middot; ' + hit + ' cache';
     }
     // Live turn timer: '' when no turn is running (turnStartedAt 0), else m:ss or h:mm:ss.
@@ -2955,12 +2961,13 @@
         var w = metrics.workers || {};
         var workerRuns = Number(w.runs) || 0;
         var workerDollars = Number(w.dollars) || 0;
+        var workerRequests = Number(w.requests) || 0;
         var timer = turnTimerLabel(metrics.turnStartedAt, now, Number(metrics.lastRequestTs) || 0);
         return usageBannerHtml({
-            requests: Number(turn.requestCount) || 0,
+            requests: (Number(turn.requestCount) || 0) + workerRequests,
             dollars: (Number(turn.nanoAiu) || 0) / 1000000000 / 100 + workerDollars,
             lastIn: latest.inputTokens, lastCached: latest.cachedTokens, turnOut: turn.outputTokens,
-            workers: { runs: workerRuns, dollars: workerDollars },
+            workers: { runs: workerRuns, requests: workerRequests, dollars: workerDollars },
         }) + (timer ? ' &middot; <span class="health-turn-timer" title="Time since this turn started">' + timer + '</span>' : '');
     }
     function cacheAgeLabel(secs) {
@@ -2968,6 +2975,21 @@
         var mm = Math.floor(capped / 60), ss = capped % 60;
         var clock = mm + ':' + (ss < 10 ? '0' : '') + ss;
         return { clock: clock, state: secs < 285 ? 'warm' : secs < 300 ? 'cooling' : 'cold', text: 'Age: ' + clock + (secs >= 300 ? ' cold' : ' warm') };
+    }
+    // Observability "This turn" line: the same totals as the banner (main + worker requests and dollars), with the split.
+    // Returns { text, usd } where text is "79 requests (main 41 · workers 38)" and usd is main + worker dollars.
+    function turnTotalsLead(scope, workers) {
+        var main = Number(scope && scope.requestCount) || 0;
+        var wReq = Number(workers && workers.requests) || 0;
+        var total = main + wReq;
+        var text = total + ' request' + (total === 1 ? '' : 's') + (wReq > 0 ? ' (main ' + main + ' \u00b7 workers ' + wReq + ')' : '');
+        return { total: total, text: text, usd: (Number(scope && scope.nanoAiu) || 0) / 1e9 / 100 + (Number(workers && workers.dollars) || 0) };
+    }
+    // Worker card: a last prompt this large is re-sent on every step, so the figure is flagged (observability only).
+    var WORKER_CONTEXT_WARN_TOKENS = 100000;
+    function workerContextFlag(lastPromptTokens) {
+        var over = (Number(lastPromptTokens) || 0) >= WORKER_CONTEXT_WARN_TOKENS;
+        return { over: over, cls: over ? ' obs-cache-risk' : '', title: over ? 'over 100K: each step re-sends this context' : '' };
     }
     // ── end Usage banner ──
 
@@ -3428,8 +3450,9 @@
         var turnSummary = document.getElementById('obs-turn-summary');
         if (turnSummary) {
             var lastScope = observabilityMetrics.lastRequest || {};
-            var n = Number(lastScope.requestCount) || 0;
-            var usd = ((Number(lastScope.nanoAiu) || 0) / 1e9 / 100);
+            var turnTotals = turnTotalsLead(lastScope, observabilityMetrics.workers);
+            var n = turnTotals.total;
+            var usd = turnTotals.usd;
             var usdStr = '<span style="color:#f14c4c">($' + usd.toFixed(2) + ')</span>';
             // Derive compaction / sub-agent counts from this turn's timeline events.
             var turnEvts = observabilityMetrics.turnEvents || [];
@@ -3443,7 +3466,7 @@
             if (compactN) { extra += ' \u00b7 <span class="obs-tag-compaction">' + compactN + ' compaction' + (compactN === 1 ? '' : 's') + '</span>'; }
             if (subagentN) { extra += ' \u00b7 <span class="obs-tag-subagent">' + subagentN + ' sub-agent' + (subagentN === 1 ? '' : 's') + '</span>'; }
             turnSummary.innerHTML = n
-                ? (n + ' request' + (n === 1 ? '' : 's') + ' \u00b7 ' + aiu(lastScope.nanoAiu) + ' AIU ' + usdStr + ' \u00b7 ' +
+                ? (turnTotals.text + ' \u00b7 ' + aiu(usd * 100 * 1e9) + ' AIU ' + usdStr + ' \u00b7 ' +
                     tok(lastScope.inputTokens) + ' in / ' + tok(lastScope.outputTokens) + ' out \u00b7 ' + hitPct(lastScope) + ' cache hit' + extra)
                 : 'No requests yet this turn';
         }
@@ -5492,7 +5515,7 @@
         var b = worker.banner || {};
         var age = cacheAgeLabel(Math.floor((now - (b.lastActivityAt || now)) / 1000));
         return '<div class="worker-banner" title="Requests, cost, full prompt of the last request / output this run, cache hit of the last request, time since last activity (cache is cold after 5:00)">' +
-            '<span class="worker-banner-metrics">' + usageBannerHtml(b) + '</span>' +
+            '<span class="worker-banner-metrics">' + usageBannerHtml(Object.assign({}, b, { flagContext: true })) + '</span>' +
             '<strong class="health-cache ' + age.state + '">' + age.text + '</strong></div>';
     }
     // Worker tools return JSON with workerId/runId; the turn trace shows them as a link to the Workers tab.

@@ -16,9 +16,9 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 |---|---|---|---|---|
 | T004 | Run the live cloud proof and record route evidence | BLOCKED | Reviewer named https://github.com/Pega-ProductEngineering/model-calculation-service-app-logic/pull/1603; cloud-agent/model/workflow setup still to confirm | specs/006-cloud-tasks/reviewer-brief.md |
 | T005 | Update route decisions and record go/no-go from observed proof | BLOCKED | Depends on T004 evidence | specs/006-cloud-tasks/tasks.md |
-| F7 | Decide whether merge blocking applies to every PR or only cloud-task PRs | NEEDS-DECISION | Reviewer asked for more details; recommend cloud-task PRs only, not approved | specs/006-cloud-tasks/reviewer-brief.md |
+| F7 | Merge block | DONE | Reviewer 2026-10-07: "PR merge is done by human" / "do not merge PRs" → no merge, no required-status block; plan C-8 to amend | specs/006-cloud-tasks/Rules.md |
 | F18 | Tag 006 tasks `[cloud]` or `[local: reason]` | BLOCKED | Do when the `/sk.tasks` asset ships | specs/006-cloud-tasks/checklists/analyze.md |
-| F21 | Set live-proof go/no-go criteria | NEEDS-DECISION | Reviewer asked for more details; strict model/concurrency gate vs working route with recorded limits remains open | specs/006-cloud-tasks/reviewer-brief.md |
+| F21 | Go/no-go | DONE | Reviewer: "I want a demo for it, before i enable it in production" → T004 = demo with reviewer; off in production until approved | specs/006-cloud-tasks/Rules.md |
 
 ## 007 — Validator Agent
 
@@ -62,7 +62,7 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 | U4 | 006 per-task time cap: default 50 min, hard max 59, never above | DONE | Reviewer: "Okay. We dont want to be more than that also." | 2026-10-07 |
 | U5 | agentmemory live demo | DONE | Demo ran on isolated instance 5; FINDING: it used the shell's OPENAI_API_KEY and tried to send observations to OpenAI (failed 429) → see M2 | 2026-10-07 |
 | U6 | pr-daily on app-logic PR #1557 (6 failing checks) | DONE (reviewer-owned) | Reviewer does it in that workspace; no worker fix here | 2026-10-07 |
-| U7 | Worker context handoff at ~100K (continue in a fresh session seeded with a summary) | NEEDS-DECISION | Reviewer asked for more info (not cloning; about context growth) | 2026-10-07 |
+| U7 | Worker context handoff at ~100K | IN-PROGRESS | Reviewer: "yes", but "i dont want to add that intelligence behind the scenes. Not to begin with... i want some kind of observability" → step 1: worker card flags ≥100K context; no automatic handoff | 2026-10-07 |
 | U8 | Cheaper default model for test/code profiles | DONE (trial) | code/test default = Sol 6.1 (~$0.015/step vs Sonnet ~$0.026); 3 Sol packets PASS | 2026-10-07 |
 | U9 | Cap parallel workers at 8 | DONE | `PARALLEL_CAP`, EV-WORKER-FANOUT, 20548e7 | 2026-10-07 |
 | U10 | Standard simulated workspace to benchmark agents/models/prompts | DONE | Spec 008 created | 2026-10-07 |
@@ -74,7 +74,9 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 | NEW-1 | Warm one worker, then `fanout` N forks on the same model | DONE | EV-WORKER-FANOUT, 20548e7 | Reviewer decision, 2026-10-07 |
 | NEW-2 | Maximise worker reuse | IN-PROGRESS | Ping hit rate 13% (5/38, $1.53). RCA: TTL expiry, thinking in reuse key, router blind to other hosts. Cross-host fix in progress; R1/R2 need reviewer | RCA run-7cxp1q-16 |
 | NEW-3 | Repo analyst over all worker ledgers | DONE | On request: `node tasksync-chat/tools/worker-analyst.cjs`; EV-WORKER-ANALYST | Reviewer decision, 2026-10-07 |
-| NEW-4 | Harness efficiency number | NEEDS-DECISION | Spec 008 question | Reviewer ask, 2026-10-07 |
+| NEW-4 | Harness efficiency number | NEEDS-DECISION | Reviewer: "Show me a sample to approve" | Reviewer ask, 2026-10-07 |
+| BUG-1 | Banner request count excludes worker requests | IN-PROGRESS | Reviewer: "I still dont see total number of requests including worker requests" | 2026-10-07 |
+| BUG-2 | app-logic runs 99fd4i-7/8 hung with no events; orchestrator (Opus, 200K) waited ~23 min | IN-PROGRESS | RCA running; banner $0.05 was correct (those runs spent nothing) | 2026-10-07 |
 | R1 | Reuse an idle worker even if the new packet asks a different thinking level | NEEDS-DECISION | Thinking change may break part of the cache; knowledge kept | RCA run-7cxp1q-16 |
 | R2 | Reuse an expired worker (<100K) instead of pinging | NEEDS-DECISION | Same cache write as a fresh worker, keeps knowledge; pings hit 13% | RCA run-7cxp1q-16 |
 | M1 | One agentmemory server for agents + validator, or two | NEEDS-DECISION | D15 said validator-only; D22 says same solution for both | 2026-10-07 |
