@@ -1,5 +1,5 @@
 // 006 US1 live proof: queue one trivial task to the Copilot cloud agent on an existing PR and record what happens.
-// Run (reviewer, on the PR branch, clean tree): node tools/cloud-proof.cjs --pr <n> [--task PROOF-1] [--minutes 59]
+// Run (reviewer, on the PR branch, clean tree): node tools/cloud-proof.cjs --pr <n> [--task PROOF-1] [--minutes 59] [--repo-root <PR checkout>]
 // Dry run (no git, no GitHub):                  node tools/cloud-proof.cjs --pr <n> --dry-run
 // Writes specs/006-cloud-tasks/evidence/proof-<date>.md (skeleton) and test-fixtures/cloud-signals-<date>.json.
 const fs = require('node:fs');
@@ -15,6 +15,8 @@ const task = opt('--task', 'PROOF-1');
 const minutes = Math.min(59, Number(opt('--minutes', '59')));
 const dryRun = args.includes('--dry-run');
 const repoRoot = path.resolve(__dirname, '..', '..');
+// The PR may live in another repo's checkout; evidence and fixtures stay in this repo.
+const prRoot = path.resolve(opt('--repo-root', repoRoot));
 const chatRoot = path.resolve(__dirname, '..');
 
 function loadSecretGate() {
@@ -71,8 +73,8 @@ if (dryRun) {
     process.exit(0);
 }
 
-const git = (...a) => execFileSync('git', a, { cwd: repoRoot, encoding: 'utf8' }).trim();
-const gh = (...a) => execFileSync('gh', a, { cwd: repoRoot, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }).trim();
+const git = (...a) => execFileSync('git', a, { cwd: prRoot, encoding: 'utf8' }).trim();
+const gh = (...a) => execFileSync('gh', a, { cwd: prRoot, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }).trim();
 const ghJson = (...a) => JSON.parse(gh(...a) || 'null');
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const trim = (value) => JSON.parse(JSON.stringify(value, (k, v) => (typeof v === 'string' && v.length > 500 ? `${v.slice(0, 500)}…` : v)));
@@ -86,10 +88,11 @@ if (git('status', '--porcelain')) { console.error('REFUSED: working tree not cle
 
 const packets = [packetFor(task, info.headRefOid), packetFor(`${task}b`, info.headRefOid)];
 refuseSecrets({ packet: packets.map(p => p.text).join('\n') });
-for (const p of packets) { fs.mkdirSync(path.dirname(path.join(repoRoot, p.path)), { recursive: true }); fs.writeFileSync(path.join(repoRoot, p.path), p.text); }
-const target = path.join(repoRoot, 'specs', SLUG, 'evidence', 'proof-target.md');
+for (const p of packets) { fs.mkdirSync(path.dirname(path.join(prRoot, p.path)), { recursive: true }); fs.writeFileSync(path.join(prRoot, p.path), p.text); }
+const target = path.join(prRoot, 'specs', SLUG, 'evidence', 'proof-target.md');
 if (!fs.existsSync(target)) { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, '# Cloud proof target\n'); }
-git('add', ...packets.map(p => p.path), path.relative(repoRoot, target));
+// -f: packets are meant for the cloud agent even where the repo ignores .askaway/.
+git('add', '-f', ...packets.map(p => p.path), path.relative(prRoot, target));
 git('commit', '-m', `006 cloud proof: packets ${task}, ${task}b`);
 git('push');
 const base = git('rev-parse', 'HEAD');

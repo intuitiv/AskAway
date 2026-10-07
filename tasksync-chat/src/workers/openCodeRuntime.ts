@@ -97,6 +97,8 @@ export interface RunView {
     lastCachedTokens: number;
     /** The worker's own one-line summary of the context it holds, for reuse decisions. */
     knowledge: string;
+    /** Set when the packet asked for a thinking the reused worker does not have: it keeps its own (e.g. "thinking: medium (worker's)"). */
+    thinkingNote?: string;
     /** Parent worker id when this run's worker was forked from a busy one. */
     forkedFrom?: string;
 }
@@ -304,7 +306,7 @@ export class OpenCodeWorkerRuntime {
         return this.admit(routed, workspace, packet);
     }
 
-    submit(workerId: string, packet: WorkerPacket): RunView | { status: 'RETIRED' | 'INELIGIBLE' | 'CWD_MISMATCH'; workerId?: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>> {
+    submit(workerId: string, packet: WorkerPacket): RunView | { status: 'RETIRED' | 'INELIGIBLE' | 'CWD_MISMATCH' | 'WORKER_TOO_OLD'; workerId?: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>> {
         const invalid = validatePacket(packet);
         if (invalid) { return { status: 'INELIGIBLE', workerId, reason: invalid }; }
         this.refreshFromLedger(canonical(packet.workspacePath));
@@ -313,7 +315,7 @@ export class OpenCodeWorkerRuntime {
         if (capped) { return capped; }
         const routed = this.router.submitTo(workerId, packet.objective.slice(0, 40), packet.estimatedSeconds ?? 60, runDir(packet));
         if (!('runId' in routed)) {
-            return { status: routed.status === 'RETIRED' || routed.status === 'CWD_MISMATCH' ? routed.status : 'INELIGIBLE', workerId, reason: routed.reason };
+            return { status: routed.status === 'RETIRED' || routed.status === 'CWD_MISMATCH' || routed.status === 'WORKER_TOO_OLD' ? routed.status : 'INELIGIBLE', workerId, reason: routed.reason };
         }
         return this.admit(routed, canonical(packet.workspacePath), packet);
     }
@@ -360,11 +362,11 @@ export class OpenCodeWorkerRuntime {
      * Refused whole (nothing forked or started) on any mismatch, on the parallel cap, or when a fork fails.
      */
     async fanout(workerId: string, packets: WorkerPacket[]): Promise<{ status: 'FANNED_OUT'; workerId: string; runs: Array<RunView & { forkedFrom: string }> }
-        | { status: 'INELIGIBLE' | 'MODEL_MISMATCH' | 'CWD_MISMATCH'; workerId: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>>> {
-        const refuse = (status: 'INELIGIBLE' | 'MODEL_MISMATCH' | 'CWD_MISMATCH', reason: string) => ({ status, workerId, reason });
+        | { status: 'INELIGIBLE' | 'MODEL_MISMATCH' | 'CWD_MISMATCH' | 'WORKER_TOO_OLD'; workerId: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>>> {
+        const refuse = (status: 'INELIGIBLE' | 'MODEL_MISMATCH' | 'CWD_MISMATCH' | 'WORKER_TOO_OLD', reason: string) => ({ status, workerId, reason });
         if (packets.length < 2 || packets.length > MAX_PARALLEL_WORKERS) { return refuse('INELIGIBLE', `fanout needs 2..${MAX_PARALLEL_WORKERS} packets, got ${packets.length}`); }
         const parentReason = this.router.fanoutRefusal(workerId);
-        if (parentReason) { return refuse('INELIGIBLE', parentReason); }
+        if (parentReason) { return refuse(/^idle more than/.test(parentReason) ? 'WORKER_TOO_OLD' : 'INELIGIBLE', parentReason); }
         const parent = this.router.worker(workerId) as NonNullable<ReturnType<WorkerRouter['worker']>>;
         for (const [index, packet] of packets.entries()) {
             const invalid = validatePacket(packet);
@@ -713,6 +715,7 @@ export class OpenCodeWorkerRuntime {
             dispatchTurnId: packet.dispatchTurnId, track: String(packet.track ?? '').trim().slice(0, 24), startedAt: this.now(), updatedAt: this.now(), elapsedMs: 0, usage: emptyUsage(),
             queuePosition: routed.queuePosition, workspace, cwd: packet.cwd ? canonical(packet.cwd) : workspace, packet: renderPacket(packet), evidence: [], waiters: [],
             nextInputTokens: this.router.worker(routed.workerId)?.contextTokens ?? 0, knowledge, lastPromptTokens: 0, lastCachedTokens: 0,
+            ...(packet.thinking && packet.thinking !== routed.thinking ? { thinkingNote: `thinking: ${routed.thinking} (worker's)` } : {}),
             ...(this.router.worker(routed.workerId)?.forkedFrom ? { forkedFrom: this.router.worker(routed.workerId)?.forkedFrom } : {}),
         };
         this.runs.set(run.runId, run);
@@ -856,9 +859,9 @@ export class OpenCodeWorkerRuntime {
     }
 
     private view(run: RunRecord): RunView {
-        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens, forkedFrom } = run;
+        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens, forkedFrom, thinkingNote } = run;
         return { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens,
-            elapsedMs: (endedAt ?? this.now()) - startedAt, usage: { ...usage }, queuePosition, reason, ...(forkedFrom ? { forkedFrom } : {}) };
+            elapsedMs: (endedAt ?? this.now()) - startedAt, usage: { ...usage }, queuePosition, reason, ...(forkedFrom ? { forkedFrom } : {}), ...(thinkingNote ? { thinkingNote } : {}) };
     }
 
     private record(run: RunRecord, fact: Pick<LifecycleRecord, 'type'> & Partial<LifecycleRecord>): void {

@@ -87,14 +87,23 @@ function host(clock) {
     await b.finish(b.children[1], 'ses_A');
     await a.finish(a.children[2], 'ses_P');
 
-    // Past the TTL the sibling is not reusable: a fresh worker is created.
+    // Past the TTL a small-context sibling is still reused (policy 2026-10-07), at its own thinking.
     clock.t += 301_000;
+    const siblings = [created.workerId, parallel.workerId];
     const cold = await b.call('start', packet);
-    assert.ok(![created.workerId, parallel.workerId].includes(cold.workerId), 'expired siblings are not reused');
-    // A different thinking variant never reuses.
+    assert.ok(siblings.includes(cold.workerId), 'an expired small-context sibling is reused');
     const other = await b.call('start', { ...packet, thinking: 'high' });
-    assert.notEqual(other.workerId, cold.workerId);
+    assert.ok(siblings.includes(other.workerId) && other.workerId !== cold.workerId, 'another thinking reuses the other sibling');
+    assert.equal(other.thinking, 'low');
+    assert.equal(other.thinkingNote, "thinking: low (worker's)");
+    await b.finish(b.children[b.children.length - 2], 'ses_A');
+    await b.finish(b.children[b.children.length - 1], 'ses_A');
+
+    // Idle for more than 3 hours: never scheduled, a fresh worker is created.
+    clock.t += 3 * 3600_000 + 1000;
+    const old = await b.call('start', packet);
+    assert.ok(!siblings.includes(old.workerId) && ![cold.workerId, other.workerId].includes(old.workerId), 'workers idle over 3 h are not scheduled');
 
     for (const dir of [buildDir, ledgerDir, workspace]) { fs.rmSync(dir, { recursive: true, force: true }); }
-    console.log('PASS EV-WORKER-CROSS-HOST-REUSE withinTtl=reused expired=new busySibling=skipped');
+    console.log('PASS EV-WORKER-CROSS-HOST-REUSE withinTtl=reused expiredSmall=reused over3h=new busySibling=skipped');
 })().catch((error) => { console.error(error); process.exit(1); });

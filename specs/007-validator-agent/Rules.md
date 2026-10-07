@@ -18,11 +18,14 @@ Decisions the reviewer stated (2026-10-01). Change a rule only when the reviewer
 
 ## Reviewer decisions (2026-10-07)
 
-- A1: "a separate agentmemory server only for the validator, with auto-forget off". Dedicated validator agentmemory server selected; install approved.
+- A1: "a separate agentmemory server only for the validator, with auto-forget off". Initial selection; install approved. D15/A1 validator-only topology superseded by M1 below.
 - A4 / FR-006: "Validator for few turns it is more like trial basis. I manually see the quality of validator how it is responding on behalf of me." Validator runs alongside, never blocks the reviewer's reply, and remains Commentary-only in beta.
 - Agent memory access: "if it uses as memory store, agent should be able to call it for memory needs". Agents can query the same memory store; this does not deliver validator outputs to agent channels.
 - A11 / baselines: "I'll manually see them few days". Manual quality review; no automated baseline in beta.
 - A5 / FR-011 / FR-020: "keep older versions also, hide them". Superseded versions are retained but hidden from recall and default views; a changed flag is informational, not an automatic review request.
 - A10 / A15: reviewer said "Sure" to drafting missing success criteria and observed/skipped definitions. Drafted by agent, reviewer to approve: 0 validator outputs reach any agent channel; 0 seeded secrets reach any sink. Observed = response passed through the cheap check; skipped = checked but not sent to the answering validator because it is pure progress; skips counted in Commentary stats.
 - A12 / D22: "memories md files are source of truth, we can seed memories built so far from them, but we dont use or update them going forward... We are changing memory solution and at the same time, we are using the same for validator also." Assumption and FR draft: agentmemory replaces VS Code `/memories` md files for agents; existing md files seed it once and are then frozen (not used or updated going forward).
-- OPEN: whether agents and validator share one server. The shared-memory direction in D22 conflicts with A1's "only for the validator"; the migration decision is recorded, but server topology still needs reviewer clarification.
+- Topology RESOLVED (M1): "agentmemory is replacement for all memory needs. Validator also uses it." + "Do it in 007. We have to many specs. It belongs there." One server for agents, workers and validator; A1's "only for the validator" is superseded. "Use agentmemory or anything better which has good reviews."
+- M2: "Yes" to local-only: no cloud calls, no OpenAI key passed, local embeddings, auto-forget and consolidation off (trial finding: agentmemory auto-used the shell's OPENAI_API_KEY).
+- M4: "Askaway starts it like we start opencode server." AskAway starts/attaches one detached server on first use, port as cross-window mutex.
+- D19: "accept" — open checklist gaps are accepted as beta limits (see spec.md Beta limits).

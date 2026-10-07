@@ -1,6 +1,6 @@
 // EV-KEEP-WARM (spec 005 T018): while the main chat is active, an idle warm worker whose prompt cache expires within ~60s gets ONE
 // minimal `POST /session/:id/message` ping; its step_finish usage is a ledger checkpoint tagged `ping: true` and counts in worker
-// spend. Stops at 300K context or after 2 unused pings; never pings a busy, queued, retired or expired worker.
+// spend. Stops at 300K context or after 3 unused pings; never pings a busy, queued, retired or expired worker.
 // Driven through the real runtime (fake spawner, fake session HTTP endpoint). Fixtures live under the repo. Run: node test-worker-keep-warm.cjs
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
@@ -49,7 +49,8 @@ assert.deepEqual(decide({ pinging: true }), [], 'ping already in flight');
 assert.deepEqual(decide({ nextInputTokens: 300_000 }), [], 'stop at 300K context');
 assert.deepEqual(decide({ nextInputTokens: 299_999 }), ['w'], 'just under 300K still pings');
 assert.deepEqual(decide({ unusedPings: 1 }), ['w'], 'one unused ping: one more allowed');
-assert.deepEqual(decide({ unusedPings: 2 }), [], 'stop after 2 consecutive unused pings');
+assert.deepEqual(decide({ unusedPings: 2 }), ['w'], 'two unused pings: a third is allowed');
+assert.deepEqual(decide({ unusedPings: 3 }), [], 'stop after 3 consecutive unused pings');
 assert.deepEqual(decide({}, 0), [], 'main chat never active: no ping');
 assert.deepEqual(decide({}, now - 301_000), [], 'main chat idle for over 5 minutes: no ping');
 
@@ -121,8 +122,10 @@ assert.deepEqual(decide({}, now - 301_000), [], 'main chat idle for over 5 minut
     clock += 250_000;
     assert.deepEqual(await keepWarmTick(runtime, workspace, mainActive()), [workerId], 'ping #2 (first one was unused, one more allowed)');
     clock += 250_000;
-    assert.deepEqual(await keepWarmTick(runtime, workspace, mainActive()), [], 'stop after 2 consecutive unused pings');
-    assert.equal(pings().length, 2);
+    assert.deepEqual(await keepWarmTick(runtime, workspace, mainActive()), [workerId], 'ping #3 (two were unused, one more allowed)');
+    clock += 250_000;
+    assert.deepEqual(await keepWarmTick(runtime, workspace, mainActive()), [], 'stop after 3 consecutive unused pings');
+    assert.equal(pings().length, 3);
 
     // A real run resets the count; the worker is still reusable because the pings kept it warm.
     const submitted = runtime.submit(workerId, packet);
@@ -137,7 +140,7 @@ assert.deepEqual(decide({}, now - 301_000), [], 'main chat idle for over 5 minut
     failNext = true;
     assert.deepEqual(await keepWarmTick(runtime, workspace, mainActive()), [], 'HTTP 500: nothing pinged');
     failNext = false;
-    assert.equal(pingFacts().length, 3, 'the failed ping left no ledger fact');
+    assert.equal(pingFacts().length, 4, 'the failed ping left no ledger fact (three pings, then one after the real run)');
 
     // Restoring after a reload still sees the run as finished, not interrupted by the ping facts.
     const restored = makeRuntime();

@@ -78,11 +78,12 @@ const packet = (overrides = {}) => ({
     await tick();
     const run3 = runtime.submit(run1.workerId, packet({ dispatchTurnId: 'turn-2', objective: 'queued follow-up' }));
 
-    // Worker C: a verify worker that failed; worker D: retired.
+    // Worker C: a verify worker that failed; worker D: retired. D starts while C is busy, so it is its own worker
+    // (thinking is not part of reuse identity since 2026-10-07).
     const runC = runtime.start(packet({ profile: 'verify', dispatchTurnId: 'turn-3' }));
     children[2].emitEvent(start('ses_C'));
-    await children[2].finish(2);
     const runD = runtime.start(packet({ profile: 'verify', thinking: 'low', dispatchTurnId: 'turn-3' }));
+    await children[2].finish(2);
     children[3].emitEvent(start('ses_D'));
     children[3].emitEvent(text('ses_D', 'Result: PASS'));
     await children[3].finish(0);

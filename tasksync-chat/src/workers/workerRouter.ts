@@ -8,6 +8,10 @@ export const DEFAULT_CACHE_TTL_SECONDS = 300;
 export const FORK_AFTER_SECONDS = 30;
 /** Most workers executing at once; start, submit-fork and fanout refuse with PARALLEL_CAP beyond it. */
 export const MAX_PARALLEL_WORKERS = 8;
+/** A worker idle longer than this is never scheduled (reviewer: not more than a few hours old); status/logs/list still read it. */
+export const WORKER_MAX_IDLE_MS = 3 * 60 * 60 * 1000;
+/** After its cache expired, a worker is still reused by start while its next input is under this many tokens. */
+export const EXPIRED_REUSE_MAX_CONTEXT_TOKENS = 100_000;
 /** The one-line prompt of a keep-warm ping (spec 005 T018). */
 export const KEEP_WARM_PROMPT = 'ping, reply ok';
 
@@ -105,16 +109,20 @@ export class WorkerRouter {
         const rejections: string[] = [];
         const cwd = realDir(request.cwd || request.workspacePath);
         // start means parallel: only an idle worker is reused; queuing behind a busy one is what submit is for.
+        // Thinking is not part of the key: a reused worker keeps its own, so its session config and cache stay unchanged.
+        // An expired-cache worker under EXPIRED_REUSE_MAX_CONTEXT_TOKENS is still reusable; a warm one is preferred.
         const eligible = [...this.workersById.values()]
             .filter((worker) => worker.registryKey === registryKey && worker.cwd === cwd && !worker.active)
             .filter((worker) => {
-                const reason = this.ineligibility(worker);
+                const reason = this.ineligibility(worker, true, true);
                 if (reason) { rejections.push(`${worker.workerId}: ${reason}`); }
                 return !reason;
             })
-            .sort((a, b) => this.estimatedWaitSeconds(a) - this.estimatedWaitSeconds(b) || a.workerId.localeCompare(b.workerId));
+            .sort((a, b) => Number(this.isExpired(a)) - Number(this.isExpired(b))
+                || this.estimatedWaitSeconds(a) - this.estimatedWaitSeconds(b) || a.workerId.localeCompare(b.workerId));
 
         const reused = eligible[0];
+        const reusedExpired = !!reused && this.isExpired(reused);
         const worker = reused ?? this.createWorker(registryKey, request.workspacePath, profile.name, selection.model, selection.thinking, cwd);
         const estimatedWaitSeconds = this.estimatedWaitSeconds(worker);
         const entry: QueueEntry = { runId: this.nextId('run'), packetId: request.packetId, estimatedSeconds: request.estimatedSeconds, enqueuedAt: this.now() };
@@ -134,17 +142,19 @@ export class WorkerRouter {
             thinking: worker.thinking,
             queuePosition,
             estimatedWaitSeconds,
-            reason: reused ? 'compatible warm worker within wait bound' : (rejections.length ? `no eligible worker (${rejections.join('; ')})` : 'no compatible worker'),
+            reason: reused ? (reusedExpired ? 'expired-cache worker reused (small context)' : 'compatible warm worker within wait bound') : (rejections.length ? `no eligible worker (${rejections.join('; ')})` : 'no compatible worker'),
         };
     }
 
     /** Queues work on one named worker, refusing explicitly when that worker is no longer eligible or runs in another directory. */
-    submitTo(workerId: string, packetId: string, estimatedSeconds: number, cwd?: string): RouteResult | { status: 'RETIRED' | 'INELIGIBLE' | 'CWD_MISMATCH'; workerId: string; reason: string } {
+    submitTo(workerId: string, packetId: string, estimatedSeconds: number, cwd?: string): RouteResult | { status: 'RETIRED' | 'INELIGIBLE' | 'CWD_MISMATCH' | 'WORKER_TOO_OLD'; workerId: string; reason: string } {
         const worker = this.workersById.get(workerId);
         if (!worker) { return { status: 'INELIGIBLE', workerId, reason: 'unknown worker' }; }
         if (worker.state === 'RETIRED') { return { status: 'RETIRED', workerId, reason: worker.retiredReason || 'retired' }; }
         const mismatch = this.cwdMismatch(workerId, cwd);
         if (mismatch) { return { status: 'CWD_MISMATCH', workerId, reason: mismatch }; }
+        const tooOld = this.tooOldReason(worker);
+        if (tooOld) { return { status: 'WORKER_TOO_OLD', workerId, reason: tooOld }; }
         const reason = this.ineligibility(worker, false);
         // A cold cache or an oversized context never recovers: retire so no later caller reuses it either.
         if (reason && worker.state !== 'ORPHANED') {
@@ -302,6 +312,15 @@ export class WorkerRouter {
         return all.filter((worker) => worker.registryKey.split('::')[0] === prefix);
     }
 
+    /**
+     * A worker idle past WORKER_MAX_IDLE_MS is never scheduled (start, submit, fanout); it stays readable through
+     * status, logs and list for audit. Empty when the worker is running or recent enough.
+     */
+    tooOldReason(worker: RoutedWorker): string {
+        if (worker.active || this.now() - worker.lastActivityAt <= WORKER_MAX_IDLE_MS) { return ''; }
+        return `idle more than ${WORKER_MAX_IDLE_MS / 3_600_000} hours; read it with status/logs but start a fresh worker for new work`;
+    }
+
     /** Remaining time on the active run plus every queued estimate. */
     estimatedWaitSeconds(worker: RoutedWorker): number {
         const active = worker.active
@@ -310,10 +329,17 @@ export class WorkerRouter {
         return active + worker.queue.reduce((sum, entry) => sum + entry.estimatedSeconds, 0);
     }
 
-    private ineligibility(worker: RoutedWorker, checkWait = true): string {
+    private isExpired(worker: RoutedWorker): boolean {
+        return !worker.active && this.now() - worker.lastActivityAt > this.cacheTtlMs;
+    }
+
+    private ineligibility(worker: RoutedWorker, checkWait = true, allowExpired = false): string {
         if (worker.state === 'RETIRED' || worker.state === 'ORPHANED') { return worker.state.toLowerCase(); }
         if (worker.contextTokens > MAX_CONTEXT_TOKENS) { return `context ${worker.contextTokens} > ${MAX_CONTEXT_TOKENS}`; }
-        if (!worker.active && this.now() - worker.lastActivityAt > this.cacheTtlMs) { return 'cache expired'; }
+        const tooOld = this.tooOldReason(worker);
+        if (tooOld) { return tooOld; }
+        if (!worker.active && this.now() - worker.lastActivityAt > this.cacheTtlMs
+            && !(allowExpired && worker.contextTokens < EXPIRED_REUSE_MAX_CONTEXT_TOKENS)) { return 'cache expired'; }
         if (!checkWait) { return ''; }
         if (worker.busyElsewhere) { return 'running in another window'; }
         const wait = this.estimatedWaitSeconds(worker);

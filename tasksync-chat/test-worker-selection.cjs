@@ -75,8 +75,12 @@ const keys = new Set([
     profiles.workerRegistryKey(linkA, 'explore', selection),
 ]);
 assert.equal(keys.size, 2, 'two real paths yield exactly two registry keys');
-// A model or thinking change is a cache boundary: a distinct worker key.
+// A model change is a cache boundary: a distinct worker key. Thinking is not (reviewer, 2026-10-07): a reused worker keeps its own.
 assert.notEqual(
+    profiles.workerRegistryKey(pathA, 'explore', selection),
+    profiles.workerRegistryKey(pathA, 'explore', { model: 'github-copilot/gpt-5.6-terra', thinking: explore.thinking })
+);
+assert.equal(
     profiles.workerRegistryKey(pathA, 'explore', selection),
     profiles.workerRegistryKey(pathA, 'explore', { model: explore.model, thinking: 'high' })
 );
@@ -149,7 +153,7 @@ assert.equal(router.route(req({ thinking: 'xhigh' })).status, 'SELECTION_UNAVAIL
 assert.equal(router.route(req({ profile: 'ghost' })).status, 'SELECTION_UNAVAILABLE');
 assert.equal(router.dispatches, 0);
 
-// Effective selection is recorded exactly; model or thinking change is a cache boundary.
+// Effective selection is recorded exactly; a model change is a cache boundary, a thinking change is not.
 router = newRouter();
 const base = router.route(req());
 router.complete(base.workerId, base.runId, { contextTokens: 1000 });
@@ -159,8 +163,8 @@ router.complete(sameSelection.workerId, sameSelection.runId, { contextTokens: 20
 const otherModel = router.route(req({ model: 'github-copilot/gpt-5.6-terra' }));
 const otherThinking = router.route(req({ thinking: 'high' }));
 assert.deepEqual([otherModel.status, otherModel.model], ['CREATED', 'github-copilot/gpt-5.6-terra']);
-assert.deepEqual([otherThinking.status, otherThinking.thinking], ['CREATED', 'high']);
-assert.equal(new Set([base.workerId, otherModel.workerId, otherThinking.workerId]).size, 3);
+assert.deepEqual([otherThinking.status, otherThinking.workerId, otherThinking.thinking], ['REUSED', base.workerId, base.thinking], 'another thinking reuses the idle worker at its own thinking');
+assert.equal(new Set([base.workerId, otherModel.workerId, otherThinking.workerId]).size, 2);
 assert.equal(new Set([base.runId, sameSelection.runId, otherModel.runId, otherThinking.runId]).size, 4, 'every submission gets its own run');
 
 // Cache freshness: reuse inside the TTL, new worker after it.
@@ -170,7 +174,7 @@ router.complete(warm.workerId, warm.runId, { contextTokens: 10 });
 clock = 299000;
 const stillWarm = router.route(req());
 assert.equal(stillWarm.workerId, warm.workerId);
-router.complete(stillWarm.workerId, stillWarm.runId, { contextTokens: 20 });
+router.complete(stillWarm.workerId, stillWarm.runId, { contextTokens: 150000 });
 clock += 301000;
 const cold = router.route(req());
 assert.equal(cold.status, 'CREATED');
@@ -215,7 +219,7 @@ const replay = () => {
 };
 assert.deepEqual(replay(), replay());
 
-console.log('EV-008 BoundedReuseSelection: PASS startWhileBusy=CREATED submitQueues=REUSED submitPastBound=INELIGIBLE unavailable=SELECTION_UNAVAILABLE fallbackDispatches=0 cacheBoundaryWorkers=3');
+console.log('EV-008 BoundedReuseSelection: PASS startWhileBusy=CREATED submitQueues=REUSED submitPastBound=INELIGIBLE unavailable=SELECTION_UNAVAILABLE fallbackDispatches=0 cacheBoundaryWorkers=2');
 console.log('EV-009 SelectionBehavior: PASS scenarios=9 effectiveSelectionExact=true workspaceIsolation=true queueCancelBeforeStartOnly=true deterministic=true');
 console.log('CAC-CY-003 WorkspaceBoundDispatchReady: PASS');
 

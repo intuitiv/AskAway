@@ -115,15 +115,18 @@ export function resolveSelection(profile: WorkerProfile, request: WorkerSelectio
     return { status: 'SELECTED', profile: profile.name, model, thinking };
 }
 
-/** Workers are isolated by canonical workspace path, so equal labels on different real paths never merge. */
-export function workerRegistryKey(workspacePath: string, profileName: string, selection: { model: string; thinking: string }): string {
+/**
+ * Workers are isolated by canonical workspace path, so equal labels on different real paths never merge. Thinking is not
+ * part of the key (reviewer, 2026-10-07): a reused worker keeps its own thinking so its session config and cache stay intact.
+ */
+export function workerRegistryKey(workspacePath: string, profileName: string, selection: { model: string; thinking?: string }): string {
     let canonical = workspacePath;
     try {
         canonical = fs.realpathSync(workspacePath);
     } catch {
         // A missing path keeps its literal value as identity.
     }
-    return `${canonical}::${profileName}::${selection.model}::${selection.thinking}`;
+    return `${canonical}::${profileName}::${selection.model}`;
 }
 
 /** Emits the OpenCode primary-agent definition for a profile; `opencode run --agent` needs primary mode. */
@@ -176,7 +179,7 @@ const WORKER_BASICS = `## Worker basics (every AskAway worker)
   \`Evidence: <exact command and observed line, or path:line>\`
   \`Not done: <items, or none>\``;
 
-/** Guidance per tier, tuned to the model class that tier runs on (light: Luna 6; mid: Sonnet 5.5 / Sol 6.1; heavy: Opus 5.5). */
+/** Guidance per tier, tuned to the model class that tier runs on (light: Luna 6; mid: Sol 6.1; heavy: Opus 5.5). */
 const TIER_GUIDANCE: Record<WorkerTier, string> = {
     light: `## How to work (small, fast model)
 - Follow your steps literally and in order. Do not improvise a different method.

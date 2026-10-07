@@ -25,7 +25,7 @@ Counts: CRITICAL 0, HIGH 4, MEDIUM 10, LOW 6.
 | A17 | LOW | spec.md FR-009 vs FR-015, US5 "improving the prompt"; contracts/validator-evals.md `enhance` | Naming drift: spec/US3 say "prompt enhancement"/"propose context", FR-015/Goal say "improving the prompt", the suite is `enhance`, code is `proposeContext`. | Pick one term per layer and note the mapping. | Open |
 | A18 | LOW | tasks.md T003; plan.md; `src/workers/workerProfiles.ts` | Validator profile "no send-to-agent tool" has no test of the profile's allowed tools beyond T003; MCP tool policy is not stated as portable profile fields (purpose, model, stop condition, evidence contract per AGENTS.md). | State the profile fields in T003 and the evidence contract. | Fixed — tasks.md T003 (profile fields, no-send-tool test) |
 | A19 | LOW | tasks.md T010; `tasksync-chat/docs/requirements/` | T010 updates requirements rows for FR-001 to FR-021 but is the only task for docs and quickstart; quickstart has no check for agentmemory ports/health. | Add the health check step to quickstart when T001 lands. | Open |
-| A20 | LOW | plan.md Status vs tasks.md Prerequisites; spec.md Status | plan.md Status says approved, spec.md Status still `Draft`; checklists (beta-privacy, knowledge-store, cost-evals) have all items unchecked. | Reviewer marks which CHK items are accepted or deferred. | Needs reviewer — options: (a) resolve the gaps via A1-A12 then tick; (b) accept all gaps as beta limits and record that. |
+| A20 | LOW | plan.md Status vs tasks.md Prerequisites; spec.md Status | plan.md Status says approved, spec.md Status still `Draft`; checklists (beta-privacy, knowledge-store, cost-evals) have all items unchecked. | Reviewer marks which CHK items are accepted or deferred. | Resolved 2026-10-07 — reviewer D19 "accept": option (b), gaps accepted as beta limits (spec.md Beta limits). |
 
 ## Coverage summary (FR/SC to tasks)
 
@@ -87,7 +87,7 @@ Source: `/sk.check` re-run, read-only, before implement. Re-read Goal, Rules, sp
 | A17 | Still open | naming drift (prompt enhancement / improving the prompt / enhance / proposeContext) |
 | A18 | Fixed | T003 profile fields |
 | A19 | Still open | quickstart health step when T001 lands |
-| A20 | Still open (reviewer) | spec.md Status `Draft` vs plan approved; checklists unticked |
+| A20 | Resolved (reviewer D19 "accept") | accepted as beta limits, see spec.md Beta limits |
 
 Counts as of 2026-10-06 (historical): open 10 (A1, A4, A5, A10, A11, A12, A15, A17, A19, A20), fixed 10 (A2, A3, A6, A7, A8, A9, A13, A14, A16, A18). See the 2026-10-07 status update below.
 
@@ -110,19 +110,20 @@ Ready to implement now (not blocked by A1 or A4): T001 (spike, needs a local age
 
 ## Reviewer decisions 2026-10-07 — current statuses
 
-This update supersedes the historical statuses and verdict above. Decisions are recorded in spec.md and Rules.md; changes to tasks, research, contracts and plan are outside this docs packet.
+This update supersedes the historical statuses and verdict above. Decisions are recorded in spec.md and Rules.md and aligned in tasks.md; research and contracts await implementation follow-up.
 
 | ID | Current status | Reviewer decision / remaining work |
 |---|---|---|
-| A1 | Resolved (reviewer) | "a separate agentmemory server only for the validator, with auto-forget off"; install approved. Dedicated validator server selected; see OPEN topology question under A12. |
+| A1 | Resolved (reviewer) | Earlier "a separate agentmemory server only for the validator, with auto-forget off" superseded by M1: ONE local server for agents, workers and validator; globals off. |
 | A4 | Resolved (reviewer) | "Validator for few turns it is more like trial basis. I manually see the quality of validator how it is responding on behalf of me." FR-006 and US2 now run alongside, never blocking the reviewer's reply. |
 | A5 | Resolved (reviewer) | "keep older versions also, hide them". FR-011/FR-020 and US4 retain superseded versions, hidden from recall and default views; changed flag informational. |
 | A10 | Drafted by agent, reviewer to approve | Reviewer said "Sure". SC-010: 0 validator outputs reach any agent channel (chat/worker input, MCP results, hooks, prompt text); SC-011: 0 seeded secrets in any sink (validator input, agentmemory, jsonl, Commentary/UI, logs, cost). |
 | A11 | Resolved (reviewer) | "I'll manually see them few days". Manual quality review, no automated baseline in beta; SC-002 deferred until linking. |
-| A12 / D22 | Resolved migration decision; topology OPEN | "memories md files are source of truth, we can seed memories built so far from them, but we dont use or update them going forward... We are changing memory solution and at the same time, we are using the same for validator also." Assumption and FR-023 draft: agentmemory replaces VS Code `/memories` md files for agents, seeded once then frozen. OPEN: shared agent/validator server conflicts with A1's "only for the validator". Rebuild-from-index is not decided by this statement. |
+| A12 / D22 | Resolved | "memories md files are source of truth, we can seed memories built so far from them, but we dont use or update them going forward... We are changing memory solution and at the same time, we are using the same for validator also." FR-023: user/repo md seed once then freeze. M1 resolves ONE server; rebuild-from-index not required in beta (D19 "accept"). |
 | A15 | Drafted by agent, reviewer to approve | Reviewer said "Sure". Observed = passed through cheap check; skipped = checked pure progress not sent to answering validator; skips counted and visible in Commentary stats. |
-| A20 / N6 | Needs reviewer — more details requested | Spec stays Draft; checklist approval/defer decisions are not inferred. |
+| A20 / N6 | Resolved (reviewer) | D19 "accept": open checklist gaps accepted as beta limits, listed in spec.md Beta limits. |
+| A12 / topology | Resolved (reviewer) | M1: "agentmemory is replacement for all memory needs. Validator also uses it." One server; A1's "only for the validator" superseded (2026-10-07). |
 
 New FR-022 records: "if it uses as memory store, agent should be able to call it for memory needs" — agents can query the same store, without routing validator output to agent channels.
 
-Current A1–A20 counts: resolved/fixed 15, awaiting approval or otherwise open 5 (A10, A15, A17, A19, A20). A12's migration decision is resolved, but server topology and rebuild-from-index remain OPEN; N2 workspace isolation is not implicitly resolved. A1/A4 no longer block on reviewer choice; installation/spike and task dependencies still apply.
+Current A1–A20 counts: resolved/fixed 16, awaiting approval or otherwise open 4 (A10, A15, A17, A19). A20/N6 resolved by D19 "accept"; topology resolved by M1. N2 project/agentId isolation on ONE server and no rebuild-from-index are accepted beta limits, not blockers. A1/A4 no longer block on reviewer choice; remaining spike and task dependencies still apply.

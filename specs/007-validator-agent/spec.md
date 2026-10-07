@@ -21,13 +21,21 @@
 
 ### Session 2026-10-07
 
-- A1: "a separate agentmemory server only for the validator, with auto-forget off". Dedicated server selected; install approved.
+- A1: "a separate agentmemory server only for the validator, with auto-forget off". Initial dedicated selection; install approved. Validator-only topology superseded by M1 below.
 - A4 / FR-006: "Validator for few turns it is more like trial basis. I manually see the quality of validator how it is responding on behalf of me." Trial runs alongside; it never blocks the reviewer's reply.
 - Memory access: "if it uses as memory store, agent should be able to call it for memory needs". Agents can query the same store for memory needs, without receiving validator outputs.
 - A11: "I'll manually see them few days". No automated baseline in beta; the reviewer manually assesses quality.
 - A5: "keep older versions also, hide them". Retain superseded versions, hidden from recall and default views.
 - A10 / A15: "Sure" — draft missing success criteria and observed/skipped definitions; drafted by agent, reviewer to approve.
-- A12 / D22: "memories md files are source of truth, we can seed memories built so far from them, but we dont use or update them going forward... We are changing memory solution and at the same time, we are using the same for validator also." Migration assumption and FR draft below. OPEN: shared agent/validator server conflicts with A1's "only for the validator"; topology needs clarification.
+- A12 / D22: "memories md files are source of truth, we can seed memories built so far from them, but we dont use or update them going forward... We are changing memory solution and at the same time, we are using the same for validator also." Migration below; earlier OPEN topology question resolved by M1: ONE server.
+
+### Session 2026-10-07 (decisions, later)
+
+- M1 topology (resolves the OPEN question above): "agentmemory is replacement for all memory needs. Validator also uses it." + "Do it in 007. We have to many specs. It belongs there." → ONE server for agents, workers and validator; the D15/A1 "only for the validator" wording is superseded. No separate spec 009 (M3).
+- Product choice: "Use agentmemory or anything better which has good reviews". agentmemory is the default; research may substitute a better-reviewed alternative before T005.
+- M2: "Yes" to local-only (FR-024). Trial finding: agentmemory auto-used the shell's `OPENAI_API_KEY` and tried to send observations to OpenAI (failed 429).
+- M4: "Askaway starts it like we start opencode server." (FR-025).
+- D19: "accept" — the open reviewer-checklist gaps are accepted as beta limits (listed under Beta limits below); analyze A20 is resolved.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -120,6 +128,23 @@ The validator's prompt is verified by eval cases covering three behaviours: answ
 
 ---
 
+### User Story 6 - One memory store for all agents (Priority: P6)
+
+One local agentmemory server (or a better-reviewed alternative chosen after research) replaces the VS Code `/memories` md files for Copilot agents and OpenCode workers. Reviewer: "agentmemory is replacement for all memory needs. Validator also uses it." Existing md files (user `/memories/`, repo `/memories/repo/`) seed it once and are then frozen: not used or updated going forward (D22: "we dont use or update them going forward"). The validator uses the same server, separated by agentId. A superseded version stays hidden from recall.
+
+**Why this priority**: It changes where every agent reads and writes memory, so it lands after the validator works against the store (Stories 2 and 4).
+
+**Independent Test**: Seed from a sample `/memories` folder; a Copilot-side agent and an OpenCode worker each read a seeded fact and write a new one through the MCP tools; the validator's items are not returned to an agent query for another agentId; a superseded fact is not returned; the md files are unchanged after seeding; with the server stopped, AskAway starts it on first use.
+
+**Acceptance Scenarios**:
+
+1. **Given** existing md memories, **When** seeding runs, **Then** each item is in the store once and the md files are never read or written afterwards.
+2. **Given** a Copilot agent and an OpenCode worker, **When** each queries and writes memory, **Then** both use the same server through the AskAway MCP tools.
+3. **Given** the validator and an agent share the server, **When** either queries, **Then** results are separated by agentId and superseded versions are hidden.
+4. **Given** no server is running, **When** a memory call is first made, **Then** AskAway starts one detached server; a second window attaches to it instead of starting another.
+
+---
+
 ### Edge Cases
 
 - Sources contradict each other (an old ADR vs a newer reviewer reply): the newest reviewer statement wins, and the conflict is shown.
@@ -156,10 +181,13 @@ The validator's prompt is verified by eval cases covering three behaviours: answ
 - **FR-018**: Validator output MUST be advisory; it MUST NOT approve gates or trigger destructive actions on the reviewer's behalf. In beta, validator answers MUST appear only in the Commentary tab and MUST NOT be sent to the agent; linking validator answers to the agent is out of scope for this spec's first release.
 
 - **FR-019**: System MUST observe every agent or worker response, running a cheap check first that skips pure progress updates (no question, decision or new information) before the validator answers.
-- **FR-020**: System MUST keep stored knowledge without automatic expiry or review flags (the reviewer is the only authority). Reviewer changes supersede the current version; older versions MUST be retained but hidden from recall and default views. The dedicated validator agentmemory server MUST have auto-forget off.
+- **FR-020**: System MUST keep stored knowledge without automatic expiry or review flags (the reviewer is the only authority). Reviewer changes supersede the current version; older versions MUST be retained but hidden from recall and default views. The agentmemory server MUST have auto-forget off (FR-024).
 - **FR-021**: In Commentary, the validator MUST show how closely its prediction matched the reviewer's actual reply (the match measure of FR-007), so the reviewer can build confidence before linking.
-- **FR-022**: Agents MUST be able to query the same memory store for their memory needs; this MUST NOT route validator outputs to agent channels in beta. Server topology remains OPEN (A1 vs D22).
-- **FR-023 (draft — drafted by agent, reviewer to approve)**: agentmemory MUST replace VS Code `/memories` md files for agents. Existing md files MUST seed it once and then remain frozen; agents MUST NOT use or update those files going forward. Whether agents and validator share one server remains OPEN.
+- **FR-022**: Agents MUST be able to query the same memory store for their memory needs; this MUST NOT route validator outputs to agent channels in beta. Topology resolved: ONE server (M1, Session 2026-10-07).
+- **FR-023**: agentmemory (or the better-reviewed alternative chosen after research) MUST replace VS Code `/memories` md files for Copilot agents and OpenCode workers. Existing md files (user `/memories/`, repo `/memories/repo/`) MUST seed it once and then remain frozen; agents MUST NOT use or update those files going forward. The validator MUST use the same single server, separated by agentId; superseded versions stay hidden from recall.
+- **FR-024**: The memory server MUST run local-only (M2: "Yes"): no cloud calls, no OpenAI key passed to it (its environment MUST NOT inherit `OPENAI_API_KEY` or any provider key), local embeddings, auto-forget and consolidation off. Trial finding 2026-10-07: agentmemory auto-used the shell's `OPENAI_API_KEY` and tried to send observations to OpenAI.
+- **FR-025**: AskAway MUST start or attach to one detached memory server on first use, with the port as the cross-window mutex, exactly like the shared OpenCode server (M4: "Askaway starts it like we start opencode server."). No server per window, worker or agent.
+- **FR-026**: Agent and worker prompts and profiles MUST point to the memory store, not to `/memories`, once seeding is done.
 
 **Observed vs skipped (draft — drafted by agent, reviewer to approve; A15)**: observed means a response has passed through the cheap check. Skipped means it was checked but not sent to the answering validator because it contains only progress (no question, decision or new information). Skipped responses remain counted and visible in Commentary stats; observed does not mean answered.
 
@@ -193,8 +221,19 @@ The numeric targets below (60%, 70%, 80%, 10%) remain provisional. Reviewer 2026
 
 - The reviewer is the single authority; "as close as possible to the reviewer" means matching his past statements, not correcting them.
 - An active spec exists for most work; without one the validator uses repo-wide ADRs and memories only.
-- ADRs, Goal.md, Rules.md and spec resources are already readable by the tools. agentmemory is the new memory solution for agents and validator (A12 / D22); existing VS Code `/memories` md files are the seed source of truth, imported once and then frozen, not used or updated going forward. Install is approved. OPEN: whether agents and validator share one server conflicts with A1's dedicated server "only for the validator"; FR-023 is an agent draft awaiting reviewer approval.
+- ADRs, Goal.md, Rules.md and spec resources are already readable by the tools. agentmemory is the new memory solution for agents and validator (A12 / D22); existing VS Code `/memories` md files are the seed source of truth, imported once and then frozen, not used or updated going forward. Install is approved. Agents, workers and the validator share one server (M1; supersedes A1's "only for the validator"); FR-023 to FR-026 follow the reviewer's 2026-10-07 decisions.
 - The shared usage banner and shared response and observation components already exist and are reused, not rebuilt (Consistent Experience).
 - Moving the validator to the backend and smoothing the process is a later spec, after tuning.
 - Linking the validator's answers and prompt additions to the agent is out of scope for the first release (beta, Commentary-only); it is a later release, added with cautions once the reviewer has confidence.
 - Per-spec cost and token fields recorded by earlier specs (005) are reused for the validator's cost.
+
+## Beta limits
+
+Reviewer D19: "accept". The open items of the reviewer checklists (beta-privacy, knowledge-store, cost-evals) are accepted as beta limits, not blockers; analyze A20/N6 is resolved. Known limits:
+
+- Checklists stay unticked; spec Status stays Draft while plan.md is approved.
+- No automated baseline or regression gate for evals or success targets; manual review for a few days (A11).
+- Rebuild of the store from `index.jsonl` is not required and not tested (A12).
+- Workspace isolation (N2) is by project/agentId tag on the one shared server, not by a server per workspace.
+- Dropped-item (secret) visibility and prompt-enhancement terminology (A17) are not specified further.
+- Success targets 60/70/80/10% stay provisional; SC-002 is not measurable until linking.

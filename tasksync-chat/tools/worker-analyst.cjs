@@ -6,7 +6,7 @@ const path = require('path');
 const os = require('os');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const DIR = path.join(ROOT, '.askaway', 'analyst');
+const DIR = process.env.ASKAWAY_ANALYST_DIR || path.join(ROOT, '.askaway', 'analyst');
 const IDLE_MS = 5 * 60e3, REUSE_MS = 30 * 60e3, REUSE_CTX = 200e3;
 const BUCKETS = [['<30K', 30e3], ['30-100K', 100e3], ['100-200K', 200e3], ['200-300K', 300e3], ['>300K', Infinity]];
 
@@ -146,6 +146,42 @@ function section(runs, workers, records) {
     return out.join('\n\n');
 }
 
+/** Per-workspace Main agent + Harness (main + workers) sections; workspaces are never summed into one number. */
+function copilotSections(rowsByWs, ledgers) {
+    const out = [], overall = [], sum = (a, f) => a.reduce((t, x) => t + f(x), 0), read = (x) => x.input + x.cacheRead + x.cacheWrite;
+    for (const ws of Object.keys(rowsByWs).sort()) {
+        const rows = rowsByWs[ws], aiu = sum(rows, (r) => r.nanoAiu) / 1e9, outTok = sum(rows, (r) => r.output), readTok = sum(rows, read);
+        const models = {}; rows.forEach((r) => { (models[r.model] ||= []).push(r); });
+        out.push(`### Workspace ${ws}`, '#### Main agent', `Requests: ${rows.length}; AIU: ${aiu.toFixed(2)}; tokens read: ${readTok}; tokens written: ${outTok}; prompt tokens/output token: ${outTok ? (readTok / outTok).toFixed(2) : 0}`,
+            table(['model', 'requests', 'AIU', 'prompt tokens', 'output tokens', 'prompt tokens/output token'], Object.entries(models).map(([m, rs]) => {
+                const o = sum(rs, (r) => r.output), p = sum(rs, read);
+                return [m, rs.length, (sum(rs, (r) => r.nanoAiu) / 1e9).toFixed(2), p, o, o ? (p / o).toFixed(2) : 0];
+            })));
+        const identity = (s) => path.basename(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+        const belongs = (r, l) => {
+            const key = identity(r.workspace || l.name.replace(/\.jsonl$/, ''));
+            return key === identity(ws) || (identity(ws) === 'applogic' && key === 'modelcalculationserviceapplogic');
+        };
+        const steps = (ledgers || []).flatMap((l) => buildRuns(l.records.filter((r) => belongs(r, l)))).flatMap((r) => r.steps);
+        const wAiu = sum(steps, (s) => s.cost || 0) * 100, wRead = sum(steps, read), wOut = sum(steps, (s) => s.output);
+        const reqs = rows.length + steps.length, tAiu = aiu + wAiu, tRead = readTok + wRead, tOut = outTok + wOut;
+        out.push('#### Harness (main + workers)', `Total requests: ${reqs} (main ${rows.length} + workers ${steps.length}); AIU: ${tAiu.toFixed(2)} (main ${aiu.toFixed(2)} + workers ${wAiu.toFixed(2)}, worker $ x 100); tokens read per token written: ${tOut ? (tRead / tOut).toFixed(2) : 0}`);
+        overall.push(`${ws} ${tAiu.toFixed(2)} AIU / ${reqs} requests`);
+    }
+    if (overall.length) { out.push('Per workspace, side by side (not summed): ' + overall.join(' | ')); }
+    return out.join('\n\n');
+}
+
+function loadCopilotRows(dir = path.join(DIR, 'copilot')) {
+    const byWs = {};
+    if (!fs.existsSync(dir)) { return byWs; }
+    for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).sort()) {
+        const ws = f.slice(0, -6);
+        byWs[ws] = fs.readFileSync(path.join(dir, f), 'utf8').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r && r.ws === ws ? [r] : []; } catch { return []; } });
+    }
+    return byWs;
+}
+
 function analyse(lines) {
     const records = parseLines(lines), runs = buildRuns(records), workers = buildWorkers(records, runs);
     return section(runs, workers, records);
@@ -170,15 +206,16 @@ function main(args) {
     const ledgers = files.map((f) => ({ name: f, records: parseLines(fs.readFileSync(path.join(dir, f), 'utf8')) }));
     const all = ledgers.flatMap((l) => l.records).sort((a, b) => a.ts - b.ts);
     const lastTs = all.at(-1)?.ts || 0;
-    const runs = buildRuns(all), workers = buildWorkers(all, runs, lastTs);
-    const md = ['# Worker cost analysis', `Ledgers: ${files.length}`, 'Findings are for review only; no changes are applied.', '## Overall', section(runs, workers, all)];
+    const md = ['# Worker cost analysis', `Ledgers: ${files.length}`, 'Findings are per workspace, for review only; no changes are applied.'];
     for (const l of ledgers) {
         const rs = buildRuns(l.records);
         md.push(`## ${l.name}`, section(rs, buildWorkers(l.records, rs, lastTs), l.records));
     }
+    const rowsByWs = loadCopilotRows();
+    if (Object.keys(rowsByWs).length) { md.push('## Copilot main agent and harness', copilotSections(rowsByWs, ledgers)); }
     fs.writeFileSync(path.join(DIR, 'report.md'), md.join('\n\n') + '\n');
-    console.log(`OVERALL: ${workers.length} workers, ${runs.length} runs, ${$(runs.reduce((a, r) => a + r.cost, 0))}\nreport: ${path.join(DIR, 'report.md')}`);
+    console.log(`report: ${path.join(DIR, 'report.md')}`);
 }
 
-module.exports = { analyse };
+module.exports = { analyse, copilotSections };
 if (require.main === module) { main(process.argv.slice(2)); }

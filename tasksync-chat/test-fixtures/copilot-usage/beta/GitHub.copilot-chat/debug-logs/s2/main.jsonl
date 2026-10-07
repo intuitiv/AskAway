@@ -1,0 +1,1 @@
+{"ts":4,"sid":"x","type":"llm_request","attrs":{"model":"gpt-a","inputTokens":10,"cachedTokens":0,"outputTokens":10,"copilotUsageNanoAiu":500000000}}

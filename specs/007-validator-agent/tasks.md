@@ -16,7 +16,7 @@ description: "Task list for 007 Validator Agent"
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: Which user story this task belongs to (US1 to US5)
+- **[Story]**: Which user story this task belongs to (US1 to US6)
 
 ## Path Conventions
 
@@ -28,7 +28,7 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 
 **Purpose**: Resolve the agentmemory unknowns before any knowledge-store work.
 
-- [ ] T001 agentmemory spike, measure and report (research R-1 VERIFY items; it does NOT confirm an exemption, R-1 says none exists): against a local agentmemory server record in `specs/007-validator-agent/research.md` (a) a forced forget/consolidation/decay cycle against validator items for each FR-020 option, reported for the reviewer's choice: (a) a dedicated validator-only instance with `AUTO_FORGET_ENABLED=false` and `CONSOLIDATION_ENABLED=false` (own `--port`/`--data-dir`/`--instance`), (b) the shared instance plus a re-save job from `index.jsonl` (survives eviction, not consolidation rewrites), (c) the existing `memoryStore.ts` fallback; per option: items intact or not, wording rewritten or not, setup cost; (b) exact `/agentmemory/remember` fields (`concepts`, `agentId`, `project`) and the `/agentmemory/evolve` supersede call (answered in R-1, re-verify only), (c) project scoping in `smart-search` and the `AGENTMEMORY_AGENT_SCOPE=isolated` requirement, (d) behaviour when port 3111 is taken by another instance and the `/health` response, (e) `AGENTMEMORY_SECRET`: the server holds it in its env, the extension keeps its client copy in VS Code SecretStorage, never in files or logs. T001 only reports; the reviewer chooses (a), (b) or (c) (analyze A1) before T005. Includes a re-runnable probe `tasksync-chat/test-agentmemory-spike.cjs` that skips with a named reason when no server runs.
+- [ ] T001 agentmemory spike, PARTLY DONE 2026-10-07: install, engine, isolated instance 5 demo and egress finding (auto-used shell's `OPENAI_API_KEY`, OpenAI call failed 429). REMAINING: confirm local embeddings, no cloud calls/provider keys, `AUTO_FORGET_ENABLED=false`, `CONSOLIDATION_ENABLED=false`, supersede/versions retaining old items hidden from recall/default views. Reviewer: "Use agentmemory or anything better which has good reviews"; research may select a better-reviewed alternative before T005. ONE server is decided (M1 supersedes D15/A1), not a pending validator-only choice. Re-verify remember/evolve fields, project and isolated agentId scoping, occupied-port/health behaviour, secret handling (server env; client copy in VS Code SecretStorage; never files/logs); record in `specs/007-validator-agent/research.md`. Outside-in probe `tasksync-chat/test-agentmemory-spike.cjs` verifies caller recall, hidden superseded versions and zero egress; named no-server skip is not passing evidence.
 
 ---
 
@@ -60,12 +60,12 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 
 ## Phase 4: User Story 2 - Close the loop on the reviewer's reply and store knowledge (Priority: P2)
 
-**Goal**: The reviewer's reply plus the previous response reach the validator first; prediction match is recorded and shown; new rules are stored in agentmemory per spec/story/task.
+**Goal**: The reviewer's reply plus the previous response reach the validator alongside the agent flow, never blocking delivery; prediction match is recorded and shown; new rules are stored in agentmemory per spec/story/task.
 
 **Independent Test**: Reply with a decision differing from the prediction and containing a rule: mismatch recorded, rule stored with the spec, a fresh agent's question cites it.
 
-- [ ] T005 [US2] KnowledgeStore port and agentmemory REST adapter in `tasksync-chat/src/validator/knowledgeStore.ts` per `contracts/knowledge-store.md` and the T001 outcome (depends on T001 and the reviewer's A1 choice: dedicated instance, re-save job or `memoryStore.ts`), mirroring ids in `index.jsonl`; test `tasksync-chat/test-validator-knowledge-store.cjs` against a stub server (remember tags `spec:`/`story:`/`task:`, project scoping, recall for spec A never returns spec B items via a post-filter on the `spec:` tag, health failure visible, secret from SecretStorage and never logged).
-- [ ] T006 [US2] `closeLoop()` in `tasksync-chat/src/validator/observer.ts`: pair delivered before the agent (FR-006; ordering and timeout per the reviewer's A4 decision), prediction vs reply match shown in Commentary (FR-007, FR-021), extraction of rules/instructions/goals/examples (FR-008), "ok" stores nothing, unrelated reply stores nothing (depends on T004a, T004b, T005); test `tasksync-chat/test-validator-close-loop.cjs` (end to end: rule stored then cited by a fresh observer run; FR-018 isolation: no validator output reaches chat input, worker input, an MCP tool result or prompt text).
+- [ ] T005 [US2] KnowledgeStore port and agentmemory REST adapter in `tasksync-chat/src/validator/knowledgeStore.ts` per `contracts/knowledge-store.md` and T001 (ONE shared local server selected, validator separated by agentId), mirroring ids in `index.jsonl` (no beta rebuild requirement); test `tasksync-chat/test-validator-knowledge-store.cjs` against a stub server (remember tags `spec:`/`story:`/`task:`, project/agentId scoping, recall for spec A never returns spec B items via a post-filter on the `spec:` tag, health failure visible, secret from SecretStorage and never logged).
+- [ ] T006 [US2] `closeLoop()` in `tasksync-chat/src/validator/observer.ts`: pair processed alongside the agent flow without blocking delivery (FR-006; A4), prediction vs reply match shown in Commentary (FR-007, FR-021), extraction of rules/instructions/goals/examples (FR-008), "ok" stores nothing, unrelated reply stores nothing (depends on T004a, T004b, T005); test `tasksync-chat/test-validator-close-loop.cjs` (end to end: slow validator does not delay agent receipt, rule stored then cited by a fresh observer run; FR-018 isolation: no validator output reaches chat input, worker input, an MCP tool result or prompt text).
 
 **Checkpoint**: User Stories 1 AND 2 work independently
 
@@ -95,14 +95,30 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 
 ---
 
+## Phase 6b: User Story 6 - One memory store for all agents (Priority: P6)
+
+**Goal**: One local-only agentmemory server, started by AskAway, replaces `/memories` md files for Copilot agents and OpenCode workers; the validator shares it by agentId (FR-023 to FR-026).
+
+Reviewer: "agentmemory is replacement for all memory needs. Validator also uses it." + "Do it in 007. We have to many specs. It belongs there." + "Askaway starts it like we start opencode server." + "Yes" to local-only. D22: "we dont use or update them going forward" — user/repo md seed once, then no reads or updates. History: "keep older versions also, hide them".
+
+**Independent Test**: With no server running, a first memory call starts one detached local-only server; a second window attaches; seeded facts are readable by a Copilot-side agent and an OpenCode worker through MCP; md files are untouched.
+
+- [ ] T011 [US6] Server lifecycle in `tasksync-chat/src/validator/memoryServer.ts`, modelled on the shared OpenCode server start/attach: first use starts one detached server, port as cross-window mutex, env scrubbed of `OPENAI_API_KEY` and provider keys, local embeddings, auto-forget and consolidation off (FR-024, FR-025); test `tasksync-chat/test-memory-server-lifecycle.cjs` (second caller attaches, no second process, spawned env has no provider key, flags off, `/health` failure visible).
+- [ ] T012 [US6] One-time seed from `/memories/` and `/memories/repo/` md files, then frozen, plus agent access through the AskAway MCP memory tools for VS Code Copilot and OpenCode workers, separated by agentId with superseded versions hidden (FR-023, FR-022; depends on T005, T008, T011); test `tasksync-chat/test-memory-seed-and-mcp.cjs` (seed once is idempotent, md files byte-identical and never read after seeding, a Copilot-side and an OpenCode-side call read a seeded fact and write a new one, validator items not returned to another agentId, superseded versions hidden).
+- [ ] T013 [US6] Switch agent and worker prompts and profiles from `/memories` to the store (FR-026; depends on T012); test `tasksync-chat/test-memory-prompts-switched.cjs` (no shipped prompt, agent definition or profile names `/memories` paths; they name the memory tools).
+
+**Checkpoint**: One memory store serves agents, workers and the validator
+
+---
+
 ## Phase 7: User Story 5 - Evals for the validator's prompt (Priority: P5)
 
-**Goal**: Three eval suites gate the validator prompt; a regression is rejected.
+**Goal**: Three eval suites report results for manual beta review, without automated baseline/regression gate (reviewer: "I'll manually see them few days").
 
-**Independent Test**: Run the eval set per suite; a weakened prompt lowers its suite and is reported as a regression.
+**Independent Test**: Run the eval set per suite; results are available for manual review without an automated baseline gate.
 
 - [ ] T009a [US5] Eval suites `tasksync-chat/evals/validator/` (answer, enhance, store, plus a cheap-check skip case and a secret-leak case, A16) per `contracts/validator-evals.md`, scored through `tasksync-chat/src/workers/evalScoreboard.ts`; test `tasksync-chat/test-validator-evals.cjs` (three suite results reported, skip and secret cases present).
-- [ ] T009b [US5] Baseline per behaviour and a way to add a real reviewer correction (FR-015) in `tasksync-chat/evals/validator/`; test `tasksync-chat/test-validator-eval-baseline.cjs` (weakened prompt flagged as regression, added correction included in later runs); wire all `test-validator-*.cjs` into `test:workers` in `tasksync-chat/package.json` (depends on T009a).
+- [ ] T009b [US5] Manual quality-review results and a way to add a real reviewer correction (FR-015) in `tasksync-chat/evals/validator/`; test `tasksync-chat/test-validator-eval-baseline.cjs` (results available without automated baseline/regression gate, added correction included in later runs); wire all `test-validator-*.cjs` into `test:workers` in `tasksync-chat/package.json` (depends on T009a).
 
 **Checkpoint**: All user stories are independently functional
 
@@ -110,7 +126,7 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T010 Run `specs/007-validator-agent/quickstart.md` end to end, record the first-week measurement plan for the provisional 60/70/80/10% targets (Clarifications), update `tasksync-chat/docs/requirements/` rows for FR-001 to FR-021, then run the gate `npm --prefix tasksync-chat run test:workers` and `node tasksync-chat/tools/task-budget.cjs specs/007-validator-agent/tasks.md`.
+- [ ] T010 Run `specs/007-validator-agent/quickstart.md` end to end including port/health checks, record manual beta review for provisional 60/70/80/10% targets (no automated baseline; SC-002 deferred until linking), update `tasksync-chat/docs/requirements/` rows for FR-001 to FR-026, then run the gate `npm --prefix tasksync-chat run test:workers` and `node tasksync-chat/tools/task-budget.cjs specs/007-validator-agent/tasks.md`. D19: "accept" — checklist gaps are beta limits, not blockers (spec.md Beta limits).
 
 ---
 
@@ -119,6 +135,7 @@ Extension code in `tasksync-chat/src/`, tests as `tasksync-chat/test-*.cjs`, eva
 - **Setup**: T001 first; no dependencies. T005, T006, T007, T008 depend on T001 (knowledge-store tasks).
 - **Foundational (T002, T003)**: can run in parallel with T001; BLOCK all user stories.
 - **US1 (T004a, T004b)** need T002, T003; T004b after T004a. **US2 (T005, T006)**: T005 needs T001 and T002; T006 needs T004a, T004b and T005. **US3 (T007)** needs T005 and T006 (same file `observer.ts`, sequential). **US4 (T008)** needs T005. **US5 (T009a, T009b)** need T004a to T007; T009b after T009a.
+- **US6 (T011, T012, T013)**: T011 needs T001; T012 needs T005, T008 and T011; T013 needs T012.
 - **Polish (T010)** after all stories.
 
 ## Parallel Example
@@ -132,7 +149,7 @@ After T006: T007 (US3, `observer.ts`) and T008 (US4, `knowledgeStore.ts`) in par
 
 - **MVP**: T001 to T004b (spike, foundation, US1): the reviewer reads validator answers and cost in Commentary.
 - **Incremental**: add US2 (learning), US3 (proposal), US4 (dedup), US5 (evals); each ships with its test and keeps `test:workers` green.
-- T001 reports the three FR-020 options; stop before T005 until the reviewer chooses (analyze A1).
+- T001 confirms the selected local-only store before T005; topology is decided (ONE server), not awaiting another reviewer choice.
 
 ## Notes
 

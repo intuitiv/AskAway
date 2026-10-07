@@ -3,7 +3,8 @@
 export const KEEP_WARM_MAIN_ACTIVE_MS = 300_000;
 export const KEEP_WARM_LEAD_MS = 60_000;
 export const KEEP_WARM_MAX_CONTEXT_TOKENS = 300_000;
-export const KEEP_WARM_MAX_UNUSED_PINGS = 2;
+/** Pings per idle period (reviewer: "only 3-4 times, dont do after that"); a real run resets the count. */
+export const KEEP_WARM_MAX_UNUSED_PINGS = 3;
 export { KEEP_WARM_PROMPT } from './workerRouter';
 
 export interface KeepWarmWorker {

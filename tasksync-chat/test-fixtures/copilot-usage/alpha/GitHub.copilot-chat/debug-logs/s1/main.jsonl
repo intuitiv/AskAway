@@ -1,0 +1,5 @@
+{"ts":1,"sid":"x","type":"llm_request","attrs":{"model":"gpt-a","inputTokens":100,"cachedTokens":900,"outputTokens":10,"copilotUsageNanoAiu":2000000000}}
+{not json llm_request
+{"ts":2,"type":"tool_call","attrs":{}}
+{"ts":2,"type":"tool_call","attrs":{"model":"llm_request","copilotUsageNanoAiu":99000000000}}
+{"ts":3,"sid":"x","type":"llm_request","attrs":{"model":"gpt-b","inputTokens":50,"cachedTokens":0,"outputTokens":5,"copilotUsageNanoAiu":1000000000}}

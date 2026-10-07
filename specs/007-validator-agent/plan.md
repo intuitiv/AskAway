@@ -26,7 +26,7 @@ A read-only validator observes every agent/worker response, answers from the act
 
 **Performance Goals**: validator never delays the agent or reviewer (0 blocking steps, SC-008)
 
-**Constraints**: beta, Commentary-only (FR-018); secrets never leave (FR-016); validator cost < 10% of observed work (provisional); one shared server per workspace
+**Constraints**: beta, Commentary-only (FR-018); secrets never leave (FR-016); validator cost < 10% of observed work (provisional); ONE local memory server shared across windows, agents and workers, project/agentId isolation (accepted beta limit), no cloud calls/provider keys, local embeddings, auto-forget/consolidation off
 
 **Scale/Scope**: one reviewer, a few concurrent workers, hundreds of knowledge items per spec
 
@@ -77,16 +77,17 @@ tasksync-chat/
 
 ## Phases and delivery order (maps to stories)
 
-1. **Spike (T-spike)**: verify agentmemory `/remember`, supersede, and measure the three FR-020 options (dedicated instance, re-save job, `memoryStore.ts`), health, secret handling; record findings in research R-1. Reviewer chooses before step 3.
+1. **Spike (T001)**: partly done 2026-10-07 (install, engine, isolated instance 5 demo, shell-key egress finding); confirm local embeddings, flags off, supersede/hidden versions, health and secret handling. ONE server decided; "Use agentmemory or anything better which has good reviews" allows a researched alternative before T005.
 2. **US1** observer + cheap check + Commentary entry + cost + beta isolation test.
 3. **US2** closeLoop, prediction/match (FR-021), KnowledgeStore writes, fresh-agent recall.
 4. **US3** context proposal (dismissible, prompt unchanged).
 5. **US4** dedup/supersede rules.
-6. **US5** evals and gate.
+6. **US5** eval results for manual beta review, no automated baseline/regression gate.
+7. **US6** AskAway starts/attaches one detached server on first use (port mutex); user/repo md seed once then freeze; Copilot/OpenCode MCP access and prompts switch to the store. "Do it in 007. We have to many specs. It belongs there."
 
 ## Risks
 
-- agentmemory decay/auto-forget vs FR-020: mitigated by spike; fallback is the reviewer's choice among a dedicated instance, re-save job or `memoryStore.ts`, measured by T001 (research R-1).
+- agentmemory lifecycle/egress vs FR-020/FR-024: T001 must confirm local embeddings and auto-forget/consolidation off with no provider keys/cloud calls; the trial auto-used the shell's `OPENAI_API_KEY`. Validator-only topology superseded: "agentmemory is replacement for all memory needs. Validator also uses it."
 - Extra local runtime (Node + iii engine, 4 ports): documented in quickstart; health shown in Commentary on failure.
 - Cheap-check misses a real question: skip rate audited in evals.
 
