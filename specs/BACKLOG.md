@@ -14,11 +14,12 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 
 | ID | What | State | Blocker or question | Source file |
 |---|---|---|---|---|
-| T004 | Run the live cloud proof and record route evidence | READY | T004-C supersedes PR 1603: "use throwaway PR"; cloud agent enabled, approval behaviour to test | specs/006-cloud-tasks/reviewer-brief.md |
-| T005 | Update route decisions and record go/no-go from observed proof | BLOCKED | Depends on T004 evidence | specs/006-cloud-tasks/tasks.md |
-| F7 | Merge block | DONE | Reviewer 2026-10-07: "PR merge is done by human" / "do not merge PRs" → no merge, no required-status block; plan C-8 to amend | specs/006-cloud-tasks/Rules.md |
+| T004 | Run live cloud proof and record route evidence | DONE | Throwaway PR #1608; same-branch commits, sequential sessions; model self-reports only; Actions copilot ran/no observed hold, setting not captured | specs/006-cloud-tasks/evidence/proof-2026-10-07.md |
+| T005 | Update route decisions and record GO | DONE | C-3/4/5/15/19, spec and packet contract aligned to evidence; reviewer explicit-request-only GO | specs/006-cloud-tasks/tasks.md |
+| F7 | Merge block | DONE | "do not merge PRs" → AskAway never merges or adds required-status block; C-8 aligned | specs/006-cloud-tasks/Rules.md |
 | F18 | Tag 006 tasks `[cloud]` or `[local: reason]` | BLOCKED | Do when the `/sk.tasks` asset ships | specs/006-cloud-tasks/checklists/analyze.md |
-| F21 | Go/no-go | DONE | Reviewer: "I want a demo for it, before i enable it in production" → T004 = demo with reviewer; off in production until approved | specs/006-cloud-tasks/Rules.md |
+| F21 | 006 GO after demo | DONE | Reviewer 2026-10-07: "Sure productise cloud thing. As it is triggered only when i ask for it. Not always." Only explicit requests, never automatic/scheduled by default; no merges | specs/006-cloud-tasks/Rules.md |
+| T006–T010 | US2 eligibility, explicit serial queue, Specs card status and task report | READY | Concrete outside-in-tested tasks planned; one active attempt per PR, no tick until US4 | specs/006-cloud-tasks/tasks.md |
 
 ## 007 — Validator Agent
 
@@ -87,6 +88,6 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 | M2 | Keep memory local-only (no cloud calls/OpenAI key, local embeddings, auto-forget/consolidation off) | DECIDED | Reviewer 2026-10-07: "Yes"; FR-024; trial auto-used shell's `OPENAI_API_KEY` | 2026-10-07 |
 | M3 | Memory migration as its own spec (009) | DECIDED | Reviewer 2026-10-07: "Do it in 007. We have to many specs. It belongs there." No spec 009; US6 in spec 007 | 2026-10-07 |
 | M4 | How agentmemory stays running (login item vs started by AskAway) | DECIDED | Reviewer 2026-10-07: "Askaway starts it like we start opencode server." FR-025 in spec 007 | 2026-10-07 |
-| T004-C | Cloud proof uses throwaway PR and tests approval behaviour | DECIDED | Reviewer 2026-10-07: "use throwaway PR. And cloud agent is enabled, but not sure if it require approval or not, but try and test it" | 2026-10-07 |
+| T004-C | Cloud proof uses throwaway PR and tests approval behaviour | DONE | "use throwaway PR. And cloud agent is enabled, but not sure if it require approval or not, but try and test it"; #1608 demo done, copilot Actions ran/no hold observed; setting not captured | specs/006-cloud-tasks/evidence/proof-2026-10-07.md |
 
 Counts: see the reviewer's latest decision list; NEEDS-DECISION rows above are the open questions.

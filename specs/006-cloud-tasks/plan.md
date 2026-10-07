@@ -8,6 +8,8 @@
 
 ## Summary
 
+**GO (reviewer, 2026-10-07)**: "Sure productise cloud thing. As it is triggered only when i ask for it. Not always." Cloud tasks start only on an explicit reviewer request, never automatically or scheduled by default. AskAway never merges: "do not merge PRs". [Live evidence](evidence/proof-2026-10-07.md) demonstrates same-branch delivery; its historical stop-for-reviewer verdict is superseded by this GO, not by stronger model/approval claims.
+
 Queue a flagged task to the GitHub Copilot cloud agent by committing one packet to the spec's active PR branch and posting a short `@copilot` comment that points at it. Poll the PR with `gh`, derive task state with one pure state machine, show it on the Specs tab task row, in the Workers feed (shared trace row) and on Telegram (live + morning digest), and tick a task only after a local verify worker re-runs the packet's verification on the pulled branch. First slice is a live proof that turns the unverified route facts into a committed evidence note and a recorded signal fixture; everything after is built and tested against that fixture.
 
 ## Branch identities
@@ -61,29 +63,29 @@ Gate: `.specify/memory/constitution.md` v1.0.0 (ratified 2026-10-06). Checked pe
 |---|---|---|---|---|
 | C-1 | Which GitHub route delegates a task? | `@copilot` comment on the active PR via `gh pr comment <n> --body-file <tmp>`. Never issue assignment. | Same-branch push by default on PR comments; issue assignment always makes a new branch/PR. | spec FR-007; GitHub docs "Asking Copilot to make changes" |
 | C-2 | Which credential? | The developer's `gh` auth; no token stored or passed. `gh auth status` checked before queuing. | Spec assumption "reuse developer auth". | spec Assumptions |
-| C-3 | How is the model chosen? | Docs: model picker only in the web UI for PR comments; otherwise the PR's original model, and Auto where no picker exists. Until US1 proves a comment-text or API way to pick, the dialog shows "Model: PR default" (read-only) plus an "Open on GitHub to pick" link. If US1 proves a way, the picker is enabled for that way only. | FR-008 "where GitHub allows"; no guessing. | spec FR-008, US1; GitHub docs "Changing the AI model" |
-| C-4 | Which PR signals are polled? | (a) reactions on our comment (👀 = accepted); (b) issue timeline events after our comment (the "Copilot started work" event; exact event name taken from the US1 fixture); (c) PR commits after `base`; (d) check runs + combined status on head sha; (e) issue comments by the cloud agent after our comment. | Docs name 👀 and the "started work" timeline event; commits/checks are standard. | spec FR-010; GitHub docs "Tracking and continuing a session" |
-| C-5 | How is a signal tied to a task when several are queued? | From US2: only one Working task per PR (FR-017, enforced by the Held state), so all signals after our comment belong to it. Packets instruct the agent to prefix commit messages with `[<taskId>]` and start its report with `Report <taskId>`. Concurrent cloud tasks on one PR (US5) are enabled only if US1's second probe shows two sessions can run on one PR at once; otherwise the local queue serialises them and US5 still delivers overlap holds, conflicts, ceilings and secrets. | Correlation must not be guessed. | spec FR-017, US5 |
+| C-3 | How is the model chosen? | Read-only "Model: PR default (not independently observed)" plus GitHub picker link; no enabled comment-text picker. PROOF-1 requested Claude Sonnet 5.5 and reported that name; PROOF-1b requested none and reported GPT-5.6 Terra. Store/display report names as self-reported, not verified runtime models. | Matching report text does not prove selection/enforcement; no session telemetry captured. | evidence/proof-2026-10-07.md; FR-008 |
+| C-4 | Which PR signals are polled? | Reactions on our comment (👀 acknowledgment, not completion), timeline `copilot_work_started` / `copilot_work_finished`, agent commits after `base`, head check runs/status, authenticated agent report/question comments. PR 1608 had two eyes reactions, two starts, two commits and two reports; first start was ~51 s after request, first push ~113 s after request. | Exact observed events, timestamps and authors drive fixture replay; poll snapshots are not atomic. | evidence/proof-2026-10-07.md; FR-010 |
+| C-5 | How is a signal tied to a task when several are queued? | One active posted attempt per PR (including Queued before acknowledgment); additional explicitly requested tasks are Held locally. Commits must prefix `[<taskId>]`; an unquoted `Report <taskId>` line from the agent identifies the report even after a quoted request. Serialise even disjoint tasks: first finish 11:43:25Z preceded second start 11:44:10Z. Release when Needs review/terminal, never tick from report alone. | Concurrent sessions were not observed; author/task/branch correlation is required, not merely any signal after the comment. | evidence/proof-2026-10-07.md; FR-017 |
 | C-6 | Poll interval and failure? | Setting `askaway.cloudTasks.pollMinutes` (default 3, min 1). Poll only while a task is non-terminal. On `gh` failure/rate limit: keep last state, set `staleSince`, exponential backoff to 15 min. | Spec edge case "Polling fails". | spec FR-010, Edge Cases |
 | C-7 | What is committed vs local? | Committed: packet (the cloud agent must read it) and the final 005 run record written with the acceptance commit. Local, gitignored (`.askaway/specs/*/cloud/`): live cloud-run state updated by polling. Every extension-authored commit (packet, tick, run record) carries the trailer `AskAway-Commit: <packet|tick|record>` and is excluded from FR-018 conflict detection; only commits by someone else than the cloud-agent login and not carrying the trailer count as developer pushes. | Committing live state would push to the branch while the cloud agent works (conflicts, false FR-018 warnings); the extension's own commits must never raise a false warning. | spec FR-004, FR-018, FR-022 |
-| C-8 | How is merge blocked while a task is Working? | The extension posts commit status `askaway/cloud-task` = `pending` on the PR head (re-posted when the head moves) and `success` when no task is Working. This blocks the GitHub merge button only when branch protection/ruleset requires that status context — a one-time repository setting (reviewer action). The Specs tab additionally shows "Merge blocked: T012 working, ~34 min to cap". | Only required status checks can block GitHub's merge button. | spec Clarification (block merge), Edge Cases |
+| C-8 | Who merges while a task is Working? | Human only; AskAway never merges or installs a required-status merge block. Specs card shows the working task and remaining cap, not "Merge blocked". | "do not merge PRs" supersedes the earlier block requirement. | Rules.md F7, reviewer 2026-10-07 |
 | C-9 | How is eligibility written in `tasks.md`? | Tag after the task ID: `[cloud]` when eligible, `[local: <reason>]` when not (reasons: `local service`, `open question`, `> 45 min`, `not self-contained`). `/sk.tasks` prompt asset applies the four rules; the scanner exposes tags (005 D-21). | FR-002 needs flag + reason on the row. | spec FR-002, FR-003 |
 | C-10 | What is the task's "task-details section"? | The task line plus its indented sub-bullets in `tasks.md`, plus the story's Independent Test from `spec.md`. 005 tasks keep sub-bullets for file paths/notes (standard template allows them). | 005 does not define a separate section; this is the smallest self-contained unit. | spec FR-005 |
 | C-11 | Packet format? | Markdown, YAML front matter with the nine fields (`stage`, `story`, `task`, `taskDetails`, `base`, `allowedPaths`, `verify` (list), `stopCondition`, `reportFormat`) + body linking committed artifacts by path. Schema: [contracts/packet.md](contracts/packet.md). | FR-005, SC-004. | spec FR-005 |
 | C-12 | Comment text? | ≤5 lines, no spec/plan content: `@copilot Please do <taskId> (<story>, stage <stage>) of <slug>: follow .askaway/specs/<slug>/packets/<file> at <sha>.` + `Work on this PR's branch only; stay inside allowedPaths; run the packet's verify commands; stop and ask on anything undecided; reply with the packet's report format.` | FR-006, SC-004; 005 Rules.md "Cloud tasks": the message states the stage, the task and what to do, and references committed artifacts instead of repeating them. | spec FR-006 |
 | C-13 | How is stage output marked as draft? | Full mapping: `specify`, `clarify`, `plan`, `tasks` → `draft: true`; `implement` and every later stage (including `converge`/readiness) → `draft: false`. Keep the rule "do not change `**Status**:`"; acceptance returns the task if `**Status**:` changed in any spec/plan file. | FR-009. | spec FR-009 |
 | C-14 | How does acceptance run? | On Needs review: local `verify` worker gets a packet with `base`, PR head sha, `verify` commands, `allowedPaths`. It runs `git fetch origin <branch>` into a temporary worktree (`git worktree add`), runs the commands, reports outputs. Main process then does scope check on commits by the cloud-agent login between `base` and head; ticks `tasks.md` (commit + push by the main process, carrying the `AskAway-Commit: tick` trailer) only on pass. Acceptance starts automatically when a task enters Needs review (no manual step, SC-009); the task is Accepted locally at once, and the tick push is deferred while any other task on the PR is Working, then pushed when none is. A task in Needs review never holds the queue: it is not Working, so Held one-at-a-time tasks are released when it enters Needs review. | FR-014, FR-015; workers never push. | spec US4 |
-| C-15 | Cloud-agent identity? | The commit author / comment author login recorded in the US1 evidence note (docs do not state it); stored in setting `askaway.cloudTasks.agentLogins` (default from US1). | Needed for conflict detection and scope check. | spec FR-018 |
+| C-15 | Cloud-agent identity? | Default API login `Copilot` (Bot), app `copilot-swe-agent`, git author `copilot-swe-agent[bot]`; git committer `GitHub` / `web-flow` is not the agent author. Reports are genuinely bot-authored, with quoted human requests above them. Start/finish actor `machs_pega` is the requester; app attribution identifies the cloud event. | Needed for report correlation, conflict detection and scope check; never accept a human echo as a report. | evidence/proof-2026-10-07.md; FR-018 |
 | C-16 | Secret gate? | `knownSecretValues(env = process.env): string[]` collects values from environment variables named like `TOKEN|SECRET|KEY|PASSWORD` (length ≥ 8); `secretFindings(fields, known = []): Array<{field, kind}>` checks each field against known values and token patterns. The `github-token` pattern `/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/` covers the `gho_` OAuth token printed by `gh auth token`; no separate `gh auth token` lookup is needed. Error names the field. | FR-020, SC-005. | spec FR-020 |
 | C-17 | Ceilings and timeouts? | US5 sets per-task `ceilingMinutes` (default 50, greater than the 45-minute eligibility bound; max 59) in the packet. US3 derives Timed out when elapsed Working time exceeds the ceiling or 59-minute session limit without a report, and derives No response when neither 👀 nor started-work arrives within the fixed 10-minute wait after the comment. | FR-010, FR-019, edge case. | spec FR-010, FR-019 |
 | C-18 | Morning digest timing? | Setting `askaway.cloudTasks.digestTime` (default `08:00` local). Sent once per day if any cloud run changed since the last digest; per task: PR, evidence, duration, model, blocker, decision needed; no price. | FR-012, FR-013. | spec FR-012 |
-| C-19 | Actions on cloud pushes? | Requires repo admin to turn off "Require approval for workflow runs" (Settings → Copilot → Cloud agent). The poller reports check runs with conclusion `action_required` as state "Checks waiting for approval" (blocker). US1 records the setting state. | Docs: default requires approval. | spec FR-023, Clarification |
+| C-19 | Actions on cloud pushes? | Observed GitHub Actions `copilot` job 112774417359 on first agent SHA, `in_progress`, conclusion null; no approval hold captured. GitGuardian succeeded and Title Merge Check failed on both SHAs (non-Actions apps). Approval setting and ordinary build/test workflow execution are not observed. Surface `action_required` if seen; do not change repo settings or claim they are off. | A running Copilot job does not establish general workflow approval behaviour. | evidence/proof-2026-10-07.md; FR-023 |
 | C-20 | Feed rendering? | Convert a cloud run into the Workers trace-row input (`label`, `state`, `startedAt`, `rows[]` of signals with timestamps and links) at the data boundary; render with existing `traceRowsHtml`. | AGENTS.md consistency. | spec FR-011 |
 | C-21 | Pre-queue refusals and order? | Checked in this order before any commit/comment: `gh auth` ok → active PR open → push permission (`gh api repos/{o}/{r} --jq .permissions.push`) → task eligible → no active attempt (Timed out and No response are finished and may be queued as attempt n+1) → secret gate. The one-at-a-time rule (from US2) and the overlap rule (US5) do not refuse: they make the task Held. Refusal message names the failed check. | FR-021. | spec FR-021 |
 | C-23 | Run ceiling? | Per cloud task wall-clock cap (FR-024): packet `ceilingMinutes` default 50, max 59; the T004 proof budget is 61 minutes (59-minute session plus margin). | Reviewer 2026-10-06: "61 minutes is okay. I think it is reasonable to have cap on time." | spec FR-024, Rules.md |
 | C-22 | Is cloud-agent enablement checkable before queuing? | No documented API; not checked up front. If disabled, the task becomes No response (C-17) with hint "Copilot cloud agent may be disabled for this repository". US1 records the observed behaviour. | No guessing an API. | spec Edge Cases |
 
-No open questions block planning. Reviewer-owned setup items (not code): enable required status `askaway/cloud-task` (C-8), turn off workflow approval for Copilot (C-19).
+GO permits US2 planning despite evidence limits. No required-status setup; workflow approval settings remain reviewer-owned, not changed by AskAway.
 
 ## Architecture
 
@@ -101,7 +103,6 @@ flowchart LR
   SM -->|Needs review| A[cloudAccept.ts: verify worker + scope check]
   A -->|pass| TK[tick tasks.md + 005 run record, commit + push]
   A -->|fail| RT[Returned + evidence]
-  SM --> MS[commit status askaway/cloud-task]
 ```
 
 State machine (`deriveCloudState`): `Queued` → (👀 or started-work) `Working` → (agent commit) `Pushed` → (checks complete) `Checks passed`/`Checks failed` (or `Checks waiting for approval`) → (agent report/question comment) `Needs review` → acceptance `Accepted`/`Returned`. Side exits: `No response` (10 min), `Timed out` (ceiling), `Returned` (wrong branch/new PR, PR closed, out-of-scope paths, Status changed). Local `Held` before posting when overlap/one-at-a-time applies.
@@ -128,12 +129,12 @@ State machine (`deriveCloudState`): `Queued` → (👀 or started-work) `Working
 | Eligibility + packet + queue | `src/cloud/packet.ts`, `src/cloud/cloudQueue.ts`, `specKitPromptAssets.ts` (`/sk.tasks` eligibility rules), Specs tab row button | US2 |
 | Polling + state + surfaces | `src/cloud/cloudPoller.ts`, `src/cloud/cloudState.ts`, `src/cloud/cloudDigest.ts`, feed adapter, Telegram | US3 |
 | Acceptance | `src/cloud/cloudAccept.ts`, verify worker packet | US4 |
-| Safety | overlap/conflict/ceiling in `cloudState.ts` + `cloudQueue.ts`, commit status | US5 |
+| Safety | overlap/conflict/ceiling in `cloudState.ts` + `cloudQueue.ts`; serial PR queue, no merge | US5 |
 
 ## Compatibility, migration, rollback
 
 - No migration; new files only plus additive scanner tags from 005.
-- Feature behind setting `askaway.cloudTasks.enabled` (default false until US1 evidence is committed and US2 passes). Rollback = turn setting off; packets already on a branch are inert markdown.
+- Feature behind setting `askaway.cloudTasks.enabled`; GO permits productisation after US2 passes, not automatic dispatch. Startup, scheduling, eligibility or polling never starts unrequested work. Held tasks may dispatch only because the reviewer explicitly queued each. Rollback = turn setting off; packets already on a branch are inert markdown.
 
 ## Failure behavior
 
@@ -167,10 +168,10 @@ State machine (`deriveCloudState`): `Queued` → (👀 or started-work) `Working
 | Setup | `src/cloud/` folder, settings (`enabled`, `pollMinutes`, `digestTime`, `agentLogins`), add `.askaway/specs/*/cloud/` to `.gitignore` | — |
 | Foundational | Needs 005 Foundational (`runRecords.ts`, scanner `task.tags`) and 005 active-PR fact (US4/D-12). `gh` runner wrapper with injectable exec for tests. | 005 Foundational |
 | US1 | `cloud-proof.cjs`; evidence note with no "unknown" entries; recorded signal fixture; go/no-go | Setup (can run before 005 is done: takes PR number as argument) |
-| US2 | eligibility tags from `/sk.tasks`; packet + comment + secret gate + refusals; "Queue in cloud" button; model display per C-3 | US1 go, Foundational |
+| US2 | eligibility, explicit-request queue/serial hold, packet/comment, Specs card status and report ingestion (no tick), model provenance | US1 GO, Foundational |
 | US3 | poller + state machine (fixture replay test) + row/feed/Telegram + digest | US2 |
 | US4 | acceptance via verify worker + scope check + tick | US3 |
-| US5 | overlap holds, conflict detection, ceilings, commit status merge block, concurrency per C-5 | US4 |
+| US5 | overlap diagnostics, conflict detection, ceilings; retain serial PR queue and human-only merging | US4 |
 | Polish | Storybook stories (task row states, digest), README section, deploy | all |
 
 Each story's Checkpoint = its Independent Test automated (fixture-based) + one live run on a real PR recorded in `specs/006-cloud-tasks/evidence/`.
@@ -191,7 +192,7 @@ specs/006-cloud-tasks/
 ├── spec.md plan.md research.md data-model.md quickstart.md
 ├── contracts/ (packet.md, cloud-run.schema.json, evidence-note.md)
 ├── evidence/  (US1 output)
-├── tasks.md   (T001–T005 for US1; US2–US6 under ## Later)
+├── tasks.md   (T001–T005 US1 done; T006–T010 US2; US3–US6 under ## Later)
 ├── Goal.md Rules.md reviewer-brief.md
 
 tasksync-chat/
@@ -209,11 +210,10 @@ None.
 
 ## Later
 
-Moved out of tasks.md by the task budget; each becomes tasks after US1's go.
+US2 moved to tasks.md after the reviewer's GO. Later increments remain outside the current task budget.
 
-- US2: `[cloud]`/`[local: reason]` rules in the `/sk.tasks` asset; `buildPacket`/`buildComment` (contracts/packet.md); `queueTask` + `refusalFor` (C-21) incl. the one-cloud-task-at-a-time hold per PR (FR-017 default; the task becomes Held, not refused); "Queue in cloud" button + model line (C-3); `test-cloud-queue.cjs` (9 fields, ≤5-line comment, refusals before writes).
-- US3: `pollPr` (C-4, C-6); pure `deriveCloudState` (including Held, Timed out and No response derivation from elapsed-time rules in data-model transitions); cloud-run store reads/writes `.askaway/specs/<slug>/cloud/<taskId>-<n>.json` (FR-022); feed adapter to `traceRowsHtml` (C-20); Telegram live + `digestLines` (C-18); `test-cloud-state.cjs` replaying the US1 fixture and asserting no cloud price in card/Telegram/digest.
+- US3: extend US2 poller/state/store and Specs status to Workers feed via `traceRowsHtml` (C-20), Telegram live + `digestLines` (C-18), elapsed-time exits/backoff; `test-cloud-state.cjs` replays US1 fixture and asserts no cloud price in card/Telegram/digest.
 - US4: `acceptCloudTask` (worktree, verify worker, `outOfScope`, Status-line check); tick + run record + push on pass; `test-cloud-accept.cjs` on pass/fail/out-of-scope fixtures.
-- US5: overlap hold on allowed paths (replaces the US2 one-at-a-time hold only where paths do not overlap); conflict detection (ignores `AskAway-Commit` commits); duration-ceiling policy and configuration (default 50 min, max 59); commit status `askaway/cloud-task` + "merge blocked" line; `test-cloud-safety.cjs`.
-- US6 (ultimate goal, reviewer 2026-10-06): delegate a whole user story to GitHub (cloud agent in Actions) on the active PR branch once the spec is in implement; the PR merges into the branch and runs in GitHub Actions. Built on the per-task route after US5; its own plan and tasks are written after US1's go.
+- US5: overlap diagnostics (does not replace one-at-a-time per PR), conflict detection (ignores `AskAway-Commit` commits), duration-ceiling policy/configuration (default 50 min, max 59); working/cap warning only, never merge or required-status block; `test-cloud-safety.cjs`.
+- US6 (ultimate goal, reviewer 2026-10-06): explicitly delegate a whole user story to GitHub on the active PR branch once the spec is in implement; human merges, AskAway never merges. Built on the per-task route after US5; its own plan/tasks are later.
 - Polish: Storybook task-row states and digest; README "Cloud tasks" incl. reviewer setup; quickstart + deploy.

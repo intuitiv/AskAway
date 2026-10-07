@@ -14,7 +14,7 @@
     "branch": { "type": "string" },
     "commentId": { "type": "string" },
     "commentUrl": { "type": "string" },
-    "model": { "type": "string", "description": "model that will run / ran; 'PR default' until observed" },
+    "model": { "type": "string", "description": "PR default (not independently observed) before report; report names explicitly labelled self-reported, never verified runtime identity" },
     "allowedPaths": { "type": "array", "items": { "type": "string" } },
     "ceilingMinutes": { "type": "integer", "maximum": 59 },
     "state": { "enum": ["Held", "Queued", "Working", "Pushed", "Checks passed", "Checks failed", "Checks waiting for approval", "Needs review", "Accepted", "Returned", "Timed out", "No response"] },

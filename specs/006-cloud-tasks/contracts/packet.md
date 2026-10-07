@@ -4,6 +4,8 @@
 
 Path: `.askaway/specs/<slug>/packets/<taskId>-<n>.md` (`n` = queue attempt, starting at 1). A task may be re-queued as attempt n+1 after Timed out or No response. The `base` field is the PR head sha before this packet commit; the packet is committed and pushed to the active PR branch before the comment is posted, and the comment references that packet commit sha.
 
+Reviewer GO 2026-10-07: "Sure productise cloud thing. As it is triggered only when i ask for it. Not always." Every queue attempt needs an explicit reviewer request; no automatic eligibility/startup/scheduled launches by default. Hold additional requested tasks locally until the active attempt reaches Needs review/terminal; one posted active attempt per PR including pre-acknowledgment Queued. AskAway never merges ("do not merge PRs").
+
 ```markdown
 ---
 stage: implement
@@ -24,7 +26,8 @@ reportFormat: |
   Report T014
   - Result: done | blocked
   - Commits: <sha list>
-  - Verify output: <last line of each command>
+   - Verify output: <last line of each command>
+   - Model: <self-reported name, or not observed: reason>
   - Question (if blocked): <one question>
 ---
 
@@ -41,6 +44,7 @@ reportFormat: |
 
 ## Rules
 - Push commits to this PR's branch only; prefix each commit message with `[T014]`.
+- Never merge a PR; stop and ask rather than pass a human gate.
 - Change only `allowedPaths`. Do not change any `**Status**:` line.
 ```
 
@@ -60,6 +64,14 @@ Stop and ask on anything undecided; reply using the packet's reportFormat.
 
 Posted with `gh pr comment <n> --body-file <tmpfile>`; the tmp file is deleted after posting.
 
+## Observed route and report ingestion (2026-10-07)
+
+`evidence/proof-2026-10-07.md`: bot `[PROOF-1]`/`[PROOF-1b]` commits landed on the SAME PR branch; two sessions were sequential. Reactions `eyes`, `copilot_work_started` / `copilot_work_finished`, commits and real bot reports were observed. API author login `Copilot`, app `copilot-swe-agent`, git author `copilot-swe-agent[bot]`; requester `machs_pega` and committer `web-flow` are not report authors to trust.
+
+The first comment appended `Please use Claude Sonnet 5.5 for this task.`; first report claimed that model, second unrequested report claimed GPT-5.6 Terra. Selection/enforcement remains unverified; no comment-text picker enabled, no claim of independently verified runtime model. Read-only PR-default UI plus GitHub picker link follows C-3.
+
+Parse a task-labelled, unquoted `Report <taskId>` line from the authenticated bot, even after a quoted request; never use a whole-body prefix alone or count human/quoted-only echoes. Match task and PR branch/commits before attaching report to the run. Model/verification text is self-reported; set Needs review, never tick or accept without US4 local verification. Actions `copilot` ran without observed approval hold; settings/general workflows not captured, so do not infer approval is off.
+
 ## Refusals (before any write, first failing check wins)
 
-`gh not authenticated` · `no active PR for <slug>` · `no push permission on <repo>` · `<taskId> is not cloud-eligible: <reason>` · `<taskId> already queued (<state>)` · `secret detected in <field>` · `held: <taskId> overlaps <paths> of working <otherTask>` / `held: one cloud task at a time on this PR`.
+`explicit reviewer request required` · `gh not authenticated` · `no active PR for <slug>` · `no push permission on <repo>` · `<taskId> is not cloud-eligible: <reason>` · `<taskId> already queued (<state>)` · `secret detected in <field>`. Holding is not refusal: `held: one cloud task at a time on this PR`; no packet/comment while Held, even for disjoint paths.
