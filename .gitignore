@@ -45,3 +45,8 @@ AGENT_AUDIT.md
 .askaway/cowork-manifest.json
 .askaway/cowork-bundle.md
 .askaway/cowork-inbox/
+# worker-ledger snapshots for the analyst worker
+.askaway/analyst/ledgers/
+
+
+resources/speckit/**/*
