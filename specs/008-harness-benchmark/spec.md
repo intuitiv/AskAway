@@ -10,13 +10,11 @@
 
 ## Clarifications
 
-### Questions for reviewer
+### Reviewer decision 2026-10-07
 
-- **Efficiency score (defined by agent at reviewer's request, 2026-10-07: "i dont care about the formula, i want you to define and give me some sample")**:
-  - **Score = $ per accepted task** (lower is better): all spend of every agent and model, failed attempts included, divided by tasks that pass the hidden checks.
-  - **Quality bar**: a configuration with pass rate below 80% is shown but not ranked ("cheap but unfinished").
-  - The banner's live "Efficiency" (tokens read per token written) stays a context-weight hint, not the benchmark score.
-  - Pending reviewer confirmation of the 80% bar.
+- Reviewer: "We want to reuse efficeicy score. In benchmark we know workc opleteion and effieniyc score we should use it."
+- The scoreboard reuses the SAME Efficiency score as the shared banner: the same formula and the same render component, per AGENTS.md consistent experience. Show it together with work completion (accepted tasks / fixed task count); $ and tokens remain raw columns. This replaces the agent-defined $ per accepted task score and 80% quality bar.
+- More benchmark input from the reviewer is pending.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -50,7 +48,7 @@ The reviewer reads a scoreboard per configuration showing pass rate, total $, re
 
 1. **Given** a mixed-model run, **When** its row is displayed, **Then** the model mix is identified and $, requests and tokens include all participating agents and models.
 2. **Given** accepted and failed tasks, **When** results are summarised, **Then** pass rate shows accepted tasks over the fixed task count and spend includes failed attempts.
-3. **Given** a reviewer-approved efficiency formula, **When** results are displayed, **Then** the efficiency number names its formula and units; before approval it is labelled undecided rather than presented as authoritative.
+3. **Given** shared-banner Efficiency and benchmark task outcomes, **When** results are displayed, **Then** the scoreboard uses the same Efficiency formula and render component as the shared banner alongside work completion (accepted tasks / fixed task count); $ and tokens remain raw columns.
 
 ---
 
@@ -70,10 +68,10 @@ The reviewer reads a scoreboard per configuration showing pass rate, total $, re
 - **FR-003**: System MUST identify the benchmark, task set, prompt, harness and model mix for each run and retain repeated runs separately.
 - **FR-004**: Task acceptance MUST come from the hidden grader, not the agent's success claim; agents MUST NOT receive hidden checks or expected answers.
 - **FR-005**: System MUST record task outcomes and run completion status, distinguishing accepted, failed, skipped and interrupted work.
-- **FR-006**: The scoreboard MUST show pass rate (accepted tasks / fixed task count), total $, model requests, token usage and the harness-efficiency number or its explicit undecided/unavailable state for each configuration.
+- **FR-006**: The scoreboard MUST show work completion (accepted tasks / fixed task count) together with the SAME Efficiency score as the shared banner, using the same formula and render component, for each configuration. Total $, model requests and token usage MUST remain raw columns; unavailable data MUST be explicit.
 - **FR-007**: Usage totals MUST include every participating agent and model, retries and failed work; token usage MUST distinguish input, output, reasoning and cache usage, and model requests MUST be distinct from tool calls.
 - **FR-008**: Cost MUST identify its pricing basis and aggregate the actual model mix; missing cost data MUST NOT be reported as zero.
-- **FR-009**: Harness efficiency MUST follow the reviewer's choice in Questions for reviewer, with a visible formula and units. If (c) is approved, context amplification MUST appear live in the shared banner and $ per accepted task on the scoreboard.
+- **FR-009**: Harness Efficiency MUST reuse the shared banner's formula and render component, per AGENTS.md consistent experience (reviewer 2026-10-07), with a visible formula and units. It MUST be shown alongside work completion, not replaced by $ per accepted task or an agent-defined 80% ranking bar. More benchmark input from the reviewer is pending.
 - **FR-010**: Results MUST make incomplete runs, incompatible benchmark versions and undefined ratios explicit so they cannot masquerade as efficiency improvements.
 
 ### Key Entities
@@ -89,7 +87,7 @@ The reviewer reads a scoreboard per configuration showing pass rate, total $, re
 
 - **SC-001**: 100% of selected configurations receive the identical benchmark starting state, task set and acceptance rules in a comparison.
 - **SC-002**: 100% of tasks claiming success while failing a hidden check are recorded as not accepted.
-- **SC-003**: Every completed scoreboard row contains pass rate, $, requests, tokens and the approved efficiency number; missing data or pending formula approval is explicitly labelled in 100% of affected rows.
+- **SC-003**: Every completed scoreboard row contains work completion (accepted tasks / fixed task count), $, requests, tokens and the SAME Efficiency score as the shared banner, rendered by the same component with the same formula; missing data is explicitly labelled in 100% of affected rows.
 - **SC-004**: For a recorded mixed-model comparison, scoreboard usage and spend reconcile with all participating agents' records within displayed rounding, including failed work.
 - **SC-005**: The reviewer can compare at least two configurations on the same benchmark and identify whether lower spend preserves or reduces pass rate, without consulting agent transcripts.
 
@@ -98,4 +96,4 @@ The reviewer reads a scoreboard per configuration showing pass rate, total $, re
 - The existing evals capability is reused, not replaced by a second evaluation system; the benchmark is simulated and does not modify real workspaces.
 - The requested complex workspace must be confirmed before planning: the currently checked-in eval fixture is a small seeded-bug workspace with hidden checks, not yet a complex workspace with specs.
 - Prompt, harness and model-mix choices are fixed for a comparison; expanding the task corpus, automated prompt optimisation and claiming a universal best harness are out of scope.
-- The efficiency formula remains open until the reviewer answers; this draft does not impose a target improvement or select a winning configuration.
+- Efficiency reuses the shared banner's formula and render component (reviewer 2026-10-07); more benchmark input from the reviewer is pending. This draft does not impose a target improvement or select a winning configuration.
