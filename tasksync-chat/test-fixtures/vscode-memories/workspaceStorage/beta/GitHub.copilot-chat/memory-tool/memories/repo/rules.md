@@ -1,0 +1,1 @@
+- Beta has independent repository rules.

@@ -1,0 +1,2 @@
+- Safe fact before the secret.
+- ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

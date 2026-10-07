@@ -20,8 +20,15 @@
 
 - Reviewer: "benchamrk is, comeup with number of effective utilisation of agentic framework. and comeup with some formula, it should have total cost, cache %, cache misses, total input tokens, total output tokens, requests and more importantly context length of main agent."
 - Reviewer: "run the benchmark, this is where we know exactly what does it mean by task is complete. So, we optimise orchetsration, tools, workers models and so on to increase the efficiency score at the end of benchmark task completion. This is where we do agentic loop. ... we can have different level of tasks, complex, simple, medium and 1 task and 20 tasks in one message and so on."
-- **Proposed by agent, reviewer to approve**: Score = 100 × Cache hit × Context factor ÷ Cost ($), counted only when every hidden check of the level passes (otherwise "incomplete k/n", no score). Context factor = 64K ÷ max(64K, average main-agent prompt per main request). Cost, cache hit, cache misses, input, output, requests and main context are all computed from the same turn-totals source as the banner (main + workers) and shown beside the score.
+- Reviewer: "for efficiency, we should consider number of requests compete also. More requests will have more context and more cost. I want score live for every change in shared banner. So i see score going up and down."
+- Score = 1000 × CacheHit × ContextFactor × RequestFactor ÷ Cost($). CacheHit = cached input ÷ total input (main + workers); ContextFactor = 64K ÷ max(64K, average main-agent prompt tokens per main request); RequestFactor = 10 ÷ max(10, total requests, main + workers). Cost is turn dollars (main + workers). Benchmark scoring still gates on every hidden check passing (otherwise "incomplete k/n", no score); the live banner shows it ungated on every metrics update, with '–' when cost or input is zero. Cost, cache hit, cache misses, input, output, requests and main context use the banner's turn-totals source and appear in its tooltip.
 - Levels proposed: simple (1 small task), medium (multi-file change), complex (spec-bearing feature with tests), batch (20 small tasks in one message).
+
+### Reviewer input 2026-10-07 (3) — what the benchmark is, and score principles
+
+- Reviewer: "The benchmakr is more like integration level eval with all main agents and sub agents and so on. Its some offline command whcih runs with all the setup. We can run against different models, different main agent (Orchestrator or Build). We observe the pattern and tune our agent prompts accordingly."
+- Reviewer score principles: "if main agent has more context or wokers are not being used efficiently, score shoudl be less; if there are many cache misses, score should be less; if cost to token ratio is score is less, as cost is more for less tokens."
+- Reviewer sequencing: "finsih 005, 006 and 007 before starting this." The formula is revised against these principles when 008 starts; until then the live banner keeps the current Score.
 
 ## User Scenarios & Testing *(mandatory)*
 

@@ -2913,7 +2913,28 @@
         dollars = Number(dollars) || 0;
         return '$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2);
     }
+    var EFFICIENCY_SCORE_SCALE = 1000;
+    var EFFICIENCY_CONTEXT_BASE = 64000;
+    var EFFICIENCY_REQUEST_BASE = 10;
+    function efficiencyScore(b) {
+        var input = Number(b.cacheInput) || 0;
+        var cost = Number(b.dollars) || 0;
+        var cacheHit = input > 0 ? (Number(b.lastCached) || 0) / input : 0;
+        var contextFactor = EFFICIENCY_CONTEXT_BASE / Math.max(EFFICIENCY_CONTEXT_BASE, Number(b.averagePrompt) || 0);
+        var requestFactor = EFFICIENCY_REQUEST_BASE / Math.max(EFFICIENCY_REQUEST_BASE, Number(b.requests) || 0);
+        return { value: cost > 0 && input > 0 ? EFFICIENCY_SCORE_SCALE * cacheHit * contextFactor * requestFactor / cost : null,
+            cacheHit: cacheHit, contextFactor: contextFactor, requestFactor: requestFactor };
+    }
     function usageBannerHtml(b) {
+        var score = efficiencyScore(b);
+        var scoreLabel = score.value === null ? '\u2013' : score.value < 10 ? score.value.toFixed(1) : String(Math.round(score.value));
+        var scoreTitle = 'Score = EFFICIENCY_SCORE_SCALE (' + EFFICIENCY_SCORE_SCALE + ') × CacheHit × ContextFactor × RequestFactor / Cost($); ' +
+            'CacheHit=' + score.cacheHit.toFixed(4) + '; ContextFactor=' + score.contextFactor.toFixed(4) +
+            ' (EFFICIENCY_CONTEXT_BASE=' + EFFICIENCY_CONTEXT_BASE + '); RequestFactor=' + score.requestFactor.toFixed(4) +
+            ' (EFFICIENCY_REQUEST_BASE=' + EFFICIENCY_REQUEST_BASE + '); cost=$' + (Number(b.dollars) || 0) +
+            '; cache misses=' + (Number(b.cacheMisses) || 0) + '; input=' + (Number(b.cacheInput) || 0) +
+            '; output=' + (Number(b.turnOut) || 0) + '; requests=' + (Number(b.requests) || 0) +
+            '; ' + (b.mainContext ? 'main context' : 'worker context') + ' (average prompt)=' + (Number(b.averagePrompt) || 0);
         var requests = Number(b.requests) || 0;
         var dollars = Number(b.dollars) || 0;
         var lastIn = Number(b.lastIn) || 0;
@@ -2935,7 +2956,7 @@
             ' &middot; <strong class="health-cost">' + bannerDollars(dollars) + '</strong>' + workerPart +
             ' &middot; ' + lastInHtml + ' last in / ' + formatObservabilityCompact(b.turnOut) + ' turn out' +
             ' &middot; ' + hit + ' cache' + (b.timer ? ' &middot; <span class="health-turn-timer" title="Time since this turn started">' + b.timer + '</span>' : '') +
-            (Number(b.efficiencyOutput) > 0 ? ' &middot; <span title="tokens read per token written this turn (main + workers); lower is better">Efficiency ' + Math.round((Number(b.efficiencyInput) || 0) / Number(b.efficiencyOutput)) + '</span>' : '');
+            ' &middot; <span title="' + scoreTitle + '">Score ' + scoreLabel + '</span>';
     }
     // Live turn timer: '' when no turn is running (turnStartedAt 0), else m:ss or h:mm:ss.
     // A turn is finished once its prompt cache went cold (no request for 5 minutes): the timer then shows the final
@@ -2977,8 +2998,8 @@
             cacheInput: totals.inputTokens, turnOut: totals.outputTokens,
             workers: { workers: workerRuns, requests: workerRequests, dollars: workerDollars },
             timer: timer,
-            efficiencyInput: totals.inputTokens,
-            efficiencyOutput: totals.outputTokens,
+            averagePrompt: turnRequests.length ? turnRequests.reduce(function (sum, r) { return sum + (Number(r.inputTokens) || 0); }, 0) / turnRequests.length : 0,
+            cacheMisses: (Number(turn.cacheMisses) || 0) + (Number(w.cacheMisses) || 0),
         });
     }
     function cacheAgeLabel(secs) {
@@ -5545,6 +5566,14 @@
     // Same banner and Age label as the chat's own, for this worker's current run.
     function workerBannerHtml(worker, now) {
         var b = worker.banner || {};
+        var runs = worker.runs || [];
+        var terminal = ['COMPLETED', 'FAILED', 'CANCELLED'];
+        var current = runs.find(function (r) { return r.queuePosition === 0 && terminal.indexOf(r.state) < 0; }) ||
+            runs.slice().reverse().find(function (r) { return r.reason !== 'cancelled before start'; });
+        var usage = current ? current.usage || {} : {};
+        var input = (Number(usage.input) || 0) + (Number(usage.cacheRead) || 0) + (Number(usage.cacheWrite) || 0);
+        b = Object.assign({}, b, { cacheInput: input, lastCached: Number(usage.cacheRead) || 0,
+            averagePrompt: b.requests > 0 ? input / b.requests : 0 });
         var age = cacheAgeLabel(Math.floor((now - (b.lastActivityAt || now)) / 1000));
         return '<div class="worker-banner" title="Requests, cost, full prompt of the last request / output this run, cache hit of the last request, time since last activity (cache is cold after 5:00)">' +
             '<span class="worker-banner-metrics">' + usageBannerHtml(Object.assign({}, b, { flagContext: true })) + '</span>' +

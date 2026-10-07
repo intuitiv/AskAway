@@ -66,7 +66,7 @@ bannerContext.observabilityMetrics.workers = { requests: 6, dollars: 0.42, worke
 bannerContext.observabilityMetrics.turnStartedAt = Date.now() - 83_000;
 vm.runInContext('renderConversationHealth()', bannerContext);
 const withWorkers = elements['common-turn-summary'].innerHTML.replace(/<[^>]+>/g, '').replaceAll('&middot;', '·');
-assert.match(withWorkers, /^9 reqs · \$2\.92 \(2 workers · 6 reqs · \$0\.42\) · 4K last in \/ 2\.75K turn out · 80% cache · Turn 1:2\d · Efficiency 8$/, 'total requests include worker requests (reviewer 2026-10-07), dollars include the workers, with the worker part named');
+assert.match(withWorkers, /^9 reqs · \$2\.92 \(2 workers · 6 reqs · \$0\.42\) · 4K last in \/ 2\.75K turn out · 80% cache · Turn 1:2\d · Score 274$/, 'total requests include worker requests (reviewer 2026-10-07), dollars include the workers, with the worker part named');
 bannerContext.observabilityMetrics.turnStartedAt = Date.now() - 5_000;
 vm.runInContext('renderCacheAge()', bannerContext);
 assert.match(elements['common-turn-summary'].innerHTML, /Turn 0:0[4-6]</, 'the existing cache-age tick refreshes the turn timer');

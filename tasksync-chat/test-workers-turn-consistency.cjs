@@ -64,11 +64,14 @@ const ui = {};
 vm.runInNewContext(block('// ── Usage banner', '// ── end Usage banner') +
     block('// ── Turn trace rows: pure render', '// ── end Turn trace rows') +
     block('// ── Workers tab: pure render', '// ── end Workers pure render') +
-    'out.chat = chatBannerHtml; out.render = renderWorkersHtml;', { out: ui });
+    'out.chat = chatBannerHtml; out.banner = usageBannerHtml; out.render = renderWorkersHtml;', { out: ui });
 const metrics = { lastRequest: { requestCount: 2, inputTokens: 2000, cachedTokens: 1800, outputTokens: 20, nanoAiu: 1e9 }, workers: spend, turnStartedAt: 100, lastRequestTs: 107 };
 const banner = ui.chat(metrics, 200);
 assert.match(banner, /\(2 workers &middot; 1 req &middot; \$0.02\)/);
-assert.match(banner, /title="tokens read per token written this turn \(main \+ workers\); lower is better">Efficiency 100<\/span>$/);
+assert.equal(banner, ui.banner({ requests: 3, dollars: .03, mainContext: true, lastIn: 2000,
+    lastCached: 2600, cacheInput: 3000, turnOut: 30, workers: { workers: 2, requests: 1, dollars: .02 },
+    timer: 'Turn 0:00', averagePrompt: 0, cacheMisses: spend.cacheMisses }));
+assert.match(banner, />Score 28889<\/span>$/);
 const cards = ui.render(state, '', {}, false);
 assert.equal((cards.match(/class="worker-card"/g) || []).length, spend.workers);
 assert.match(cards, /data-worker-id="cancelled"/);
@@ -77,6 +80,6 @@ assert.match(cards, /worker-state-cancelled">CANCELLED|worker-state-orphaned">OR
 assert.doesNotMatch(cards, /data-worker-id="old"|data-worker-id="queued"/);
 assert.ok(state.workers.filter((w) => spend.workerIds.includes(w.workerId)).every((w) => w.expired));
 assert.ok((ui.render(state, '', {}, true).match(/class="worker-card"/g) || []).length > spend.workers);
-assert.doesNotMatch(ui.chat({ lastRequest: { inputTokens: 2000, outputTokens: 0 }, workers: { ...spend, outputTokens: 0 } }, 200), /Efficiency/);
-assert.match(ui.chat({ lastRequest: { inputTokens: 4, outputTokens: 3 }, workers: { inputTokens: 4, outputTokens: 0 } }, 200), /Efficiency 3/);
+assert.match(ui.chat({ lastRequest: { inputTokens: 2000, outputTokens: 0 }, workers: { ...spend, outputTokens: 0 } }, 200), />Score 13333<\/span>$/);
+assert.match(ui.chat({ lastRequest: { inputTokens: 4, outputTokens: 3 }, workers: { inputTokens: 4, outputTokens: 0 } }, 200), />Score –<\/span>$/);
 console.log('PASS EV-WORKERS-TURN-CONSISTENCY');

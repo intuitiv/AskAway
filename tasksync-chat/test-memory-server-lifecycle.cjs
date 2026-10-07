@@ -61,10 +61,10 @@ function caller() {
     for (const response of [ { ok: false, status: 503 }, { ok: false, status: 401 },
         { ok: true, status: 200, json: async () => ({ status: 'unhealthy' }) },
         { ok: true, status: 200, json: async () => ({ foreign: true }) } ]) {
-        await assert.rejects(caller()({ ...ports, fetch: async () => response }), /agentmemory \/health.*failed/);
+        await assert.rejects(caller()({ ...ports, fetch: async () => response }), /agentmemory \/health (failed \(HTTP \d+\)|returned an unhealthy or foreign server); memory server unavailable/);
     }
     await assert.rejects(caller()({ ...ports, fetch: async () => { throw new Error('private fixture'); } }),
-        error => /agentmemory \/health.*failed/.test(error.message) && !error.message.includes('private fixture'));
+        error => /agentmemory \/health.*memory server unavailable/.test(error.message) && !error.message.includes('private fixture'));
     assert.equal(spawns.length, 2); // Only the unavailable-port case attempted startup again.
     assert.match(require('./package.json').scripts['test:workers'], /test-memory-server-lifecycle\.cjs/);
     console.log('PASS EV-MEMORY-SERVER-LIFECYCLE: single spawn, second-window attach, scrubbed env, flags off, loopback, visible health failure');

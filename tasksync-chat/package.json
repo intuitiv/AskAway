@@ -1102,7 +1102,7 @@
     }
   },
   "scripts": {
-    "pretest:workers": "node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs",
+    "pretest:workers": "node test-efficiency-score.cjs && node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs && node test-import-vscode-memories.cjs",
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.js",
     "compile": "tsc -p ./",

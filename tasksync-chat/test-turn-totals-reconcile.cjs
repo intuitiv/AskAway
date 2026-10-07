@@ -92,7 +92,7 @@ const normalized = ui.metrics();
 assert.deepEqual(plain(normalized.workers), plain(workers), 'the provider metrics message retains every ledger field');
 const banner = ui.chatBannerHtml(normalized, 16000).replace(/<[^>]+>/g, '').replaceAll('&middot;', '·');
 assert.match(banner, /^6 reqs · \$0\.60 \(2 workers · 4 reqs · \$0\.40\)/);
-assert.match(banner, /Efficiency 13/);
+assert.match(banner, /Score 333/);
 assert.match(banner, /80 turn out · 20% cache/);
 assert.match(summary.innerHTML, /Main agent own context length/);
 assert.match(elements['obs-turn-summary'].innerHTML, /1K in \/ 80 out · 20% cache hit/);

@@ -7,7 +7,7 @@ import { AskAwayWebviewProvider } from './webview/webviewProvider';
 import { registerTools } from './tools';
 import { memoryTool } from './validator/memoryTool';
 import { seedMemories } from './validator/memorySeed';
-import { ensureMemoryServer, MEMORY_SERVER_URL } from './validator/memoryServer';
+import { ensureMemoryServer, localMemorySecret, MEMORY_SERVER_URL } from './validator/memoryServer';
 import { AgentmemoryStore } from './validator/agentmemoryStore';
 import { DedupKnowledgeStore, KnowledgeStore } from './validator/knowledgeStore';
 import { SUBAGENT_TIMER_INJECT_SCRIPT } from './hooks/subagentTimerScript';
@@ -1092,7 +1092,7 @@ export function activate(context: vscode.ExtensionContext) {
         let memoryReady: Promise<KnowledgeStore> | undefined;
         const memory = memoryTool(() => {
             memoryReady ??= (async () => {
-                const secret = await context.secrets.get('agentmemory.token') || '';
+                const secret = await context.secrets.get('agentmemory.token') || localMemorySecret();
                 await ensureMemoryServer(undefined, secret);
                 const store = new DedupKnowledgeStore(new AgentmemoryStore(memoryProject, MEMORY_SERVER_URL, secret));
                 const config = vscode.workspace.getConfiguration('askaway');

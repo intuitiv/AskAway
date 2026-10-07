@@ -170,9 +170,12 @@ const packet = (overrides = {}) => ({
     assert.doesNotMatch(all, /expired worker|toggle-expired/, 'no inline expired button; the header switch controls it');
     const withExpired = ui.render(state, '', {}, true);
     assert.equal((withExpired.match(/class="worker-card"/g) || []).length, 3, 'the toggle reveals the retired worker');
-    assert.match(all, /<span class="worker-banner-metrics">1 req &middot; <strong class="health-cost">\$0\.0004<\/strong> &middot; 1\.80K last in \/ 20 turn out &middot; 83% cache<\/span><strong class="health-cache warm">Age: 0:00 warm<\/strong>/,
+    const currentBanner = ui.chatBanner({ ...a.banner, cacheInput: t2.usage.input + t2.usage.cacheRead + t2.usage.cacheWrite,
+        lastCached: t2.usage.cacheRead, averagePrompt: (t2.usage.input + t2.usage.cacheRead + t2.usage.cacheWrite) / a.banner.requests, flagContext: true });
+    assert.match(currentBanner, /^1 req &middot; <strong class="health-cost">\$0\.0004<\/strong> &middot; 1\.80K last in \/ 20 turn out &middot; 83% cache &middot; <span title="[^"]+">Score 2083333<\/span>$/);
+    assert.ok(all.includes('<span class="worker-banner-metrics">' + currentBanner + '</span><strong class="health-cache warm">Age: 0:00 warm</strong>'),
         'running worker: the chat banner for its current run');
-    assert.ok(all.includes(ui.chatBanner(a.banner)), 'the card uses exactly the chat banner template');
+    assert.ok(all.includes(currentBanner), 'the card uses exactly the chat banner template');
     assert.match(all, /0 reqs &middot; <strong class="health-cost">\$0\.00<\/strong> &middot; 0 last in \/ 0 turn out &middot; – cache/, 'idle worker with no requests');
     assert.match(all, /1 worker waiting for approval\. Open the session in OpenCode/);
     assert.match(all, /Shared OpenCode server not running · starts with the first worker/);

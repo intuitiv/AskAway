@@ -1,0 +1,2 @@
+- Prefer caller-facing tests.
+- Keep all source files read-only.

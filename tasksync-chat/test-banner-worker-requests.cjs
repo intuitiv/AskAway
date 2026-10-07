@@ -25,7 +25,7 @@ assert.ok(banner.startsWith('79 reqs \u00b7 $4.03 (6 workers \u00b7 38 reqs \u00
 
 // Zero workers: the banner is exactly what it was before.
 const solo = text(ui.chat({ lastRequest: metrics.lastRequest, workers: { runs: 0, requests: 0, dollars: 0 } }, Date.now()));
-assert.equal(solo, '41 reqs \u00b7 $2.29 \u00b7 1K last in / 50 turn out \u00b7 90% cache \u00b7 Efficiency 20');
+assert.equal(solo, '41 reqs \u00b7 $2.29 \u00b7 1K last in / 50 turn out \u00b7 90% cache \u00b7 Score 96');
 assert.doesNotMatch(solo, /worker/);
 
 // Observability "This turn" lead: total, split, and total dollars.

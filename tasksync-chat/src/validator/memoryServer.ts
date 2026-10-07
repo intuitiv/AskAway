@@ -43,6 +43,11 @@ function localEnvironment(ports: MemoryServerPorts): NodeJS.ProcessEnv {
         AGENTMEMORY_III_CONFIG: ports.config };
 }
 
+/** The bearer secret the local agentmemory server generated for itself; '' when none. Never log it. */
+export function localMemorySecret(home = process.env.HOME || ''): string {
+    try { return fs.readFileSync(path.join(home, '.agentmemory', 'secret'), 'utf8').trim(); } catch { return ''; }
+}
+
 /** The fixed REST port arbitrates across windows, just as for shared OpenCode. */
 export async function ensureMemoryServer(ports?: MemoryServerPorts, secret?: string): Promise<ServerStatus> {
     const fetchPort = ports?.fetch || fetch;
@@ -78,8 +83,9 @@ export async function ensureMemoryServer(ports?: MemoryServerPorts, secret?: str
         }, 1000, 0);
         if (status.state !== 'ATTACHED') { throw new Error('agentmemory /health did not become ready'); }
         return status;
-    } catch {
-        // Never forward upstream bodies/errors, which may contain provider credentials.
-        throw new Error('agentmemory /health or secure local startup failed; memory server unavailable');
+    } catch (error) {
+        // Only our own 'agentmemory …' messages are forwarded; upstream bodies never are (credentials).
+        const reason = error instanceof Error && error.message.startsWith('agentmemory') ? error.message : 'secure local startup failed';
+        throw new Error(`${reason}; memory server unavailable`);
     }
 }

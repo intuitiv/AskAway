@@ -36,7 +36,7 @@ export class AgentmemoryStore implements KnowledgeStore {
         let response: Response;
         try {
             response = await fetch(`${this.baseUrl}/agentmemory/${route}`, {
-                method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5000),
+                method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30000),
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.secret}` },
                 body: JSON.stringify(body)
             });
@@ -64,7 +64,8 @@ export class AgentmemoryStore implements KnowledgeStore {
             content: safe.fact.text + (safe.fact.example ? `\nExample: ${safe.fact.example}` : ''),
             agentId: safe.scope.agentId, concepts
         });
-        const id = result?.id;
+        // agentmemory 0.9.x answers { success, memory: { id, ... } }.
+        const id = result?.memory?.id ?? result?.id;
         if (typeof id !== 'string' || !id || this.entries().some(entry => entry.id === id)) {
             throw new KnowledgeStoreError('invalid-response', 'Knowledge index remember returned no unique id');
         }
