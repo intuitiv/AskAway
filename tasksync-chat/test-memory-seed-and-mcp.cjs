@@ -3,6 +3,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const esbuild = require('esbuild');
+const rememberShape = require('./test-fixtures/agentmemory-shapes/remember.json');
+const memoriesShape = require('./test-fixtures/agentmemory-shapes/memories.json');
 const fixture = path.join(__dirname, 'test-fixtures/memory-seed');
 const before = ['user/preferences.md', 'repo/rules.md'].map(file => fs.readFileSync(path.join(fixture, file)));
 const files = new Map();
@@ -22,12 +24,21 @@ function load(file) {
     const output = esbuild.buildSync({ entryPoints: [path.join(__dirname, file)], bundle: true,
         platform: 'node', format: 'cjs', write: false, external: ['vscode'] }).outputFiles[0].text;
     const module = { exports: {} };
-    vm.runInNewContext(output, { module, exports: module.exports, URL, AbortSignal, console,
+    vm.runInNewContext(output, { module, exports: module.exports, URL, URLSearchParams, AbortSignal, console,
         require: name => name === 'fs' ? fakeFs : name === 'vscode' ? vscode : require(name),
         fetch: async (_url, options) => {
-            const body = JSON.parse(options.body);
-            if (_url.endsWith('/remember')) { index.push({ id: `item-${index.length}`, content: body.content }); return { ok: true, json: async () => index.at(-1) }; }
-            return { ok: true, json: async () => ({ results: index }) };
+            if (_url.endsWith('/remember')) {
+                assert.equal(options.method, 'POST');
+                const body = JSON.parse(options.body);
+                index.push({ ...rememberShape.memory, id: `mem_${index.length}`, content: body.content, agentId: body.agentId, concepts: body.concepts });
+                return { ok: true, json: async () => ({ ...rememberShape, memory: index.at(-1) }) };
+            }
+            const url = new URL(_url);
+            assert.equal(url.pathname, '/agentmemory/memories'); assert.equal(options.method, 'GET');
+            assert.equal(options.body, undefined);
+            const hits = index.filter(item => item.agentId === url.searchParams.get('agentId'));
+            return { ok: true, json: async () => ({ ...memoriesShape, memories: hits, total: hits.length,
+                search: { query: url.searchParams.get('q'), mode: 'keyword' } }) };
         } });
     return module.exports;
 }

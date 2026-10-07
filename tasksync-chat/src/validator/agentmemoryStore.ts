@@ -32,13 +32,13 @@ export class AgentmemoryStore implements KnowledgeStore {
         return JSON.parse(json);
     }
 
-    private async request(route: string, body: object): Promise<any> {
+    private async request(route: string, body?: object): Promise<any> {
         let response: Response;
         try {
             response = await fetch(`${this.baseUrl}/agentmemory/${route}`, {
-                method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30000),
+                method: body === undefined ? 'GET' : 'POST', redirect: 'error', signal: AbortSignal.timeout(30000),
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.secret}` },
-                body: JSON.stringify(body)
+                body: body === undefined ? undefined : JSON.stringify(body)
             });
         } catch {
             throw new KnowledgeStoreError('unavailable', `Knowledge index ${route} unavailable`);
@@ -65,7 +65,7 @@ export class AgentmemoryStore implements KnowledgeStore {
             agentId: safe.scope.agentId, concepts
         });
         // agentmemory 0.9.x answers { success, memory: { id, ... } }.
-        const id = result?.memory?.id ?? result?.id;
+        const id = result?.success === true ? result?.memory?.id : undefined;
         if (typeof id !== 'string' || !id || this.entries().some(entry => entry.id === id)) {
             throw new KnowledgeStoreError('invalid-response', 'Knowledge index remember returned no unique id');
         }
@@ -87,23 +87,32 @@ export class AgentmemoryStore implements KnowledgeStore {
     async recall(query: string, scope: KnowledgeScope, limit: number): Promise<KnowledgeItem[]> {
         this.safe({ query, scope });
         if (!Number.isInteger(limit) || limit < 1) throw new KnowledgeStoreError('rejected', 'Recall limit must be positive');
-        const result = await this.request('search', { query, limit: Math.max(100, limit) });
-        const hits = Array.isArray(result) ? result : result?.results ?? result?.memories ?? result?.hits ?? result?.items;
-        if (!Array.isArray(hits)) throw new KnowledgeStoreError('invalid-response', 'Knowledge index search returned no results array');
         const entries = this.entries();
         const superseded = new Set(entries.map(entry => entry.supersedesId).filter(Boolean));
         const byId = new Map(entries.map(entry => [entry.id, entry]));
         const seen = new Set<string>();
         const matches: KnowledgeItem[] = [];
-        for (const hit of hits) {
-            const id = hit?.id ?? hit?.memoryId ?? hit?.memory?.id;
-            const entry = byId.get(id);
-            if (!entry || superseded.has(id) || seen.has(id) || entry.scope.project !== scope.project ||
-                entry.scope.agentId !== scope.agentId || (scope.spec !== undefined && entry.scope.spec !== scope.spec)) continue;
-            seen.add(id);
-            matches.push(entry);
-            if (matches.length === limit) break;
-        }
+        const cursors = new Set<string>();
+        let cursor: string | null = null;
+        do {
+            const params = new URLSearchParams({ agentId: scope.agentId, limit: String(Math.max(100, limit)) });
+            if (query.trim()) params.set('q', query);
+            if (cursor) params.set('cursor', cursor);
+            const result = await this.request(`memories?${params}`);
+            if (!Array.isArray(result?.memories)) throw new KnowledgeStoreError('invalid-response', 'Knowledge index memories returned no memories array');
+            for (const hit of result.memories) {
+                const id = hit?.id;
+                const entry = byId.get(id);
+                if (!entry || superseded.has(id) || seen.has(id) || entry.scope.project !== scope.project ||
+                    entry.scope.agentId !== scope.agentId || (scope.spec !== undefined && entry.scope.spec !== scope.spec)) continue;
+                seen.add(id);
+                matches.push(entry);
+                if (matches.length === limit) return matches;
+            }
+            cursor = typeof result.nextCursor === 'string' && result.nextCursor ? result.nextCursor : null;
+            if (cursor && cursors.has(cursor)) throw new KnowledgeStoreError('invalid-response', 'Knowledge index memories repeated a cursor');
+            if (cursor) cursors.add(cursor);
+        } while (cursor);
         return matches;
     }
 

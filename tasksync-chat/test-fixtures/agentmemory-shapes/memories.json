@@ -1,0 +1,12 @@
+{
+  "memories": [{
+    "id": "mem_fixture", "agentId": "agents", "concepts": ["project:TaskSync"],
+    "content": "Use the shared memory interface", "title": "Use the shared memory interface",
+    "type": "fact", "version": 1, "isLatest": true, "supersedes": [],
+    "createdAt": "2026-10-07T00:00:00.000Z", "updatedAt": "2026-10-07T00:00:00.000Z",
+    "files": [], "sessionIds": [], "strength": 7, "sourceObservationIds": [],
+    "origin": { "channel": "agent", "capturedAt": "2026-10-07T00:00:00.000Z" }
+  }],
+  "total": 1, "offset": 0, "limit": 100, "nextCursor": null,
+  "search": { "query": "shared", "mode": "keyword" }
+}

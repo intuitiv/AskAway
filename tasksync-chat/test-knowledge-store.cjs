@@ -1,7 +1,6 @@
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const esbuild = require('esbuild');
@@ -10,10 +9,15 @@ const moduleOutput = esbuild.buildSync({ entryPoints: [path.join(__dirname, 'src
     bundle: true, platform: 'node', format: 'cjs', write: false }).outputFiles[0].text;
 const loaded = { exports: {} };
 const logs = [];
-vm.runInNewContext(moduleOutput, { module: loaded, exports: loaded.exports, require, fetch, URL,
+const files = new Map();
+const fakeFs = { ...fs, mkdirSync() {}, appendFileSync: (file, text) => files.set(file, (files.get(file) || '') + text),
+    readFileSync: file => { if (!files.has(file)) throw new Error('ENOENT'); return files.get(file); } };
+const rememberShape = require('./test-fixtures/agentmemory-shapes/remember.json');
+const memoriesShape = require('./test-fixtures/agentmemory-shapes/memories.json');
+vm.runInNewContext(moduleOutput, { module: loaded, exports: loaded.exports, require: name => name === 'fs' ? fakeFs : require(name), fetch, URL, URLSearchParams,
     AbortSignal, console: { log: (...args) => logs.push(args), error: (...args) => logs.push(args) } });
 const { AgentmemoryStore } = loaded.exports;
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-knowledge-'));
+const root = 'knowledge-fixture-workspace';
 const secret = 'injected-auth-fixture-never-in-content';
 const credential = 'ghp_' + 'a'.repeat(36);
 const requests = [], memories = [];
@@ -22,18 +26,28 @@ const server = http.createServer(async (req, res) => {
     assert.equal(req.headers.authorization, `Bearer ${secret}`);
     let body = '';
     for await (const chunk of req) body += chunk;
-    requests.push({ route: req.url, body: JSON.parse(body) });
+    const url = new URL(req.url, 'http://127.0.0.1');
+    requests.push({ route: req.url, body: body ? JSON.parse(body) : null });
     res.setHeader('Content-Type', 'application/json');
     if (failure) { res.writeHead(503); res.end(JSON.stringify({ error: secret })); return; }
     if (req.url === '/agentmemory/remember') {
         const data = JSON.parse(body);
-        const memory = { id: `memory-${memories.length + 1}`, content: data.content,
+        assert.equal(req.method, 'POST');
+        const memory = { ...rememberShape.memory, id: `mem_${memories.length + 1}`, content: data.content,
             agentId: data.agentId, concepts: data.concepts }; // Observed: project is not stored.
         memories.push(memory);
-        res.writeHead(201); res.end(JSON.stringify({ id: memory.id }));
-    } else if (req.url === '/agentmemory/search') {
+        res.writeHead(201); res.end(JSON.stringify({ ...rememberShape, memory }));
+    } else if (url.pathname === '/agentmemory/memories') {
+        assert.equal(req.method, 'GET'); assert.equal(body, '');
+        assert.equal(url.searchParams.get('q'), 'rule');
+        assert.equal(url.searchParams.get('limit'), '100');
+        assert.ok(['validator', 'copilot'].includes(url.searchParams.get('agentId')));
         // Deliberately unscoped, stale and duplicated results, including an unknown external item.
-        res.end(JSON.stringify({ results: [...memories, memories[0], { id: 'external', content: credential }] }));
+        const hits = [...memories, memories[0], { ...rememberShape.memory, id: 'mem_external', content: credential }];
+        const cursor = url.searchParams.get('cursor');
+        assert.ok(cursor === null || cursor === 'eyJvZmZzZXQiOjF9');
+        res.end(JSON.stringify({ ...memoriesShape, memories: cursor ? hits.slice(1) : hits.slice(0, 1), total: hits.length,
+            nextCursor: cursor ? null : 'eyJvZmZzZXQiOjF9', search: { query: 'rule', mode: 'keyword' } }));
     } else { res.writeHead(404); res.end('{}'); }
 });
 
@@ -65,7 +79,7 @@ const server = http.createServer(async (req, res) => {
         ['Use a single memory server', 'Use the shared server through an interface']);
     assert.equal((await store.export()).length, 5);
     const ledger = path.join(root, '.askaway/specs/_no-spec/validator/index.jsonl');
-    assert.equal(fs.readFileSync(ledger, 'utf8').trim().split('\n').length, 5, 'supersede only appends');
+    assert.equal(fakeFs.readFileSync(ledger, 'utf8').trim().split('\n').length, 5, 'supersede only appends');
     const before = requests.length;
     for (const fact of [{ text: credential }, { text: secret }, { text: 'safe', example: credential }]) {
         await assert.rejects(store.remember(fact, a), error => error.kind === 'rejected');
@@ -81,7 +95,7 @@ const server = http.createServer(async (req, res) => {
     await new Promise(resolve => server.close(resolve));
     await assert.rejects(store.recall('rule', a, 10), error => error.kind === 'unavailable');
     await assert.rejects(store.remember({ text: 'offline' }, a), error => error.kind === 'unavailable');
-    for (const sink of [JSON.stringify(requests), JSON.stringify(logs), fs.readFileSync(ledger, 'utf8'), JSON.stringify(await store.export())]) {
+    for (const sink of [JSON.stringify(requests), JSON.stringify(logs), fakeFs.readFileSync(ledger, 'utf8'), JSON.stringify(await store.export())]) {
         assert.ok(!sink.includes(secret) && !sink.includes(credential), 'no secret in body, logs, records or export');
     }
     console.log('PASS EV-KNOWLEDGE-STORE: HTTP scope isolation, append-only supersede/history, secret gate, visible server-down errors');

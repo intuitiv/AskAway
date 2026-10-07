@@ -1,0 +1,6 @@
+{
+  "source": "tasksync-chat/build/agentmemory-src/dist/src-Jsq9LCeH.mjs",
+  "remember": { "method": "POST", "route": "/agentmemory/remember", "body": { "content": "Use the shared memory interface", "agentId": "agents", "concepts": ["project:TaskSync"] }, "handlerLines": [19151, 19184], "responseLines": [7809, 7831, 7877, 7884] },
+  "recall": { "method": "GET", "route": "/agentmemory/memories?agentId=agents&q=shared&limit=100", "body": null, "handlerLines": [20176, 20262], "rankingLines": [3952, 3973], "pagination": "nextCursor is passed as cursor; q ranking caps at 500 memory ids; agentId is server-filtered, project/spec concepts are ledger-filtered" },
+  "notMemoryRecall": { "tool": "memory_recall", "handlerLines": [22882, 22917], "reason": "delegates to mem::search (observations), not KV.memories" }
+}
