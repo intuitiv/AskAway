@@ -279,9 +279,10 @@ export class OpenCodeWorkerRuntime {
     start(packet: WorkerPacket): RunView | { status: 'SELECTION_UNAVAILABLE' | 'INELIGIBLE'; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>> {
         const invalid = validatePacket(packet);
         if (invalid) { return { status: 'INELIGIBLE', reason: invalid }; }
+        const workspace = canonical(packet.workspacePath);
+        this.refreshFromLedger(workspace);
         const capped = this.capRefusal(1);
         if (capped) { return capped; }
-        const workspace = canonical(packet.workspacePath);
         const routed = this.router.route({ workspacePath: workspace, profile: packet.profile, model: packet.model, thinking: packet.thinking,
             packetId: packet.objective.slice(0, 40), estimatedSeconds: packet.estimatedSeconds ?? 60 });
         if (routed.status === 'SELECTION_UNAVAILABLE') { return routed; }
@@ -291,6 +292,7 @@ export class OpenCodeWorkerRuntime {
     submit(workerId: string, packet: WorkerPacket): RunView | { status: 'RETIRED' | 'INELIGIBLE'; workerId?: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>> {
         const invalid = validatePacket(packet);
         if (invalid) { return { status: 'INELIGIBLE', workerId, reason: invalid }; }
+        this.refreshFromLedger(canonical(packet.workspacePath));
         // Queuing behind a running worker adds no parallelism; starting on an idle one does.
         const capped = this.router.worker(workerId)?.active ? undefined : this.capRefusal(1);
         if (capped) { return capped; }
@@ -517,7 +519,31 @@ export class OpenCodeWorkerRuntime {
         return result;
     }
 
-    private restoreRuns(workspace: string): void {
+    /**
+     * Another extension host (window) shares this ledger: before routing, adopt the idle workers it wrote since this host
+     * last looked, and refresh the activity time of idle workers it reused. Runs of workers that are still executing
+     * elsewhere are skipped, so a busy sibling is never taken. Reuses restoreRuns; never changes a known worker's state.
+     */
+    private refreshFromLedger(workspace: string): void {
+        const unfinishedWorkers = this.restoreRuns(workspace, true);
+        this.router.markBusyElsewhere(workspace, unfinishedWorkers);
+        for (const [workerId, adopted] of this.adopted) {
+            if (adopted.workspace !== workspace) { continue; }
+            const known = this.router.worker(workerId);
+            if (unfinishedWorkers.has(workerId)) { continue; }
+            if (!known) {
+                this.router.adopt({ workerId, workspacePath: workspace, profile: adopted.profile, model: adopted.model, thinking: adopted.thinking,
+                    contextTokens: adopted.contextTokens, lastActivityAt: adopted.lastTs, forkedFrom: adopted.forkedFrom }, adopted.sessionId ? 'IDLE' : 'ORPHANED',
+                    adopted.sessionId ? undefined : 'no OpenCode session was recorded');
+                if (adopted.sessionId) { this.sessionsByWorker.set(workerId, adopted.sessionId); }
+            } else {
+                this.router.refreshIdle(workerId, adopted.lastTs, adopted.contextTokens);
+                if (adopted.sessionId && known.state === 'IDLE') { this.sessionsByWorker.set(workerId, adopted.sessionId); }
+            }
+        }
+    }
+
+    private restoreRuns(workspace: string, skipUnfinished = false): Set<string> {
         const byRun = new Map<string, LifecycleRecord[]>();
         const ledger = this.readLedger(workspace);
         const archived = new Set(ledger.filter((record) => record.type === 'archive').map((record) => record.workerId));
@@ -528,7 +554,18 @@ export class OpenCodeWorkerRuntime {
             records.push(record);
             byRun.set(record.runId, records);
         }
+        // A run with no exit fact may be executing in another host: when refreshing, leave it and its worker alone.
+        // A run stamped later than this host's clock comes from a skewed clock and is ignored.
+        const unfinishedWorkers = new Set<string>();
+        if (skipUnfinished) {
+            for (const [runId, records] of byRun) {
+                const last = records.filter((record) => !record.ping).pop() ?? records[records.length - 1];
+                if (records[records.length - 1].ts > this.now()) { byRun.delete(runId); }
+                else if (last.exitCode === undefined) { unfinishedWorkers.add(records[0].workerId); byRun.delete(runId); }
+            }
+        }
         for (const [runId, records] of byRun) {
+            if (unfinishedWorkers.has(records[0].workerId)) { continue; }
             const first = records[0];
             const last = records.filter((record) => !record.ping).pop() ?? records[records.length - 1];
             const usage = emptyUsage();
@@ -561,6 +598,7 @@ export class OpenCodeWorkerRuntime {
                     forkedFrom: first.forkedFrom ?? adopted?.forkedFrom });
             }
         }
+        return unfinishedWorkers;
     }
 
     /** The workspace's workers as keep-warm inputs (see keepWarm.ts); a worker with no recorded session cannot be pinged. */

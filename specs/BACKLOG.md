@@ -60,20 +60,27 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 | U2 | Workers missing from Workers tab/banner (worktree) + test | DONE (needs reload) | `test-worker-worktree-visibility.cjs`, R-WORKERS-21, deployed | 2026-10-06 |
 | U3 | Telegram: handoff as text, full response as mobile PDF | DONE (needs reload) | `src/services/responsePdf.ts`, `test-telegram-delivery.cjs`, deployed | 2026-10-06 |
 | U4 | 006 per-task time cap: default 50 min, hard max 59, never above | DONE | Reviewer: "Okay. We dont want to be more than that also." | 2026-10-07 |
-| U5 | agentmemory live demo | READY | Install approved with A1; demo not yet done | 2026-10-07 |
+| U5 | agentmemory live demo | DONE | Demo ran on isolated instance 5; FINDING: it used the shell's OPENAI_API_KEY and tried to send observations to OpenAI (failed 429) → see M2 | 2026-10-07 |
 | U6 | pr-daily on app-logic PR #1557 (6 failing checks) | DONE (reviewer-owned) | Reviewer does it in that workspace; no worker fix here | 2026-10-07 |
-| U7 | Worker step cap + compaction at ~100K context | NEEDS-DECISION | Cap value; compaction = handoff to a fresh fork | cost RCA 2026-10-06 |
-| U8 | Cheaper default model for test/rca/code profiles | READY | Reviewer decision: try Sol 6.1; trial not completed | 2026-10-07 |
-| U9 | Cap parallel worker fan-out | READY | Reviewer decision: cap 8; implementation not claimed | 2026-10-07 |
+| U7 | Worker context handoff at ~100K (continue in a fresh session seeded with a summary) | NEEDS-DECISION | Reviewer asked for more info (not cloning; about context growth) | 2026-10-07 |
+| U8 | Cheaper default model for test/code profiles | DONE (trial) | code/test default = Sol 6.1 (~$0.015/step vs Sonnet ~$0.026); 3 Sol packets PASS | 2026-10-07 |
+| U9 | Cap parallel workers at 8 | DONE | `PARALLEL_CAP`, EV-WORKER-FANOUT, 20548e7 | 2026-10-07 |
 | U10 | Standard simulated workspace to benchmark agents/models/prompts | DONE | Spec 008 created | 2026-10-07 |
 
 ## New 2026-10-07
 
 | ID | What | State | Blocker or question | Source file |
 |---|---|---|---|---|
-| NEW-1 | For huge tasks, warm one worker with shared context, then fork N parallel workers | IN-PROGRESS | Fan-out, same model; cap 8 per U9 | Reviewer decision, 2026-10-07 |
-| NEW-2 | Maximise worker reuse; 175/200 workers expired, 138 under 100K context | READY | Reviewer: use keep-warm pings and measure hit rate | Reviewer decision, 2026-10-07 |
-| NEW-3 | Repo analyst worker over all worker ledgers/sessions | IN-PROGRESS | All repos, on request, review before apply; POC `tasksync-chat/tools/worker-analyst.cjs` | Reviewer decision, 2026-10-07 |
-| NEW-4 | Efficiency score = work per $, comparable across models | NEEDS-DECISION | Open question in spec 008 | Reviewer ask, 2026-10-07 |
+| NEW-1 | Warm one worker, then `fanout` N forks on the same model | DONE | EV-WORKER-FANOUT, 20548e7 | Reviewer decision, 2026-10-07 |
+| NEW-2 | Maximise worker reuse | IN-PROGRESS | Ping hit rate 13% (5/38, $1.53). RCA: TTL expiry, thinking in reuse key, router blind to other hosts. Cross-host fix in progress; R1/R2 need reviewer | RCA run-7cxp1q-16 |
+| NEW-3 | Repo analyst over all worker ledgers | DONE | On request: `node tasksync-chat/tools/worker-analyst.cjs`; EV-WORKER-ANALYST | Reviewer decision, 2026-10-07 |
+| NEW-4 | Harness efficiency number | NEEDS-DECISION | Spec 008 question | Reviewer ask, 2026-10-07 |
+| R1 | Reuse an idle worker even if the new packet asks a different thinking level | NEEDS-DECISION | Thinking change may break part of the cache; knowledge kept | RCA run-7cxp1q-16 |
+| R2 | Reuse an expired worker (<100K) instead of pinging | NEEDS-DECISION | Same cache write as a fresh worker, keeps knowledge; pings hit 13% | RCA run-7cxp1q-16 |
+| M1 | One agentmemory server for agents + validator, or two | NEEDS-DECISION | D15 said validator-only; D22 says same solution for both | 2026-10-07 |
+| M2 | Keep agentmemory local-only (no OpenAI key, local embeddings, auto-summaries off) | NEEDS-DECISION | POC egress finding | 2026-10-07 |
+| M3 | Memory migration as its own spec (009) | NEEDS-DECISION | Affects every agent and workspace | 2026-10-07 |
+| M4 | How agentmemory stays running (login item vs started by AskAway) | NEEDS-DECISION | Server must outlive a turn | 2026-10-07 |
+| T004-C | Cloud proof pushes a test commit to PR 1603's branch | NEEDS-DECISION | PR 1603 is the real docs PR; throwaway PR safer | 2026-10-07 |
 
-Counts: READY 13 | NEEDS-DECISION 7 | BLOCKED 13 | DONE 12 | IN-PROGRESS 2 (DONE includes won't-do and reviewer-owned rows).
+Counts: see the reviewer's latest decision list; NEEDS-DECISION rows above are the open questions.

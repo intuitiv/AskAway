@@ -53,22 +53,24 @@ function buildWorkers(records, runs, lastTs = records.at(-1)?.ts || 0) {
     return [...workers.values()];
 }
 
-/** Fresh starts where a same profile+model worker was idle, <200K, and used within 30 min. */
+/** Fresh starts where a same profile+model worker was idle and <200K: within the 300 s cache TTL (a real miss) or expired (5-30 min, cache already cold). */
 function missedReuse(workers) {
-    let count = 0, dollars = 0;
+    let within = 0, expired = 0, dollars = 0;
     for (const w of workers) {
         const run = w.runs[0], first = run.steps[0];
-        const idle = workers.some((o) => o !== w && o.profile === w.profile && o.model === w.model && o.first < w.first
+        const gaps = workers.filter((o) => o !== w && o.profile === w.profile && o.model === w.model && o.first < w.first
             && o.runs.every((r) => r.end <= w.first && r.state) && o.runs.some((r) => r.end <= w.first)
-            && (ctxBefore(o, w.first)) < REUSE_CTX && w.first - lastEndBefore(o, w.first) <= REUSE_MS);
-        if (!idle) { continue; }
-        count++;
+            && (ctxBefore(o, w.first)) < REUSE_CTX && w.first - lastEndBefore(o, w.first) <= REUSE_MS)
+            .map((o) => w.first - lastEndBefore(o, w.first));
+        if (!gaps.length) { continue; }
+        if (Math.min(...gaps) > IDLE_MS) { expired++; continue; }
+        within++;
         if (first) {
             const total = first.input + first.cacheRead + first.cacheWrite + first.output;
             dollars += total ? first.cost * first.cacheWrite / total : 0;
         }
     }
-    return { count, dollars };
+    return { count: within + expired, within, expired, dollars };
 }
 const ranBefore = (o, ts) => o.runs.filter((r) => r.end <= ts);
 const lastEndBefore = (o, ts) => Math.max(...ranBefore(o, ts).map((r) => r.end));
@@ -125,7 +127,7 @@ function section(runs, workers, records) {
         out.push('Most-reused workers:', table(['workerId', 'runs', 'last ctx', 'ended'], multi.map((w) => [w.id, w.runs.length, Math.round(w.ctx), w.ended])));
     }
     const m = missedReuse(workers);
-    out.push('#### 2. Missed reuse', `Fresh starts with a reusable idle sibling (same profile+model, <200K, within 30 min): **${m.count}** of ${workers.length}; est. avoidable first-step cache-write cost ${$(m.dollars)}`);
+    out.push('#### 2. Missed reuse', `Fresh starts with a reusable idle sibling (same profile+model, <200K): within 300 s cache TTL **${m.within}**; expired (5-30 min) **${m.expired}**; of ${workers.length} workers. Est. avoidable first-step cache-write cost (within TTL only) ${$(m.dollars)}`);
     for (const key of ['model', 'profile']) {
         out.push(`#### 3. Efficiency by ${key}`, table([key, 'runs', 'steps', '$', 'req/$', 'tok/$', 'out tok/$', 'cache hit %', '$/completed', '$/reported'],
             efficiency(runs, key).map((e) => [e.name, e.runs, e.steps, $(e.cost), e.perDollar.toFixed(0), e.tokPerDollar.toFixed(0), e.outPerDollar.toFixed(0), e.hit.toFixed(1), $(e.perDone), $(e.perReport)])));

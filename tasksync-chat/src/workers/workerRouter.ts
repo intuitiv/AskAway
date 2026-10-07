@@ -33,6 +33,8 @@ export interface RoutedWorker {
     retiredReason?: string;
     /** The worker whose session this one was forked from; empty for a worker that started fresh. */
     forkedFrom?: string;
+    /** Another extension host is running it (seen in the shared ledger); not routable meanwhile. */
+    busyElsewhere?: boolean;
     active?: QueueEntry;
     queue: QueueEntry[];
 }
@@ -234,6 +236,19 @@ export class WorkerRouter {
         });
     }
 
+    /** Flags this workspace's workers that another host is executing right now; they are not routed to until it finishes. */
+    markBusyElsewhere(workspacePath: string, workerIds: Set<string>): void {
+        for (const worker of this.workers(workspacePath)) { worker.busyElsewhere = workerIds.has(worker.workerId); }
+    }
+
+    /** An idle worker another host reused later than we knew: take its newer activity time and context size. */
+    refreshIdle(workerId: string, lastActivityAt: number, contextTokens: number): void {
+        const worker = this.workersById.get(workerId);
+        if (!worker || worker.active || worker.state !== 'IDLE' || lastActivityAt <= worker.lastActivityAt) { return; }
+        worker.lastActivityAt = lastActivityAt;
+        worker.contextTokens = contextTokens;
+    }
+
     worker(workerId: string): RoutedWorker | undefined {
         return this.workersById.get(workerId);
     }
@@ -277,6 +292,7 @@ export class WorkerRouter {
         if (worker.contextTokens > MAX_CONTEXT_TOKENS) { return `context ${worker.contextTokens} > ${MAX_CONTEXT_TOKENS}`; }
         if (!worker.active && this.now() - worker.lastActivityAt > this.cacheTtlMs) { return 'cache expired'; }
         if (!checkWait) { return ''; }
+        if (worker.busyElsewhere) { return 'running in another window'; }
         const wait = this.estimatedWaitSeconds(worker);
         if (wait > MAX_QUEUE_WAIT_SECONDS) { return `estimated wait ${wait}s > ${MAX_QUEUE_WAIT_SECONDS}s`; }
         return '';

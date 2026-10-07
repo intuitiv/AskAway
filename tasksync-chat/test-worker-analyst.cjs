@@ -30,6 +30,10 @@ test('end-of-life and reused workers remain visible', () => {
     assert.ok(report.includes('| <30K | 6 |'), 'end-of-life context bucket count incorrect');
     assert.ok(report.includes('| hit | 2 | 100 | expired idle >5min |'), 'real reused worker must have two runs, not a separate ping run');
 });
+test('missed reuse separates within-TTL from expired siblings', () => {
+    const missed = report.split('#### 2. Missed reuse')[1].split('####')[0];
+    assert.ok(missed.includes('within 300 s cache TTL **2**; expired (5-30 min) **1**; of 6 workers'), 'missed reuse must split within-TTL from expired');
+});
 test('malformed lines are skipped without changing the report', () => {
     assert.equal(analyse(lines.filter((line) => line !== 'not valid JSON')), report, 'malformed ledger line altered analysis');
     assert.equal(analyse([...lines].reverse()), report, 'analysis must sort ledger timestamps');
