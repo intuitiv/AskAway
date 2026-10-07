@@ -7,8 +7,29 @@ import { WorkerProfile } from '../workers/workerProfiles';
 import { redactOrDrop } from './redact';
 import { validatorProfile } from './profile';
 import { ValidatorRecords, ValidatorResponse, ValidatorUsage, Prediction } from './records';
+import { OpenCodeWorkerRuntime } from '../workers/openCodeRuntime';
 
-export interface ObservedResponse { id: string; source: string; text: string; specSlug?: string }
+export function validatorWorkerRun(runtime: () => Promise<OpenCodeWorkerRuntime>, workspaceRoot: string,
+    turnId: () => string): ValidatorRunPort {
+    return async ({ prompt, profile, observedId }) => {
+        const worker = await runtime();
+        const run = worker.start({ workspacePath: workspaceRoot, profile: profile.name, model: profile.model, thinking: profile.thinking,
+            dispatchTurnId: turnId(), baseRevision: 'HEAD', objective: prompt + '\nReturn the JSON on one line, then Result: PASS.',
+            allowedFiles: [], acceptance: 'Read-only cited validator JSON answer', expected: 'JSON answer and Result: PASS',
+            command: 'No command: validate against the provided sources', track: 'validator' });
+        if (!('runId' in run)) throw new Error(run.reason);
+        const result = await worker.wait(run.runId, 60);
+        if (result.status !== 'COMPLETED') {
+            worker.cancel(run.runId);
+            throw new Error('Validator worker ' + result.status);
+        }
+        const status = worker.status(run.runId);
+        if (!status || !('usage' in status)) throw new Error('Validator worker usage unavailable: ' + observedId);
+        return { text: result.evidence.join('\n'), usage: status.usage, workerId: status.workerId, sessionId: status.sessionId };
+    };
+}
+
+export interface ObservedResponse { id: string; source: string; text: string; specSlug?: string; force?: boolean }
 
 export interface ValidatorSource { id: string; text: string }
 
@@ -99,7 +120,7 @@ export class ValidatorObserver {
     }
 
     private async observeInner(response: ObservedResponse, base: ValidatorResponse, specSlug: string | null): Promise<ValidatorResponse> {
-        if (!needsObserving(String(response.text ?? ''))) { return this.finish({ ...base, skipped: true }, specSlug); }
+        if (!response.force && !needsObserving(String(response.text ?? ''))) { return this.finish({ ...base, skipped: true }, specSlug); }
         const text = redactOrDrop(response.text);
         if (text === null) { return this.finish({ ...base, error: 'response holds a credential; not observed' }, specSlug); }
 

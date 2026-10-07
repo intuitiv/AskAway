@@ -3,7 +3,8 @@ import { KnowledgeStore, KnowledgeStoreError } from './knowledgeStore';
 import { redactRecordOrDrop } from './redact';
 import type { ToolDefinition } from '../workers/workerTools';
 
-export function memoryTool(source: () => Promise<KnowledgeStore>, project: string): ToolDefinition {
+export function memoryTool(source: () => Promise<KnowledgeStore>, project: string,
+    memoryCall?: (query: string, agentId: string) => Promise<string | null>): ToolDefinition {
     const inputSchema = z.object({
         action: z.enum(['view', 'search', 'remember', 'update', 'history', 'export']),
         scope: z.enum(['user', 'repo']).default('repo'),
@@ -26,7 +27,11 @@ export function memoryTool(source: () => Promise<KnowledgeStore>, project: strin
             const replaced = new Set(all.map(item => item.supersedesId));
             if (args.action === 'export') return { jsonl: all.map(item => JSON.stringify(item)).join('\n') + (all.length ? '\n' : '') };
             if (args.action === 'view' && !args.query) return all.filter(item => !replaced.has(item.id)).slice(0, args.limit);
-            if (args.action === 'view' || args.action === 'search') return store.recall(args.query || '', scope, args.limit);
+            if (args.action === 'view' || args.action === 'search') {
+                const memories = await store.recall(args.query || '', scope, args.limit);
+                const answer = await memoryCall?.(args.query || '', args.agentId);
+                return answer ? { memories, answer } : memories;
+            }
             if (args.action === 'remember') {
                 if (!args.text) throw new KnowledgeStoreError('rejected', 'remember requires text');
                 return store.remember({ text: args.text }, scope);

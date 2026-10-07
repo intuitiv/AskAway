@@ -6,6 +6,12 @@ import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './consta
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
 import { registerTools } from './tools';
 import { memoryTool } from './validator/memoryTool';
+import { ValidatorObserver, validatorWorkerRun } from './validator/observer';
+import { validatorProfile } from './validator/profile';
+import { OpenCodeWorkerRuntime } from './workers/openCodeRuntime';
+import { syncOpenCodeAgents } from './workers/workerProfiles';
+import { ValidatorTriggers } from './validator/validatorTriggers';
+import { readActiveSpecSlug } from './specs/specCostLedger';
 import { seedMemories } from './validator/memorySeed';
 import { ensureMemoryServer, localMemorySecret, MEMORY_SERVER_URL } from './validator/memoryServer';
 import { AgentmemoryStore } from './validator/agentmemoryStore';
@@ -16,7 +22,7 @@ import { killAllGradleRuns } from './gradle/gradleEngine';
 import { ContextManager } from './context';
 import { PlanEditorProvider } from './plan/planEditorProvider';
 import { COWORK_BUNDLE_B64, COWORK_APPLY_B64, COWORK_PROMPT_B64 } from './cowork/coworkAssets';
-import { sharedCommentaryStore } from './workers/workerHost';
+import { sharedCommentaryStore, sharedWorkerRuntimeReady } from './workers/workerHost';
 
 // Heavy modules loaded lazily to avoid blocking activation
 // RemoteUiServer imports express + socket.io (expensive)
@@ -1090,7 +1096,7 @@ export function activate(context: vscode.ExtensionContext) {
         logRuntime('Registering language model tools');
         const memoryProject = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || context.globalStorageUri.fsPath;
         let memoryReady: Promise<KnowledgeStore> | undefined;
-        const memory = memoryTool(() => {
+        const getMemory = () => {
             memoryReady ??= (async () => {
                 const secret = await context.secrets.get('agentmemory.token') || localMemorySecret();
                 await ensureMemoryServer(undefined, secret);
@@ -1106,7 +1112,28 @@ export function activate(context: vscode.ExtensionContext) {
                 return store;
             })().catch(error => { memoryReady = undefined; throw error; });
             return memoryReady;
-        }, memoryProject);
+        };
+        let observerReady: Promise<ValidatorObserver> | undefined;
+        let validatorRuntime: OpenCodeWorkerRuntime | undefined;
+        const triggers = new ValidatorTriggers(memoryProject, () => observerReady ??= getMemory().then(store => new ValidatorObserver({
+            workspaceRoot: memoryProject, commentary: sharedCommentaryStore(),
+            recall: async query => (await store.recall(query.text, { project: memoryProject, agentId: 'validator', spec: query.specSlug || undefined }, 20))
+                .map(item => ({ id: item.id, text: item.fact.text })),
+            run: validatorWorkerRun(async () => {
+                const shared = await sharedWorkerRuntimeReady(memoryProject);
+                if (!shared.serverEndpoint) throw new Error('Validator shared OpenCode server unavailable');
+                if (!validatorRuntime) {
+                    const profile = validatorProfile();
+                    syncOpenCodeAgents([profile], path.join(memoryProject, '.opencode', 'agents'));
+                    validatorRuntime = new OpenCodeWorkerRuntime([profile]);
+                }
+                validatorRuntime.setServerEndpoint(shared.serverEndpoint);
+                return validatorRuntime;
+            }, memoryProject, () => String(sharedCommentaryStore().turnStarts(memoryProject).at(-1) || Date.now())),
+        })).catch(error => { observerReady = undefined; throw error; }), () => readActiveSpecSlug(memoryProject),
+        () => { sharedCommentaryStore().postValidator(memoryProject, { text: 'Validator trigger failed; agent flow continued.' }); });
+        provider.setValidatorTurnStart((text, id) => { void triggers.turnStart(triggers.previousFinal(), text, id); });
+        const memory = memoryTool(getMemory, memoryProject, (query, agentId) => triggers.memoryCall(query, agentId));
         registerTools(context, provider, memory);
 
         // Initialize Plan Board editor (lightweight, no I/O at init)
@@ -1438,7 +1465,8 @@ export function activate(context: vscode.ExtensionContext) {
                     createHandoffTargets(() => webexService, () => telegramTurn ?? telegramService),
                     debugLogsDir,
                     logRuntime,
-                    () => provider.getTurnMetricsSnapshot()
+                    () => provider.getTurnMetricsSnapshot(),
+                    (text, id) => triggers.turnEnd(text, id)
                 );
                 notifier.start();
                 context.subscriptions.push(notifier);

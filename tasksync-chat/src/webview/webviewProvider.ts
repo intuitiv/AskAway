@@ -1453,12 +1453,16 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._userMessageDelivered(resolvedMsgId, response);
     }
 
+    private _validatorTurnStart: ((text: string, id: string) => void) | undefined;
+    public setValidatorTurnStart(callback: (text: string, id: string) => void): void { this._validatorTurnStart = callback; }
+
     /** A delivered user message starts a turn: the Commentary tab folds and Telegram opens a new live message. */
     private _userMessageDelivered(toolCallId: string | null, text: string): void {
         this._telegramService?.resolveTask?.(toolCallId);
         this._webexService?.resolveTask?.(toolCallId);
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) { return; }
+        this._validatorTurnStart?.(text, toolCallId || String(this._lastSubmitTs));
         try { sharedCommentaryStore().markTurnStart(root, text); } catch (error) { console.warn('[AskAway] Could not record the turn start:', error); }
     }
 

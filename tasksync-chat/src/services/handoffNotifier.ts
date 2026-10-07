@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { createHash } from 'crypto';
 import { CONFIG_NAMESPACE } from '../constants/branding';
 import { createTelegramHandoffTaskId } from './telegramConversationReply';
 import { renderResponseFile, type ResponseFile } from './responsePdf';
@@ -68,7 +69,8 @@ export class HandoffNotifier implements vscode.Disposable {
         private readonly _targets: HandoffTarget[],
         private readonly _debugLogsDir: string | undefined,
         private readonly _log: (msg: string, data?: unknown) => void,
-        private readonly _getTurnMetrics?: () => TurnMetricsSnapshot | Promise<TurnMetricsSnapshot>
+        private readonly _getTurnMetrics?: () => TurnMetricsSnapshot | Promise<TurnMetricsSnapshot>,
+        private readonly _validateFinal?: (text: string, id: string) => Promise<void>
     ) { }
 
     public start(): void {
@@ -107,13 +109,15 @@ ${text}`, `AskAway: ${text}`);
 
         const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         const enabled = this._targets.filter(t => cfg.get<boolean>(t.setting, false));
-        if (!enabled.length) { this._lastPostedTs = ts; return; }
+        if (!enabled.length && !this._validateFinal) { this._lastPostedTs = ts; return; }
 
         this._processing = true;
         try {
             // Only accept a handoff produced by the turn that just ended.
             const parts = this._findHandoff(ts - TURN_LOOKBACK_MS);
             if (!parts) { this._log('Handoff notifier: no Response Handoff section in the final response'); return; }
+            const finalText = fullResponseMarkdown(parts);
+            void this._validateFinal?.(finalText, createHash('sha256').update(finalText).digest('hex'));
             // The turn-end stamp can be written more than once per turn; the message itself is the
             // real identity, so posting the same text twice is always a duplicate.
             if (parts.handoff === this._lastPostedHandoff) {

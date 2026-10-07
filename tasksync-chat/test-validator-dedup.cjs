@@ -4,7 +4,11 @@ const vm = require('node:vm');
 const esbuild = require('esbuild');
 const http = require('node:http');
 const fs = require('node:fs');
-const os = require('node:os');
+const rememberShape = require('./test-fixtures/agentmemory-shapes/remember.json');
+const memoriesShape = require('./test-fixtures/agentmemory-shapes/memories.json');
+const files = new Map();
+const fakeFs = { ...fs, mkdirSync() {}, appendFileSync: (file, text) => files.set(file, (files.get(file) || '') + text),
+    readFileSync: file => { if (!files.has(file)) throw new Error('ENOENT'); return files.get(file); } };
 
 const out = esbuild.buildSync({ entryPoints: [path.join(__dirname, 'src/validator/knowledgeStore.ts')],
     bundle: true, platform: 'node', format: 'cjs', write: false }).outputFiles[0].text;
@@ -14,26 +18,34 @@ const { DedupKnowledgeStore } = loaded.exports;
 const adapter = { exports: {} };
 vm.runInNewContext(esbuild.buildSync({ entryPoints: [path.join(__dirname, 'src/validator/agentmemoryStore.ts')],
     bundle: true, platform: 'node', format: 'cjs', write: false }).outputFiles[0].text,
-    { module: adapter, exports: adapter.exports, require, fetch, URL, AbortSignal });
+    { module: adapter, exports: adapter.exports, require: name => name === 'fs' ? fakeFs : require(name), fetch, URL, URLSearchParams, AbortSignal });
 const { AgentmemoryStore } = adapter.exports;
 const memories = [];
 const server = http.createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
-    const data = JSON.parse(body);
+    const data = body ? JSON.parse(body) : {};
     res.setHeader('Content-Type', 'application/json');
     assert.ok(!('ttlDays' in data), 'no automatic expiry requested');
     if (req.url === '/agentmemory/remember') {
-        const memory = { id: `k${memories.length + 1}`, content: data.content };
+        assert.equal(req.method, 'POST');
+        const memory = { ...rememberShape.memory, id: `mem_${memories.length + 1}`, content: data.content,
+            agentId: data.agentId, concepts: data.concepts };
         memories.push(memory);
         res.writeHead(201);
-        res.end(JSON.stringify({ id: memory.id }));
-    } else {
-        res.end(JSON.stringify({ results: [...memories, ...memories] }));
-    }
+        res.end(JSON.stringify({ ...rememberShape, memory }));
+    } else if (new URL(req.url, 'http://localhost').pathname === '/agentmemory/memories') {
+        assert.equal(req.method, 'GET'); assert.equal(body, '');
+        const params = new URL(req.url, 'http://localhost').searchParams;
+        assert.equal(params.get('agentId'), 'validator');
+        const hits = [...memories, ...memories];
+        res.end(JSON.stringify({ ...memoriesShape, memories: hits, total: hits.length,
+            search: { query: params.get('q'), mode: 'keyword' } }));
+    } else { res.writeHead(404); res.end('{}'); }
 });
 let url;
-const backing = () => new AgentmemoryStore(fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-dedup-')), url, '');
+let workspace = 0;
+const backing = () => new AgentmemoryStore(`dedup-fixture-${++workspace}`, url, '');
 
 (async () => {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
