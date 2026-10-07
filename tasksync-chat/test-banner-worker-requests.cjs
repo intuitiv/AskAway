@@ -19,13 +19,13 @@ const text = (html) => html.replace(/<[^>]+>/g, '').replace(/&middot;/g, '\u00b7
 
 // 41 main requests ($2.29) + 6 workers with 38 steps ($1.74).
 const metrics = { lastRequest: { requestCount: 41, nanoAiu: 229e9, inputTokens: 1000, cachedTokens: 900, outputTokens: 50 },
-    workers: { runs: 6, requests: 38, dollars: 1.74 } };
+    workers: { workers: 6, runs: 8, requests: 38, dollars: 1.74 } };
 const banner = text(ui.chat(metrics, Date.now()));
 assert.ok(banner.startsWith('79 reqs \u00b7 $4.03 (6 workers \u00b7 38 reqs \u00b7 $1.74) \u00b7'), banner);
 
 // Zero workers: the banner is exactly what it was before.
 const solo = text(ui.chat({ lastRequest: metrics.lastRequest, workers: { runs: 0, requests: 0, dollars: 0 } }, Date.now()));
-assert.equal(solo, '41 reqs \u00b7 $2.29 \u00b7 1K last in / 50 turn out \u00b7 90% cache');
+assert.equal(solo, '41 reqs \u00b7 $2.29 \u00b7 1K last in / 50 turn out \u00b7 90% cache \u00b7 Efficiency 20');
 assert.doesNotMatch(solo, /worker/);
 
 // Observability "This turn" lead: total, split, and total dollars.

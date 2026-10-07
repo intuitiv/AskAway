@@ -59,14 +59,14 @@ assert.match(elements['common-turn-summary'].innerHTML, /4K last in \/ 2\.75K tu
 assert.match(elements['common-turn-summary'].innerHTML, /90% cache/);
 assert.match(elements['common-cache-age'].textContent, /^Age: 0:3\d warm$/);
 assert.equal(elements['cost-attribution-toggle'].textContent, 'Cost to: Spec 001');
-assert.doesNotMatch(elements['common-turn-summary'].innerHTML, /workers|Turn \d/, 'no worker part and no timer when the backend sends neither');
+assert.doesNotMatch(elements['common-turn-summary'].innerHTML, /health-workers|Turn \d/, 'no worker part and no timer when the backend sends neither');
 
 // Reviewer 2026-10-01: totals include the turn's workers and name the worker part; a live timer runs from turnStartedAt.
-bannerContext.observabilityMetrics.workers = { requests: 6, dollars: 0.42, runs: 2 };
+bannerContext.observabilityMetrics.workers = { requests: 6, dollars: 0.42, workers: 2, runs: 3 };
 bannerContext.observabilityMetrics.turnStartedAt = Date.now() - 83_000;
 vm.runInContext('renderConversationHealth()', bannerContext);
 const withWorkers = elements['common-turn-summary'].innerHTML.replace(/<[^>]+>/g, '').replaceAll('&middot;', '·');
-assert.match(withWorkers, /^9 reqs · \$2\.92 \(2 workers · 6 reqs · \$0\.42\) · 4K last in \/ 2\.75K turn out · 90% cache · Turn 1:2\d$/, 'total requests include worker requests (reviewer 2026-10-07), dollars include the workers, with the worker part named');
+assert.match(withWorkers, /^9 reqs · \$2\.92 \(2 workers · 6 reqs · \$0\.42\) · 4K last in \/ 2\.75K turn out · 90% cache · Turn 1:2\d · Efficiency 8$/, 'total requests include worker requests (reviewer 2026-10-07), dollars include the workers, with the worker part named');
 bannerContext.observabilityMetrics.turnStartedAt = Date.now() - 5_000;
 vm.runInContext('renderCacheAge()', bannerContext);
 assert.match(elements['common-turn-summary'].innerHTML, /Turn 0:0[4-6]</, 'the existing cache-age tick refreshes the turn timer');

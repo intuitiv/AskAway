@@ -92,12 +92,12 @@ const escapeHtml = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<
         turnRequests: [], turnStartedAt: T0, lastRequestTs: T0 + 83_000, ...extra
     });
     const banner = (m, now) => ctx.chatBannerHtml(m, now).replace(/<[^>]+>/g, '');
-    assert.match(banner(metrics(), T0 + 100_000), /Turn 1:40$/, 'ticks while the turn is active');
-    assert.match(banner(metrics(), T0 + 120_000), /Turn 2:00$/, 'still ticking');
+    assert.match(banner(metrics(), T0 + 100_000), /Turn 1:40( &middot; Efficiency \d+)?$/, 'ticks while the turn is active');
+    assert.match(banner(metrics(), T0 + 120_000), /Turn 2:00( &middot; Efficiency \d+)?$/, 'still ticking');
     const hours = 85 * 3600 + 15 * 60 + 48;
-    assert.match(banner(metrics(), T0 + hours * 1000), /Turn 1:23$/, 'cold turn freezes at turn start -> last request');
-    assert.match(banner(metrics(), T0 + hours * 1000 + 999_000), /Turn 1:23$/, 'and stays frozen');
-    assert.match(banner(metrics({ lastRequestTs: 0 }), T0 + 1000 * 1000), /Turn 0:00$/, 'a turn with no request that went idle does not run on');
+    assert.match(banner(metrics(), T0 + hours * 1000), /Turn 1:23( &middot; Efficiency \d+)?$/, 'cold turn freezes at turn start -> last request');
+    assert.match(banner(metrics(), T0 + hours * 1000 + 999_000), /Turn 1:23( &middot; Efficiency \d+)?$/, 'and stays frozen');
+    assert.match(banner(metrics({ lastRequestTs: 0 }), T0 + 1000 * 1000), /Turn 0:00( &middot; Efficiency \d+)?$/, 'a turn with no request that went idle does not run on');
 }
 
 console.log('EV-CARD-TIMER-SETTINGS: PASS oneStage=true cardMarkdown=true keepWarmSwitch=true timerFreezes=true');

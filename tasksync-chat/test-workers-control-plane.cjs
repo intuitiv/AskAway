@@ -240,7 +240,7 @@ const packet = (overrides = {}) => ({
     assert.match(ui.trace([{ kind: 'request', id: 'W2', model: 'm', dollars: 0.25, inputTokens: 1, outputTokens: 1, cachedTokens: 0 }], {}), /<td>25<\/td>/, 'a worker request of $0.25 is 25 credits');
 
     // Chat banner (shared block) vs worker card: only the chat banner carries the worker part.
-    assert.match(ui.chatBanner({ requests: 34, dollars: 1.95, lastIn: 100, lastCached: 50, turnOut: 7, workers: { runs: 3, dollars: 0.42 } }), /^34 reqs &middot; <strong class="health-cost">\$1\.95<\/strong> <span class="health-workers"[^>]*>\(3 workers &middot; \$0\.42\)<\/span> &middot;/);
+    assert.match(ui.chatBanner({ requests: 34, dollars: 1.95, lastIn: 100, lastCached: 50, turnOut: 7, workers: { workers: 3, runs: 4, dollars: 0.42 } }), /^34 reqs &middot; <strong class="health-cost">\$1\.95<\/strong> <span class="health-workers"[^>]*>\(3 workers &middot; \$0\.42\)<\/span> &middot;/);
     assert.doesNotMatch(all, /\d workers? &middot;/, 'worker cards keep the plain banner without a worker part');
     assert.match(downView, /<span class="obs-req-id">STEP1<\/span><\/td><td class="obs-scope">gpt-5\.6-terra<\/td><td>0\.21<\/td><td>1\.25K<\/td><td>340<\/td><td>50<\/td><td class="obs-cache-risk">4%<\/td>/);
     const kept = ui.render(state, '', { [run1.workerId]: true }, false, { 't:EDIT1:1': true }, { [run1.workerId]: down });

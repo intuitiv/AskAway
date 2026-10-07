@@ -143,7 +143,7 @@ interface ObservabilityMetrics {
     /** Epoch ms of the newest llm_request seen — powers the live prompt-cache age clock. */
     lastRequestTs: number;
     /** Worker spend since the current turn's user message (one ledger checkpoint = one model request). */
-    workers: { requests: number; dollars: number; runs: number };
+    workers: { requests: number; dollars: number; runs: number; workers?: number; workerIds?: string[]; inputTokens?: number; outputTokens?: number };
     /** Epoch ms of the current turn's user message; 0 when unknown. */
     turnStartedAt: number;
     source: string;
@@ -1470,6 +1470,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _refreshWorkersState(): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const data = root && this._workersStateSource ? this._workersStateSource(root) : null;
+        if (data) { data.turnWorkerIds = this._workerSpend().workerIds; }
         this._broadcast({ type: 'workersState', data });
     }
 
@@ -2160,7 +2161,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             lastIn: latest?.inputTokens ?? 0, turnOut: turn.outputTokens };
     }
 
-    private _workerSpend(): { requests: number; dollars: number; runs: number } {
+    private _workerSpend(): ReturnType<typeof workerSpendSince> {
         return workerSpendSince(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, this._lastSubmitTs);
     }
 

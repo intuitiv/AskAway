@@ -693,18 +693,25 @@ export class OpenCodeWorkerRuntime {
     }
 
     /** Worker spend since a moment (the turn start): one checkpoint is one model request; session totals are never used. */
-    usageSince(workspacePath: string, sinceMs: number): { requests: number; dollars: number; runs: number; inputTokens: number; outputTokens: number } {
-        const total = { requests: 0, dollars: 0, runs: 0, inputTokens: 0, outputTokens: 0 };
+    usageSince(workspacePath: string, sinceMs: number): { requests: number; dollars: number; runs: number; workers: number; workerIds: string[]; inputTokens: number; outputTokens: number } {
+        const total = { requests: 0, dollars: 0, runs: 0, workers: 0, workerIds: [] as string[], inputTokens: 0, outputTokens: 0 };
         const runIds = new Set<string>();
+        const workerIds = new Set<string>();
         for (const record of this.readLedger(canonical(workspacePath))) {
-            if (record.type !== 'checkpoint' || !record.usage || record.ts < sinceMs) { continue; }
+            if (record.ts < sinceMs) { continue; }
+            if (record.type === 'start' || (record.type === 'checkpoint' && !record.ping)) {
+                runIds.add(record.runId);
+                workerIds.add(record.workerId);
+            }
+            if (record.type !== 'checkpoint' || !record.usage) { continue; }
             total.requests++;
             total.dollars += record.usage.cost;
             total.inputTokens += record.usage.input + record.usage.cacheRead + record.usage.cacheWrite;
             total.outputTokens += record.usage.output;
-            runIds.add(record.runId);
         }
         total.runs = runIds.size;
+        total.workerIds = [...workerIds];
+        total.workers = workerIds.size;
         return total;
     }
 

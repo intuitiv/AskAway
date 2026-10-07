@@ -54,6 +54,8 @@ export interface WorkersState {
     generatedAt: number;
     server: { state: 'ATTACHED' | 'NOT_ATTACHED'; endpoint: string };
     workers: WorkerRow[];
+    /** Distinct workers that actually ran in the current chat turn, including terminal workers. */
+    turnWorkerIds?: string[];
     /** Eval results by mode × model, from `~/.askaway/evals/results.jsonl`. */
     scoreboard?: ScoreRow[];
 }

@@ -2915,12 +2915,12 @@
         var lastIn = Number(b.lastIn) || 0;
         var hit = lastIn > 0 ? Math.round((Number(b.lastCached) || 0) / lastIn * 100) + '%' : '\u2013';
         var w = b.workers || {};
-        var workerRuns = Number(w.runs) || 0;
+        var workerRuns = Number(w.workers) || 0;
         var workerDollars = Number(w.dollars) || 0;
         var workerRequests = Number(w.requests) || 0;
         var workerReqPart = w.requests === undefined ? '' : ' &middot; ' + workerRequests + ' req' + (workerRequests === 1 ? '' : 's');
         var workerPart = workerRuns > 0
-            ? ' <span class="health-workers" title="Workers spawned this turn, their requests and cost (included in the total)">(' + workerRuns + ' worker' + (workerRuns === 1 ? '' : 's') + workerReqPart + ' &middot; ' + bannerDollars(workerDollars) + ')</span>'
+            ? ' <span class="health-workers" title="Distinct workers that ran this turn, their requests and cost (included in the total)">(' + workerRuns + ' worker' + (workerRuns === 1 ? '' : 's') + workerReqPart + ' &middot; ' + bannerDollars(workerDollars) + ')</span>'
             : '';
         var flag = b.flagContext ? workerContextFlag(lastIn) : { over: false };
         var lastInHtml = flag.over
@@ -2929,7 +2929,8 @@
         return requests + ' req' + (requests === 1 ? '' : 's') +
             ' &middot; <strong class="health-cost">' + bannerDollars(dollars) + '</strong>' + workerPart +
             ' &middot; ' + lastInHtml + ' last in / ' + formatObservabilityCompact(b.turnOut) + ' turn out' +
-            ' &middot; ' + hit + ' cache';
+            ' &middot; ' + hit + ' cache' + (b.timer ? ' &middot; <span class="health-turn-timer" title="Time since this turn started">' + b.timer + '</span>' : '') +
+            (Number(b.efficiencyOutput) > 0 ? ' &middot; <span title="tokens read per token written this turn (main + workers); lower is better">Efficiency ' + Math.round((Number(b.efficiencyInput) || 0) / Number(b.efficiencyOutput)) + '</span>' : '');
     }
     // Live turn timer: '' when no turn is running (turnStartedAt 0), else m:ss or h:mm:ss.
     // A turn is finished once its prompt cache went cold (no request for 5 minutes): the timer then shows the final
@@ -2959,7 +2960,7 @@
         var turnRequests = Array.isArray(metrics.turnRequests) ? metrics.turnRequests : [];
         var latest = turnRequests.length ? turnRequests[turnRequests.length - 1] : turn;
         var w = metrics.workers || {};
-        var workerRuns = Number(w.runs) || 0;
+        var workerRuns = Number(w.workers) || 0;
         var workerDollars = Number(w.dollars) || 0;
         var workerRequests = Number(w.requests) || 0;
         var timer = turnTimerLabel(metrics.turnStartedAt, now, Number(metrics.lastRequestTs) || 0);
@@ -2967,8 +2968,11 @@
             requests: (Number(turn.requestCount) || 0) + workerRequests,
             dollars: (Number(turn.nanoAiu) || 0) / 1000000000 / 100 + workerDollars,
             lastIn: latest.inputTokens, lastCached: latest.cachedTokens, turnOut: turn.outputTokens,
-            workers: { runs: workerRuns, requests: workerRequests, dollars: workerDollars },
-        }) + (timer ? ' &middot; <span class="health-turn-timer" title="Time since this turn started">' + timer + '</span>' : '');
+            workers: { workers: workerRuns, requests: workerRequests, dollars: workerDollars },
+            timer: timer,
+            efficiencyInput: (Number(turn.inputTokens) || 0) + (Number(w.inputTokens) || 0),
+            efficiencyOutput: (Number(turn.outputTokens) || 0) + (Number(w.outputTokens) || 0),
+        });
     }
     function cacheAgeLabel(secs) {
         var capped = Math.min(Math.max(0, secs), 300);
@@ -5611,8 +5615,9 @@
         if (pending) {
             html += '<div class="workers-approval-notice">' + pending + ' worker' + (pending > 1 ? 's' : '') + ' waiting for approval. Open the session in OpenCode to answer.</div>';
         }
-        var shown = (state.workers || []).filter(function (w) { return (showExpired || !w.expired) && workersMatch(w, filter); });
-        var hidden = (state.workers || []).filter(function (w) { return w.expired; }).length;
+        var turnWorkerIds = state.turnWorkerIds || [];
+        var shown = (state.workers || []).filter(function (w) { return (showExpired || !w.expired || turnWorkerIds.indexOf(w.workerId) !== -1) && workersMatch(w, filter); });
+        var hidden = (state.workers || []).filter(function (w) { return w.expired && turnWorkerIds.indexOf(w.workerId) === -1; }).length;
         if (!shown.length) {
             return html + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>' + workersScoreboardHtml(state.scoreboard, openIds);
         }

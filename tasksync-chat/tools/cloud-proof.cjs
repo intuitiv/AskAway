@@ -132,5 +132,6 @@ for (let i = 0; i < minutes; i++) {
     if (reported >= 2) { break; }
 }
 const note = path.join(repoRoot, 'specs', SLUG, 'evidence', `proof-${day}.md`);
+fs.mkdirSync(path.dirname(note), { recursive: true });
 fs.writeFileSync(note, `# Cloud route proof ${day}\n\nPR #${pr} (${repo}), base ${base}. Raw signals: tasksync-chat/test-fixtures/cloud-signals-${day}.json\n\nFill every row of specs/${SLUG}/contracts/evidence-note.md from the fixture; no "unknown".\n`);
 console.log(`DONE fixture=${path.relative(repoRoot, fixtureFile)} note=${path.relative(repoRoot, note)}`);

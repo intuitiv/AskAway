@@ -41,10 +41,9 @@ export function sharedWorkerRuntime(): OpenCodeWorkerRuntime {
 }
 
 /** Worker spend since the turn start; zeros while no runtime exists (never creates one). */
-export function workerSpendSince(workspacePath: string | undefined, sinceMs: number): { requests: number; dollars: number; runs: number } {
-    if (!runtime || !workspacePath || !sinceMs) { return { requests: 0, dollars: 0, runs: 0 }; }
-    const { requests, dollars, runs } = runtime.usageSince(workspacePath, sinceMs);
-    return { requests, dollars, runs };
+export function workerSpendSince(workspacePath: string | undefined, sinceMs: number): ReturnType<OpenCodeWorkerRuntime['usageSince']> {
+    if (!runtime || !workspacePath || !sinceMs) { return { requests: 0, dollars: 0, runs: 0, workers: 0, workerIds: [], inputTokens: 0, outputTokens: 0 }; }
+    return runtime.usageSince(workspacePath, sinceMs);
 }
 
 /** The runtime once it is attached to the shared OpenCode server (started on first worker use, not at activation). */
