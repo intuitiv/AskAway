@@ -5,6 +5,7 @@ import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
 import { registerWebexAuthCommands, WebexAuth } from './services/webexAuth';
+import { WebexStatus } from './services/webexStatus';
 import { registerTools } from './tools';
 import { ASKWAY_BUILD_AGENT_FILE, ASKWAY_BUILD_AGENT_CONTENT } from './agents/askawayBuildAgent';
 import { memoryTool } from './validator/memoryTool';
@@ -1246,7 +1247,11 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Webex/Telegram commands (services loaded in deferred block)
         const webexAuth = new WebexAuth(context.secrets);
+        const webexRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const webexStatus = webexRoot ? new WebexStatus(webexRoot, webexAuth, outputChannel,
+            () => webviewProvider?.getWebexService()?.getTokenStatus() ?? { hasToken: false }) : undefined;
         registerWebexAuthCommands(context, async () => {
+            await webexStatus?.record('sign-in');
             await webviewProvider?.getWebexService()?.reloadConfig();
             await vscode.commands.executeCommand('askaway.webexDiscover');
             await webviewProvider?.getWebexService()?.reloadConfig();
@@ -1260,7 +1265,9 @@ export function activate(context: vscode.ExtensionContext) {
                 const { setupWebex } = await import('./services/webexSpaces');
                 const { WebexIncomingWebhook } = await import('./services/webexIncomingWebhook');
                 await setupWebex(webexAuth, { fsPath: folder.uri.fsPath, name: folder.name }, {
-                    onResolved: () => new WebexIncomingWebhook(context.secrets).prompt(folder.uri.fsPath, context.workspaceState),
+                    status: webexStatus,
+                    onFailure: status => webviewProvider?.getWebexService()?.setSetupFailure(status),
+                    onResolved: () => new WebexIncomingWebhook(context.secrets, undefined, undefined, undefined, webexStatus).prompt(folder.uri.fsPath, context.workspaceState),
                     refresh: () => webviewProvider?.getWebexService()?.refreshAccessToken() ?? Promise.resolve(undefined)
                 });
                 const service = webviewProvider?.getWebexService();
@@ -1285,6 +1292,7 @@ export function activate(context: vscode.ExtensionContext) {
             // Initialize Webex independently so its failure does not block Telegram.
             try {
                 const webexModule = await import('./services/webexService');
+                await webexStatus?.record('activation');
                 const { WebexService } = webexModule;
                 logRuntime('Webex module loaded', {
                     moduleKeys: Object.keys(webexModule),
@@ -1296,16 +1304,20 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
                 const { WebexIncomingWebhook } = await import('./services/webexIncomingWebhook');
-                const incoming = new WebexIncomingWebhook(context.secrets);
+                const incoming = new WebexIncomingWebhook(context.secrets, undefined, undefined, undefined, webexStatus);
                 context.subscriptions.push(vscode.commands.registerCommand('askaway.configureWebexNotifications', async () => {
                     const folder = vscode.workspace.workspaceFolders?.[0];
                     if (folder) { await incoming.configure(folder.uri.fsPath); }
                 }));
                 webexService = new WebexService(outputChannel, webexAuth, undefined, {}, incoming);
+                await webexService.reloadConfig();
+                provider.setWebexService(webexService);
                 const { ensureWebexWorkspace } = await import('./services/webexSpaces');
                 const ensureWorkspace = async () => {
                     const folder = vscode.workspace.workspaceFolders?.[0];
                     if (folder) { await ensureWebexWorkspace(webexAuth, { fsPath: folder.uri.fsPath, name: folder.name }, {
+                        status: webexStatus,
+                        onFailure: status => { webexService?.setSetupFailure(status); provider.setWebexService(webexService); },
                         onResolved: () => incoming.prompt(folder.uri.fsPath, context.workspaceState)
                     }); }
                 };
@@ -1317,6 +1329,8 @@ export function activate(context: vscode.ExtensionContext) {
 
                 context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(async e => {
                     if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.webex`) && webexService) {
+                        await webexStatus?.record('setting change');
+                        webexService.setSetupFailure();
                         webexService.stop();
                         await webexService.reloadConfig();
                         await ensureWorkspace();
@@ -1326,6 +1340,7 @@ export function activate(context: vscode.ExtensionContext) {
                     }
                 }));
             } catch (err) {
+                await webexStatus?.record('activation', { exception: err instanceof Error ? err.message : String(err) });
                 logRuntime('Webex deferred init failed', formatError(err));
                 console.error('[AskAway] Webex deferred init error:', err);
             }

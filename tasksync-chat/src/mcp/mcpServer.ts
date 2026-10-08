@@ -14,7 +14,7 @@ import { dispatchGradle, GradleInput } from '../gradle/gradleEngine';
 import { createClaudeSpecEvent } from '../observability/claudeSpecAttribution';
 import { listenWhenFree } from './sharedPort';
 import { OpenCodeWorkerRuntime } from '../workers/openCodeRuntime';
-import { fetchSessionMessages, observeWorkers, restartSharedServer, sharedCommentaryStore, sharedWorkerRuntime, sharedWorkerRuntimeReady } from '../workers/workerHost';
+import { fetchSessionMessages, observeWorkers, onSharedServerAttached, restartSharedServer, sharedCommentaryStore, sharedWorkerRuntime, sharedWorkerRuntimeReady } from '../workers/workerHost';
 import { cancelQueuedRun, loadWorkerTrace, projectWorkersState } from '../workers/workersState';
 import { registerToolDefinitions, registerWorkerTools, ToolDefinition } from '../workers/workerTools';
 import { asksTool } from '../specs/askTool';
@@ -158,8 +158,16 @@ export class McpServerManager {
         private provider: AskAwayWebviewProvider,
         private memory?: ToolDefinition
     ) {
+        let republishing = false;
+        const republish = () => {
+            republishing = true;
+            try { provider.refreshWorkersState(); } finally { republishing = false; }
+        };
+        const observe = (workspacePath: string) => {
+            void observeWorkers(workspacePath).then(republish).catch(error => console.warn('[AskAway] Worker server observation failed:', error));
+        };
         provider.setWorkersStateSource((workspacePath) => {
-            void observeWorkers(workspacePath);
+            if (!republishing) { observe(workspacePath); }
             return { ...projectWorkersState(this.getWorkerRuntime(), workspacePath), scoreboard: loadEvalScoreboard() };
         });
         provider.setWorkerTraceSource((workspacePath, workerId) =>
@@ -167,6 +175,9 @@ export class McpServerManager {
         provider.setWorkerCancelSource((workspacePath, runId) => cancelQueuedRun(this.getWorkerRuntime(), workspacePath, runId));
         provider.setWorkerArchiveSource((workspacePath) => this.getWorkerRuntime().archive(workspacePath));
         provider.setServerRestartSource((workspacePath) => restartSharedServer(workspacePath));
+        onSharedServerAttached(republish);
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (root) { observe(root); }
     }
 
     /** One runtime per extension host: MCP servers are created per request, but worker state must outlive them. */

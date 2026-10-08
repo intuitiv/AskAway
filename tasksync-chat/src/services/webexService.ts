@@ -81,6 +81,9 @@ export class WebexService implements RemoteChannel {
         return this._ready;
     }
 
+    private setupFailure?: number;
+    public setSetupFailure(status?: number): void { this.setupFailure = status; }
+
     public async refreshAccessToken(): Promise<string | undefined> {
         await this._ready;
         return this._refreshAccessToken();
@@ -1010,6 +1013,12 @@ export class WebexService implements RemoteChannel {
         const hasToken = !!this._accessToken;
         const hasRoomId = !!this._roomId;
         const isPolling = !!this._pollingTimer;
+
+        if (hasToken && this.setupFailure) {
+            return { status: 'incomplete', tokenSource: 'oauth', hasOAuth, hasToken, hasRoomId, isPolling,
+                activeTasks: this._activeTasks.size, message: `Signed in; space creation failed: ${this.setupFailure}`,
+                hint: 'Reauthorize with the registered spark:rooms_write scope.' };
+        }
 
         let tokenSource: 'oauth' | 'file' | 'setting' | 'none' = 'none';
         if (hasToken) {

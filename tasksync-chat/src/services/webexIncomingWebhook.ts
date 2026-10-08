@@ -4,6 +4,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { randomUUID } from 'crypto';
 import { SecurityRunner, WEBEX_ACCESS_TOKEN_KEY } from './webexAuth';
+import { WebexStatus } from './webexStatus';
 
 export const WEBEX_WEBHOOK_APP = 'https://apphub.webex.com/applications/incoming-webhooks-cisco-systems-38054-23307-75252';
 const valid = (value: string) => /^https:\/\/webexapis\.com\/v1\/webhooks\/incoming\/[A-Za-z0-9_=-]+$/.test(value);
@@ -12,7 +13,7 @@ const security: SecurityRunner = (file, args) => new Promise((resolve, reject) =
 
 export class WebexIncomingWebhook {
     constructor(private secrets: vscode.SecretStorage, private runner: SecurityRunner = security,
-        private platform = process.platform, private baseUrl?: string) {}
+        private platform = process.platform, private baseUrl?: string, private status?: WebexStatus) {}
 
     async configured(roomId: string): Promise<boolean> { return !!await this.secrets.get(key(roomId)); }
 
@@ -55,17 +56,23 @@ export class WebexIncomingWebhook {
     }
 
     async prompt(root: string, state: vscode.Memento): Promise<void> {
-        if (!vscode.workspace.getConfiguration('askaway.webex').get<boolean>('enabled', false) ||
-            !await this.secrets.get(WEBEX_ACCESS_TOKEN_KEY) || state.get('webex.notifications.dismissed', false)) { return; }
+        const reason = !vscode.workspace.getConfiguration('askaway.webex').get<boolean>('enabled', false) ? 'disabled'
+            : !await this.secrets.get(WEBEX_ACCESS_TOKEN_KEY) ? 'not signed in'
+            : state.get('webex.notifications.dismissed', false) ? 'dismissed in workspace' : undefined;
+        if (reason) { await this.status?.record('webhook check', { prompt: 'suppressed', reason }); return; }
         try {
             const facts = JSON.parse(await fs.readFile(path.join(root, '.askaway/webex-spaces.json'), 'utf8'));
             const id = facts.self?.workspaceRoomId;
-            if (!id || await this.configured(id)) { return; }
+            const workspaceConfigured = !!id && await this.configured(id);
+            const generalConfigured = !!facts.self?.generalRoomId && await this.configured(facts.self.generalRoomId);
+            await this.status?.record('webhook check', { workspaceConfigured, generalConfigured,
+                prompt: !id || workspaceConfigured ? 'suppressed' : 'shown', reason: !id ? 'no workspace space' : workspaceConfigured ? 'already configured' : 'missing webhook' });
+            if (!id || workspaceConfigured) { return; }
             const title = facts.teams.flatMap((team: { rooms: { id: string; title: string }[] }) => team.rooms).find((room: { id: string }) => room.id === id)?.title || path.basename(root);
             const action = await vscode.window.showInformationMessage(`AskAway: Configure Webex notifications for ${title}.`, 'Configure', 'Later', "Don't ask in this workspace");
             if (action === 'Configure') { await this.configure(root); }
             if (action === "Don't ask in this workspace") { await state.update('webex.notifications.dismissed', true); }
-        } catch { /* No resolved destination yet. */ }
+        } catch (error) { await this.status?.record('webhook check', { prompt: 'suppressed', reason: 'check failed', exception: (error as Error).message }); }
     }
 }
 

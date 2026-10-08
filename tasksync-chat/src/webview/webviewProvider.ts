@@ -1482,6 +1482,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private _cloudWorkers: Awaited<ReturnType<CloudSpecsController['workers']>> = [];
 
+    public refreshWorkersState(): void { this._refreshWorkersState(); }
+
     private _refreshWorkersState(): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const data = root && this._workersStateSource ? this._workersStateSource(root) : null;

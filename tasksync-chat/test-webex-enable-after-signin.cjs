@@ -34,7 +34,7 @@ async function main() {
     const source = fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8');
     const commandsBlock = source.slice(source.indexOf('        // Webex/Telegram commands'), source.indexOf('        // Initialize remote server context'));
     const deferred = source.slice(source.indexOf('                const webexModule ='), source.indexOf('            } catch (err)', source.indexOf('                const webexModule =')));
-    const code = `import * as vscode from 'vscode'; import { registerWebexAuthCommands, WebexAuth } from './services/webexAuth';
+    const code = `import * as vscode from 'vscode'; import { WebexStatus } from './services/webexStatus'; import { registerWebexAuthCommands, WebexAuth } from './services/webexAuth';
         export async function wire(context, provider) { const webviewProvider = provider; const outputChannel = undefined; const CONFIG_NAMESPACE = 'askaway'; let telegramServiceInstance; let webexService; const logRuntime = () => {}; ${commandsBlock} ${deferred} }`;
     const build = esbuild.buildSync({ stdin: { contents: code, resolveDir: path.join(__dirname, 'src'), loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
     const loaded = { exports: {} };

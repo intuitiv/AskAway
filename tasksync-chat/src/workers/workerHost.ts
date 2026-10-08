@@ -13,6 +13,12 @@ let ready: Promise<OpenCodeWorkerRuntime> | undefined;
 let commentary: CommentaryStore | undefined;
 let serverStatus: ServerStatus | undefined;
 const keepWarmTimers = new Map<string, () => void>();
+const serverAttachedListeners = new Set<() => void>();
+
+export function onSharedServerAttached(listener: () => void): () => void {
+    serverAttachedListeners.add(listener);
+    return () => serverAttachedListeners.delete(listener);
+}
 
 /** The setting `askaway.workers.keepWarm` (default true); true as well outside VS Code. */
 function keepWarmEnabled(): boolean {
@@ -61,6 +67,7 @@ export async function sharedWorkerRuntimeReady(workspacePath?: string): Promise<
         });
     return ready.then((runtime) => {
         if (workspacePath) { runtime.rehydrate(workspacePath, serverStatus?.state === 'ATTACHED'); ensureKeepWarm(workspacePath); }
+        for (const listener of serverAttachedListeners) { listener(); }
         return runtime;
     });
 }
@@ -70,6 +77,8 @@ export async function observeWorkers(workspacePath: string): Promise<void> {
     const runtime = sharedWorkerRuntime();
     // Probe every time: a server that stopped must not keep showing as attached.
     const live = await defaultServerDeps.probe(serverUrl());
+    serverStatus = { state: live ? 'ATTACHED' : 'NOT_ATTACHED', endpoint: live ? serverUrl() : '', started: false,
+        reason: live ? '' : `no OpenCode server answered at ${serverUrl()}` };
     runtime.setServerEndpoint(live ? serverUrl() : '');
     if (!live) { ready = undefined; }
     runtime.rehydrate(workspacePath, live);

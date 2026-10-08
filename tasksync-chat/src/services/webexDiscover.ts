@@ -2,11 +2,13 @@ import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { WebexAuth } from './webexAuth';
+import { WebexStatus } from './webexStatus';
 
 interface DiscoveryOptions {
     baseUrl?: string;
     refresh?: () => Promise<string | undefined>;
     wait?: (milliseconds: number) => Promise<void>;
+    status?: WebexStatus;
 }
 
 export async function webexDiscover(auth: WebexAuth, workspace: { fsPath: string; name: string }, options: DiscoveryOptions = {}): Promise<boolean> {
@@ -23,6 +25,7 @@ export async function webexDiscover(auth: WebexAuth, workspace: { fsPath: string
             let rateRetried = false;
             for (;;) {
                 const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, redirect: 'error' });
+                await options.status?.http('discovery', 'GET', url, response);
                 if (response.status === 429 && !rateRetried) {
                     rateRetried = true;
                     const retry = response.headers.get('Retry-After') || '1';
@@ -81,10 +84,15 @@ export async function webexDiscover(auth: WebexAuth, workspace: { fsPath: string
         const directory = path.join(workspace.fsPath, '.askaway');
         await fs.mkdir(directory, { recursive: true });
         await fs.writeFile(path.join(directory, 'webex-spaces.json'), serialized, 'utf8');
-        if (general && typeof general.id === 'string') { await auth.mirror('webex-general-room-id', general.id); }
+        if (general && typeof general.id === 'string') {
+            try { await auth.mirror('webex-general-room-id', general.id); }
+            catch (error) { await options.status?.record('discovery', { exception: (error as Error).message, mirror: 'failed; SecretStorage remains authoritative' }); }
+        }
+        await options.status?.record('discovery');
         await vscode.window.showInformationMessage(`AskAway: Discovered ${teams.length} teams, ${teams.reduce((count, team) => count + team.rooms.length, 0)} rooms. self: ${self ? 'found' : 'not found'}; General: ${general ? 'found' : 'not found'}.`);
         return true;
-    } catch {
+    } catch (error) {
+        await options.status?.record('discovery', { exception: (error as Error).message });
         await vscode.window.showErrorMessage('AskAway: Webex space discovery failed.');
         return false;
     }
