@@ -8,6 +8,7 @@ import { redactOrDrop } from './redact';
 import { validatorProfile } from './profile';
 import { ValidatorRecords, ValidatorResponse, ValidatorUsage, Prediction } from './records';
 import { OpenCodeWorkerRuntime } from '../workers/openCodeRuntime';
+import { KnowledgeStore, KnowledgeScope, KnowledgeFact } from './knowledgeStore';
 
 export function validatorWorkerRun(runtime: () => Promise<OpenCodeWorkerRuntime>, workspaceRoot: string,
     turnId: () => string): ValidatorRunPort {
@@ -47,6 +48,8 @@ export interface ObserverPorts {
     run: ValidatorRunPort;
     /** Knowledge, ADRs, memories: extra sources beyond Goal.md, Rules.md and the spec. */
     recall?: (query: { text: string; specSlug: string | null }) => Promise<ValidatorSource[]>;
+    knowledgeStore?: KnowledgeStore;
+    knowledgeScope?: KnowledgeScope;
     /** Worker-hook pipeline sink (analyze N3): lifecycle events by worker ID and OpenCode session ID. */
     onEvent?: (event: ValidatorEvent) => void;
     costFile?: string;
@@ -110,6 +113,51 @@ export class ValidatorObserver {
 
     predictions(specSlug: string | null): Prediction[] { return this.records(specSlug).predictions(); }
 
+    /** Start alongside delivery; completion contains no validator output for an agent tool result. */
+    closeLoop(prev: { id: string; text: string; specSlug?: string; storyId?: string; taskId?: string },
+        reply: { id: string; text: string }): Promise<void> {
+        return Promise.resolve().then(async () => {
+            const specSlug = prev.specSlug ?? null;
+            try {
+                if (redactOrDrop(JSON.stringify({ prev, reply })) === null) { throw new Error('reply pair holds a credential'); }
+                const records = this.records(specSlug);
+                const prediction = records.predictions().find(p => p.responseId === prev.id);
+                let parsed: Record<string, unknown> | null = null;
+                const observer = new ValidatorObserver({ ...this.ports, run: async input => {
+                    const result = await this.ports.run({ ...input, prompt: input.prompt + '\nCompare prediction with reviewer reply. Extract only knowledge stated by the reviewer and related to the previous response. Bare acknowledgements and unrelated replies yield no facts. Return JSON with answer:null, sources:[], observations, summary, impact, related:boolean, matched:boolean|null, diff:string, facts:[{kind:rule|instruction|goal|fact,text:string,example?:string}].' });
+                    parsed = replyObject(result.text);
+                    return result;
+                } });
+                const response = await observer.observe({ id: reply.id, source: 'agent', specSlug: prev.specSlug, force: true,
+                    text: `Previous response:\n${prev.text}\nPrediction:\n${prediction?.decision ?? 'No prediction available'}\nReviewer reply:\n${reply.text}` });
+                if (response.error || !parsed) { return; }
+                const comparison = parsed as Record<string, unknown>;
+                if (redactOrDrop(JSON.stringify(comparison)) === null) { return; }
+                const related = comparison.related === true;
+                if (prediction) {
+                    records.appendPrediction({ ...prediction, matched: related && typeof comparison.matched === 'boolean' ? comparison.matched : null,
+                        diff: String(comparison.diff ?? '') });
+                    const compared = records.predictions().filter(p => typeof p.matched === 'boolean');
+                    this.ports.commentary.postValidator(this.ports.workspaceRoot, {
+                        text: `Validator prediction ${related ? comparison.matched === true ? 'matched' : 'mismatched' : 'not compared'}; match measure ${compared.filter(p => p.matched).length}/${compared.length}`,
+                        detail: { prediction: prediction.decision, reply: reply.text, diff: String(comparison.diff ?? ''), matched: related ? comparison.matched : null },
+                    });
+                }
+                if (!related || /^(ok|okay|yes|thanks|thank you)[.!\s]*$/i.test(reply.text.trim())) { return; }
+                if (!this.ports.knowledgeStore || !this.ports.knowledgeScope) { throw new Error('Knowledge store unavailable'); }
+                for (const value of Array.isArray(comparison.facts) ? comparison.facts : []) {
+                    if (!value || typeof value.text !== 'string' || !value.text.trim() || !['rule', 'instruction', 'goal', 'fact'].includes(value.kind)) { continue; }
+                    const fact: KnowledgeFact = { text: value.text, kind: value.kind, from: reply.id,
+                        ...(typeof value.example === 'string' ? { example: value.example } : {}), storyId: prev.storyId, taskId: prev.taskId };
+                    await this.ports.knowledgeStore.remember(fact, { ...this.ports.knowledgeScope, spec: specSlug ?? undefined });
+                }
+            } catch (error) {
+                const message = String(error instanceof Error ? error.message : error);
+                try { this.ports.commentary.postValidator(this.ports.workspaceRoot, { text: `Validator close loop failed: ${redactOrDrop(message) ?? 'redacted error'}` }); } catch { /* delivery continues */ }
+            }
+        });
+    }
+
     private emit(event: ValidatorEvent): void {
         try { this.ports.onEvent?.(event); } catch { /* observability never blocks the validator */ }
     }
@@ -128,6 +176,10 @@ export class ValidatorObserver {
         }
         let recalled: ValidatorSource[] = [];
         try { recalled = (await this.ports.recall?.({ text: response.text, specSlug })) ?? []; } catch { /* recall failure leaves the file sources */ }
+        if (this.ports.knowledgeStore && this.ports.knowledgeScope) {
+            const items = await this.ports.knowledgeStore.recall(response.text, { ...this.ports.knowledgeScope, spec: specSlug ?? undefined }, 20);
+            recalled.push(...items.map(item => ({ id: item.id, text: item.fact.text })));
+        }
         const all = [...found, ...recalled].filter((s): s is ValidatorSource => !!s && typeof s.id === 'string');
         // FR-016: a source holding a credential is dropped whole.
         return all.filter((s) => redactOrDrop(s.text) !== null);
@@ -194,6 +246,11 @@ export class ValidatorObserver {
         const known = new Set(sources.map((s) => s.id));
         const cited = strings(parsed.sources).filter((id) => known.has(id));
         const answered = typeof parsed.answer === 'string' && parsed.answer.trim() !== '' && cited.length > 0;
+        if (answered) {
+            try {
+                this.records(specSlug).appendPrediction({ id: base.id, responseId: response.id, decision: String(parsed.answer), ts: this.now() });
+            } catch { /* prediction persistence must not change the observation result */ }
+        }
         this.emit({ type: 'stop', observedId: response.id, ts: this.now(), ...ids });
         const decision = {
             ...(parsed.risk === 'low' || parsed.risk === 'high' ? { risk: parsed.risk as 'low' | 'high' } : {}),

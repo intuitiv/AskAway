@@ -35,6 +35,10 @@ export interface CloudRun {
     checkRuns?: Array<{ name: string; status: string; conclusion: string | null; url: string }>;
     report?: { url: string; result: string; verifyOutput: string; commands: string[]; question: string; model: string };
     decisionNeeded?: string;
+    staleSince?: string;
+    pollFailures?: number;
+    nextPollAt?: string;
+    acceptance?: { result: 'Accepted' | 'Returned'; head: string; evidence: string; outOfScope?: string[] };
     request: QueueRequest;
 }
 export interface QueueIO {

@@ -75,7 +75,8 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 ### G7 Telegram: monitor and reply remotely
 - Whatever happens in VS Code reaches Telegram, so the reviewer monitors remotely.
 - The reviewer can respond to VS Code from Telegram. This already works (2026-10-08).
-- Decision: [ADR 0007](docs/adr/0007-telegram-is-a-remote-control.md) · Requirements: [telegram.md](tasksync-chat/docs/requirements/telegram.md)
+- His org flagged Telegram: Telegram is switched off, and Webex becomes the remote channel with the same features (2026-10-08). Design choices are open question 11.
+- Decision: [ADR 0007](docs/adr/0007-telegram-is-a-remote-control.md), [ADR 0018](docs/adr/0018-webex-replaces-telegram.md) · Requirements: [telegram.md](tasksync-chat/docs/requirements/telegram.md)
 
 ### G8 Commentary shows what the agent is doing
 - In orchestrator mode, commentary gives a high-level view of what the agent is doing, where it is blocked, and whether it needs help.
@@ -156,6 +157,7 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 8. **Waiting on your live look** (no question, just a reload and a glance): 005 T015 worker spend in the shared banner and Telegram, and 005 T016 Specs tab and commentary polish. Both are built; they stay unticked until you accept them live. **Shared banner accepted 2026-10-08** ("Shared banner looks good"); the Telegram status and the Specs tab polish still await a look.
 9. **Live validator design (G10, G11).** "It should act as me when i am away from keyboard." To discuss against 007's own design: what it may decide alone, how the agent receives its answer, and how the reviewer reviews its decisions when back. **Answered 2026-10-08: recommendations accepted (answer low-risk reversible questions, hold the rest; answer returned to the asking agent with sources; only while Away; digest on return; flag drift only), and a setting, off by default, that the reviewer turns on when he is happy.**
 10. **Specs as stories and tasks (G2).** How older specs that use phases or cycles migrate to user stories and tasks. **Answered 2026-10-08: do not rewrite anything; reverse-map tasks.md tasks onto spec.md stories in the Specs tab.**
+11. **Webex instead of Telegram (G7).** Which Webex token (a bot, or his own account through the existing OAuth integration), full Telegram parity or a minimum, keep or delete the Telegram code, one channel picker or two switches, where the token is stored, and how replies arrive. See [ADR 0018](docs/adr/0018-webex-replaces-telegram.md).
 
 ## 4. Reviewer's words, verbatim
 
@@ -277,3 +279,7 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 >
 > And yes i am accepting your recomendations
 > Add a test case for all these things real and live so that we dont break stuff
+
+### 2026-10-08, Webex
+
+> And another thing i want to add is, my org reported issue of using telegram, so can we turn telegram off and use webex instead? I can give telegram token. Same thing should just work for webex also.

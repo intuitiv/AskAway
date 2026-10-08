@@ -15,6 +15,15 @@ export interface LiveMessagePoster {
     finishLive(messageId: number, headHtml: string, finalMarkdown: string, replyTaskId: string): Promise<boolean>;
 }
 
+/** Channel-neutral digest delivery through the same poster used by live commentary. */
+export function remoteDigestPoster(poster: () => Pick<LiveMessagePoster, 'isConfigured' | 'sendLive'> | undefined) {
+    return async (lines: string[]): Promise<boolean> => {
+        const target = poster();
+        if (!lines.length || !target?.isConfigured()) { return false; }
+        return await target.sendLive(`<b>Cloud task digest</b>\n${lines.map(esc).join('\n')}`) !== undefined;
+    };
+}
+
 type Phase = 'live' | 'final' | 'continued';
 
 const HEADS_UP = new Set(['heads-up', 'question', 'blocked']);

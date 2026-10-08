@@ -5602,14 +5602,14 @@
             var events = trace ? (trace.runs[r.runId] || []) : null;
             rows += '<tr class="worker-run-partition" data-run-id="' + workersEsc(r.runId) + '"><td colspan="7">' +
                 '<span class="worker-state worker-state-' + workersEsc(r.state).toLowerCase() + '">' + workersEsc(r.state) + (r.queuePosition ? ' #' + r.queuePosition : '') + '</span> ' +
-                '<span class="obs-req-id">' + workersEsc(r.runId) + '</span> · turn ' + workersEsc(r.dispatchTurnId) + ' · ' + workersDuration(r.elapsedMs) +
-                ' · $' + (ru.cost || 0).toFixed(4) + ' · ' + (ru.steps || 0) + ' req' + (r.reason ? ' · ' + workersEsc(r.reason) : '') +
+                '<span class="obs-req-id">' + workersEsc(r.runId) + '</span>' + (worker.cloud ? '' : ' · turn ' + workersEsc(r.dispatchTurnId)) + ' · ' + workersDuration(r.elapsedMs) +
+                (worker.cloud ? '' : ' · $' + (ru.cost || 0).toFixed(4) + ' · ' + (ru.steps || 0) + ' req') + (r.reason ? ' · ' + workersEsc(r.reason) : '') +
                 (r.queuePosition && r.state === 'STARTING' ? ' <button class="worker-cancel-run" data-worker-action="cancel-run" data-run-id="' + workersEsc(r.runId) + '" title="Cancel before it starts">Cancel</button>' : '') + '</td></tr>';
             rows += (events && events.length)
                 ? traceRowsHtml(events, { openIds: openIds, now: now })
                 : '<tr><td colspan="7" class="obs-na">' + (r.queuePosition ? 'Queued' : events ? 'No events yet' : 'Loading trace…') + '</td></tr>';
         });
-        return '<table class="observability-table observability-model-table obs-timeline-table worker-trace">' + TRACE_HEAD + '<tbody>' + rows + '</tbody></table>';
+        return '<table class="observability-table observability-model-table obs-timeline-table worker-trace">' + (worker.cloud ? '' : TRACE_HEAD) + '<tbody>' + rows + '</tbody></table>';
     }
     function workerShortModel(model) { return String(model || '').split('/').pop(); }
     function workerIsWarm(w, now) { return !w.expired && w.state !== 'RUNNING' && w.state !== 'STARTING' && w.state !== 'WAITING_APPROVAL' && w.cacheExpiresAt > now; }
@@ -5624,7 +5624,7 @@
         var dollars = all.reduce(function (n, w) { return n + ((w.usage && w.usage.cost) || 0); }, 0);
         return '<div class="workers-summary"><strong>' + live.length + '</strong> live worker' + (live.length === 1 ? '' : 's') +
             ' &middot; ' + running + ' running &middot; ' + queued + ' queued &middot; ' + warm + ' warm &middot; ' + (all.length - live.length) + ' completed' +
-            ' &middot; <strong class="health-cost">$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2) + '</strong> spent</div>';
+            (all.some(function (w) { return !w.cloud; }) ? ' &middot; <strong class="health-cost">$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2) + '</strong> spent' : '') + '</div>';
     }
     // Only what the cards cannot show: context bloat, cache misses, and a cheaper model per the eval scoreboard.
     function workerCostTips(state) {
@@ -5664,6 +5664,7 @@
     }
     function renderWorkersHtml(state, filter, expanded, showExpired, openIds, traces) {
         if (!state) return '<div class="workers-empty">Worker runtime not available.</div>';
+        state = Object.assign({}, state, { workers: (state.workers || []).concat(state.cloudWorkers || []) });
         var server = state.server || { state: 'NOT_ATTACHED', endpoint: '' };
         var html = workersSummaryHtml(state) + '<div class="workers-server workers-server-' + workersEsc(server.state).toLowerCase() + '">' +
             (server.state === 'ATTACHED' ? 'Shared OpenCode server · ' + workersEsc(server.endpoint) : 'Shared OpenCode server not running · starts with the first worker') + '</div>' +
@@ -5702,7 +5703,7 @@
                 '<span class="worker-id">' + workersEsc(w.workerId) + '</span>' +
                 '</div>' +
                 '<div class="worker-selection">' + workersEsc(w.adapter) + ' · ' + workersEsc(w.model) + ' · ' + workersEsc(w.thinking) + '</div>' +
-                workerBannerHtml(w, state.generatedAt) +
+                (w.cloud ? '' : workerBannerHtml(w, state.generatedAt)) +
                 (w.knowledge ? '<div class="worker-knowledge" title="What this worker says it knows; the orchestrator uses it to pick a worker to reuse">' + workersEsc(w.knowledge) + '</div>' : '') +
                 (w.blocker ? '<div class="worker-blocker">' + workersEsc(w.blocker) + '</div>' : '') +
                 '<div class="worker-actions">' +
@@ -5711,7 +5712,7 @@
                 '<button class="worker-trace-btn" data-worker-action="trace" data-worker-id="' + workersEsc(w.workerId) + '">' + (open ? 'Hide' : 'Trace') + ' (' + (w.runs || []).length + ')</button>' +
                 '</div>';
             if (open) {
-                html += workerTraceHtml(w, openIds || {}, state.generatedAt, traces && traces[w.workerId]);
+                html += workerTraceHtml(w, openIds || {}, state.generatedAt, w.trace || (traces && traces[w.workerId]));
             }
             html += '</div>';
         });
@@ -5818,7 +5819,7 @@
             } else {
                 var id = btn.getAttribute('data-worker-id');
                 workersExpanded[id] = !workersExpanded[id];
-                if (workersExpanded[id]) vscode.postMessage({ type: 'requestWorkerTrace', workerId: id });
+                if (workersExpanded[id] && id.indexOf('cloud:') !== 0) vscode.postMessage({ type: 'requestWorkerTrace', workerId: id });
                 paintWorkers();
             }
         });

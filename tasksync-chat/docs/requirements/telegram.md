@@ -19,3 +19,4 @@
 | R-TELE-15 | Whatever happens in VS Code reaches Telegram so the reviewer can monitor remotely. | "I should get whatever is happening in vscode in telegram and monitor remotely." (2026-10-08) | gap |
 | R-TELE-17 | The Commentary feed reaches Telegram live, so the reviewer sees what the agent is doing, not only the periodic status. | "If we send commentary, that oeuld be great." (2026-10-08) | test-telegram-live-commentary.cjs EV-048 |
 | R-TELE-16 | Telegram shows each turn's cost and the workers' share, requests, input tokens, output tokens, cache percent, worker count and details, and efficiency score. | "Observability of workers should be visible to me in shared banner and telegram." (2026-10-08) | gap |
+| R-TELE-18 | Telegram can be switched off entirely, and Webex then delivers every row above through the same code path. | "can we turn telegram off and use webex instead? … Same thing should just work for webex also." (2026-10-08) | gap |

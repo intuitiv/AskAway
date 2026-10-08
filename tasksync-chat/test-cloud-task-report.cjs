@@ -81,17 +81,18 @@ function signals(index, taskIndex = 0) { const p = structuredClone(fixture.polls
         }, async text(args) { if (args[0] === 'pr') { posted++; return pr + '#issuecomment-99'; } return ''; } },
         async git(args) { return args[0] === 'rev-parse' ? 'abcdef0123456789' : ''; },
         async write() {}, async temporary() { return '/fixture/tmp'; }, async cleanup() {}, knownValues() { return []; } };
-    await pollPr('/fixture', pr, io); assert.equal(stored[0].state, 'Checks passed');
+    const pollFixture = () => pollPr('/fixture', pr, io, ['Copilot'], Date.parse(fixture.polls[current].at), 1);
+    await pollFixture(); assert.equal(stored[0].state, 'Checks passed');
     const held = run(1); held.state = 'Held'; held.packetSha = ''; held.commentId = ''; stored.push(held);
     const unrequested = run(1); unrequested.taskId = 'NEVER'; unrequested.state = 'Held'; unrequested.request.explicitRequest = false; stored.push(unrequested);
-    current = 1; await pollPr('/fixture', pr, io);
+    current = 1; await pollFixture();
     assert.equal(stored[0].state, 'Needs review'); assert.equal(stored[1].state, 'Queued'); assert.equal(posted, 1);
     // Replay the second actual session with its actual request identity and ancestry.
-    stored[1] = run(1); current = 2; await pollPr('/fixture', pr, io);
+    stored[1] = run(1); current = 2; await pollFixture();
     assert.equal(stored[1].state, 'Needs review'); assert.equal(stored[2].state, 'Held'); assert.equal(posted, 1);
-    const history = stored[0].history.length; await pollPr('/fixture', pr, io);
+    const history = stored[0].history.length; await pollFixture();
     assert.equal(stored[0].history.length, history); assert.equal(posted, 1);
     assert.ok(calls.every(args => args.at(-1) === 'repos/' + fixture.repo || args.at(-1).startsWith('repos/' + fixture.repo + '/'))); passed++;
-    stored = []; const before = calls.length; await pollPr('/fixture', pr, io); assert.equal(calls.length, before); passed++;
+    stored = []; const before = calls.length; await pollFixture(); assert.equal(calls.length, before); passed++;
     console.log(`test-cloud-task-report: ${passed} passed, 0 failed (PR #1608 fixture replay)`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

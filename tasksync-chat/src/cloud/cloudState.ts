@@ -27,6 +27,7 @@ export function deriveCloudState(run: CloudRun, signals: PrSignals, agentLogins 
     const start = events.find(event => event.event === 'copilot_work_started');
     const eyes = signals.reactions.find(reaction => bot(reaction.user) && reaction.content === 'eyes' && reaction.created_at >= run.queuedAt);
     if (start) { next.startedAt = start.created_at; record('Working', start.created_at, `copilot_work_started:${start.id}`); }
+    else if (eyes && !next.startedAt) { next.startedAt = eyes.created_at; }
     if (eyes) { record('Working', eyes.created_at, 'eyes'); }
     const finish = events.find(event => event.event === 'copilot_work_finished');
     if (finish) { next.endedAt = finish.created_at; record(next.state, finish.created_at, `copilot_work_finished:${finish.id}`); }
@@ -84,6 +85,17 @@ export function deriveCloudState(run: CloudRun, signals: PrSignals, agentLogins 
         record('Needs review', comment.created_at, `report:${comment.html_url}`);
     }
     next.state = next.report ? 'Needs review' : state;
+    if (!next.report && next.state !== 'Needs review') {
+        const elapsed = Date.parse(signals.at) - Date.parse(next.startedAt ?? run.queuedAt);
+        if (!next.startedAt && !eyes && !start && elapsed >= 10 * 60000) {
+            next.state = 'No response';
+            next.decisionNeeded = 'No acknowledgment after 10 minutes; Copilot cloud agent may be disabled. Retry requires an explicit reviewer request.';
+        } else if (elapsed >= Math.min(run.request.task.ceilingMinutes ?? 50, 59) * 60000) {
+            next.state = 'Timed out';
+            next.decisionNeeded = 'Cloud run duration ceiling reached; retry requires an explicit reviewer request.';
+        }
+        if (['No response', 'Timed out'].includes(next.state)) { next.endedAt = signals.at; }
+    }
     if (next.state !== run.state) { record(next.state, signals.at, `state:${next.state}`); }
     return next;
 }

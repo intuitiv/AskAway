@@ -22,6 +22,8 @@ import { commentaryKey, commentaryView, CommentaryView } from '../commentary/com
 import { noteRequestStart } from '../observability/cacheClock';
 import { LogCursor, readLogIncrement } from '../observability/logCursor';
 import type { TurnActivity } from '../commentary/telegramLive';
+import { remoteDigestPoster } from '../commentary/telegramLive';
+import { CloudDigestScheduler } from '../cloud/cloudDigest';
 import { LongRunHandoff } from '../specs/handoffThreshold';
 import { HandoffNotifier } from '../services/handoffNotifier';
 import { sharedCommentaryStore, workerSpendSince } from '../workers/workerHost';
@@ -427,7 +429,7 @@ const GLOBAL_FOLD_VERSION = 4;
 // Message types
 type ToWebviewMessage =
     | { type: 'specsData'; data: SpecScanResult }
-    | { type: 'workersState'; data: WorkersState | null }
+    | { type: 'workersState'; data: (WorkersState & { cloudWorkers?: Awaited<ReturnType<CloudSpecsController['workers']>> }) | null }
     | { type: 'workerTrace'; data: WorkerTrace }
     | { type: 'commentaryState'; data: CommentaryView | null }
     | { type: 'availabilityState'; data: AvailabilityState | null }
@@ -913,6 +915,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     public setTelegramService(service: any): void {
         this._telegramService = service;
+        this._startCloudDigest();
         // Wire up response callback so Telegram replies resolve pending requests
         if (service && typeof service.setResponseCallback === 'function') {
             service.setResponseCallback(async (taskId: string, response: string, user: string, attachments?: AttachmentInfo[]) => {
@@ -1476,11 +1479,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._workersStateSource = source;
     }
 
+    private _cloudWorkers: Awaited<ReturnType<CloudSpecsController['workers']>> = [];
+
     private _refreshWorkersState(): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const data = root && this._workersStateSource ? this._workersStateSource(root) : null;
         if (data) { data.turnWorkerIds = this._workerSpend().workerIds; }
-        this._broadcast({ type: 'workersState', data });
+        this._broadcast({ type: 'workersState', data: data ? { ...data, cloudWorkers: this._cloudWorkers ?? [] } : null });
     }
 
     private _workerTraceSource: ((workspacePath: string, workerId: string) => Promise<WorkerTrace>) | undefined;
@@ -3981,10 +3986,28 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             }
         }
         this._broadcast({ type: 'specsData', data: await this._cloudSpecs.refresh(root, data) });
+        this._cloudWorkers = await this._cloudSpecs.workers(root);
+        this._refreshWorkersState();
         this._scheduleCloudPoll(root);
     }
 
     private _cloudSpecs = new CloudSpecsController();
+    private _cloudDigest = new CloudDigestScheduler();
+    private _cloudDigestTimer: NodeJS.Timeout | undefined;
+
+    private _startCloudDigest(): void {
+        if (this._cloudDigestTimer) { return; }
+        const tick = async () => {
+            const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const config = vscode.workspace.getConfiguration('askaway.cloud');
+            if (!root || !config.get<boolean>('enabled', false)) { return; }
+            try {
+                await this._cloudDigest.tick(root, config.get<string>('digestTime', '08:00'), remoteDigestPoster(() => this._telegramService));
+            } catch { console.warn('Cloud digest delivery failed'); }
+        };
+        void tick();
+        this._cloudDigestTimer = setInterval(() => { void tick(); }, 60000);
+    }
     private _cloudPollTimer: NodeJS.Timeout | undefined;
 
     private async _queueCloudTask(slug: string, taskId: string): Promise<void> {
@@ -4019,13 +4042,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         if (this._cloudPollTimer) { clearTimeout(this._cloudPollTimer); this._cloudPollTimer = undefined; }
         const config = vscode.workspace.getConfiguration('askaway.cloud');
         if (!shouldPollCloud(config.get<boolean>('enabled', false), await defaultIO.load(root))) { return; }
+        const delay = await this._cloudSpecs.pollDelay(root, config.get<number>('pollMinutes', 3));
         this._cloudPollTimer = setTimeout(async () => {
             this._cloudPollTimer = undefined;
             const current = vscode.workspace.getConfiguration('askaway.cloud');
-            try { await this._cloudSpecs.poll(root, current.get<boolean>('enabled', false), current.get<string[]>('agentLogins', ['Copilot'])); }
+            try { await this._cloudSpecs.poll(root, current.get<boolean>('enabled', false), current.get<string[]>('agentLogins', ['Copilot']), current.get<number>('pollMinutes', 3)); }
             catch (error) { console.warn('Cloud poll failed:', (error as Error).message); }
             await this._refreshSpecs();
-        }, Math.max(1, config.get<number>('pollMinutes', 1)) * 60000);
+        }, delay);
     }
 
     private _specsWatcher: vscode.FileSystemWatcher | undefined;
@@ -4214,6 +4238,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      * Clean up resources when the provider is disposed
      */
     public dispose(): void {
+        if (this._cloudDigestTimer) { clearInterval(this._cloudDigestTimer); }
         if (this._cloudPollTimer) { clearTimeout(this._cloudPollTimer); }
         // Save session history BEFORE clearing arrays
         // This ensures tool calls are persisted when VS Code reloads

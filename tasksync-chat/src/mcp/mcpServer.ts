@@ -17,6 +17,7 @@ import { OpenCodeWorkerRuntime } from '../workers/openCodeRuntime';
 import { fetchSessionMessages, observeWorkers, restartSharedServer, sharedCommentaryStore, sharedWorkerRuntime, sharedWorkerRuntimeReady } from '../workers/workerHost';
 import { cancelQueuedRun, loadWorkerTrace, projectWorkersState } from '../workers/workersState';
 import { registerToolDefinitions, registerWorkerTools, ToolDefinition } from '../workers/workerTools';
+import { asksTool } from '../specs/askTool';
 import { commentaryToolDefinitions } from '../commentary/commentary';
 import { registerVsCodeToolBridge, registerWindow } from '../workers/vscodeToolBridge';
 import { loadEvalScoreboard } from '../workers/evalScoreboard';
@@ -295,6 +296,7 @@ export class McpServerManager {
             registerWorkerTools((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), () => sharedWorkerRuntimeReady(gradleWorkspaceRoot), gradleWorkspaceRoot);
             registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), commentaryToolDefinitions(sharedCommentaryStore, ''));
             if (this.memory) registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), [this.memory]);
+            registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), [asksTool(gradleWorkspaceRoot)]);
             registerVsCodeToolBridge((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), { selfPort: this.port });
                 return mcpServer;
             };

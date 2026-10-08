@@ -32,3 +32,4 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0015](0015-command-surface.md) | The `/sk.*` and recurring commands are the command surface | G15 | Accepted |
 | [0016](0016-consistent-experience.md) | One shared component per kind of thing, for a consistent experience | G16 | Accepted |
 | [0017](0017-never-break-a-requirement.md) | Never break a stated requirement; the validator decides from these documents | G17 | Proposed |
+| [0018](0018-webex-replaces-telegram.md) | Webex replaces Telegram as the remote channel, with the same features | G7 | Proposed |

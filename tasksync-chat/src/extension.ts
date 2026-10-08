@@ -8,6 +8,8 @@ import { registerTools } from './tools';
 import { ASKWAY_BUILD_AGENT_FILE, ASKWAY_BUILD_AGENT_CONTENT } from './agents/askawayBuildAgent';
 import { memoryTool } from './validator/memoryTool';
 import { validatorTool } from './validator/validatorTool';
+import { asksTool } from './specs/askTool';
+import { registerLmToolDefinitions } from './workers/lmTools';
 import { LiveDigest } from './validator/liveDigest';
 import { CommentaryWatch } from './validator/commentaryWatch';
 import { ValidatorObserver, validatorWorkerRun } from './validator/observer';
@@ -1056,6 +1058,7 @@ export function activate(context: vscode.ExtensionContext) {
         () => { sharedCommentaryStore().postValidator(memoryProject, { text: 'Validator trigger failed; agent flow continued.' }); });
         provider.setValidatorTurnStart((text, id) => { void triggers.turnStart(triggers.previousFinal(), text, id); });
         const memory = memoryTool(getMemory, memoryProject, (query, agentId) => triggers.memoryCall(query, agentId));
+        context.subscriptions.push(...registerLmToolDefinitions([asksTool(memoryProject)]));
         registerTools(context, provider, memory, validatorTool(text => triggers.validatorCall(text), {
             workspace: memoryProject,
             enabled: () => vscode.workspace.getConfiguration('askaway').get<boolean>('validator.live', false),
