@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { CONFIG_NAMESPACE } from '../constants/branding';
 import type { AttachmentInfo } from '../webview/webviewProvider';
 import { isTelegramHandoffTaskId } from './telegramConversationReply';
+import type { RemoteChannel, RemoteDestination, RemoteMessageId, RemoteReply } from './remoteChannel';
 
 // ── Interfaces ─────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ export function getTelegramPollDelaySeconds(elapsedMs: number, steadyIntervalSec
 
 // ── Service ────────────────────────────────────────────────────
 
-export class TelegramService {
+export class TelegramService implements RemoteChannel {
     private _out: vscode.OutputChannel | undefined;
     private _enabled: boolean = false;
     private _botToken: string | undefined;
@@ -2073,7 +2074,8 @@ export class TelegramService {
         return sent.ok ? sent.messageId : undefined;
     }
 
-    public async editLive(messageId: number, html: string): Promise<boolean> {
+    public async editLive(messageId: RemoteMessageId, html: string): Promise<boolean> {
+        messageId = Number(messageId);
         if (!this.isConfigured()) { return false; }
         const target = this._editRedirect.get(messageId) ?? messageId;
         const edited = await this._postTelegram('editMessageText', { chat_id: this._chatId, message_id: target, text: html, parse_mode: 'HTML' });
@@ -2112,7 +2114,8 @@ export class TelegramService {
     }
 
     /** The final response replaces the turn's live message and is tracked for replies, like a posted handoff. */
-    public async finishLive(liveMessageId: number, headHtml: string, finalMarkdown: string, replyTaskId: string): Promise<boolean> {
+    public async finishLive(liveMessageId: RemoteMessageId, headHtml: string, finalMarkdown: string, replyTaskId: string): Promise<boolean> {
+        liveMessageId = Number(liveMessageId);
         if (!this.isConfigured()) { return false; }
         const finalHtml = this._boundedHtml(finalMarkdown, Math.max(200, 4000 - headHtml.length - 2));
         const text = `${headHtml}\n\n${finalHtml}`;
@@ -2153,6 +2156,19 @@ export class TelegramService {
     /** With live turn messages on, the live message is the status: no separate heartbeat or "processing" message. */
     public setLiveTurns(enabled: () => boolean): void {
         this._liveTurns = enabled;
+    }
+    public onReply(callback: RemoteReply): void { this.setResponseCallback(callback); }
+    public async destination(workspace = this._workspaceName(), general = false): Promise<RemoteDestination | undefined> {
+        if (!this.isConfigured()) { return undefined; }
+        return { id: general ? this._chatId! : await this._getTopicId(workspace) ?? this._chatId!, general };
+    }
+    public async sendText(formatted: string, fallback: string, destination?: RemoteDestination): Promise<RemoteMessageId | undefined> {
+        if (!this.isConfigured()) { return undefined; }
+        if (!destination) { return this.sendLive(formatted || this._escapeHtml(fallback)); }
+        const body: Record<string, unknown> = { chat_id: this._chatId, text: formatted || this._escapeHtml(fallback), parse_mode: 'HTML', disable_notification: true };
+        if (!destination.general && typeof destination.id === 'number') { body.message_thread_id = destination.id; }
+        const sent = await this._postTelegram('sendMessage', body);
+        return sent.ok ? sent.messageId : undefined;
     }
 
     public async sendStatusUpdate(status: string): Promise<void> {

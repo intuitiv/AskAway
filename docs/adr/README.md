@@ -34,3 +34,4 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0017](0017-never-break-a-requirement.md) | Never break a stated requirement; the validator decides from these documents | G17 | Proposed |
 | [0018](0018-webex-replaces-telegram.md) | Webex replaces Telegram as the remote channel, with the same features | G7 | Accepted |
 | [0019](0019-cloud-task-done-shares-pr-link.md) | A finished cloud task shares its PR link; the reviewer finishes it by hand | G9 | Proposed |
+| [0020](0020-webex-browser-oauth-manual-callback.md) | Webex browser OAuth uses the confirmed localhost redirect and manual return through a local masked prompt | G7 | Proposed |

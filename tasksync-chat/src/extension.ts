@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
+import { registerWebexAuthCommands } from './services/webexAuth';
 import { registerTools } from './tools';
 import { ASKWAY_BUILD_AGENT_FILE, ASKWAY_BUILD_AGENT_CONTENT } from './agents/askawayBuildAgent';
 import { memoryTool } from './validator/memoryTool';
@@ -1244,6 +1245,7 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         // Webex/Telegram commands (services loaded in deferred block)
+        registerWebexAuthCommands(context, async () => { await webviewProvider?.getWebexService()?.reloadConfig(); });
         context.subscriptions.push(
             vscode.commands.registerCommand('askaway.webexDiscover', async () => {
                 const folder = vscode.workspace.workspaceFolders?.[0];
@@ -1253,73 +1255,6 @@ export function activate(context: vscode.ExtensionContext) {
                 await webexDiscover(new WebexAuth(context.secrets), { fsPath: folder.uri.fsPath, name: folder.name }, {
                     refresh: () => webviewProvider?.getWebexService()?.refreshAccessToken() ?? Promise.resolve(undefined)
                 });
-            }),
-            vscode.commands.registerCommand('askaway.setWebexToken', async () => {
-                const { WebexAuth, setWebexToken } = await import('./services/webexAuth');
-                if (await setWebexToken(new WebexAuth(context.secrets))) {
-                    await webviewProvider?.getWebexService()?.reloadConfig();
-                }
-            }),
-            vscode.commands.registerCommand('askaway.authorizeWebex', async () => {
-                const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-                const clientId = config.get<string>('webex.clientId', '');
-                if (!clientId) {
-                    const action = await vscode.window.showWarningMessage('AskAway: Please set your Webex Client ID first.', 'Open Settings');
-                    if (action === 'Open Settings') { vscode.commands.executeCommand('workbench.action.openSettings', 'askaway.webex.clientId'); }
-                    return;
-                }
-                const clientSecret = config.get<string>('webex.clientSecret', '');
-                if (!clientSecret) {
-                    const action = await vscode.window.showWarningMessage('AskAway: Please set your Webex Client Secret first.', 'Open Settings');
-                    if (action === 'Open Settings') { vscode.commands.executeCommand('workbench.action.openSettings', 'askaway.webex.clientSecret'); }
-                    return;
-                }
-                const http = require('http');
-                const callbackPort = 54321;
-                const redirectUri = `http://localhost:${callbackPort}/callback`;
-                const scopes = 'spark%3Aall';
-                const authUrl = `https://webexapis.com/v1/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}`;
-                const server = http.createServer(async (req: any, res: any) => {
-                    const url = new URL(req.url, `http://localhost:${callbackPort}`);
-                    if (url.pathname === '/callback') {
-                        const code = url.searchParams.get('code');
-                        if (code) {
-                            res.writeHead(200, { 'Content-Type': 'text/html' });
-                            res.end('<html><body><h2>AskAway: Webex authorized!</h2><p>You can close this tab.</p></body></html>');
-                            try {
-                                const tokenResp = await fetch('https://webexapis.com/v1/access_token', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                                    body: new URLSearchParams({
-                                        grant_type: 'authorization_code', client_id: clientId,
-                                        client_secret: clientSecret, code, redirect_uri: redirectUri
-                                    }).toString()
-                                });
-                                if (tokenResp.ok) {
-                                    const data = await tokenResp.json() as any;
-                                    await config.update('webex.accessToken', data.access_token, vscode.ConfigurationTarget.Global);
-                                    await config.update('webex.refreshToken', data.refresh_token, vscode.ConfigurationTarget.Global);
-                                    vscode.window.showInformationMessage(`AskAway: Webex authorized! Token expires in ${Math.round(data.expires_in / 3600)}h.`);
-                                    webviewProvider?.getWebexService()?.reloadConfig();
-                                } else {
-                                    vscode.window.showErrorMessage(`AskAway: Token exchange failed: ${await tokenResp.text()}`);
-                                }
-                            } catch (e: any) {
-                                vscode.window.showErrorMessage(`AskAway: OAuth error: ${e.message}`);
-                            }
-                        } else {
-                            res.writeHead(400, { 'Content-Type': 'text/html' });
-                            res.end(`<html><body><h2>Authorization failed: ${url.searchParams.get('error') || 'Unknown error'}</h2></body></html>`);
-                        }
-                        setTimeout(() => server.close(), 1000);
-                    }
-                });
-                server.listen(callbackPort, () => {
-                    vscode.env.openExternal(vscode.Uri.parse(authUrl));
-                    vscode.window.showInformationMessage('AskAway: Opening Webex authorization page...');
-                });
-                server.on('error', (err: any) => { vscode.window.showErrorMessage(`AskAway: OAuth callback error: ${err.message}`); });
-                setTimeout(() => server.close(), 120000);
             }),
             vscode.commands.registerCommand('askaway.getTelegramChatId', async () => {
                 if (telegramServiceInstance) { await telegramServiceInstance.getChatId(); }

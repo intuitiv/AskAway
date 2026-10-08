@@ -3,7 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE } from '../constants/branding';
-import { WebexAuth, readWebexCredentials } from './webexAuth';
+import { WebexAuth, readWebexCredentials, isWebexToken } from './webexAuth';
+import type { RemoteChannel, RemoteDestination, RemoteMessageId, RemoteReply } from './remoteChannel';
 
 // ── Interfaces ─────────────────────────────────────────────────
 
@@ -33,7 +34,8 @@ const WEBEX_API = 'https://webexapis.com/v1';
 
 // ── Service ────────────────────────────────────────────────────
 
-export class WebexService {
+export class WebexService implements RemoteChannel {
+    private readonly _postedMessageIds = new Set<string>();
     private _enabled: boolean = false;
     private _accessToken: string | undefined;
     private _roomId: string | undefined;
@@ -61,8 +63,10 @@ export class WebexService {
     private _refreshToken: string | undefined;
 
     private _ready: Promise<void> = Promise.resolve();
+    private _refreshing: Promise<string | undefined> | undefined;
 
-    constructor(private logger?: vscode.OutputChannel, private auth?: WebexAuth, private credentialsFile?: string) {
+    constructor(private logger?: vscode.OutputChannel, private auth?: WebexAuth, private credentialsFile?: string,
+        private remoteOptions: { baseUrl?: string; wait?: (ms: number) => Promise<void> } = {}) {
         this._ready = this.reloadConfig();
     }
 
@@ -173,9 +177,89 @@ export class WebexService {
         this._onResponseReceived = callback;
     }
 
-    /** No-op stub — keeps parity with TelegramService.resolveTask so callers can use optional chaining symmetrically. */
-    public resolveTask(_taskId: string): void {
-        // Webex polling is message-driven; no active-task map to clean up.
+    public resolveTask(taskId: string): void {
+        this._activeTasks.delete(taskId);
+        if (!this._activeTasks.size) { this.stopPolling(); }
+    }
+    public onReply(callback: RemoteReply): void { this.setResponseCallback(callback); }
+    public async destination(workspace?: string, general = false): Promise<RemoteDestination | undefined> {
+        await this._ready;
+        if (!this._enabled || !this._accessToken) { return undefined; }
+        const root = workspace ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (root) {
+            const facts = JSON.parse(await fs.promises.readFile(path.join(root, '.askaway/webex-spaces.json'), 'utf8'));
+            const id = general ? facts.self.generalRoomId : facts.self.workspaceRoomId;
+            return id ? { id, general } : undefined;
+        }
+        return !general && this._roomId ? { id: this._roomId, general } : undefined;
+    }
+    private async remoteRequest(method: string, endpoint: string, body?: Record<string, unknown> | FormData): Promise<Response> {
+        const base = this.remoteOptions.baseUrl ?? WEBEX_API;
+        let authRetried = false;
+        for (let retry = 0; ; retry++) {
+            if (!this.isConfigured()) { throw new Error('Webex not configured.'); }
+            const multipart = body instanceof FormData;
+            const response = await fetch(`${base.replace(/\/$/, '')}/${endpoint}`, { method, redirect: 'error',
+                headers: { Authorization: `Bearer ${this._accessToken}`, ...(!multipart ? { 'Content-Type': 'application/json' } : {}) },
+                body: body ? multipart ? body : JSON.stringify(body) : undefined });
+            if (response.status === 401 && !authRetried) {
+                authRetried = true;
+                if (await this._refreshAccessToken()) { continue; }
+            }
+            if (response.status !== 429 || retry >= 3) { return response; }
+            const value = response.headers.get('Retry-After') ?? '1';
+            const seconds = Number(value);
+            const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
+            await (this.remoteOptions.wait ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(Number.isFinite(delay) ? Math.max(0, delay) : 1000);
+        }
+    }
+    public async sendText(formatted: string, fallback: string, destination?: RemoteDestination): Promise<RemoteMessageId | undefined> {
+        await this._ready;
+        if (!this.isConfigured()) { return undefined; }
+        try {
+            const roomId = String(destination?.id ?? this._roomId);
+            let response = await this.remoteRequest('POST', 'messages', { roomId, markdown: formatted, text: fallback });
+            if (response.status === 400) { response = await this.remoteRequest('POST', 'messages', { roomId, text: fallback }); }
+            if (!response.ok) { return undefined; }
+            const { id } = await response.json() as { id: string };
+            if (id) { this._postedMessageIds.add(id); }
+            return id;
+        } catch { return undefined; }
+    }
+    public async editLive(messageId: RemoteMessageId, formatted: string): Promise<boolean> {
+        if (!this.isConfigured()) { return false; }
+        try {
+            let response = await this.remoteRequest('PUT', `messages/${encodeURIComponent(String(messageId))}`, { roomId: this._roomId, markdown: formatted, text: formatted });
+            if (response.status === 400) { response = await this.remoteRequest('PUT', `messages/${encodeURIComponent(String(messageId))}`, { roomId: this._roomId, text: formatted }); }
+            return response.ok;
+        } catch { return false; }
+    }
+    public async finishLive(messageId: RemoteMessageId, head: string, markdown: string, taskId: string): Promise<boolean> {
+        const id = await this.sendText(`${head}\n\n${markdown}`, `${head}\n\n${markdown}`);
+        if (!id) { return false; }
+        try { await this.remoteRequest('DELETE', `messages/${encodeURIComponent(String(messageId))}`); } catch { /* Keep the live message if deletion is unavailable. */ }
+        this._activeTasks.set(taskId, { taskId, messageId: String(id), question: markdown, timestamp: Date.now() });
+        this.startPolling();
+        return true;
+    }
+    public async sendDocument(filePath: string, caption: string): Promise<boolean> {
+        if (!this.isConfigured()) { return false; }
+        try {
+            const form = new FormData();
+            form.set('roomId', this._roomId!); form.set('text', caption);
+            form.set('files', new Blob([new Uint8Array(await fs.promises.readFile(filePath))], { type: filePath.endsWith('.pdf') ? 'application/pdf' : 'text/markdown' }), path.basename(filePath));
+            const response = await this.remoteRequest('POST', 'messages', form);
+            if (!response.ok) { return false; }
+            const { id } = await response.json() as { id: string }; if (id) { this._postedMessageIds.add(id); }
+            return true;
+        } catch { return false; }
+    }
+    public async postQuestion(taskId: string, question: string, choices?: string[]): Promise<void> {
+        const id = await this.sendText([question, ...(choices ?? [])].join('\n'), question);
+        if (!id) { return; }
+        this._activeTasks.clear();
+        this._activeTasks.set(taskId, { taskId, messageId: String(id), question, choices, timestamp: Date.now() });
+        this.startPolling();
     }
 
     private _headers(): Record<string, string> {
@@ -189,17 +273,30 @@ export class WebexService {
 
     /**
      * Refresh the access token using OAuth refresh_token grant.
-     * Also persists the new refresh_token to settings (Webex issues a new one each time).
+     * Persists rotated credentials through the authentication boundary.
      */
     private async _refreshAccessToken(): Promise<string | undefined> {
+        if (!this._refreshing) {
+            this._refreshing = this._performRefresh().finally(() => { this._refreshing = undefined; });
+        }
+        return this._refreshing;
+    }
+
+    private async _performRefresh(): Promise<string | undefined> {
         if (!this._clientId || !this._clientSecret || !this._refreshToken) {
             return undefined;
         }
 
         try {
+            const clientId = this._clientId;
+            const clientSecret = this._clientSecret;
+            const refreshToken = this._refreshToken;
+            const accessToken = this._accessToken;
+            const credentialRevision = this.auth?.revision;
             console.log('AskAway/Webex: Refreshing access token via OAuth...');
             const resp = await fetch('https://webexapis.com/v1/access_token', {
                 method: 'POST',
+                redirect: 'error', signal: AbortSignal.timeout(30000),
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({
                     grant_type: 'refresh_token',
@@ -219,19 +316,32 @@ export class WebexService {
                 refresh_token: string;
                 expires_in: number;
             };
+            if (!isWebexToken(data.access_token) || (data.refresh_token !== undefined && !isWebexToken(data.refresh_token))) {
+                throw new Error('Invalid Webex refresh response.');
+            }
+            if (clientId !== this._clientId || clientSecret !== this._clientSecret || refreshToken !== this._refreshToken || accessToken !== this._accessToken) {
+                return this._accessToken;
+            }
+            if (this.auth) {
+                const committed = await this.auth.storeIfCurrent(data.access_token, data.refresh_token, credentialRevision);
+                if (!committed || this.auth.revision !== credentialRevision! + 1 || clientId !== this._clientId || clientSecret !== this._clientSecret ||
+                    (this._refreshToken !== refreshToken && this._refreshToken !== data.refresh_token) ||
+                    (this._accessToken !== accessToken && this._accessToken !== data.access_token)) {
+                    return this._accessToken;
+                }
+            }
 
             // Update in-memory token
             this._accessToken = data.access_token;
             this._myPersonId = undefined; // re-cache identity
 
-            await this.auth?.store(data.access_token, data.refresh_token);
             // Webex rotates the refresh token.
             if (data.refresh_token && data.refresh_token !== this._refreshToken) {
                 this._refreshToken = data.refresh_token;
             }
 
             // Also save to token file if configured
-            if (this._tokenFilePath) {
+            if (!this.auth && this._tokenFilePath) {
                 try {
                     const resolved = this._tokenFilePath.startsWith('~')
                         ? path.join(os.homedir(), this._tokenFilePath.slice(1))
@@ -245,7 +355,7 @@ export class WebexService {
             }
 
             this._tokenExpiredNotified = false;
-            console.log(`AskAway/Webex: Token refreshed successfully (expires in ${data.expires_in}s)`);
+            console.log('AskAway/Webex: Token refreshed successfully.');
             return data.access_token;
         } catch (e) {
             console.error('AskAway/Webex: Token refresh error.');
@@ -380,11 +490,7 @@ export class WebexService {
         await this._ready;
         if (!this.isConfigured() || !markdown.trim()) { return false; }
         try {
-            const resp = await fetch(`${WEBEX_API}/messages`, {
-                method: 'POST',
-                headers: this._headers(),
-                body: JSON.stringify({ roomId: this._roomId, markdown, text: fallback })
-            });
+            const resp = await this.remoteRequest('POST', 'messages', { roomId: this._roomId, markdown, text: fallback });
             if (!resp.ok) {
                 this.logger?.appendLine(`AskAway/Webex: postText failed ${resp.status}`);
                 return false;
@@ -554,6 +660,7 @@ export class WebexService {
             }
 
             const msg = await response.json() as any;
+            if (msg.id) { this._postedMessageIds.add(msg.id); }
             console.log(`AskAway/Webex: Posted task ${taskId} (msgId: ${msg.id})`);
 
             this._activeTasks.set(taskId, {
@@ -660,7 +767,7 @@ export class WebexService {
             try {
                 const url = `${WEBEX_API}/messages?roomId=${this._roomId}&parentId=${task.messageId}&max=10`;
                 console.log(`AskAway/Webex: Polling URL: ${url}`);
-                const resp = await fetch(url, { headers: this._headers() });
+                const resp = await this.remoteRequest('GET', `messages?roomId=${encodeURIComponent(this._roomId!)}&parentId=${encodeURIComponent(task.messageId)}&max=10`);
 
                 if (!resp.ok) { 
                     console.log(`AskAway/Webex: Poll failed ${resp.status} ${resp.statusText}`);
@@ -681,7 +788,7 @@ export class WebexService {
                 console.log(`AskAway/Webex: Found ${replies.length} replies for task ${taskId}`);
 
                 for (const reply of replies) {
-                    if (this._processedMsgIds.has(reply.id)) { continue; }
+                    if (this._processedMsgIds.has(reply.id) || this._postedMessageIds.has(reply.id)) { continue; }
 
                     // Cap processed IDs to prevent memory leak (keep latest 500)
                     if (this._processedMsgIds.size > 500) {

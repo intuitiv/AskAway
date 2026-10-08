@@ -77,6 +77,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - The reviewer can respond to VS Code from Telegram. This already works (2026-10-08).
 - His org flagged Telegram: Telegram is switched off, and Webex becomes the remote channel with the same features (2026-10-08). Design choices are open question 11.
 - Webex decisions (2026-10-08): the Telegram code stays, toggled off; the token is set through a command; replies are polled (no webhook, the laptop is never exposed); team `self` gets one space per workspace, and its General space plays the role of Telegram's General; share-with-me sends documents to self.General instead of Telegram.
+- Webex OAuth confirmation (2026-10-08): the command opens fresh browser authorization with redirect `http://localhost:5000/callback`; the reviewer returns the full redirected URL through a local masked VS Code prompt, never chat. No local listener; stored access/refresh tokens are reused and refreshed when needed. See [proposed ADR 0020](docs/adr/0020-webex-browser-oauth-manual-callback.md) and spec 009 T024–T028; implementation/testing remain open.
 - Decision: [ADR 0007](docs/adr/0007-telegram-is-a-remote-control.md), [ADR 0018](docs/adr/0018-webex-replaces-telegram.md) · Requirements: [telegram.md](tasksync-chat/docs/requirements/telegram.md) · Spec: [009](specs/009-webex-remote-channel/spec.md)
 
 ### G8 Commentary shows what the agent is doing
@@ -163,6 +164,10 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 ## 4. Reviewer's words, verbatim
 
 ### 2026-10-08
+
+> With client id and secret from ~/.webex.md, when i run **AskAway: Set Webex Token**
+> you should open url and capture token and refresh token. I think 
+> once they are generated you can store refresh token and auth token. use them when needed.
 
 > I want to call out what i want out of the features and want to write them down at repo level so that that will act as a guidelines or requrements or features or something.
 > ELaborate the below ones with specs and other docs. And create ADRs and requirements or any file so that we have single place what i want, ultimately.
@@ -300,3 +305,8 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > 006 T021: For cloud, may be you can share PR link once that task is done so that i'll review and manually do stuff from it
 >
 > ~/.webex.md file has client id and secret. and other stuff.
+
+### 2026-10-08, Webex OAuth confirmation
+
+> http://localhost:5000/callback is redirect url
+> COmmand should refresh main token, by opening url in browser and all. I'll do auth in the browser and give back redirected url, from that you can do the rest

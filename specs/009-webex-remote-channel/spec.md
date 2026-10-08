@@ -32,20 +32,31 @@ Webex has no long-poll endpoint: use outbound reply polling with backoff, not a 
 
 ## User Scenarios & Testing *(mandatory)*
 
+### Session 2026-10-08 — confirmed browser OAuth
+
+Reviewer verbatim (GOALS.md, Webex OAuth confirmation):
+
+> http://localhost:5000/callback is redirect url
+> COmmand should refresh main token, by opening url in browser and all. I'll do auth in the browser and give back redirected url, from that you can do the rest
+
+[Proposed ADR 0020](../../docs/adr/0020-webex-browser-oauth-manual-callback.md) amends authentication only; ADR 0018 remains Accepted. Callback POC and reviewer confirmation are done, not implementation/testing. The full return URL belongs only in a local masked VS Code prompt, NEVER chat. No listener runs: the browser may show connection refused at localhost; copy its full address-bar URL into that prompt.
+
 ### User Story 1 - Set a token and discover destinations safely (Priority: P1)
 
-The reviewer runs "AskAway: Set Webex Token", enters the token in a masked command prompt, and discovers team and space identifiers without placing credentials in chat, settings or the discovery file. SecretStorage holds the token; the macOS Keychain mirror lets share-with-me use it. Discovery writes non-secret metadata to `.askaway/webex-spaces.json`.
+The reviewer runs "AskAway: Set Webex Token", ~~enters the token in a masked command prompt~~ completes fresh browser OAuth and pastes the full redirected URL into a local masked VS Code prompt (superseded by the 2026-10-08 confirmation above). The command privately reads integration credentials from `~/.webex.md`, uses exactly `http://localhost:5000/callback`, validates the returned URL and state, exchanges the code, and securely stores access and refresh tokens. No local listener runs. SecretStorage holds both tokens; the macOS Keychain access-token mirror lets share-with-me use it. Discovery writes only non-secret team/space metadata to `.askaway/webex-spaces.json`.
 
 **Why this priority**: Safe authentication and known destinations are the smallest usable foundation for sending anything to Webex.
 
-**Independent Test**: Run `tasksync-chat/test-webex-token-command.cjs` and `tasksync-chat/test-webex-discover.cjs` with captured SecretStorage, Keychain and paginated Webex responses; confirm command storage, cancellation, non-secret discovery and no credential leakage.
+**Independent Test**: Extend existing `tasksync-chat/test-webex-token-command.cjs` from the caller's view for fresh browser opening, exact redirect, no listener, masked URL return, state/URL rejection, code exchange, storage, cancellation and no secret leakage; run it and `tasksync-chat/test-webex-discover.cjs` with fake storage/API boundaries. Builder and independent gates must pass before closing OAuth tasks.
 
 **Acceptance Scenarios**:
 
-1. **Given** no stored token, **When** the reviewer submits the masked command prompt, **Then** the token enters SecretStorage and the macOS Keychain mirror, never settings, chat, logs or `.askaway/webex-spaces.json`.
+1. **Given** absent or existing stored tokens, **When** the command runs, **Then** fresh browser authorization opens with exactly `http://localhost:5000/callback`, without starting a listener; valid state and the pasted return URL permit code exchange and access/refresh-token SecretStorage storage plus the access-token Keychain mirror, never settings, chat, logs or discovery metadata.
 2. **Given** the command prompt, **When** the reviewer cancels, **Then** stored credentials remain unchanged and no discovery request uses an empty token.
 3. **Given** a stored token and paginated teams/spaces, **When** discovery runs, **Then** `.askaway/webex-spaces.json` contains their identifiers and names, including team `self` and its General space, but no secrets.
 4. **Given** a storage or discovery failure, **When** the command completes, **Then** it reports a sanitized failure without claiming successful storage or exposing credentials.
+5. **Given** a wrong redirect, missing code, mismatched state or OAuth error in the pasted URL, **When** it is submitted, **Then** the command rejects it without exchange, credential replacement or secret-bearing diagnostics.
+6. **Given** stored tokens after authorization, **When** later requests need authentication, **Then** they reuse and refresh through the existing credential boundary; invoking the command still starts fresh browser authorization.
 
 ---
 
@@ -161,6 +172,8 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 - **FR-026**: Webex MUST honor HTTP 429 Retry-After for posting, editing, file upload and reply polling and MUST upload PDF/Markdown documents as files (US3).
 - **FR-027**: OAuth client credentials MUST be read privately from `~/.webex.md` when needed, never copied into discovery, test evidence or chat; refreshed access tokens MUST use the same storage/mirror boundary (US1/US3).
 - **FR-028**: Optional bot mode MUST remain gated by [NEEDS CLARIFICATION: will the reviewer provision/approve a bot member of team self, and which identity should be used?]; P1 delivery MUST NOT silently provision a bot or promise self-post notifications (US5).
+- **FR-029**: The command MUST start fresh browser OAuth using private integration credentials and exactly `http://localhost:5000/callback`, with no local listener; a local masked VS Code prompt MUST accept the full return URL, NEVER chat, validate redirect/state/code, exchange it and securely store access/refresh tokens (R-TELE-24/25/27/28; US1; T024/T026–T028).
+- **FR-030**: Later requests MUST reuse stored tokens and refresh/rotate them when needed through the credential boundary; this MUST NOT replace fresh browser authorization on command invocation (R-TELE-26; US1; T007/T025).
 
 ### Key Entities *(include if feature involves data)*
 
@@ -175,7 +188,7 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 
 ### Measurable Outcomes
 
-- **SC-001**: All 23 R-TELE rows have explicit FR coverage and caller-view verification; no remote-monitoring capability is lost in the parity replay.
+- **SC-001**: All R-TELE-01 through R-TELE-28 rows have explicit FR coverage and caller-view verification; no remote-monitoring capability is lost in the parity replay. OAuth guards remain gaps until builder and independent gates pass.
 - **SC-002**: In every seeded credential test, zero secrets appear in settings, chat, logs, discovery files or evidence.
 - **SC-003**: Disabled Telegram generates zero network calls across all shared caller scenarios.
 - **SC-004**: Each tested turn has one active live message, status updates about every two minutes, a new final and exactly one delivery per genuine reviewer reply across re-poll/reload.

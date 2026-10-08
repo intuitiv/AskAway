@@ -1,0 +1,14 @@
+export type RemoteMessageId = string | number;
+export type RemoteReply = (taskId: string, text: string, user: string) => void | Promise<void>;
+export interface RemoteDestination { id: RemoteMessageId; general: boolean }
+export interface RemoteChannel {
+    isConfigured(): boolean;
+    destination(workspace?: string, general?: boolean): Promise<RemoteDestination | undefined>;
+    sendText(formatted: string, fallback: string, destination?: RemoteDestination): Promise<RemoteMessageId | undefined>;
+    editLive(messageId: RemoteMessageId, formatted: string): Promise<boolean>;
+    finishLive(messageId: RemoteMessageId, head: string, markdown: string, taskId: string): Promise<boolean>;
+    sendDocument(filePath: string, caption: string): Promise<boolean>;
+    postQuestion(taskId: string, question: string, choices?: string[]): Promise<void>;
+    onReply(callback: RemoteReply): void;
+    resolveTask(taskId: string): void;
+}
