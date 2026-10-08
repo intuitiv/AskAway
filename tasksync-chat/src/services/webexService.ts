@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE } from '../constants/branding';
 import { WebexAuth, readWebexCredentials, isWebexToken } from './webexAuth';
+import { WebexIncomingWebhook, isIncomingWebhookSender } from './webexIncomingWebhook';
 import type { RemoteChannel, RemoteDestination, RemoteMessageId, RemoteReply } from './remoteChannel';
 
 // ── Interfaces ─────────────────────────────────────────────────
@@ -14,6 +15,7 @@ interface TrackedTask {
     question: string;
     choices?: string[];
     timestamp: number;
+    handoff?: boolean;
 }
 
 // ── Constants ──────────────────────────────────────────────────
@@ -35,7 +37,7 @@ const WEBEX_API = 'https://webexapis.com/v1';
 // ── Service ────────────────────────────────────────────────────
 
 export class WebexService implements RemoteChannel {
-    private readonly _postedMessageIds = new Set<string>();
+    private _postedMessageIds = new Set<string>();
     private _enabled: boolean = false;
     private _accessToken: string | undefined;
     private _roomId: string | undefined;
@@ -64,9 +66,11 @@ export class WebexService implements RemoteChannel {
 
     private _ready: Promise<void> = Promise.resolve();
     private _refreshing: Promise<string | undefined> | undefined;
+    private _ledgerPath: string | undefined;
+    private _polling = false;
 
     constructor(private logger?: vscode.OutputChannel, private auth?: WebexAuth, private credentialsFile?: string,
-        private remoteOptions: { baseUrl?: string; wait?: (ms: number) => Promise<void> } = {}) {
+        private remoteOptions: { baseUrl?: string; wait?: (ms: number) => Promise<void> } = {}, private incoming?: WebexIncomingWebhook) {
         this._ready = this.reloadConfig();
     }
 
@@ -86,6 +90,19 @@ export class WebexService implements RemoteChannel {
         const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         this._enabled = config.get<boolean>('webex.enabled', false);
         this._roomId = config.get<string>('webex.roomId', '');
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const ledgerPath = root ? path.join(root, '.askaway/webex-messages.json') : undefined;
+        if (ledgerPath && this._ledgerPath !== ledgerPath) {
+            this._ledgerPath = ledgerPath;
+            try {
+                const ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+                if (ledger.roomId === this._roomId) {
+                    this._postedMessageIds = new Set<string>(ledger.posted.slice(-500));
+                    this._processedMsgIds = new Set<string>(ledger.processed.slice(-500));
+                    this._activeTasks = new Map(ledger.tasks.slice(-500).map((task: TrackedTask) => [task.taskId, task]));
+                }
+            } catch { /* A new workspace has no message ledger yet. */ }
+        }
         this._tokenFilePath = config.get<string>('webex.tokenFilePath', '');
         const directToken = config.get<string>('webex.accessToken', '');
 
@@ -179,6 +196,7 @@ export class WebexService implements RemoteChannel {
 
     public resolveTask(taskId: string): void {
         this._activeTasks.delete(taskId);
+        this._persistMessages();
         if (!this._activeTasks.size) { this.stopPolling(); }
     }
     public onReply(callback: RemoteReply): void { this.setResponseCallback(callback); }
@@ -213,16 +231,22 @@ export class WebexService implements RemoteChannel {
             await (this.remoteOptions.wait ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(Number.isFinite(delay) ? Math.max(0, delay) : 1000);
         }
     }
-    public async sendText(formatted: string, fallback: string, destination?: RemoteDestination): Promise<RemoteMessageId | undefined> {
+    public async sendText(formatted: string, fallback: string, destination?: RemoteDestination, options?: { notify?: boolean }): Promise<RemoteMessageId | undefined> {
         await this._ready;
         if (!this.isConfigured()) { return undefined; }
         try {
             const roomId = String(destination?.id ?? this._roomId);
+            // Webhook posts notify but cannot be edited, so only notifying messages use it.
+            if (options?.notify && await this.incoming?.configured(roomId)) {
+                const id = await this.incoming?.send(roomId, formatted);
+                if (id) { this._recordPost(id); }
+                return id;
+            }
             let response = await this.remoteRequest('POST', 'messages', { roomId, markdown: formatted, text: fallback });
             if (response.status === 400) { response = await this.remoteRequest('POST', 'messages', { roomId, text: fallback }); }
             if (!response.ok) { return undefined; }
             const { id } = await response.json() as { id: string };
-            if (id) { this._postedMessageIds.add(id); }
+            if (id) { this._recordPost(id); }
             return id;
         } catch { return undefined; }
     }
@@ -235,10 +259,11 @@ export class WebexService implements RemoteChannel {
         } catch { return false; }
     }
     public async finishLive(messageId: RemoteMessageId, head: string, markdown: string, taskId: string): Promise<boolean> {
-        const id = await this.sendText(`${head}\n\n${markdown}`, `${head}\n\n${markdown}`);
+        const id = await this.sendText(`${head}\n\n${markdown}`, `${head}\n\n${markdown}`, undefined, { notify: true });
         if (!id) { return false; }
         try { await this.remoteRequest('DELETE', `messages/${encodeURIComponent(String(messageId))}`); } catch { /* Keep the live message if deletion is unavailable. */ }
-        this._activeTasks.set(taskId, { taskId, messageId: String(id), question: markdown, timestamp: Date.now() });
+        this._activeTasks.set(taskId, { taskId, messageId: String(id), question: markdown, timestamp: Date.now(), handoff: true });
+        this._persistMessages();
         this.startPolling();
         return true;
     }
@@ -250,16 +275,37 @@ export class WebexService implements RemoteChannel {
             form.set('files', new Blob([new Uint8Array(await fs.promises.readFile(filePath))], { type: filePath.endsWith('.pdf') ? 'application/pdf' : 'text/markdown' }), path.basename(filePath));
             const response = await this.remoteRequest('POST', 'messages', form);
             if (!response.ok) { return false; }
-            const { id } = await response.json() as { id: string }; if (id) { this._postedMessageIds.add(id); }
+            const { id } = await response.json() as { id: string }; if (id) { this._recordPost(id); }
             return true;
         } catch { return false; }
     }
     public async postQuestion(taskId: string, question: string, choices?: string[]): Promise<void> {
-        const id = await this.sendText([question, ...(choices ?? [])].join('\n'), question);
+        const id = await this.sendText([question, ...(choices ?? [])].join('\n'), question, undefined, { notify: true });
         if (!id) { return; }
         this._activeTasks.clear();
         this._activeTasks.set(taskId, { taskId, messageId: String(id), question, choices, timestamp: Date.now() });
+        this._persistMessages();
+        this._resetBackoff();
         this.startPolling();
+    }
+
+    private _persistMessages(): void {
+        for (const ids of [this._postedMessageIds, this._processedMsgIds]) {
+            while (ids.size > 500) { ids.delete(ids.values().next().value!); }
+        }
+        while (this._activeTasks.size > 500) { this._activeTasks.delete(this._activeTasks.keys().next().value!); }
+        if (!this._ledgerPath) { return; }
+        fs.mkdirSync(path.dirname(this._ledgerPath), { recursive: true });
+        const temporary = `${this._ledgerPath}.tmp`;
+        fs.writeFileSync(temporary, JSON.stringify({ roomId: this._roomId, posted: [...this._postedMessageIds],
+            processed: [...this._processedMsgIds], tasks: [...this._activeTasks.values()] }));
+        fs.renameSync(temporary, this._ledgerPath);
+    }
+
+    private _recordPost(id: string): void {
+        this._postedMessageIds.add(id);
+        this._persistMessages();
+        this._resetBackoff();
     }
 
     private _headers(): Record<string, string> {
@@ -495,6 +541,8 @@ export class WebexService implements RemoteChannel {
                 this.logger?.appendLine(`AskAway/Webex: postText failed ${resp.status}`);
                 return false;
             }
+            const { id } = await resp.json() as { id?: string };
+            if (id) { this._recordPost(id); }
             return true;
         } catch (err) {
             this.logger?.appendLine('AskAway/Webex: postText error.');
@@ -660,7 +708,7 @@ export class WebexService implements RemoteChannel {
             }
 
             const msg = await response.json() as any;
-            if (msg.id) { this._postedMessageIds.add(msg.id); }
+            if (msg.id) { this._recordPost(msg.id); }
             console.log(`AskAway/Webex: Posted task ${taskId} (msgId: ${msg.id})`);
 
             this._activeTasks.set(taskId, {
@@ -672,6 +720,7 @@ export class WebexService implements RemoteChannel {
             });
 
             // Reset backoff and ensure polling is running
+            this._persistMessages();
             this._resetBackoff();
             this.startPolling();
         } catch (error) {
@@ -697,13 +746,14 @@ export class WebexService implements RemoteChannel {
         const delaySec = POLL_BACKOFF_SCHEDULE_S[
             Math.min(this._pollTickIndex, POLL_BACKOFF_SCHEDULE_S.length - 1)
         ];
-        this._pollingTimer = setTimeout(() => this._poll(), delaySec * 1000);
+        this._pollingTimer = setTimeout(() => { this._pollingTimer = undefined; return this._poll(); }, delaySec * 1000);
     }
 
     /** Reset backoff to the beginning (e.g. after a new card is posted) */
     private _resetBackoff() {
         this._pollTickIndex = 0;
         this._pollCount = 0;
+        if (this._pollingTimer) { this._scheduleNextPoll(); }
     }
 
     private stopPolling() {
@@ -712,13 +762,12 @@ export class WebexService implements RemoteChannel {
             this._pollingTimer = undefined;
             console.log('AskAway/Webex: Polling stopped.');
         }
-        // Clear processed message IDs when no active tasks (prevent memory leak)
-        if (this._activeTasks.size === 0) {
-            this._processedMsgIds.clear();
-        }
     }
 
     private async _poll() {
+        if (this._polling) { return; }
+        this._polling = true;
+        try {
         if (!this.isConfigured() || this._activeTasks.size === 0) {
             this.stopPolling();
             return;
@@ -740,12 +789,6 @@ export class WebexService implements RemoteChannel {
         ];
         console.log(`AskAway/Webex: Poll #${this._pollCount} (interval: ${currentDelaySec}s, tick: ${this._pollTickIndex})`);
 
-        // Ensure we have our own person ID cached
-        if (!this._myPersonId) {
-            await this._cacheMyId();
-            console.log(`AskAway/Webex: Cached myPersonId: ${this._myPersonId}`);
-        }
-
         const now = Date.now();
 
         // Expire old tasks (36 hours)
@@ -754,6 +797,7 @@ export class WebexService implements RemoteChannel {
                 console.log(`AskAway/Webex: Task ${taskId} expired (36h).`);
                 await this._updateCardStatus(task, 'expired');
                 this._activeTasks.delete(taskId);
+                this._persistMessages();
             }
         }
 
@@ -762,12 +806,19 @@ export class WebexService implements RemoteChannel {
             return;
         }
 
+        let activity = false;
+        let roomReplies: any[] = [];
+        try {
+            const response = await this.remoteRequest('GET', `messages?roomId=${encodeURIComponent(this._roomId!)}&max=100`);
+            if (response.ok) { roomReplies = (await response.json() as { items: any[] }).items || []; }
+        } catch { /* Thread polling can still succeed when listing the space fails. */ }
         // Poll thread replies for each active task
         for (const [taskId, task] of this._activeTasks.entries()) {
             try {
                 const url = `${WEBEX_API}/messages?roomId=${this._roomId}&parentId=${task.messageId}&max=10`;
                 console.log(`AskAway/Webex: Polling URL: ${url}`);
-                const resp = await this.remoteRequest('GET', `messages?roomId=${encodeURIComponent(this._roomId!)}&parentId=${encodeURIComponent(task.messageId)}&max=10`);
+                const resp = task.messageId.startsWith('incoming:') ? new Response(JSON.stringify({ items: [] })) :
+                    await this.remoteRequest('GET', `messages?roomId=${encodeURIComponent(this._roomId!)}&parentId=${encodeURIComponent(task.messageId)}&max=10`);
 
                 if (!resp.ok) { 
                     console.log(`AskAway/Webex: Poll failed ${resp.status} ${resp.statusText}`);
@@ -784,39 +835,35 @@ export class WebexService implements RemoteChannel {
                 }
 
                 const data = await resp.json() as { items: any[] };
-                const replies = data.items || [];
+                const latestHandoff = [...this._activeTasks.values()].filter(item => item.handoff).sort((a, b) => b.timestamp - a.timestamp)[0];
+                const webhookParents = new Set(roomReplies.filter(isIncomingWebhookSender).map(reply => reply.id));
+                const replies = [...(data.items || []), ...roomReplies.filter(reply => !reply.parentId || reply.parentId === task.messageId ||
+                    (latestHandoff?.taskId === taskId && webhookParents.has(reply.parentId)))]
+                    .sort((a, b) => String(a.created || '').localeCompare(String(b.created || '')));
                 console.log(`AskAway/Webex: Found ${replies.length} replies for task ${taskId}`);
 
                 for (const reply of replies) {
+                    if (isIncomingWebhookSender(reply)) { continue; }
                     if (this._processedMsgIds.has(reply.id) || this._postedMessageIds.has(reply.id)) { continue; }
-
-                    // Cap processed IDs to prevent memory leak (keep latest 500)
-                    if (this._processedMsgIds.size > 500) {
-                        const toRemove = [...this._processedMsgIds].slice(0, this._processedMsgIds.size - 250);
-                        toRemove.forEach(id => this._processedMsgIds.delete(id));
-                    }
-
-                    // Skip messages sent by the bot itself (disabled for personal token - same personId)
-                    // Re-enable this if using a bot token (bot personId ≠ user personId)
-                    // if (this._myPersonId && reply.personId === this._myPersonId) {
-                    //     console.log(`AskAway/Webex: Ignoring own message from ${reply.personEmail} (id: ${reply.id})`);
-                    //     this._processedMsgIds.add(reply.id);
-                    //     continue;
-                    // }
-
-                    this._processedMsgIds.add(reply.id);
+                    if (!this._activeTasks.has(taskId) || !this.isConfigured()) { break; }
+                    if (reply.created && Date.parse(reply.created) < task.timestamp) { continue; }
 
                     // Collect the full text (could be multi-line)
                     const answer = (reply.text || '').trim();
                     const userEmail = reply.personEmail || 'unknown';
 
                     if (!answer) { continue; }
+                    this._processedMsgIds.add(reply.id);
+                    this._activeTasks.delete(taskId);
+                    this._persistMessages();
+                    activity = true;
+                    this._resetBackoff();
 
                     console.log(`AskAway/Webex: Reply for ${taskId} from ${userEmail}: "${answer.substring(0, 80)}..."`);
 
                     // Notify AskAway
                     if (this._onResponseReceived) {
-                        this._onResponseReceived(taskId, answer, userEmail);
+                        await this._onResponseReceived(taskId, answer, userEmail);
                     }
 
                     // Update card to "Resolved"
@@ -833,9 +880,10 @@ export class WebexService implements RemoteChannel {
             this.stopPolling();
         } else {
             // Advance backoff and schedule next poll
-            this._pollTickIndex++;
+            if (!activity) { this._pollTickIndex++; }
             this._scheduleNextPoll();
         }
+        } finally { this._polling = false; }
     }
 
     // ── Update Card Status ────────────────────────────────────
@@ -881,10 +929,7 @@ export class WebexService implements RemoteChannel {
             : `Task ${status}: ${task.question.substring(0, 100)}`;
 
         try {
-            const resp = await fetch(`${WEBEX_API}/messages/${task.messageId}`, {
-                method: 'PUT',
-                headers: this._headers(),
-                body: JSON.stringify({
+            const resp = await this.remoteRequest('PUT', `messages/${encodeURIComponent(task.messageId)}`, {
                     roomId: this._roomId,
                     text: fallbackText,
                     attachments: [{
@@ -896,7 +941,6 @@ export class WebexService implements RemoteChannel {
                             "body": body
                         }
                     }]
-                })
             });
             if (resp.ok) {
                 console.log(`AskAway/Webex: Card updated → "${status}" for ${task.taskId}`);
@@ -916,6 +960,7 @@ export class WebexService implements RemoteChannel {
         if (task) {
             await this._updateCardStatus(task, 'resolved', answer, `${user} (via VS Code)`);
             this._activeTasks.delete(taskId);
+            this._persistMessages();
         }
     }
 

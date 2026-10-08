@@ -2072,7 +2072,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      */
     private _updateSettingsUI(): void {
         // Get status from services if available
-        const webexStatus = this._webexService?.getTokenStatus?.() ?? null;
+        const webexStatus = this._getWebexEnabled() && !this._webexService?.getTokenStatus?.().hasToken
+            ? { status: 'not-configured', message: 'Webex is not signed in', hint: 'Run AskAway: Set Webex Token' }
+            : this._webexService?.getTokenStatus?.() ?? null;
         const telegramStatus = this._telegramService?.getTokenStatus?.() ?? null;
         const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         const responseTimeout = this._readResponseTimeoutMinutes(config);

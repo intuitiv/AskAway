@@ -4,7 +4,7 @@ export interface RemoteDestination { id: RemoteMessageId; general: boolean }
 export interface RemoteChannel {
     isConfigured(): boolean;
     destination(workspace?: string, general?: boolean): Promise<RemoteDestination | undefined>;
-    sendText(formatted: string, fallback: string, destination?: RemoteDestination): Promise<RemoteMessageId | undefined>;
+    sendText(formatted: string, fallback: string, destination?: RemoteDestination, options?: { notify?: boolean }): Promise<RemoteMessageId | undefined>;
     editLive(messageId: RemoteMessageId, formatted: string): Promise<boolean>;
     finishLive(messageId: RemoteMessageId, head: string, markdown: string, taskId: string): Promise<boolean>;
     sendDocument(filePath: string, caption: string): Promise<boolean>;

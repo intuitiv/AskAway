@@ -113,19 +113,19 @@ The reviewer uses `~/.local/bin/share-with-me` as before, but documents go to We
 
 ---
 
-### User Story 5 - Optionally notify through a bot identity (Priority: P3)
+### User Story 5 - Notify through per-space incoming webhooks (Priority: P1)
 
-The reviewer may choose a bot member of team `self` so new final messages can notify him. Personal-token mode remains usable, but cannot promise a notification for the owner's own post. Bot provisioning and identity choice are not approved yet.
+The reviewer confirmed (2026-10-08): "this integration is logged in with my credentials. So, if message is posted, i'll not get any notifications." and "And bots are not enabled in our org." Configure per-space Incoming Webhooks URLs manually through AppHub; no API for creating incoming endpoints was found. The command copies the selected space title, opens AppHub and accepts a validated URL in a masked local prompt. SecretStorage holds each room's URL; General is mirrored to Keychain. Startup and space resolution offer Configure / Later / Don't ask in this workspace when enabled, signed in and missing a webhook.
 
-**Why this priority**: Monitoring can ship with the personal token; a notifying bot requires a separate reviewer decision.
+**Why this priority**: OAuth self-posts do not notify, and bots are disabled in his org.
 
-**Independent Test**: After the reviewer chooses a bot identity, run `tasksync-chat/test-webex-bot-notifications.cjs` with personal and bot modes, then record an explicitly requested live notification on the reviewer's device.
+**Independent Test**: `tasksync-chat/test-webex-incoming-webhook.cjs` verifies secure setup, webhook text, token files/fallback and threaded replies with fake local servers. Live phone notification remains separate evidence.
 
 **Acceptance Scenarios**:
 
-1. **Given** personal-token mode, **When** AskAway sends a final, **Then** the final is delivered and the self-post notification limitation is stated, not reported as a successful notification.
-2. **Given** a reviewer-approved bot in team `self`, **When** a final message is sent in bot mode, **Then** it uses the same caller path and the live check confirms whether the reviewer receives a notification.
-3. **Given** no bot decision, **When** the P1 stories ship, **Then** AskAway creates no bot or membership and US5 remains open.
+1. **Given** a stored room webhook, **When** final or heads-up text is sent, **Then** incoming webhook JSON carries markdown/text only; PDF/Markdown files still use OAuth.
+2. **Given** no room webhook, **When** enabled and signed in, **Then** a named reminder offers secure manual configuration and text falls back to OAuth.
+3. **Given** webhook posts and a threaded reviewer answer, **When** polling runs, **Then** sender posts are ignored and the answer resolves the latest open handoff once.
 
 ---
 
@@ -171,7 +171,7 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 - **FR-025**: Webex MUST track AskAway's posted message IDs and deduplicate replies across polling/reload; it MUST NOT filter every reviewer message solely because it has the posting token's person ID (US3).
 - **FR-026**: Webex MUST honor HTTP 429 Retry-After for posting, editing, file upload and reply polling and MUST upload PDF/Markdown documents as files (US3).
 - **FR-027**: OAuth client credentials MUST be read privately from `~/.webex.md` when needed, never copied into discovery, test evidence or chat; refreshed access tokens MUST use the same storage/mirror boundary (US1/US3).
-- **FR-028**: Optional bot mode MUST remain gated by [NEEDS CLARIFICATION: will the reviewer provision/approve a bot member of team self, and which identity should be used?]; P1 delivery MUST NOT silently provision a bot or promise self-post notifications (US5).
+- **FR-028**: Final and heads-up text MUST use the destination's stored incoming webhook, with OAuth fallback when absent; files remain OAuth uploads. URLs MUST stay in SecretStorage (General mirrored to Keychain), setup MUST offer a named reminder, and Incoming Webhooks posts MUST NOT become replies. Bots MUST NOT be provisioned (R-TELE-29..31; US5).
 - **FR-029**: The command MUST start fresh browser OAuth using private integration credentials and exactly `http://localhost:5000/callback`, with no local listener; a local masked VS Code prompt MUST accept the full return URL, NEVER chat, validate redirect/state/code, exchange it and securely store access/refresh tokens (R-TELE-24/25/27/28; US1; T024/T026–T028).
 - **FR-030**: Later requests MUST reuse stored tokens and refresh/rotate them when needed through the credential boundary; this MUST NOT replace fresh browser authorization on command invocation (R-TELE-26; US1; T007/T025).
 

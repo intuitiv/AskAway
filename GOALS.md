@@ -78,6 +78,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - His org flagged Telegram: Telegram is switched off, and Webex becomes the remote channel with the same features (2026-10-08). Design choices are open question 11.
 - Webex decisions (2026-10-08): the Telegram code stays, toggled off; the token is set through a command; replies are polled (no webhook, the laptop is never exposed); team `self` gets one space per workspace, and its General space plays the role of Telegram's General; share-with-me sends documents to self.General instead of Telegram.
 - Webex OAuth confirmation (2026-10-08): the command opens fresh browser authorization with redirect `http://localhost:5000/callback`; the reviewer returns the full redirected URL through a local masked VS Code prompt, never chat. No local listener; stored access/refresh tokens are reused and refreshed when needed. See [proposed ADR 0020](docs/adr/0020-webex-browser-oauth-manual-callback.md) and spec 009 T024–T028; implementation/testing remain open.
+- Webex notifications (2026-10-08): the integration posts as the reviewer, so Webex never notifies him, and bots are disabled in his org. Messages that must notify go through the space's Incoming Webhooks URL. A workspace space without one gets a startup prompt naming the space: it opens the Incoming Webhooks app page and a masked VS Code box takes the URL. Automate it if an API allows. The setup is linked to `askaway.webex.enabled`.
 - Decision: [ADR 0007](docs/adr/0007-telegram-is-a-remote-control.md), [ADR 0018](docs/adr/0018-webex-replaces-telegram.md) · Requirements: [telegram.md](tasksync-chat/docs/requirements/telegram.md) · Spec: [009](specs/009-webex-remote-channel/spec.md)
 
 ### G8 Commentary shows what the agent is doing
@@ -159,7 +160,7 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 8. **Waiting on your live look** (no question, just a reload and a glance): 005 T015 worker spend in the shared banner and Telegram, and 005 T016 Specs tab and commentary polish. Both are built; they stay unticked until you accept them live. **Shared banner accepted 2026-10-08** ("Shared banner looks good"); the Telegram status and the Specs tab polish still await a look.
 9. **Live validator design (G10, G11).** "It should act as me when i am away from keyboard." To discuss against 007's own design: what it may decide alone, how the agent receives its answer, and how the reviewer reviews its decisions when back. **Answered 2026-10-08: recommendations accepted (answer low-risk reversible questions, hold the rest; answer returned to the asking agent with sources; only while Away; digest on return; flag drift only), and a setting, off by default, that the reviewer turns on when he is happy.**
 10. **Specs as stories and tasks (G2).** How older specs that use phases or cycles migrate to user stories and tasks. **Answered 2026-10-08: do not rewrite anything; reverse-map tasks.md tasks onto spec.md stories in the Specs tab.**
-11. **Webex instead of Telegram (G7).** Which Webex token (a bot, or his own account through the existing OAuth integration), full Telegram parity or a minimum, keep or delete the Telegram code, one channel picker or two switches, where the token is stored, and how replies arrive. See [ADR 0018](docs/adr/0018-webex-replaces-telegram.md). **Answered 2026-10-08:** keep the Telegram code toggled off; token through a command; poll for replies, no webhook; one space per workspace in team `self`, its General space like Telegram's General; share-with-me to self.General. Still open: Webex does not notify you about your own posts, so a final message sent with your own token will not ping you (a bot would).
+11. **Webex instead of Telegram (G7).** Which Webex token (a bot, or his own account through the existing OAuth integration), full Telegram parity or a minimum, keep or delete the Telegram code, one channel picker or two switches, where the token is stored, and how replies arrive. See [ADR 0018](docs/adr/0018-webex-replaces-telegram.md). **Answered 2026-10-08:** keep the Telegram code toggled off; token through a command; poll for replies, no webhook; one space per workspace in team `self`, its General space like Telegram's General; share-with-me to self.General. Still open: Webex does not notify you about your own posts, so a final message sent with your own token will not ping you (a bot would). **Answered 2026-10-08:** bots are disabled in his org; notify through each space's Incoming Webhooks URL, set up from a startup prompt.
 
 ## 4. Reviewer's words, verbatim
 
@@ -310,3 +311,15 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 
 > http://localhost:5000/callback is redirect url
 > COmmand should refresh main token, by opening url in browser and all. I'll do auth in the browser and give back redirected url, from that you can do the rest
+
+### 2026-10-08, Webex notifications
+
+> in another conversation, i made changes to this a little bit and changed auth mechanism and gave a different set of credentials. **AskAway: Discover Webex Spaces** also ran and discovered self team.
+>
+> And one thing is, this integration is logged in with my credentials. So, if message is posted, i'll not get any notifications.
+> There is one option for it, there is some way, where i can generate a incoming webhook URL for a space, through which any curl can post to a space. But that has to be enabled explicitly per space.
+> And bots are not enabled in our org.
+> https://apphub.webex.com/applications/incoming-webhooks-cisco-systems-38054-23307-75252 will let you add a space and it will create a webhooking using which you can notify.
+> So, when you create a space for any workspace, you can suggest to run a new command which will take you to the other page and take new wehbook url for the space. Not sure if it is some command or something, but in workspaces, where webhook is missing and webex is enabled, may be a notification on startup to configure webhook for notitifcations and all, on click of it, open the link and show some textbox in vscode. link should take to the above link and in the webpage it ask for space name, may be show space name in the notification. i'll create webhook and paste the url in the box, so you register. If there are apis to do this programmatically, do it. I can add webhook also into scope of the token.
+>
+> webex integration setting is marked as disabled. link our setup to that setting.

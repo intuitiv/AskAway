@@ -36,7 +36,11 @@ AskAway already has a Webex service for `ask_user` questions (Adaptive Cards, th
 - Replies are polled (Webex has no long poll; the poll interval backs off like Telegram's). No webhook, no public endpoint.
 - Team `self`: one space per workspace, created when missing; the team's General space is used like Telegram's General.
 - share-with-me sends documents to self.General instead of Telegram.
-- Open: Webex does not notify a person about their own posts, so with his own token the final message will not ping him; a bot member of team `self` would (spec 009 US5).
+- Notifications: posts made with his own token never notify him and bots are disabled in his org, so messages that must notify go through each space's Incoming Webhooks URL, configured from a startup prompt (or automatically if an API allows). The setup is linked to `askaway.webex.enabled`.
+
+> And bots are not enabled in our org. (2026-10-08)
+
+> webex integration setting is marked as disabled. link our setup to that setting. (2026-10-08)
 
 ## Consequences
 

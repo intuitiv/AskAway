@@ -1245,14 +1245,19 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         // Webex/Telegram commands (services loaded in deferred block)
-        registerWebexAuthCommands(context, async () => { await webviewProvider?.getWebexService()?.reloadConfig(); });
+        registerWebexAuthCommands(context, async () => {
+            await vscode.commands.executeCommand('askaway.webexDiscover');
+            await webviewProvider?.getWebexService()?.reloadConfig();
+        });
         context.subscriptions.push(
             vscode.commands.registerCommand('askaway.webexDiscover', async () => {
                 const folder = vscode.workspace.workspaceFolders?.[0];
                 if (!folder) { await vscode.window.showWarningMessage('AskAway: Open a workspace to discover Webex spaces.'); return; }
                 const { WebexAuth } = await import('./services/webexAuth');
-                const { webexDiscover } = await import('./services/webexDiscover');
-                await webexDiscover(new WebexAuth(context.secrets), { fsPath: folder.uri.fsPath, name: folder.name }, {
+                const { setupWebex } = await import('./services/webexSpaces');
+                const { WebexIncomingWebhook } = await import('./services/webexIncomingWebhook');
+                await setupWebex(new WebexAuth(context.secrets), { fsPath: folder.uri.fsPath, name: folder.name }, {
+                    onResolved: () => new WebexIncomingWebhook(context.secrets).prompt(folder.uri.fsPath, context.workspaceState),
                     refresh: () => webviewProvider?.getWebexService()?.refreshAccessToken() ?? Promise.resolve(undefined)
                 });
             }),
@@ -1286,16 +1291,32 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
                 const { WebexAuth } = await import('./services/webexAuth');
-                webexService = new WebexService(outputChannel, new WebexAuth(context.secrets));
+                const { WebexIncomingWebhook } = await import('./services/webexIncomingWebhook');
+                const incoming = new WebexIncomingWebhook(context.secrets);
+                context.subscriptions.push(vscode.commands.registerCommand('askaway.configureWebexNotifications', async () => {
+                    const folder = vscode.workspace.workspaceFolders?.[0];
+                    if (folder) { await incoming.configure(folder.uri.fsPath); }
+                }));
+                webexService = new WebexService(outputChannel, new WebexAuth(context.secrets), undefined, {}, incoming);
+                const { ensureWebexWorkspace } = await import('./services/webexSpaces');
+                const ensureWorkspace = async () => {
+                    const folder = vscode.workspace.workspaceFolders?.[0];
+                    if (folder) { await ensureWebexWorkspace(new WebexAuth(context.secrets), { fsPath: folder.uri.fsPath, name: folder.name }, {
+                        onResolved: () => incoming.prompt(folder.uri.fsPath, context.workspaceState)
+                    }); }
+                };
+                await ensureWorkspace();
                 await webexService.reloadConfig();
                 provider.setWebexService(webexService);
                 webexService.start();
                 context.subscriptions.push({ dispose: () => webexService?.dispose() });
 
-                context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+                context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(async e => {
                     if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.webex`) && webexService) {
-                        webexService.reloadConfig();
-                        webexService.start();
+                        webexService.stop();
+                        await webexService.reloadConfig();
+                        await ensureWorkspace();
+                        if (vscode.workspace.getConfiguration('askaway.webex').get<boolean>('enabled', false)) { webexService.start(); }
                     }
                 }));
             } catch (err) {

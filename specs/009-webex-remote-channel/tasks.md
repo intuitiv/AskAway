@@ -114,9 +114,9 @@ T029 subsequent retry (2026-10-08): `invalid_scope` persists with KMS included. 
 
 ### Implementation for User Story 3
 
-- [ ] T015 [US3] Resolve/create one space per workspace in team self and use its General space in `tasksync-chat/src/services/webexService.ts`, retaining non-secret mappings in `.askaway/webex-spaces.json`; caller-view `tasksync-chat/test-webex-remote-adapter.cjs` asserts reuse, idempotent missing-space creation, ambiguous-destination refusal and two-workspace isolation (FR-022; depends on T002, T009, T014).
+- [x] T015 [US3] Resolve/create one space per workspace in team self and record its General space through `tasksync-chat/src/services/webexSpaces.ts`, retaining non-secret mappings in `.askaway/webex-spaces.json`. Verified 2026-10-08: `node tasksync-chat/test-webex-workspace-space.cjs` passes reuse, idempotent creation, folder-name title, General recording, global enabled setup and zero disabled requests; discovery, token-command, remote-channel-contract regressions and TypeScript noEmit pass. Sign-in runs setup; enabling resolves missing workspace metadata or offers sign-in; disabling stops polling. Broader US3 adapter verification remains T014/T016/T017.
 - [ ] T016 [US3] Add Webex text/edit/final and PDF/Markdown file operations with safe format fallback and 429 Retry-After in `tasksync-chat/src/services/webexService.ts`; caller-view `tasksync-chat/test-webex-remote-adapter.cjs` asserts upload bytes, no premature retry, pending edit recovery and no silent drop (FR-013/FR-014/FR-026; depends on T015).
-- [ ] T017 [US3] Poll replies with backoff and persisted posted/processed IDs in `tasksync-chat/src/services/webexService.ts`; caller-view `tasksync-chat/test-webex-replies.cjs` asserts own-post exclusion by ID, genuine reviewer replies with the same person ID, re-poll/reload deduplication, turn cancellation and no inbound endpoint (FR-008/FR-021/FR-025; depends on T016).
+- [x] T017 [US3] Poll replies with backoff and persisted posted/processed IDs in `tasksync-chat/src/services/webexService.ts`; caller-view `tasksync-chat/test-webex-reply-poll.cjs` asserts own-post exclusion by ID, genuine reviewer replies with the same person ID, re-poll/reload deduplication, turn cancellation and no inbound endpoint (FR-008/FR-021/FR-025; depends on T016). Verified 2026-10-08: localhost fake-server test passes space/thread polling, reload restoration, bounded ledger and post/reply backoff reset; remote-channel-contract and webex-token-command regressions pass, TypeScript noEmit passes. No live delivery claimed.
 
 **Checkpoint**: US3 replay and upload/reply scenarios pass; no self-identity blanket filter or exposed laptop endpoint remains.
 
@@ -140,21 +140,21 @@ T029 subsequent retry (2026-10-08): `invalid_scope` persists with KMS included. 
 
 ---
 
-## Phase 7: User Story 5 - Optionally notify through a bot identity (Priority: P3)
+## Phase 7: User Story 5 - Notify through incoming webhooks (Priority: P1)
 
-**Goal**: Resolve the optional bot decision before promising final notifications.
+**Goal**: Notify through per-space incoming webhooks: "And bots are not enabled in our org." (2026-10-08).
 
-**Independent Test**: Personal mode states its limit; reviewer-approved bot mode uses the same contract and an explicit live device check proves notification.
+**Independent Test**: `test-webex-incoming-webhook.cjs` verifies setup, webhook text, OAuth files/fallback and replies. Live phone notification is separate evidence.
 
 ### Tests for User Story 5
 
-- [ ] T020 [US5] Record the reviewer answer to FR-028 in `specs/009-webex-remote-channel/research.md` and `plan.md` before bot implementation; caller-view `tasksync-chat/test-webex-bot-notifications.cjs` must assert personal-mode disclosure and no automatic bot provisioning. Open question: bot member of self and chosen posting identity.
+- [x] T020 [US5] Replace the optional-bot design with manual incoming webhooks: "this integration is logged in with my credentials. So, if message is posted, i'll not get any notifications." and "And bots are not enabled in our org." (2026-10-08). No incoming creation API found; secure masked command opens AppHub and copies the space name. Guard: `test-webex-incoming-webhook.cjs`.
 
 ### Implementation for User Story 5
 
-- [ ] T021 [US5] Only after T020 approval, implement optional bot credentials behind the same `tasksync-chat/src/services/webexAuth.ts`, `webexService.ts` and `remoteChannel.ts` boundary; caller-view `tasksync-chat/test-webex-bot-notifications.cjs` plus explicit live device evidence verifies bot final notification without changing shared caller content or deleting personal mode (FR-005/FR-028; depends on US2/US3 and reviewer decision).
+- [x] T021 [US5] Implement `webexIncomingWebhook.ts`, Configure Webex Notifications command, startup/space reminders and WebexService webhook text routing; files remain OAuth, sender posts are excluded and threaded answers resolve the latest handoff. Guard: `test-webex-incoming-webhook.cjs` fake-backed setup, General Keychain, routing and replies. Live device notification remains unverified (FR-028; R-TELE-29..31).
 
-**Checkpoint**: US5 stays open until the reviewer decides and notification is observed; P1 stories may ship without it.
+**Checkpoint**: Fake-backed incoming-webhook behavior verified; no bot provisioning. Live phone notification is not claimed.
 
 ---
 
