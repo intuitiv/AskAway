@@ -19,6 +19,11 @@ Why this exists: the reviewer asked to "capture what I told as requirements for 
 | [speckit-flow.md](speckit-flow.md) | Stages, `/sk.*` commands, `/sk.check`, stories, one active PR, task budget, plain-text routing |
 | [cloud-tasks.md](cloud-tasks.md) | Queueing tasks to the GitHub Copilot cloud agent |
 | [availability-and-validator.md](availability-and-validator.md) | Planned: overnight and away modes, auto-handoff near 300K, validator agent (all gaps) |
+| [side-channel.md](side-channel.md) | Seeing inside running work, nudging it, side questions that do not derail the main agent |
+| [efficiency-score.md](efficiency-score.md) | The per-turn efficiency score, where it is shown, and how the benchmark uses it |
+| [tools-and-evals.md](tools-and-evals.md) | Why AskAway's own tools exist, and evals for agent and worker prompts and tools |
+
+The ultimate goals behind all rows are in the repo-level [GOALS.md](../../../GOALS.md); decisions are in [docs/adr/](../../../docs/adr/README.md).
 
 ## Row format
 

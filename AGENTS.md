@@ -1,5 +1,9 @@
 # AskAway and OpenCode Compatibility
 
+What the reviewer wants, in one place: [GOALS.md](GOALS.md) (goals), [docs/adr/](docs/adr/README.md)
+(his decisions), [tasksync-chat/docs/requirements/](tasksync-chat/docs/requirements/README.md) (testable rows).
+Read GOALS.md before starting any work here.
+
 ## Ownership (reviewer, 2026-09-24)
 
 The agent owns this entire repo: code organisation, maintenance, tests, skills, prompts, and docs.

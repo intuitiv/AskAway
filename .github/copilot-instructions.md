@@ -4,6 +4,9 @@ Workspace-specific guidance for developing the AskAway extension (`tasksync-chat
 General cross-workspace behavior lives in the **AskAway Build** agent; this file
 holds only what is specific to THIS repo.
 
+The reviewer's goals, decisions and requirements live in one place: [GOALS.md](../GOALS.md) →
+`docs/adr/` → `tasksync-chat/docs/requirements/`. Read GOALS.md first; never contradict it.
+
 ## Build & Deploy AskAway
 - Source: `tasksync-chat/`. Build + deploy locally by copying the built bundle to the
   installed dev folder: `npx tsc -p ./ --noEmit && node esbuild.js && cp dist/extension.js ~/.vscode/extensions/intuitiv.askaway-1.0.35/dist/extension.js && cp package.json ~/.vscode/extensions/intuitiv.askaway-1.0.35/`.

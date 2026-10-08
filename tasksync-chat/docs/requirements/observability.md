@@ -12,3 +12,4 @@
 | R-OBS-08 | Worker lifecycle and tool events are recorded by worker ID and session ID, with no transcript text or secrets. | "Never send secrets through worker messages, MCP arguments, transcripts, or telemetry." (AGENTS.md, 2026-09-24) | test-worker-observability.cjs EV-010 |
 | R-OBS-09 | A turn budget helps the orchestrator pace itself within a hard time limit. | "Call turn_budget at the start and around halfway purely to pace yourself" (2026-09-25) | gap |
 | R-OBS-10 | The same hooks feed the Metrics trace and the worker trace. | "we have same set of hooks" (2026-09-24) | test-workers-control-plane.cjs EV-038 |
+| R-OBS-11 | Each turn exposes its cost and the workers' share, requests, input tokens, output tokens, cache percent, worker count and details, and efficiency score. | "Requests, input tokens, output tokens, cache percent, number of workers and their details and efficiency score." (2026-10-08) | gap |

@@ -95,13 +95,26 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 
 | ID | Ask and home | Status / next check |
 |---|---|---|
-| H-1 | Clarify new substantial work once, gather all questions after a POC, execute when clear across workspaces; update Build/Orchestrator policy. Reviewer messages 2026-10-07 10:34 | OPEN: verify both shipped agent policies capture this exact workflow; no completion commit established |
+| H-1 | G4: Clarify new substantial work once, gather all questions after a POC in one message, execute when clear across workspaces; update Build/Orchestrator policy. Reviewer messages 2026-10-07 10:34; GOALS.md 2026-10-08 | OPEN: verify both shipped agent policies capture this exact workflow; no completion commit established; add a 005 bulk-question story |
 | H-2 | Investigate extended VS Code prompt/message-cache availability and pricing, including Vikrant's HTTP keep-alive hypothesis. Reviewer messages 2026-10-01 16:54/17:53 | OPEN: distinguish real message pings (T018 done) from HTTP health calls; extended-cache pricing evidence still unestablished |
 | H-3 | Conversation "Worker tool enhancements and tasks" cannot open despite repair reporting 0 broken. Reviewer messages 2026-10-02 18:23 | OPEN: reproduce and diagnose; `/memories/repo/vscode-chat-repair.md` has prior repair guidance, not proof this incident is fixed |
 | H-4 | Phone-readable replies: "table is not readable". Reviewer messages 2026-10-07 10:41 | OPEN: enforce short bullets / at most three table columns in future response policy; handoff follows it |
-| H-5 | "Capture everything i said, all tasks all rules and everything": permanent ask/status index and session continuation. Current handoff packet | OPEN until handoff verification; home `specs/HANDOFF-2026-10-07.md`; retain raw reviewer messages |
+| H-5 | G3: "Capture everything i said, all tasks all rules and everything": permanent ask/status index and session continuation; every ask closes with evidence or a waiting reason. Current handoff packet; GOALS.md 2026-10-08 | OPEN until handoff verification; home `specs/HANDOFF-2026-10-07.md`; retain raw reviewer messages; add a 005 exhaustive intake/closure story |
 | H-6 | Future side-channel questions/inputs carry caller IDs and answers correlate to them; reviewer 2026-10-01 17:26 | OPEN: deferred to Spec 003 boundary described in `specs/001-async-subagent-runner/Goal.md`; not implemented by session-fork POC |
 | H-7 | Complete cloud ultimate goal beyond US2: polling/reports, local acceptance, conflict/readiness, whole-story GitHub Actions | OPEN: US3–US6 remain Later in `specs/006-cloud-tasks/plan.md`; explicit reviewer-requested US2 release run still required |
 | H-8 | Build fixed simulated spec-bearing workspace and harness/model/prompt benchmark, not merely create its draft | BLOCKED: `specs/008-harness-benchmark/spec.md` formula and complex-fixture clarification before plan/tasks; U10 marks draft creation only |
 
 Counts: see the reviewer's latest decision list; NEEDS-DECISION rows above are the open questions. For current completion evidence and stale-row exceptions, read `specs/HANDOFF-2026-10-07.md`.
+
+## Goal coverage gaps — 2026-10-08
+
+GAP means a missing spec contract, not necessarily missing implementation. Existing H-1 (G4) and H-5 (G3) above are reused rather than duplicated.
+
+| ID | What | State | Blocker or question | Source file |
+|---|---|---|---|---|
+| GC-G2 | G2: Capture additional reviewer tasks and recommendations into Spec Kit tasks | READY | Extend 005 US3 with incremental intake and caller-visible task update acceptance | GOALS.md 2026-10-08 |
+| GC-G7 | G7: Reply to VS Code from Telegram | READY | New Telegram remote-control spec; retain test-telegram-conversation-reply.cjs and test-telegram-handoff.cjs as existing implementation evidence | GOALS.md 2026-10-08 |
+| GC-G8 | G8: Proven validator monitors commentary and immediately advises the agent or answers its doubts | BLOCKED | Later 007 live-linking story after beta quality review; current FR-018 forbids unsolicited agent linking | GOALS.md 2026-10-08 |
+| GC-G10 | G10: Live validator represents unavailable reviewer, retains memory tool and reports commentary problems | BLOCKED | Later 007 live-phase story after beta quality review; define authority and advisory boundaries | GOALS.md 2026-10-08 |
+| GC-G11 | G11: Availability decides when validator takes charge | BLOCKED | Later 007 live release; define timed/indefinite-away authority, return and expiry transitions separately from current away policy | GOALS.md 2026-10-08 |
+| GC-G14 | G14: Own tools such as gradle, read_doc and turn budget reduce cost and improve reliability, reuse and control | READY | Extend 001 tooling scope with caller-visible contracts and evals; existing tool tests do not substitute for a complete spec story | GOALS.md 2026-10-08 |
