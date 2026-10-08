@@ -38,7 +38,7 @@ async function main() {
             else if (url.searchParams.has('page')) { res.end(JSON.stringify({ items: [room('workspace-room', 'FixtureWorkspace')] })); }
             else {
                 res.setHeader('Link', `<http://127.0.0.1:${server.address().port}/v1/rooms?teamId=self-team&max=100&page=2>; rel="next"`);
-                res.end(JSON.stringify({ items: [room('general-room', 'General')] }));
+                res.end(JSON.stringify({ items: [room('built-in', 'SELF'), room('general-room', 'AskAway General')] }));
             }
         } else { res.writeHead(404); res.end('{}'); }
     });
@@ -57,7 +57,7 @@ async function main() {
         assert.ok(!Number.isNaN(Date.parse(facts.discoveredAt)));
         assert.deepEqual(facts.me, { id: 'me', displayName: 'Reviewer', emails: ['reviewer@example.test'] });
         assert.deepEqual(facts.teams, [
-            { id: 'self-team', name: 'SELF', rooms: ['general-room', 'workspace-room'].map((id, index) => ({ id, title: index ? 'FixtureWorkspace' : 'General', type: 'group', created: '2026-01-01', lastActivity: '2026-10-08' })) },
+            { id: 'self-team', name: 'SELF', rooms: [['built-in', 'SELF'], ['general-room', 'AskAway General'], ['workspace-room', 'FixtureWorkspace']].map(([id, title]) => ({ id, title, type: 'group', created: '2026-01-01', lastActivity: '2026-10-08' })) },
             { id: 'other', name: 'Other', rooms: [{ id: 'other-room', title: 'Other room', type: 'group', created: '2026-01-01', lastActivity: '2026-10-08' }] }
         ]);
         assert.deepEqual(facts.self, { teamId: 'self-team', generalRoomId: 'general-room', workspaceRoomId: 'workspace-room' });
@@ -69,7 +69,7 @@ async function main() {
         assert.ok(requests.every(request => request.method === 'GET'));
         assert.equal(requests[1].authorization, 'Bearer rotated-secret-canary');
         assert.deepEqual(security.at(-1), { file: 'security', args: ['add-generic-password', '-U', '-a', 'vibecoding', '-s', 'webex-general-room-id', '-w', 'general-room'] });
-        assert.equal(notifications[0], 'AskAway: Discovered 2 teams, 3 rooms. self: found; General: found.');
+        assert.equal(notifications[0], 'AskAway: Discovered 2 teams, 4 rooms. self: found; General: found.');
         mode = 'unauthorized';
         const previousRefreshes = refreshes;
         assert.equal(await webexDiscover(auth, workspace, options), false);

@@ -6,10 +6,11 @@ const esbuild = require('esbuild');
 async function scenario(late, failure = 0) {
     const root = path.join(__dirname, 'build', `startup-enabled-${process.pid}-${late}-${failure}`);
     fs.mkdirSync(path.join(root, '.askaway'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.askaway/webex-spaces.json'), JSON.stringify({ self: { teamId: 'self-team', generalRoomId: 'general', workspaceRoomId: null }, teams: [{ id: 'self-team', name: 'self', rooms: [{ id: 'general', title: 'General' }] }] }));
+    fs.writeFileSync(path.join(root, '.askaway/webex-spaces.json'), JSON.stringify({ self: { teamId: 'self-team', generalRoomId: 'general', workspaceRoomId: null }, teams: [{ id: 'self-team', name: 'self', rooms: [{ id: 'general', title: 'self' }] }] }));
     const tokens = new Map([['askaway.webex.accessToken', 'access-canary'], ['askaway.webex.refreshToken', 'refresh-canary']]);
     const notices = [], lines = [], messages = [], commands = new Map();
-    let service, resolved = !late, created = 0, release;
+    let service, resolved = !late, created = 0, generalCreated = 0, release;
+    const rooms = [{ id: 'general', title: 'self' }];
     const gate = new Promise(resolve => { release = resolve; });
     const publish = () => { if (resolved && service) messages.push(service.getTokenStatus()); };
     const provider = { setWebexService: value => { service = value; publish(); }, getWebexService: () => service };
@@ -27,10 +28,14 @@ async function scenario(late, failure = 0) {
         if (req.url === '/v1/people/me') res.end(JSON.stringify({ id: 'me', displayName: 'Fixture', emails: [] }));
         else if (req.url === '/v1/teams') res.end(JSON.stringify({ items: [{ id: 'self-team', name: 'self' }] }));
         else if (req.method === 'POST' && req.url === '/v1/rooms') {
-            created++; assert.deepEqual(JSON.parse(raw), { title: path.basename(root), teamId: 'self-team' });
+            const body = JSON.parse(raw);
+            const general = body.title === 'AskAway General';
+            assert.deepEqual(body, { title: general ? 'AskAway General' : path.basename(root), teamId: 'self-team' });
+            if (general) generalCreated++; else created++;
             res.statusCode = failure || 200;
-            res.end(JSON.stringify(failure ? { message: 'Missing scope access-canary', trackingId: 'tracking-fixture' } : { id: 'workspace' }));
-        } else res.end(JSON.stringify({ items: [{ id: 'general', title: 'General' }] }));
+            if (!failure) rooms.push({ id: general ? 'askaway-general' : 'workspace', title: body.title });
+            res.end(JSON.stringify(failure ? { message: 'Missing scope access-canary', trackingId: 'tracking-fixture' } : rooms.at(-1)));
+        } else res.end(JSON.stringify({ items: rooms }));
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const source = fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8');
@@ -53,6 +58,10 @@ async function scenario(late, failure = 0) {
         if (!failure) {
             assert.equal(JSON.parse(fs.readFileSync(path.join(root, '.askaway/webex-spaces.json'))).self.workspaceRoomId, 'workspace');
             assert.ok(notices.some(text => text.includes(`Configure Webex notifications for ${path.basename(root)}`)));
+            assert.equal(generalCreated, 1, 'activation must create exactly one AskAway General');
+            await commands.get('askaway.webexDiscover')();
+            assert.equal(created, 1, 'rediscovery must not duplicate workspace rooms');
+            assert.equal(generalCreated, 1, 'rediscovery must not duplicate AskAway General');
         } else {
             assert.equal(messages.at(-1).message, `Signed in; space creation failed: ${failure}`);
             assert.ok(notices.some(text => text.includes('spark:rooms_write')));

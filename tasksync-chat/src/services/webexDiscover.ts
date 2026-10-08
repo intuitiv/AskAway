@@ -74,7 +74,7 @@ export async function webexDiscover(auth: WebexAuth, workspace: { fsPath: string
             teams.push({ id: team.id, name: team.name, rooms });
         }
         const self = teams.find(team => String(team.name).toLowerCase() === 'self');
-        const general = self?.rooms.find(room => room.title === 'General') || self?.rooms.find(room => room.title === self.name);
+        const general = self?.rooms.find(room => room.title === 'AskAway General');
         const facts = {
             discoveredAt: new Date().toISOString(), me: { id: me.id, displayName: me.displayName, emails: me.emails }, teams,
             self: { teamId: self?.id ?? null, generalRoomId: general?.id ?? null, workspaceRoomId: self?.rooms.find(room => room.title === workspace.name)?.id ?? null }

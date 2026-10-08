@@ -6,7 +6,7 @@ const esbuild = require('esbuild');
 async function main() {
     const root = path.join(__dirname, 'build', 'incoming-' + process.pid);
     fs.mkdirSync(path.join(root, '.askaway'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.askaway/webex-spaces.json'), JSON.stringify({ self: { workspaceRoomId: 'workspace', generalRoomId: 'general' }, teams: [{ rooms: [{ id: 'workspace', title: 'Fixture Space' }, { id: 'general', title: 'General' }] }] }));
+    fs.writeFileSync(path.join(root, '.askaway/webex-spaces.json'), JSON.stringify({ self: { workspaceRoomId: 'workspace', generalRoomId: 'general' }, teams: [{ rooms: [{ id: 'built-in', title: 'self' }, { id: 'workspace', title: 'Fixture Space' }, { id: 'general', title: 'AskAway General' }] }] }));
     const secrets = new Map([['askaway.webex.accessToken', 'fixture-token']]);
     const notices = [], clipboard = [], opened = [], security = [], requests = [], timers = new Map(), replies = [];
     let selected = 0, input = 'https://webexapis.com/v1/webhooks/incoming/fixture-canary', action = 'Configure', enabled = true;
@@ -16,7 +16,7 @@ async function main() {
         env: { clipboard: { writeText: async text => clipboard.push(text) }, openExternal: async url => { opened.push(url); return true; } },
         window: { showInformationMessage: async message => { notices.push(message); return action; }, showErrorMessage: async message => notices.push(message),
             showQuickPick: async choices => { assert.ok(choices.every(choice => /configured/.test(choice.description))); return choices[selected]; },
-            showInputBox: async options => { assert.equal(options.password, true); assert.equal(options.title, selected ? 'General' : 'Fixture Space'); assert.ok(options.validateInput('http://evil.test')); return input; } } };
+            showInputBox: async options => { assert.equal(options.password, true); assert.equal(options.title, selected ? 'AskAway General' : 'Fixture Space'); assert.ok(options.validateInput('http://evil.test')); return input; } } };
     let items = [], sequence = 0;
     const server = http.createServer(async (req, res) => {
         let body = ''; for await (const chunk of req) body += chunk;
@@ -34,11 +34,14 @@ async function main() {
     const hook = new loaded.exports.WebexIncomingWebhook(storage, async (file, args) => security.push({ file, args }), 'darwin', base + '/incoming');
     let service;
     try {
-        await hook.prompt(root, memento);
-        assert.match(notices[0], /Fixture Space/); assert.deepEqual(clipboard, ['Fixture Space']);
+        action = 'Later'; await hook.prompt(root, memento);
+        assert.match(notices[0], /Fixture Space/);
+        assert.ok(notices.some(message => message.includes('Configure Webex notifications for AskAway General')));
+        action = 'Configure'; await hook.configure(root);
+        assert.deepEqual(clipboard, ['Fixture Space']);
         assert.equal(opened[0], loaded.exports.WEBEX_WEBHOOK_APP);
         assert.equal(secrets.get('askaway.webex.incomingWebhook.workspace'), input);
-        const count = notices.length; await hook.prompt(root, memento); assert.equal(notices.length, count);
+        action = 'Later'; const count = notices.length; await hook.prompt(root, memento); assert.equal(notices.length, count + 1);
         selected = 1; await hook.configure(root);
         assert.deepEqual(security[0].args, ['add-generic-password', '-U', '-a', 'vibecoding', '-s', 'webex-general-webhook-url', '-w', input]);
         input = 'https://evil.test/incoming/x'; await hook.configure(root); assert.equal(secrets.get('askaway.webex.incomingWebhook.general'), 'https://webexapis.com/v1/webhooks/incoming/fixture-canary');

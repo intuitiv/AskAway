@@ -6,7 +6,7 @@ const esbuild = require('esbuild');
 
 async function main() {
     let enabled = false, requests = 0, creations = 0, offered = false;
-    const updates = [], commands = [], notices = [];
+    const updates = [], commands = [], notices = [], mirrors = [];
     const secrets = new Map([['askaway.webex.accessToken', 'fixture-access-canary']]);
     // Real API shape (2026-10-08 live): the team's General space is titled with the team name.
     const rooms = [{ id: 'general', title: 'self' }, { id: 'existing', title: 'webex-existing' }];
@@ -19,9 +19,9 @@ async function main() {
             let body = ''; for await (const chunk of req) { body += chunk; }
             const data = JSON.parse(body);
             assert.equal(data.teamId, 'self-team');
-            assert.equal(data.title, 'webex-missing');
+            assert.ok(['AskAway General', 'webex-missing'].includes(data.title));
             creations++;
-            const room = { id: 'created', title: data.title }; rooms.push(room); res.end(JSON.stringify(room));
+            const room = { id: data.title === 'AskAway General' ? 'askaway-general' : 'created', title: data.title }; rooms.push(room); res.end(JSON.stringify(room));
         } else if (req.url.startsWith('/v1/rooms?')) { res.end(JSON.stringify({ items: rooms })); }
         else { res.writeHead(404); res.end('{}'); }
     });
@@ -32,27 +32,39 @@ async function main() {
             update: async (key, value, target) => { updates.push({ key, value, target }); enabled = value; } }) },
         window: { showErrorMessage: async message => notices.push(message), showInformationMessage: async (message, action) => {
             notices.push(message); if (action === 'Sign in') { offered = true; return 'Sign in'; }
+            if (message.includes('Discovered')) { return new Promise(() => {}); }
+            if (message.includes('Configure Webex notifications')) { return new Promise(() => {}); }
         } },
         commands: { executeCommand: async command => commands.push(command) }
     };
-    const build = await esbuild.build({ stdin: { contents: "export * from './src/services/webexAuth'; export * from './src/services/webexSpaces'; export * from './src/services/webexService';", resolveDir: __dirname, loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
+    const build = await esbuild.build({ stdin: { contents: "export * from './src/services/webexAuth'; export * from './src/services/webexSpaces'; export * from './src/services/webexService'; export * from './src/services/webexDiscover'; export * from './src/services/webexIncomingWebhook';", resolveDir: __dirname, loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
     const loaded = { exports: {} };
     new Function('require', 'module', 'exports', build.outputFiles[0].text)(name => name === 'vscode' ? vscode : require(name), loaded, loaded.exports);
     const { WebexAuth, setupWebex, ensureWebexWorkspace, WebexService } = loaded.exports;
-    const auth = new WebexAuth({ get: async key => secrets.get(key), store: async (key, value) => secrets.set(key, value) }, async () => {}, 'linux');
+    const auth = new WebexAuth({ get: async key => secrets.get(key), store: async (key, value) => secrets.set(key, value) }, async (file, args) => mirrors.push({ file, args }), 'darwin');
     const options = { baseUrl: `http://127.0.0.1:${server.address().port}/v1/` };
     const workspace = name => ({ fsPath: path.join(__dirname, 'build', name), name: 'display-name-not-folder-name' });
     const facts = name => JSON.parse(fs.readFileSync(path.join(workspace(name).fsPath, '.askaway/webex-spaces.json'), 'utf8'));
     try {
         assert.equal(await setupWebex(auth, workspace('webex-existing'), options), true);
-        assert.equal(creations, 0);
-        assert.deepEqual(facts('webex-existing').self, { teamId: 'self-team', generalRoomId: 'general', workspaceRoomId: 'existing' });
+        assert.equal(creations, 1, 'owned General must be created instead of selecting built-in self');
+        assert.deepEqual(facts('webex-existing').self, { teamId: 'self-team', generalRoomId: 'askaway-general', workspaceRoomId: 'existing' });
+        assert.equal(mirrors.at(-1).args.at(-1), 'askaway-general');
+        await loaded.exports.webexDiscover(auth, workspace('webex-existing'), options);
+        assert.equal(facts('webex-existing').self.generalRoomId, 'askaway-general');
+        const hook = new loaded.exports.WebexIncomingWebhook({ get: async key => secrets.get(key) });
+        await hook.prompt(workspace('webex-existing').fsPath, { get: (_, fallback) => fallback, update: async () => {} });
+        assert.ok(notices.some(message => message.includes('Configure Webex notifications for AskAway General')));
         assert.equal(enabled, true);
         assert.deepEqual(updates[0], { key: 'enabled', value: true, target: 1 });
         assert.equal(await setupWebex(auth, workspace('webex-missing'), options), true);
         assert.equal(await setupWebex(auth, workspace('webex-missing'), options), true);
-        assert.equal(creations, 1);
-        assert.deepEqual(facts('webex-missing').self, { teamId: 'self-team', generalRoomId: 'general', workspaceRoomId: 'created' });
+        assert.equal(creations, 2);
+        assert.equal(rooms.filter(room => room.title === 'AskAway General').length, 1);
+        assert.deepEqual(facts('webex-missing').self, { teamId: 'self-team', generalRoomId: 'askaway-general', workspaceRoomId: 'created' });
+        const unavailableMirror = new WebexAuth({ get: async key => secrets.get(key) }, async () => { throw new Error('Keychain unavailable'); }, 'darwin');
+        assert.equal(await setupWebex(unavailableMirror, workspace('webex-missing'), options), true, 'optional mirror failure cannot abort setup');
+        assert.equal(creations, 2, 'mirror failure and rediscovery must not duplicate rooms');
         const before = requests;
         assert.equal(await ensureWebexWorkspace(auth, workspace('webex-missing'), options), true);
         assert.equal(requests, before);
@@ -71,7 +83,7 @@ async function main() {
         assert.equal(requests, before);
         assert.ok(!JSON.stringify(facts('webex-missing')).includes('fixture-access-canary'));
     } finally { await new Promise(resolve => server.close(resolve)); }
-    console.log('PASS Webex workspace: existing reused, missing created once, General recorded, folder title and global enabled setting');
+    console.log('PASS Webex workspace: AskAway General created once, recorded, mirrored, kept on rediscovery and offered in webhook prompt; workspace reused/created once');
     console.log('PASS Webex setting: disabled makes zero requests; enabled without token offers sign-in');
 }
 main().catch(error => { console.error('FAIL Webex workspace acceptance:', error.message); process.exitCode = 1; });

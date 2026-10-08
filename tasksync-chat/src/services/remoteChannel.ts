@@ -3,6 +3,7 @@ export type RemoteReply = (taskId: string, text: string, user: string) => void |
 export interface RemoteDestination { id: RemoteMessageId; general: boolean }
 export interface RemoteChannel {
     isConfigured(): boolean;
+    postText(markdown: string, fallback: string, replyTaskId?: string): Promise<boolean>;
     destination(workspace?: string, general?: boolean): Promise<RemoteDestination | undefined>;
     sendText(formatted: string, fallback: string, destination?: RemoteDestination, options?: { notify?: boolean }): Promise<RemoteMessageId | undefined>;
     editLive(messageId: RemoteMessageId, formatted: string): Promise<boolean>;

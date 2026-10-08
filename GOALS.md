@@ -79,6 +79,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - Webex decisions (2026-10-08): the Telegram code stays, toggled off; the token is set through a command; replies are polled (no webhook, the laptop is never exposed); team `self` gets one space per workspace, and its General space plays the role of Telegram's General; share-with-me sends documents to self.General instead of Telegram.
 - Webex OAuth confirmation (2026-10-08): the command opens fresh browser authorization with redirect `http://localhost:5000/callback`; the reviewer returns the full redirected URL through a local masked VS Code prompt, never chat. No local listener; stored access/refresh tokens are reused and refreshed when needed. See [proposed ADR 0020](docs/adr/0020-webex-browser-oauth-manual-callback.md) and spec 009 T024–T028; implementation/testing remain open.
 - Webex notifications (2026-10-08): the integration posts as the reviewer, so Webex never notifies him, and bots are disabled in his org. Messages that must notify go through the space's Incoming Webhooks URL. A workspace space without one gets a startup prompt naming the space: it opens the Incoming Webhooks app page and a masked VS Code box takes the URL. Automate it if an API allows. The setup is linked to `askaway.webex.enabled`.
+- Webex General (2026-10-09): the Incoming Webhooks page does not list team self's built-in General space, so AskAway creates and uses its own "AskAway General" space in team `self` for General traffic and share-with-me documents.
 - Decision: [ADR 0007](docs/adr/0007-telegram-is-a-remote-control.md), [ADR 0018](docs/adr/0018-webex-replaces-telegram.md) · Requirements: [telegram.md](tasksync-chat/docs/requirements/telegram.md) · Spec: [009](specs/009-webex-remote-channel/spec.md)
 
 ### G8 Commentary shows what the agent is doing
@@ -323,3 +324,9 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > So, when you create a space for any workspace, you can suggest to run a new command which will take you to the other page and take new wehbook url for the space. Not sure if it is some command or something, but in workspaces, where webhook is missing and webex is enabled, may be a notification on startup to configure webhook for notitifcations and all, on click of it, open the link and show some textbox in vscode. link should take to the above link and in the webpage it ask for space name, may be show space name in the notification. i'll create webhook and paste the url in the box, so you register. If there are apis to do this programmatically, do it. I can add webhook also into scope of the token.
 >
 > webex integration setting is marked as disabled. link our setup to that setting.
+
+### 2026-10-09, Webex General
+
+> i dont see self or general space in the drop down. may be general is some default space or something. But couldnt find it.
+> And i see response in space but it was sent by me, so i ddint get any notitification.
+> Can I create a new space or you create a new space in self? for general? or find the name of general?

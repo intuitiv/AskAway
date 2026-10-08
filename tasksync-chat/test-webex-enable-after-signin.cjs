@@ -6,9 +6,9 @@ const esbuild = require('esbuild');
 async function main() {
     const root = path.join(__dirname, 'build', 'enable-after-signin-' + process.pid);
     fs.mkdirSync(path.join(root, '.askaway'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.askaway/webex-spaces.json'), JSON.stringify({ self: { teamId: 'self-team', generalRoomId: 'general', workspaceRoomId: null }, teams: [{ id: 'self-team', name: 'self', rooms: [{ id: 'general', title: 'General' }] }] }));
-    let enabled = false, created = 0, current, displayed;
-    const tokens = new Map(), listeners = [], commands = new Map(), notices = [], rooms = [{ id: 'general', title: 'General' }];
+    fs.writeFileSync(path.join(root, '.askaway/webex-spaces.json'), JSON.stringify({ self: { teamId: 'self-team', generalRoomId: 'general', workspaceRoomId: null }, teams: [{ id: 'self-team', name: 'self', rooms: [{ id: 'general', title: 'self' }] }] }));
+    let enabled = false, created = 0, generalCreated = 0, current, displayed;
+    const tokens = new Map(), listeners = [], commands = new Map(), notices = [], rooms = [{ id: 'general', title: 'self' }];
     const context = { secrets: { get: async key => tokens.get(key), store: async (key, value) => tokens.set(key, value) }, subscriptions: [], workspaceState: { get: (key, fallback) => fallback, update: async () => {} } };
     const provider = { setWebexService: service => { current = service; displayed = service.getTokenStatus(); }, getWebexService: () => current };
     // The Settings listener runs before the extension's deferred service listener, as in VS Code.
@@ -25,8 +25,11 @@ async function main() {
         if (req.url === '/v1/people/me') res.end(JSON.stringify({ id: 'me', displayName: 'Fixture', emails: [] }));
         else if (req.url === '/v1/teams') res.end(JSON.stringify({ items: [{ id: 'self-team', name: 'self' }] }));
         else if (req.method === 'POST' && req.url === '/v1/rooms') {
-            const body = JSON.parse(raw); assert.equal(body.teamId, 'self-team'); assert.equal(body.title, path.basename(root));
-            created++; rooms.push({ id: 'workspace', title: body.title }); res.end(JSON.stringify(rooms.at(-1)));
+            const body = JSON.parse(raw); assert.equal(body.teamId, 'self-team');
+            const general = body.title === 'AskAway General';
+            assert.equal(body.title, general ? 'AskAway General' : path.basename(root));
+            if (general) generalCreated++; else created++;
+            rooms.push({ id: general ? 'askaway-general' : 'workspace', title: body.title }); res.end(JSON.stringify(rooms.at(-1)));
         } else if (req.url.startsWith('/v1/rooms')) res.end(JSON.stringify({ items: rooms }));
         else res.end('{}');
     });
@@ -49,9 +52,11 @@ async function main() {
         assert.equal(displayed.hasToken, true, 'Settings must publish signed-in status after async reload');
         assert.equal(displayed.hasRoomId, true, 'resolved workspace room must configure delivery');
         assert.equal(created, 1);
+        assert.equal(generalCreated, 1, 'setup must create exactly one AskAway General');
         assert.equal(JSON.parse(fs.readFileSync(path.join(root, '.askaway/webex-spaces.json'))).self.workspaceRoomId, 'workspace');
         await commands.get('askaway.webexDiscover')();
         assert.equal(created, 1, 'discovery must not duplicate workspace rooms');
+        assert.equal(generalCreated, 1, 'discovery must not duplicate AskAway General');
         assert.equal(current.getTokenStatus().hasToken, true);
         assert.ok(!notices.some(text => text.includes('not signed in')));
         console.log('PASS enable after sign-in: actual extension wiring reloads shared credentials, publishes signed-in status and creates one self workspace space');

@@ -6,6 +6,7 @@ import { createHash } from 'crypto';
 import { CONFIG_NAMESPACE } from '../constants/branding';
 import { createTelegramHandoffTaskId } from './telegramConversationReply';
 import { renderResponseFile, type ResponseFile } from './responsePdf';
+import type { RemoteChannel } from './remoteChannel';
 
 /**
  * Posts the agent's `Response Handoff` section to Webex and/or Telegram when a turn ends.
@@ -21,7 +22,6 @@ const TRANSCRIPT = path.join(os.homedir(), '.askaway', 'turn-complete-transcript
 const TAIL_BYTES = 4 * 1024 * 1024; // agent_response lines are large; the last one is at the end
 const TURN_LOOKBACK_MS = 10 * 60 * 1000;
 const WATCH_INTERVAL_MS = 2000;
-const DETAILS_MAX_CHARS = 2800;
 
 /** The mandatory handoff, plus everything that came before it in the same message. */
 export interface HandoffParts { handoff: string; details: string; }
@@ -32,12 +32,7 @@ export interface TurnMetricsSnapshot {
     turnNanoAiu: number;
 }
 
-export interface HandoffPoster {
-    isConfigured(): boolean;
-    postText(markdown: string, fallback: string, replyTaskId?: string): Promise<boolean>;
-    /** Telegram only: the full response as a document. */
-    sendDocument?(filePath: string, caption: string): Promise<boolean>;
-}
+export type HandoffPoster = Pick<RemoteChannel, 'isConfigured' | 'postText'> & Partial<Pick<RemoteChannel, 'sendDocument'>>;
 
 export interface HandoffTarget {
     name: string;
@@ -135,16 +130,14 @@ ${text}`, `AskAway: ${text}`);
                     continue;
                 }
                 configuredTargets++;
-                const markdown = target.name === 'Telegram'
-                    ? telegramHandoffUpdate(parts, turnMetrics)
-                    : detailedHandoffUpdate(parts);
+                const markdown = telegramHandoffUpdate(parts, turnMetrics);
                 const ok = await poster.postText(
                     markdown,
                     `AskAway — turn complete: ${parts.handoff.slice(0, 200)}`,
-                    target.name === 'Telegram' ? createTelegramHandoffTaskId(ts) : undefined
+                    createTelegramHandoffTaskId(ts)
                 );
                 if (ok) { postedTargets++; }
-                if (ok && target.name === 'Telegram' && poster.sendDocument && parts.details) {
+                if (ok && poster.sendDocument && parts.details) {
                     await this._sendResponseDocument(poster.sendDocument.bind(poster), parts);
                 }
                 this._log(`Handoff notifier: posted to ${target.name} = ${ok}`, { chars: markdown.length });
@@ -218,17 +211,6 @@ export function findClaudeHandoff(jsonl: string, minTs: number): HandoffParts | 
         if (handoff) { return handoff; }
     }
     return undefined;
-}
-
-function detailedHandoffUpdate(parts: HandoffParts): string {
-    let markdown = `**AskAway \u2014 turn complete**\n\n${parts.handoff}`;
-    if (parts.details) {
-        const details = parts.details.length > DETAILS_MAX_CHARS
-            ? `${parts.details.slice(0, DETAILS_MAX_CHARS)}\u2026`
-            : parts.details;
-        markdown += `\n\n———\n\n${details}`;
-    }
-    return markdown;
 }
 
 export function telegramHandoffUpdate(parts: HandoffParts, metrics?: TurnMetricsSnapshot): string {

@@ -209,6 +209,17 @@ export class WebexService implements RemoteChannel {
         if (!this._activeTasks.size) { this.stopPolling(); }
     }
     public onReply(callback: RemoteReply): void { this.setResponseCallback(callback); }
+    public resolveHandoffs(): void {
+        for (const [taskId, task] of this._activeTasks) { if (task.handoff) { this.resolveTask(taskId); } }
+    }
+
+    private trackHandoff(taskId: string, messageId: string, question: string): void {
+        this.resolveHandoffs();
+        this._activeTasks.set(taskId, { taskId, messageId, question, timestamp: Date.now(), handoff: true });
+        this._persistMessages();
+        this._resetBackoff();
+        this.startPolling();
+    }
     public async destination(workspace?: string, general = false): Promise<RemoteDestination | undefined> {
         await this._ready;
         if (!this._enabled || !this._accessToken) { return undefined; }
@@ -271,9 +282,7 @@ export class WebexService implements RemoteChannel {
         const id = await this.sendText(`${head}\n\n${markdown}`, `${head}\n\n${markdown}`, undefined, { notify: true });
         if (!id) { return false; }
         try { await this.remoteRequest('DELETE', `messages/${encodeURIComponent(String(messageId))}`); } catch { /* Keep the live message if deletion is unavailable. */ }
-        this._activeTasks.set(taskId, { taskId, messageId: String(id), question: markdown, timestamp: Date.now(), handoff: true });
-        this._persistMessages();
-        this.startPolling();
+        this.trackHandoff(taskId, String(id), markdown);
         return true;
     }
     public async sendDocument(filePath: string, caption: string): Promise<boolean> {
@@ -541,11 +550,12 @@ export class WebexService implements RemoteChannel {
     // ── Post plain message ────────────────────────────────────
 
     /** Post a plain markdown message (no card, no reply tracking). Used for turn-end handoffs, which must notify. */
-    public async postText(markdown: string, fallback: string): Promise<boolean> {
+    public async postText(markdown: string, fallback: string, replyTaskId?: string): Promise<boolean> {
         await this._ready;
         if (!this.isConfigured() || !markdown.trim()) { return false; }
         const id = await this.sendText(markdown, fallback, undefined, { notify: true });
         if (!id) { this.logger?.appendLine('AskAway/Webex: postText failed.'); }
+        if (id && replyTaskId) { this.trackHandoff(replyTaskId, String(id), markdown); }
         return !!id;
     }
 

@@ -1247,6 +1247,16 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Webex/Telegram commands (services loaded in deferred block)
         const webexAuth = new WebexAuth(context.secrets);
+        const { isTelegramHandoffTaskId, submitTelegramConversationReply } = require('./services/telegramConversationReply') as typeof import('./services/telegramConversationReply');
+        const publishWebex = () => {
+            const service = webviewProvider?.getWebexService();
+            if (!service) { return; }
+            webviewProvider?.setWebexService(service);
+            service.onReply(async (taskId: string, text: string, user: string) => {
+                if (isTelegramHandoffTaskId(taskId)) { await submitTelegramConversationReply(text); }
+                else { (webviewProvider as any)._handleMessagingResponse(taskId, text, user); }
+            });
+        };
         const webexRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const webexStatus = webexRoot ? new WebexStatus(webexRoot, webexAuth, outputChannel,
             () => webviewProvider?.getWebexService()?.getTokenStatus() ?? { hasToken: false }) : undefined;
@@ -1256,7 +1266,7 @@ export function activate(context: vscode.ExtensionContext) {
             await vscode.commands.executeCommand('askaway.webexDiscover');
             await webviewProvider?.getWebexService()?.reloadConfig();
             const service = webviewProvider?.getWebexService();
-            if (service) { webviewProvider?.setWebexService(service); }
+            if (service) { publishWebex(); }
         }, webexAuth);
         context.subscriptions.push(
             vscode.commands.registerCommand('askaway.webexDiscover', async () => {
@@ -1271,7 +1281,7 @@ export function activate(context: vscode.ExtensionContext) {
                     refresh: () => webviewProvider?.getWebexService()?.refreshAccessToken() ?? Promise.resolve(undefined)
                 });
                 const service = webviewProvider?.getWebexService();
-                if (service) { await service.reloadConfig(); webviewProvider?.setWebexService(service); }
+                if (service) { await service.reloadConfig(); publishWebex(); }
             }),
             vscode.commands.registerCommand('askaway.getTelegramChatId', async () => {
                 if (telegramServiceInstance) { await telegramServiceInstance.getChatId(); }
@@ -1312,6 +1322,7 @@ export function activate(context: vscode.ExtensionContext) {
                 webexService = new WebexService(outputChannel, webexAuth, undefined, {}, incoming);
                 await webexService.reloadConfig();
                 provider.setWebexService(webexService);
+                publishWebex();
                 const { ensureWebexWorkspace } = await import('./services/webexSpaces');
                 const ensureWorkspace = async () => {
                     const folder = vscode.workspace.workspaceFolders?.[0];
@@ -1323,7 +1334,7 @@ export function activate(context: vscode.ExtensionContext) {
                 };
                 await ensureWorkspace();
                 await webexService.reloadConfig();
-                provider.setWebexService(webexService);
+                publishWebex();
                 webexService.start();
                 context.subscriptions.push({ dispose: () => webexService?.dispose() });
 
@@ -1335,7 +1346,7 @@ export function activate(context: vscode.ExtensionContext) {
                         await webexService.reloadConfig();
                         await ensureWorkspace();
                         await webexService.reloadConfig();
-                        provider.setWebexService(webexService);
+                        publishWebex();
                         if (vscode.workspace.getConfiguration('askaway.webex').get<boolean>('enabled', false)) { webexService.start(); }
                     }
                 }));
@@ -1378,7 +1389,7 @@ export function activate(context: vscode.ExtensionContext) {
                     telegramService.setLiveTurns(liveOn);
                     telegramTurn = telegramTurnTarget(telegramLiveCommentary, () => telegramService);
                     context.subscriptions.push(relayCommentaryToTelegram(telegramLiveCommentary, sharedCommentaryStore(), liveRoot,
-                        () => { telegramService?.resolveHandoffs(); }));
+                        () => { telegramService?.resolveHandoffs(); webexService?.resolveHandoffs(); }));
                 }
             } catch (err) {
                 logRuntime('Telegram deferred init failed', formatError(err));
