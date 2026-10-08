@@ -8,7 +8,7 @@ export interface RemoteChannel {
     sendText(formatted: string, fallback: string, destination?: RemoteDestination, options?: { notify?: boolean }): Promise<RemoteMessageId | undefined>;
     editLive(messageId: RemoteMessageId, formatted: string): Promise<boolean>;
     finishLive(messageId: RemoteMessageId, head: string, markdown: string, taskId: string): Promise<boolean>;
-    sendDocument(filePath: string, caption: string): Promise<boolean>;
+    sendDocument(filePath: string, caption: string, replyTaskId?: string): Promise<boolean>;
     postQuestion(taskId: string, question: string, choices?: string[]): Promise<void>;
     onReply(callback: RemoteReply): void;
     resolveTask(taskId: string): void;

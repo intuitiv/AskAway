@@ -138,7 +138,7 @@ ${text}`, `AskAway: ${text}`);
                 );
                 if (ok) { postedTargets++; }
                 if (ok && poster.sendDocument && parts.details) {
-                    await this._sendResponseDocument(poster.sendDocument.bind(poster), parts);
+                    await this._sendResponseDocument((file, caption) => poster.sendDocument!(file, caption, createTelegramHandoffTaskId(ts)), parts);
                 }
                 this._log(`Handoff notifier: posted to ${target.name} = ${ok}`, { chars: markdown.length });
             }

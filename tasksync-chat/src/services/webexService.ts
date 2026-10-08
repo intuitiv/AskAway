@@ -285,11 +285,32 @@ export class WebexService implements RemoteChannel {
         this.trackHandoff(taskId, String(id), markdown);
         return true;
     }
-    public async sendDocument(filePath: string, caption: string): Promise<boolean> {
+    private resolveHandoffSummary(task: TrackedTask, roomReplies: any[]): void {
+        if (!task.handoff || !task.messageId.startsWith('incoming:')) { return; }
+        const summary = roomReplies.filter(reply => isIncomingWebhookSender(reply) &&
+            (reply.markdown === task.question || reply.text === task.question) &&
+            !this._processedMsgIds.has(reply.id))
+            .sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')))[0];
+        if (summary?.id) { task.messageId = summary.id; this._recordPost(summary.id); }
+    }
+
+    public async sendDocument(filePath: string, caption: string, replyTaskId?: string): Promise<boolean> {
         if (!this.isConfigured()) { return false; }
         try {
+            const task = replyTaskId ? this._activeTasks.get(replyTaskId) : undefined;
+            // Live 2026-10-09: a webhook post took about 1-1.5 s to appear in the message list.
+            for (let attempt = 0; task?.messageId.startsWith('incoming:') && attempt < 5; attempt++) {
+                try {
+                    const response = await this.remoteRequest('GET', `messages?roomId=${encodeURIComponent(this._roomId!)}&max=100`);
+                    if (response.ok) { this.resolveHandoffSummary(task, (await response.json() as { items: any[] }).items || []); }
+                } catch { /* An unresolved webhook summary falls back to a top-level document. */ }
+                if (task.messageId.startsWith('incoming:') && attempt < 4) {
+                    await (this.remoteOptions.wait ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(1000);
+                }
+            }
             const form = new FormData();
             form.set('roomId', this._roomId!); form.set('text', caption);
+            if (task && !task.messageId.startsWith('incoming:')) { form.set('parentId', task.messageId); form.set('markdown', caption); }
             form.set('files', new Blob([new Uint8Array(await fs.promises.readFile(filePath))], { type: filePath.endsWith('.pdf') ? 'application/pdf' : 'text/markdown' }), path.basename(filePath));
             const response = await this.remoteRequest('POST', 'messages', form);
             if (!response.ok) { return false; }
@@ -747,6 +768,9 @@ export class WebexService implements RemoteChannel {
         console.log('AskAway/Webex: Polling started (backoff schedule: ' + POLL_BACKOFF_SCHEDULE_S.join('s, ') + 's).');
     }
 
+    private lastPollAt: number | null = null;
+    private nextPollAt: number | null = null;
+
     /** Schedule the next poll tick according to the backoff schedule */
     private _scheduleNextPoll() {
         if (this._pollingTimer) {
@@ -755,7 +779,8 @@ export class WebexService implements RemoteChannel {
         const delaySec = POLL_BACKOFF_SCHEDULE_S[
             Math.min(this._pollTickIndex, POLL_BACKOFF_SCHEDULE_S.length - 1)
         ];
-        this._pollingTimer = setTimeout(() => { this._pollingTimer = undefined; return this._poll(); }, delaySec * 1000);
+        this.nextPollAt = Date.now() + delaySec * 1000;
+        this._pollingTimer = setTimeout(() => { this._pollingTimer = undefined; this.nextPollAt = null; return this._poll(); }, delaySec * 1000);
     }
 
     /** Reset backoff to the beginning (e.g. after a new card is posted) */
@@ -766,6 +791,8 @@ export class WebexService implements RemoteChannel {
     }
 
     private stopPolling() {
+        this.lastPollAt = null;
+        this.nextPollAt = null;
         if (this._pollingTimer) {
             clearTimeout(this._pollingTimer);
             this._pollingTimer = undefined;
@@ -781,6 +808,7 @@ export class WebexService implements RemoteChannel {
             this.stopPolling();
             return;
         }
+        this.lastPollAt = Date.now();
 
         // Check if Copilot conversation appears stale (idle > threshold)
         if (this._lastCopilotActivity > 0) {
@@ -824,6 +852,7 @@ export class WebexService implements RemoteChannel {
         // Poll thread replies for each active task
         for (const [taskId, task] of this._activeTasks.entries()) {
             try {
+                this.resolveHandoffSummary(task, roomReplies);
                 const url = `${WEBEX_API}/messages?roomId=${this._roomId}&parentId=${task.messageId}&max=10`;
                 console.log(`AskAway/Webex: Polling URL: ${url}`);
                 const resp = task.messageId.startsWith('incoming:') ? new Response(JSON.stringify({ items: [] })) :
@@ -984,7 +1013,12 @@ export class WebexService implements RemoteChannel {
     }
 
     /** Get detailed token/connection status for the settings UI */
-    public getTokenStatus(): {
+    public getTokenStatus(): ReturnType<WebexService['_getTokenStatus']> & { lastPollAt: number | null; nextPollAt: number | null } {
+        const status = this._getTokenStatus();
+        return { ...status, lastPollAt: status.isPolling ? this.lastPollAt : null, nextPollAt: status.isPolling ? this.nextPollAt : null };
+    }
+
+    private _getTokenStatus(): {
         status: 'connected' | 'token-missing' | 'token-expired' | 'incomplete' | 'disabled';
         tokenSource: 'oauth' | 'file' | 'setting' | 'none';
         hasOAuth: boolean;

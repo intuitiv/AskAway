@@ -330,3 +330,10 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > i dont see self or general space in the drop down. may be general is some default space or something. But couldnt find it.
 > And i see response in space but it was sent by me, so i ddint get any notitification.
 > Can I create a new space or you create a new space in self? for general? or find the name of general?
+
+### 2026-10-09, Webex polish
+
+> i dont see polling status and timer like telegram.
+> run share with me once, i'll verify the doc.
+> i posted yes in space, but looks like you haven;t recieved. and i see the message. i got 2 messages, attachment and message. Cant we club them both?
+> And i also heared that we can do awesome formatting and some cards in webex too.

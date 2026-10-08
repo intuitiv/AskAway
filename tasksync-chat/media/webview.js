@@ -34,6 +34,8 @@
     let sendWithCtrlEnter = false;
     let webexEnabled = false;
     let telegramEnabled = false;
+    let remotePollingStatuses = {};
+    let remotePollingTimer = null;
     let autopilotEnabled = false;
     let autopilotText = '';
     let autopilotPrompts = [];
@@ -1531,6 +1533,12 @@
             case 'openSettingsModal':
                 openSettingsModal();
                 break;
+            case 'remotePollingStatus':
+                webexEnabled = message.webexEnabled === true;
+                telegramEnabled = message.telegramEnabled === true;
+                updateWebexStatusUI(message.webexStatus);
+                updateTelegramStatusUI(message.telegramStatus);
+                break;
             case 'updateSettings':
                 soundEnabled = message.soundEnabled !== false;
                 interactiveApprovalEnabled = message.interactiveApprovalEnabled !== false;
@@ -2742,15 +2750,7 @@
     }
 
     function updateWebexStatusUI(status) {
-        var el = document.getElementById('webex-status');
-        if (!el) return;
-        if (!status) { el.textContent = ''; return; }
-        var icon = status.status === 'connected' ? '✅' : status.status === 'disabled' ? '⏸' : '⚠️';
-        el.textContent = icon + ' ' + status.message;
-        if (status.hint) {
-            el.title = status.hint;
-        }
-        el.className = 'settings-status settings-status-' + status.status;
+        updateRemoteStatusUI('webex', 'Webex', webexEnabled, status);
     }
 
     function toggleTelegramSetting() {
@@ -2766,15 +2766,52 @@
     }
 
     function updateTelegramStatusUI(status) {
-        var el = document.getElementById('telegram-status');
-        if (!el) return;
-        if (!status) { el.textContent = ''; return; }
+        updateRemoteStatusUI('telegram', 'Telegram', telegramEnabled, status);
+    }
+
+    function remotePollingStatusHtml(label, status, now) {
         var icon = status.status === 'connected' ? '✅' : status.status === 'disabled' ? '⏸' : '⚠️';
-        el.textContent = icon + ' ' + status.message;
-        if (status.hint) {
-            el.title = status.hint;
+        var html = '<span class="remote-connection-status">' + escapeHtml(label) + ': ' + icon + ' ' + escapeHtml(status.message || '') + '</span>';
+        var polling = status.isPolling === true;
+        html += '<span class="remote-polling-status"> · ' + (polling ? 'Polling for replies' : 'Polling idle') + ' · ' + (Number(status.activeTasks) || 0) + ' tracked replies</span>';
+        if (polling) {
+            var next = Number(status.nextPollAt);
+            html += '<span class="remote-poll-countdown"> · ' + (isFinite(next) && next > 0
+                ? 'Next poll in ' + Math.max(0, Math.ceil((next - now) / 1000)) + 's'
+                : 'Next poll timing unavailable') + '</span>';
+            var last = Number(status.lastPollAt);
+            if (isFinite(last) && last > 0) {
+                html += '<span class="remote-last-poll"> · Last poll ' + Math.max(0, Math.floor((now - last) / 1000)) + 's ago</span>';
+            }
         }
-        el.className = 'settings-status settings-status-' + status.status;
+        return html;
+    }
+
+    function updateRemoteStatusUI(channel, label, enabled, status) {
+        remotePollingStatuses[channel] = enabled && status ? { label: label, status: status } : null;
+        renderRemoteStatuses();
+        var polling = Object.keys(remotePollingStatuses).some(function (key) {
+            return remotePollingStatuses[key] && remotePollingStatuses[key].status.isPolling === true;
+        });
+        if (polling && remotePollingTimer === null) {
+            remotePollingTimer = setInterval(renderRemoteStatuses, 1000);
+        } else if (!polling && remotePollingTimer !== null) {
+            clearInterval(remotePollingTimer);
+            remotePollingTimer = null;
+        }
+    }
+
+    function renderRemoteStatuses() {
+        Object.keys(remotePollingStatuses).forEach(function (channel) {
+            var el = document.getElementById(channel + '-status');
+            if (!el) return;
+            var entry = remotePollingStatuses[channel];
+            if (!entry) { el.innerHTML = ''; el.title = ''; return; }
+            var status = entry.status;
+            el.innerHTML = remotePollingStatusHtml(entry.label, status, Date.now());
+            el.title = status.hint || '';
+            el.className = 'settings-status settings-status-' + status.status;
+        });
     }
 
     function toggleAutopilotSetting() {

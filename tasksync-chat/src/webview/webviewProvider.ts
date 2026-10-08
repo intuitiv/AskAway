@@ -5261,6 +5261,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 return;
             }
             void this._broadcastObservabilityMetrics();
+            this._broadcast({
+                type: 'remotePollingStatus',
+                webexEnabled: this._getWebexEnabled(),
+                telegramEnabled: this._getTelegramEnabled(),
+                webexStatus: this._webexService?.getTokenStatus?.() ?? null,
+                telegramStatus: this._telegramService?.getTokenStatus?.() ?? null
+            } as any);
         }, this._OBSERVABILITY_POLL_MS);
     }
 
