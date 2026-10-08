@@ -24,10 +24,11 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0007](0007-telegram-is-a-remote-control.md) | Telegram mirrors VS Code and can reply to it | G7 | Proposed |
 | [0008](0008-commentary-narrates-the-agent.md) | Commentary narrates what the agent does and where it is blocked | G8 | Proposed |
 | [0009](0009-cloud-tasks-on-demand.md) | Cloud tasks run on demand, at story or task level, and notify when done | G9 | Proposed |
-| [0010](0010-validator-agent-learns-the-reviewer.md) | The validator learns the reviewer in beta, then answers for him when live | G10 | Proposed |
+| [0010](0010-validator-agent-learns-the-reviewer.md) | The validator is a decisioning engine with memory: it learns the reviewer in beta, then answers for him when live | G10 | Proposed |
 | [0011](0011-availability-decides-when-validator-takes-charge.md) | The reviewer's availability decides when the validator takes charge | G11 | Proposed |
 | [0012](0012-side-channel-to-running-work.md) | A side channel shows running work, nudges it, and takes side questions | G12 | Proposed |
 | [0013](0013-efficiency-score-is-cost-to-work.md) | The efficiency score is cost to work, outcome-independent, always high | G13 | Proposed |
 | [0014](0014-own-tools-prompts-and-evals.md) | Own tools cut cost and add control; prompts and tools have evals | G14 | Proposed |
 | [0015](0015-command-surface.md) | The `/sk.*` and recurring commands are the command surface | G15 | Proposed |
 | [0016](0016-consistent-experience.md) | One shared component per kind of thing, for a consistent experience | G16 | Proposed |
+| [0017](0017-never-break-a-requirement.md) | Never break a stated requirement; the validator decides from these documents | G17 | Proposed |

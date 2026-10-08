@@ -93,10 +93,15 @@ export class ValidatorObserver {
     private async sources(response: ObservedResponse, specSlug: string | null): Promise<ValidatorSource[]> {
         const root = this.ports.workspaceRoot;
         const found: Array<ValidatorSource | null> = [
-            readIfPresent(path.join(root, 'Goal.md'), 'Goal.md'),
-            readIfPresent(path.join(root, 'Rules.md'), 'Rules.md'),
+            readIfPresent(path.join(root, 'GOALS.md'), 'GOALS.md'),
         ];
-        if (specSlug) { found.push(readIfPresent(path.join(root, 'specs', specSlug, 'spec.md'), `specs/${specSlug}/spec.md`)); }
+        if (specSlug) {
+            found.push(
+                readIfPresent(path.join(root, 'specs', specSlug, 'Goal.md'), `specs/${specSlug}/Goal.md`),
+                readIfPresent(path.join(root, 'specs', specSlug, 'Rules.md'), `specs/${specSlug}/Rules.md`),
+                readIfPresent(path.join(root, 'specs', specSlug, 'spec.md'), `specs/${specSlug}/spec.md`),
+            );
+        }
         let recalled: ValidatorSource[] = [];
         try { recalled = (await this.ports.recall?.({ text: response.text, specSlug })) ?? []; } catch { /* recall failure leaves the file sources */ }
         const all = [...found, ...recalled].filter((s): s is ValidatorSource => !!s && typeof s.id === 'string');

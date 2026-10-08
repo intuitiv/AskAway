@@ -20,6 +20,7 @@ Rules for every agent:
 - Never edit the reviewer's verbatim words. Elaboration may clarify, never add a wish the reviewer did not state.
 - Only the reviewer changes an ADR status. Agents write `Proposed`.
 - A goal with no spec story and no requirement row is a gap: it gets a backlog row the same turn.
+- These documents are the validator's knowledge (G10, G17). A wrong or stale line becomes a wrong decision.
 
 ## 1. Ultimate goal
 
@@ -88,6 +89,8 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - Decision: [ADR 0009](docs/adr/0009-cloud-tasks-on-demand.md) · Requirements: [cloud-tasks.md](tasksync-chat/docs/requirements/cloud-tasks.md) · Spec: [006](specs/006-cloud-tasks/)
 
 ### G10 Validator agent learns the reviewer
+- The validator is a decisioning engine with memory, not a simple memory tool: it decides what the reviewer would decide, and memory is one of its inputs.
+- It decides from this file, the ADRs and the requirement rows, plus what it learned from the reviewer's replies.
 - Knows everything the reviewer wants: instructions, guidelines, best practices, the ultimate goal and the immediate goal.
 - Learns from the reviewer's responses: answers the agent's questions, compares its answers with the reviewer's real ones, and improves until it can act while the reviewer is away overnight.
 - **Beta phase:** observes user messages and (occasionally, or through a tool the agent calls) assistant messages; predicts the reviewer's reply to the final assistant response and shows it with how good it is; always reads the reviewer's real reply and learns from it; serves as the memory tool (loads existing memories without deleting them, stores new ones from the agent, gives existing ones back).
@@ -126,6 +129,12 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 ### G16 Consistent experience (standing, 2026-09-24)
 - One shared component per kind of thing; new data is converted into that component's input format, so every tab looks and behaves the same.
 - Decision: [ADR 0016](docs/adr/0016-consistent-experience.md) · Source: [AGENTS.md](AGENTS.md)
+
+### G17 Never break a requirement
+- Every change keeps the reviewer's stated requirements true. A change that would contradict one waits for his new words.
+- When he changes his mind, the documents change the same turn: verbatim words, requirement row, superseding ADR.
+- These documents are the validator's knowledge, so a wrong row becomes a wrong decision.
+- Decision: [ADR 0017](docs/adr/0017-never-break-a-requirement.md) · Requirements: [orchestrator.md](tasksync-chat/docs/requirements/orchestrator.md) · Guard: [AGENTS.md](AGENTS.md) "Never break a requirement"
 
 ## 3. Open questions
 
@@ -221,3 +230,8 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > Workers agent prompts and their tools and evals for their agent prompts and sub agents like Build, Orchestrator
 > Commands like /sk.continue, /sk.start, /sk.handoff, /sk.check, /sk.tasks, /sk.plan
 > Recurring commands like /pr_daily
+
+### 2026-10-08, later
+
+> Update current repos AGENTS.md  file or anything so that we dont break any requirements. And ultimately this will go to validator agent.
+> Remember validator is not a simple memory tool. It is a decisioning engine, with memory.

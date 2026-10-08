@@ -28,3 +28,5 @@
 | R-PLAN-23 | In live mode, the validator reads commentary and tells the reviewer what is going wrong. | "It can read commentary and suggest user what's wrong." (2026-10-08) | gap |
 | R-PLAN-24 | The reviewer can set availability to away for 30 minutes, a few hours or until he says he is back. | "I set the availability like away for next 30 min or few hours or away till say I am online and all." (2026-10-08) | gap |
 | R-PLAN-25 | The reviewer's availability tells the validator when to take charge. | "This helps validator agent when to take charge." (2026-10-08) | gap |
+| R-PLAN-26 | The validator is a decisioning engine with memory: it decides what the reviewer would decide, and memory is one of its inputs. | "It is a decisioning engine, with memory." (2026-10-08) | gap |
+| R-PLAN-27 | The validator decides from the reviewer's goals, decisions and requirement rows. | "And ultimately this will go to validator agent." (2026-10-08) | test-validator-observer.cjs EV-VALIDATOR-GOALS-SOURCE |

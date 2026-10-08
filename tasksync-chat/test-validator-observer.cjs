@@ -1,7 +1,6 @@
 // T004a observer: covered/uncovered/no-question/worker-response cases, cost once, beta isolation, non-blocking failure, worker/session ids. Run: node test-validator-observer.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 
@@ -19,11 +18,11 @@ const { CommentaryStore, commentaryView, buildOpener } = load('commentary/commen
 const { readSpecCostTotals } = load('specs/specCostLedger');
 const { ValidatorObserver } = load('validator/observer');
 
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-validator-observer-'));
-const workspace = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-validator-observer-ws-')));
-fs.writeFileSync(path.join(workspace, 'Rules.md'), '# Rules\nAlways write tests from the caller view before shipping.\n');
-fs.writeFileSync(path.join(workspace, 'Goal.md'), '# Goal\nShip a read-only validator.\n');
+const home = fs.mkdtempSync(path.join(buildDir, 'askaway-validator-observer-'));
+const workspace = fs.realpathSync(fs.mkdtempSync(path.join(buildDir, 'askaway-validator-observer-ws-')));
 fs.mkdirSync(path.join(workspace, 'specs', '007-demo'), { recursive: true });
+fs.writeFileSync(path.join(workspace, 'specs', '007-demo', 'Rules.md'), '# Rules\nAlways write tests from the caller view before shipping.\n');
+fs.writeFileSync(path.join(workspace, 'specs', '007-demo', 'Goal.md'), '# Goal\nShip a read-only validator.\n');
 fs.writeFileSync(path.join(workspace, 'specs', '007-demo', 'spec.md'), '# Spec\nFR-1: the build must run offline.\n');
 
 const commentary = new CommentaryStore({ dir: path.join(home, 'commentary') });
@@ -44,13 +43,13 @@ const reply = (body, usage, ids = { workerId: 'w-validator-1', sessionId: 'ses_a
         // --- Covered question: cited answer reaches Commentary only; cost counted once; ids recorded ---
         let calls = 0;
         const usage = { input: 1000, output: 100, reasoning: 20, cacheRead: 500, cacheWrite: 50, cost: 0.02 };
-        const covered = make(async (input) => { calls++; return reply({ answer: 'Write the test from the caller view first.', sources: ['Rules.md'], observations: 'rule applies', summary: 'covered', impact: 'low' }, usage)(input); });
+        const covered = make(async (input) => { calls++; return reply({ answer: 'Write the test from the caller view first.', sources: ['specs/007-demo/Rules.md'], observations: 'rule applies', summary: 'covered', impact: 'low' }, usage)(input); });
         const r1 = await covered.observer.observe({ id: 'resp-1', source: 'agent', text: 'Should I write tests before shipping?', specSlug: SLUG });
         assert.equal(calls, 1);
         assert.equal(r1.skipped, false);
         assert.equal(r1.error, null);
         assert.match(r1.answer, /caller view/);
-        assert.deepEqual(r1.sources, ['Rules.md']);
+        assert.deepEqual(r1.sources, ['specs/007-demo/Rules.md']);
         assert.deepEqual([r1.workerId, r1.sessionId], ['w-validator-1', 'ses_abc'], 'record carries worker and session id');
         const shown = commentaryView(commentary.read(workspace)).items.filter((i) => i.kind === 'validator');
         assert.equal(shown.length, 1);
@@ -128,6 +127,34 @@ const reply = (body, usage, ids = { workerId: 'w-validator-1', sessionId: 'ses_a
         let profileSeen;
         await make(async (input) => { profileSeen = input.profile; return { text: '{}' }; }).observer.observe({ id: 'resp-10', source: 'agent', text: 'Should I proceed?', specSlug: SLUG });
         assert.deepEqual([profileSeen.edit, profileSeen.bash, profileSeen.webfetch], ['deny', 'deny', 'deny'], 'the run is read-only');
+
+        // --- Reviewer goals and active spec sources reach the run and remain valid citations ---
+        const goalsWorkspace = path.join(buildDir, 'validator-goals-fixture');
+        const goalSources = {
+            'GOALS.md': 'REVIEWER_GOALS_MARKER',
+            'specs/009-x/Goal.md': 'ACTIVE_GOAL_MARKER',
+            'specs/009-x/Rules.md': 'ACTIVE_RULES_MARKER',
+            'specs/009-x/spec.md': 'ACTIVE_SPEC_MARKER',
+        };
+        for (const [id, marker] of Object.entries(goalSources)) {
+            const file = path.join(goalsWorkspace, id);
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, marker);
+        }
+        let goalsPrompt;
+        const goals = make(async (input) => {
+            goalsPrompt = input.prompt;
+            return reply({ answer: 'Follow the reviewer goals and active spec.', sources: Object.keys(goalSources), observations: '', summary: 'covered', impact: 'low' })(input);
+        }, { workspaceRoot: goalsWorkspace });
+        const goalsResult = await goals.observer.observe({ id: 'resp-goals', source: 'agent', text: 'What would the reviewer want for this spec?', specSlug: '009-x' });
+        assert.equal(goalsResult.skipped, false);
+        assert.equal(goalsResult.error, null);
+        assert.equal(goalsResult.answer, 'Follow the reviewer goals and active spec.');
+        for (const [id, marker] of Object.entries(goalSources)) {
+            assert.ok(goalsPrompt.includes(`--- ${id}\n${marker}`), `${id} text reaches the run prompt`);
+        }
+        assert.deepEqual(goalsResult.sources, Object.keys(goalSources), 'all four source ids are accepted as citations');
+        console.log('PASS EV-VALIDATOR-GOALS-SOURCE');
 
         console.log('PASS EV-VALIDATOR-OBSERVER');
     } finally {

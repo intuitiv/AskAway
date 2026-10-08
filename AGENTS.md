@@ -4,6 +4,23 @@ What the reviewer wants, in one place: [GOALS.md](GOALS.md) (goals), [docs/adr/]
 (his decisions), [tasksync-chat/docs/requirements/](tasksync-chat/docs/requirements/README.md) (testable rows).
 Read GOALS.md before starting any work here.
 
+## Never break a requirement (reviewer, 2026-10-08)
+
+"Update current repos AGENTS.md file or anything so that we dont break any requirements."
+- Before changing a feature or UI component, read its goal in GOALS.md, its ADR and its requirement rows.
+  The change must keep every row true.
+- A change that contradicts a row or an ADR needs the reviewer's new words first; never rewrite a requirement to
+  fit the code. When he gives them: add them verbatim with the date to GOALS.md section 4, strike the old row and
+  add the new one, and write a superseding ADR (`Proposed`).
+- A new reviewer ask about what he wants gets its requirement row (quote + date) in the same turn; a new goal
+  also gets a GOALS.md section and an ADR.
+- A row marked `gap` has no test. When you touch that area, add a caller-view test and cite it in the row.
+- `npm run test:workers` (in `tasksync-chat/`) must stay green; it runs the docs checks EV-REQUIREMENTS-DOCS and
+  EV-GOALS-DOCS.
+- These documents are the validator's knowledge. The validator is a decisioning engine with memory, not a simple
+  memory tool: it decides what the reviewer would decide from GOALS.md, the ADRs, the requirement rows and what it
+  learned from his replies. A wrong or stale row becomes a wrong decision, so keep them true, short and quoted.
+
 ## Ownership (reviewer, 2026-09-24)
 
 The agent owns this entire repo: code organisation, maintenance, tests, skills, prompts, and docs.

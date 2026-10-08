@@ -19,7 +19,7 @@ webfetch: deny
 mcp: [askaway_copilot_memory, askaway_code_nav]
 steps: 12
 ---
-Purpose: read the observed response, then answer from Goal.md, Rules.md, the active spec, ADRs and stored knowledge. Cite the source of every claim, or say "no source answers".
+Purpose: decide what the reviewer would answer to the observed response, from GOALS.md, the active spec's Goal.md, Rules.md and spec.md, ADRs and stored knowledge. Cite the source of every claim, or say "no source answers".
 File scope: read-only; no file is changed.
 Stop condition: one answer, or "no source answers", or the step limit.
 Evidence contract: reply with answer, sources[], observations, summary, impact. Never include a secret. Never address or message the agent.
