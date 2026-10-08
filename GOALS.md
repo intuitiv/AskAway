@@ -135,6 +135,8 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 2. **Cloud PR (G9).** "take that PR back and review and merge": one PR per delegated story or task, or commits on the spec's one active PR branch as decided on 2026-09-30?
 3. **Validator observation (G10).** In beta, start with the tool the agent calls, or with periodic observation of assistant messages?
 4. **Unfinished line (G10).** The message has "Validator agent should" with nothing after it before "In beta phase". Was something else meant there?
+5. **Homes for the 8 gaps** in [docs/goals-coverage.md](docs/goals-coverage.md): G2 new-ask capture, G3 ask ledger and G4 question batch extend spec 005; G7 reply-from-Telegram gets a new Telegram spec; G8, G10 and G11 live-phase validator become a later 007 release; G14 own tools extend spec 001. Agree?
+6. **ADR status.** All 16 ADRs are `Proposed`. Accept them as written, or list the ones to change?
 
 ## 4. Reviewer's words, verbatim
 
