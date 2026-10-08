@@ -19,7 +19,11 @@ export async function webexSpaces(auth: WebexAuth, workspace: Workspace, options
             const teams = facts.teams.filter((team: { name: string }) => team.name.toLowerCase() === 'self');
             if (teams.length !== 1) { throw new Error('Unresolved self team.'); }
             const team = teams[0];
-            const general = team.rooms.filter((room: { title: string }) => room.title === 'General');
+            // The API titles a team's General space with the team name; the Webex app shows it as "General".
+            const generalId: string | undefined = facts.self?.generalRoomId;
+            const general = team.rooms.filter((room: { id: string; title: string }) => generalId
+                ? room.id === generalId
+                : room.title === 'General' || room.title.toLowerCase() === team.name.toLowerCase());
             const title = path.basename(workspace.fsPath);
             const rooms = team.rooms.filter((room: { title: string }) => room.title === title);
             if (general.length !== 1 || rooms.length > 1) { throw new Error('Unresolved space.'); }

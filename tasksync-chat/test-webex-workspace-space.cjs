@@ -8,7 +8,8 @@ async function main() {
     let enabled = false, requests = 0, creations = 0, offered = false;
     const updates = [], commands = [], notices = [];
     const secrets = new Map([['askaway.webex.accessToken', 'fixture-access-canary']]);
-    const rooms = [{ id: 'general', title: 'General' }, { id: 'existing', title: 'webex-existing' }];
+    // Real API shape (2026-10-08 live): the team's General space is titled with the team name.
+    const rooms = [{ id: 'general', title: 'self' }, { id: 'existing', title: 'webex-existing' }];
     const server = http.createServer(async (req, res) => {
         requests++;
         res.setHeader('Content-Type', 'application/json');

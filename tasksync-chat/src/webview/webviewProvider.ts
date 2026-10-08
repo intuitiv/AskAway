@@ -15,7 +15,7 @@ import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
 import { CloudSpecsController, shouldPollCloud } from '../cloud/cloudSpecs';
 import { defaultIO } from '../cloud/cloudQueue';
 import { PacketTask } from '../cloud/packet';
-import { sessionOpenCommand, WorkersState, WorkerTrace } from '../workers/workersState';
+import { projectWorkersState, sessionOpenCommand, WorkersState, WorkerTrace } from '../workers/workersState';
 import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
 import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
@@ -26,7 +26,7 @@ import { remoteDigestPoster } from '../commentary/telegramLive';
 import { CloudDigestScheduler } from '../cloud/cloudDigest';
 import { LongRunHandoff } from '../specs/handoffThreshold';
 import { HandoffNotifier } from '../services/handoffNotifier';
-import { sharedCommentaryStore, workerSpendSince } from '../workers/workerHost';
+import { observeWorkers, sharedCommentaryStore, sharedWorkerRuntime, workerSpendSince } from '../workers/workerHost';
 import { turnTotals, usageScope, mergeToolUsage, persistTurnTotals } from '../workers/turnBudget';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
@@ -1486,7 +1486,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private _refreshWorkersState(): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const data = root && this._workersStateSource ? this._workersStateSource(root) : null;
+        const data = root ? (this._workersStateSource ? this._workersStateSource(root) : projectWorkersState(sharedWorkerRuntime(), root)) : null;
+        if (root && !this._workersStateSource) {
+            void observeWorkers(root).then(() => {
+                const observed = projectWorkersState(sharedWorkerRuntime(), root);
+                observed.turnWorkerIds = this._workerSpend().workerIds;
+                this._broadcast({ type: 'workersState', data: { ...observed, cloudWorkers: this._cloudWorkers ?? [] } });
+            }).catch(error => console.warn('[AskAway] Worker server observation failed:', error));
+        }
         if (data) { data.turnWorkerIds = this._workerSpend().workerIds; }
         this._broadcast({ type: 'workersState', data: data ? { ...data, cloudWorkers: this._cloudWorkers ?? [] } : null });
     }
