@@ -5,6 +5,132 @@ const os = require('node:os');
 const path = require('node:path');
 const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 
+async function runLive() {
+    // Preserve quoted strings (including URLs) while removing JSONC syntax.
+    const strings = '"(?:\\\\.|[^"\\\\])*"';
+    let settings;
+    try {
+        const raw = fs.readFileSync(path.join(os.homedir(), 'Library/Application Support/Code/User/settings.json'), 'utf8');
+        const uncommented = raw.replace(new RegExp(`(${strings})|//[^\\r\\n]*|/\\*[\\s\\S]*?\\*/`, 'g'), (_, quoted) => quoted ?? '');
+        settings = JSON.parse(uncommented.replace(new RegExp(`(${strings})|,(?=\\s*[}\\]])`, 'g'), (_, quoted) => quoted ?? ''));
+    } catch (error) {
+        if (error.code === 'ENOENT') { console.log('SKIP EV-048-LIVE reason=user-settings-missing'); return; }
+        throw new Error('EV-048-LIVE could not parse user settings (contents masked)');
+    }
+    const token = settings['askaway.telegram.botToken'];
+    const chatId = settings['askaway.telegram.chatId'];
+    if (typeof token !== 'string' || !token.trim() || !String(chatId ?? '').trim()) {
+        console.log('SKIP EV-048-LIVE reason=botToken-or-chatId-missing');
+        return;
+    }
+    const mask = text => String(text).split(token).join('[MASKED]').split(encodeURIComponent(token)).join('[MASKED]');
+    let service, wired;
+    try {
+        const bundle = await require('esbuild').build({
+            stdin: { contents: "export { TelegramService } from './src/services/telegramService'; export { CommentaryStore } from './src/commentary/commentary'; export { TelegramLiveCommentary, relayCommentaryToTelegram } from './src/commentary/telegramLive';", resolveDir: __dirname, loader: 'ts' },
+            bundle: true, platform: 'node', format: 'cjs', write: false, logLevel: 'silent', external: ['vscode'],
+        });
+        const fixture = path.join(__dirname, '.telegram-live-test-fixture');
+        fs.mkdirSync(fixture, { recursive: true });
+        const fixtureRun = fs.mkdtempSync(path.join(fixture, 'turn-'));
+        const vscode = {
+            workspace: { name: 'TaskSync', workspaceFolders: [{ uri: { fsPath: path.dirname(__dirname) } }],
+                getConfiguration: () => ({ get: (key, fallback) => {
+                    if (key === 'telegram.enabled') { return true; }
+                    if (key === 'telegram.botToken') { return token; }
+                    if (key === 'telegram.chatId') { return String(chatId); }
+                    return settings[`askaway.${key}`] ?? fallback;
+                } }) },
+            commands: { executeCommand: async () => {} },
+            window: { showErrorMessage() {}, showWarningMessage() {} },
+        };
+        let apiErrors = 0;
+        const pending = new Set();
+        const liveFetch = (url, options) => {
+            // Never read updates: that would consume the reviewer's real replies meant for the running extension.
+            if (String(url).includes('/getUpdates')) {
+                return Promise.resolve(new Response(JSON.stringify({ ok: true, result: [] }), { headers: { 'content-type': 'application/json' } }));
+            }
+            const request = (async () => {
+                try {
+                    const response = await fetch(url, { ...options, signal: AbortSignal.timeout(15000) });
+                    const data = await response.clone().json();
+                    if (!response.ok || data.ok !== true) { apiErrors++; }
+                    return response;
+                } catch { apiErrors++; throw new Error('EV-048-LIVE Telegram transport failed (details masked)'); }
+            })();
+            pending.add(request);
+            request.then(() => pending.delete(request), () => pending.delete(request));
+            return request;
+        };
+        const loaded = { exports: {} };
+        // The host adapter supplies settings only; all Telegram HTTP calls remain real.
+        // Suppress service logs entirely: API errors can contain the credential URL.
+        new Function('require', 'module', 'exports', 'console', 'fetch', bundle.outputFiles[0].text)(
+            name => name === 'vscode' ? vscode : require(name), loaded, loaded.exports,
+            { log() {}, warn() {}, error() {} }, liveFetch);
+        const runtime = loaded.exports;
+        service = new runtime.TelegramService();
+        const calls = { sends: [], edits: [], finishes: [] };
+        let posterErrors = 0;
+        const observe = async (list, action) => {
+            try { const result = await action(); list.push(result); return result; }
+            catch { posterErrors++; return undefined; }
+        };
+        const poster = {
+            isConfigured: () => service.isConfigured(),
+            sendLive: html => observe(calls.sends, () => service.sendLive(html)),
+            editLive: (id, html) => observe(calls.edits, () => service.editLive(id, html)),
+            finishLive: (...args) => observe(calls.finishes, () => service.finishLive(...args)),
+        };
+        let clock = Date.now();
+        const liveStore = new runtime.CommentaryStore({ dir: path.join(fixtureRun, 'commentary'), now: () => ++clock });
+        const liveRelay = new runtime.TelegramLiveCommentary(() => poster, 'TaskSync', { minEditMs: 0 });
+        wired = runtime.relayCommentaryToTelegram(liveRelay, liveStore, fixtureRun);
+        const waitFor = async predicate => {
+            const deadline = Date.now() + 20000;
+            while (!predicate() && !apiErrors && !posterErrors && Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            assert.ok(!apiErrors && !posterErrors, 'EV-048-LIVE real Telegram API and poster must report no errors');
+            assert.ok(predicate(), 'EV-048-LIVE relay must deliver before timeout');
+        };
+        liveStore.markTurnStart(fixtureRun, '[AskAway live test] Verify one live commentary turn');
+        await waitFor(() => calls.sends.length > 0);
+        assert.ok(calls.sends.length === 1 && Number.isInteger(calls.sends[0]) && calls.sends[0] > 0,
+            'EV-048-LIVE user message must return one real Telegram message id');
+        for (const [kind, text] of [
+            ['update', '[AskAway live test] Checking the real commentary relay sends updates into this Telegram message.'],
+            ['heads-up', '[AskAway live test] Heads-up: this labelled test checks live delivery; no reviewer action is needed.'],
+        ]) {
+            const before = calls.edits.length;
+            assert.ok(liveStore.post(fixtureRun, { kind, text }).status === 'POSTED', 'EV-048-LIVE commentary must be accepted');
+            await waitFor(() => calls.edits.length > before);
+            assert.ok(calls.edits.at(-1) === true, 'EV-048-LIVE real Telegram edit must succeed');
+        }
+        assert.ok(await liveRelay.finish('[AskAway live test] Commentary delivery test complete.', 'handoff:EV-048-LIVE'),
+            'EV-048-LIVE real Telegram turn completion must succeed');
+        wired.dispose(); wired = undefined;
+        service.dispose();
+        await Promise.allSettled([...pending]);
+        assert.ok(apiErrors === 0 && posterErrors === 0, 'EV-048-LIVE no API error during turn completion');
+        assert.ok(calls.sends.length === 1 && calls.edits.length === 2 && calls.finishes.length === 1,
+            'EV-048-LIVE exactly one live opening, two edits and one turn completion');
+        // finishLive sends a notifying final message and removes the silent live one, as in the extension.
+        console.log(`PASS EV-048-LIVE sent=1 edits=${calls.edits.length}`);
+    } catch (error) {
+        const safe = new Error(mask(error.message));
+        safe.stack = mask(error.stack ?? safe.stack);
+        throw safe;
+    } finally {
+        wired?.dispose();
+        service?.dispose();
+    }
+}
+
+if (process.env.ASKAWAY_TELEGRAM_LIVE === '1') {
+    runLive().catch(error => { console.error(String(error.stack).split('\n').slice(0, 5).join('\n')); process.exitCode = 1; });
+} else {
 const buildDir = path.join(__dirname, '.telegram-live-test-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
 for (const name of ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary', 'commentary/telegramLive']) {
@@ -135,3 +261,4 @@ const sync = () => relay.update(view());
     for (const dir of [buildDir, home, workspace]) { fs.rmSync(dir, { recursive: true, force: true }); }
     console.log('EV-048 TelegramLiveCommentary: PASS openOnUserMessage=true editInPlace=true headsUp=flagged escaped=true finalReplacesLive=true throttled=trailingEdit offSwitches=true bounded=true newTurnSignal=true statusEvery2m=true stuckWarning=true');
 })().catch((error) => { console.error(error); process.exit(1); });
+}

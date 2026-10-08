@@ -105,6 +105,8 @@ for (const [name, text] of [['Copilot agent', extensionSource], ['Claude agent',
     assert.match(text, /implementation intent.*internally route.*\/sk\.implement/is, `${name} routes natural-language implementation`);
     assert.match(text, /does not require the user to retype a slash command/i, `${name} routing is implicit`);
 }
+assert.match(extensionSource, /^tools:.*intuitiv\.askaway\/commentary/m, 'Copilot agent can post commentary (mirrored to Telegram)');
+assert.match(extensionSource, /## Commentary[\s\S]*mirrored live to Telegram/, 'Copilot agent is told to post commentary');
 
 const webviewSource = fs.readFileSync(path.join(__dirname, 'media/webview.js'), 'utf8');
 assert.match(webviewSource, /Agent throughput/, 'UI labels attributed delivery as agent throughput');

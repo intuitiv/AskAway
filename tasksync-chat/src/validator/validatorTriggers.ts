@@ -44,7 +44,7 @@ export class ValidatorTriggers {
     }
     async validatorCall(text: string) {
         try {
-            await (await this.observer()).observe({ id: createHash('sha256').update(text).digest('hex'),
+            return await (await this.observer()).observe({ id: createHash('sha256').update(text).digest('hex'),
                 source: 'agent', text, specSlug: this.spec(), force: true });
         } catch { this.failed(); }
     }

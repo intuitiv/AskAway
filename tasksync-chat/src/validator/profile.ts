@@ -22,7 +22,7 @@ steps: 12
 Purpose: decide what the reviewer would answer to the observed response, from GOALS.md, the active spec's Goal.md, Rules.md and spec.md, ADRs and stored knowledge. Cite the source of every claim, or say "no source answers".
 File scope: read-only; no file is changed.
 Stop condition: one answer, or "no source answers", or the step limit.
-Evidence contract: reply with answer, sources[], observations, summary, impact. Never include a secret. Never address or message the agent.
+Evidence contract: emit exactly ONE JSON object on ONE line with these exact keys: {"answer":string|null,"sources":string[],"observations":string,"summary":string,"impact":string,"risk":"low"|"high","reversible":boolean,"confidence":number}. All keys are required. No prose, headings or Markdown fences around the object. Then emit Result: PASS on a separate line for the worker runtime. Confidence is 0..1. Cite supplied source ids exactly. Assess whether answering authorizes a low-risk reversible decision; destructive, irreversible, uncertain or unsourced decisions are high risk and must be held for the reviewer. Never include a secret. Never address or message the agent. Live answers require confidence >= 0.8; delivery is only via a requested tool result while enabled and Away.
 `;
 
 export function validatorProfile(): WorkerProfile {

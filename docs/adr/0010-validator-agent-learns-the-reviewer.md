@@ -41,3 +41,7 @@ The validator is a decisioning engine with memory, not a simple memory tool: it 
 **Live phase, 2026-10-08:** "It should act as me when i am away from keyboard." Its live design is discussed against spec 007 before tasks are written.
 
 **Memory, 2026-10-08:** "We remove vscode memory tool from the agent' tool list, tahts how it will ask new memory tool instead of vscode one." Agents reach memory only through the AskAway memory tool.
+
+**Live switch, 2026-10-08:** "I say when it is ready for live. May be add some setting, when i am happy, i'll turn it on. by default it is off." The live phase runs only when the reviewer turns its setting on.
+
+**Live behaviour, 2026-10-08:** "And yes i am accepting your recomendations". While live and the reviewer is Away in that workspace, it answers low-risk, reversible questions and holds the rest; the asking agent gets the answer with its sources, nothing is pushed unasked; it flags drift seen in commentary and never acts destructively; when he is back he gets a digest of its decisions, sources, uncertainties and held questions.

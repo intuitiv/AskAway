@@ -47,7 +47,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - Artifacts follow the standard structure: user stories with acceptance criteria, tasks per story, and `[P]` parallel tasks that really run in parallel.
 - When the reviewer gives more tasks or recommendations, they go into Spec Kit tasks.
 - The Specs tab reflects the same state the flow is in.
-- Specs show user stories and tasks, not phases or cycles; older specs migrate to this pattern (2026-10-08).
+- Specs show user stories and tasks, not phases or cycles; ~~older specs migrate to this pattern~~ the Specs tab reverse-maps the tasks in tasks.md onto the stories in spec.md, without rewriting any spec file (2026-10-08).
 - Decision: [ADR 0001](docs/adr/0001-spec-kit-is-mandatory-and-invisible.md) · Requirements: [speckit-flow.md](tasksync-chat/docs/requirements/speckit-flow.md), [specs-tab.md](tasksync-chat/docs/requirements/specs-tab.md) · Spec: [005](specs/005-speckit-guided-flow/spec.md)
 
 ### G3 Never miss a task
@@ -81,6 +81,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - In orchestrator mode, commentary gives a high-level view of what the agent is doing, where it is blocked, and whether it needs help.
 - Purpose: the reviewer cannot read, digest and respond within 5 minutes; commentary lets him prepare for the agent's response and steer when it heads in a different direction.
 - Later, once the validator has proven its worth, the validator monitors the flow and suggests to the agent immediately, and the agent can ask the validator when in doubt.
+- Commentary reaches Telegram as a live feed, not only the periodic status (2026-10-08).
 - Decision: [ADR 0008](docs/adr/0008-commentary-narrates-the-agent.md) · Requirements: [live-tab.md](tasksync-chat/docs/requirements/live-tab.md), [orchestrator.md](tasksync-chat/docs/requirements/orchestrator.md)
 
 ### G9 Cloud tasks, only when the reviewer wants them
@@ -98,6 +99,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - **Beta phase:** observes user messages and (occasionally, or through a tool the agent calls) assistant messages, the agent-called tool first (2026-10-08); predicts the reviewer's reply to the final assistant response and shows it with how good it is; always reads the reviewer's real reply and learns from it; serves as the memory tool (loads existing memories without deleting them, stores new ones from the agent, gives existing ones back).
 - **Live phase:** answers for the reviewer when he is not available; the memory tool works as in beta; it reads commentary and tells the reviewer what is going wrong.
 - It acts as the reviewer when he is away from keyboard (2026-10-08).
+- The reviewer switches the live phase on with a setting, off by default. While live and he is Away, it answers low-risk, reversible questions (the agent gets the answer with sources when it asks), holds the rest, flags drift seen in commentary, and gives him a digest when he is back (2026-10-08).
 - Agents reach memory only through the AskAway memory tool; the VS Code memory tool is removed from their tool lists (2026-10-08).
 - Decision: [ADR 0010](docs/adr/0010-validator-agent-learns-the-reviewer.md) · Requirements: [availability-and-validator.md](tasksync-chat/docs/requirements/availability-and-validator.md) · Spec: [007](specs/007-validator-agent/)
 
@@ -152,8 +154,8 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 6. **ADR status.** All 16 ADRs are `Proposed`. Accept them as written, or list the ones to change? **Answered 2026-10-08: all 16 accepted.**
 7. **Stopping md memory auto-load (G10, 007 T013).** After the one-time seed into the memory store, how do the `/memories` md files stop entering the conversation? (a) move them to an archive folder, bytes unchanged (recommended); (b) keep them in place and switch off VS Code's memory auto-load, if a setting allows it; (c) replace each with a one-line pointer to the memory tool. **Answered 2026-10-08: remove the VS Code memory tool from the agents' tool lists, so they use the AskAway memory tool.**
 8. **Waiting on your live look** (no question, just a reload and a glance): 005 T015 worker spend in the shared banner and Telegram, and 005 T016 Specs tab and commentary polish. Both are built; they stay unticked until you accept them live. **Shared banner accepted 2026-10-08** ("Shared banner looks good"); the Telegram status and the Specs tab polish still await a look.
-9. **Live validator design (G10, G11).** "It should act as me when i am away from keyboard." To discuss against 007's own design: what it may decide alone, how the agent receives its answer, and how the reviewer reviews its decisions when back.
-10. **Specs as stories and tasks (G2).** How older specs that use phases or cycles migrate to user stories and tasks.
+9. **Live validator design (G10, G11).** "It should act as me when i am away from keyboard." To discuss against 007's own design: what it may decide alone, how the agent receives its answer, and how the reviewer reviews its decisions when back. **Answered 2026-10-08: recommendations accepted (answer low-risk reversible questions, hold the rest; answer returned to the asking agent with sources; only while Away; digest on return; flag drift only), and a setting, off by default, that the reviewer turns on when he is happy.**
+10. **Specs as stories and tasks (G2).** How older specs that use phases or cycles migrate to user stories and tasks. **Answered 2026-10-08: do not rewrite anything; reverse-map tasks.md tasks onto spec.md stories in the Specs tab.**
 
 ## 4. Reviewer's words, verbatim
 
@@ -265,3 +267,13 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > 7: We remove vscode memory tool from the agent' tool list, tahts how it will ask new memory tool instead of vscode one. Thats how ou stop loading it.
 >
 > Spec should show User stories and tasks not phases/cycles. lets see how we can migrate them to this pattern. Shared banner looks good.
+
+### 2026-10-08, answers 3
+
+> At some point, if i can get live feed of comentary on telegram. Currently i get periodic status, how mcuh cost spent and how many workers and running, basically shared banner is shared in telegram also. If we send commentary, that oeuld be great.
+>
+> I say when it is ready for live. May be add some setting, when i am happy, i'll turn it on. by default it is off.
+> Stories are in spec. And tasks.md have tasks, we need to reverse map and show them in specs tab. DO not rewrite anything. All i am asking for is whats there already in spec files.
+>
+> And yes i am accepting your recomendations
+> Add a test case for all these things real and live so that we dont break stuff

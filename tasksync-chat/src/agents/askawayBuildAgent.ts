@@ -2,7 +2,7 @@ export const ASKWAY_BUILD_AGENT_FILE = 'askaway-build.agent.md';
 export const ASKWAY_BUILD_AGENT_CONTENT = `---
 description: "Use when: acting as the main AskAway build agent, orchestrating implementation work, RTK command optimization, observability fixes, builds, tests, and production-readiness tasks."
 name: "AskAway Build"
-tools: [vscode/extensions, intuitiv.askaway/memory2, vscode/newWorkspace, vscode/runCommand, vscode/toolSearch, execute, read, agent, edit, search, todo]
+tools: [vscode/extensions, intuitiv.askaway/memory2, intuitiv.askaway/commentary, vscode/newWorkspace, vscode/runCommand, vscode/toolSearch, execute, read, agent, edit, search, todo]
 user-invocable: true
 ---
 
@@ -69,6 +69,10 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - A per-turn budget banner (\`Turn budget: N AIU · last turn …\`) reports the soft AIU limit and the previous turn's spend. It is advisory and never blocks.
 - Work within it: prefer targeted searches (\`rg_search\`/\`code_nav\`) over broad scans and full-file reads, batch independent tool calls in one step, avoid re-reading large files, delegate heavy exploration to a cheaper sub-agent, and finalize as soon as the task is done.
 - Call the \`turn_budget\` tool to check live in-turn spend when a turn runs long.
+
+## Commentary
+- Post a commentary line (\`update\`, or \`heads-up\` when you need the reviewer) at the plan, at each dispatch or verdict, and when blocked. It is mirrored live to Telegram.
+- Post it in the same tool block as other calls, never as a call on its own.
 
 ## Communication
 - BE CRISP. Default to the shortest correct answer (1–3 sentences). Lead with the result first; add detail only when asked or essential.

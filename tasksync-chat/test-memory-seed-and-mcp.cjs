@@ -19,6 +19,7 @@ const before = ['user/preferences.md', 'repo/rules.md'].map(file => fs.readFileS
 const files = new Map();
 let frozen = false;
 let sourceReads = 0;
+let realRecallOnly = false;
 function guardSource(file) {
     if (live && path.resolve(String(file)).startsWith(ledgerRoot + path.sep)) return;
     if (path.resolve(String(file)).startsWith(fixture + path.sep)) {
@@ -52,6 +53,11 @@ function load(file, fileSystem = fakeFs) {
             assert.equal(options.headers.Authorization, `Bearer ${secret}`);
             assert.ok(!options.body || !options.body.includes(secret), 'Bearer must not enter memory bodies');
             if (live) {
+                if (realRecallOnly) {
+                    assert.equal(options.method, 'GET', 'Real memory check must only recall, never write');
+                    assert.equal(options.body, undefined, 'Real memory check must not send a write body');
+                    assert.equal(new URL(_url).pathname, '/agentmemory/memories', 'Real memory check must only use recall');
+                }
                 if (options.body) {
                     const body = JSON.parse(options.body);
                     assert.deepEqual(body.concepts.filter(tag => tag.startsWith('project:')),
@@ -198,5 +204,55 @@ const index = [];
     before.forEach((bytes, i) => assert.deepEqual(fs.readFileSync(path.join(fixture, ['user/preferences.md', 'repo/rules.md'][i])), bytes));
     console.log('PASS T012 byte-identical md: no source reads or enumeration after seed, including LM/MCP calls');
     if (live) console.log('PASS T012 LIVE: real loopback agentmemory Bearer remember/recall through LM/MCP (no server lifecycle or egress claim)');
+    if (live) {
+        const codeUser = path.join(require('node:os').homedir(), 'Library/Application Support/Code/User');
+        const workspaceStorage = path.join(codeUser, 'workspaceStorage');
+        const candidates = [path.join(codeUser, 'globalStorage', 'intuitiv.askaway', 'memory-seeded-v1')];
+        if (fs.existsSync(workspaceStorage)) {
+            for (const entry of fs.readdirSync(workspaceStorage, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+                if (entry.isDirectory()) candidates.push(path.join(workspaceStorage, entry.name, 'intuitiv.askaway', 'memory-seeded-v1'));
+            }
+        }
+        const realMarker = candidates.find(file => fs.existsSync(file) && fs.statSync(file).isFile());
+        if (!realMarker) {
+            console.log('SKIP EV-MEMORY-REAL-SEED reason=not seeded yet (reload VS Code and make one memory call)');
+        } else {
+            const memories = path.join(codeUser, 'globalStorage', 'github.copilot-chat', 'memory-tool', 'memories');
+            const markdown = fs.readdirSync(memories, { withFileTypes: true })
+                .filter(entry => entry.isFile() && entry.name.endsWith('.md')).map(entry => entry.name).sort();
+            assert.ok(markdown.length > 0, 'Real seeded user memories must contain a top-level Markdown file');
+            const lines = fs.readFileSync(path.join(memories, markdown[0]), 'utf8').split(/\r?\n/);
+            const query = (lines.find(line => /^\s*#{1,6}\s+\S/.test(line)) || lines.find(line => line.trim()) || '').trim();
+            const word = (query.toLowerCase().match(/\p{L}{4,}/gu) || []).sort((a, b) => b.length - a.length)[0];
+            assert.ok(word, 'Real memory query must contain a distinctive word');
+            const rejectWrite = () => assert.fail('Real memory check must never write to the filesystem');
+            const readOnlyFs = { ...fs, mkdirSync: rejectWrite, writeFileSync: rejectWrite, appendFileSync: rejectWrite };
+            const { AgentmemoryStore: RealAgentmemoryStore } = load('src/validator/agentmemoryStore.ts', readOnlyFs);
+            let realLedgerRoot = path.dirname(realMarker);
+            if (realMarker.startsWith(workspaceStorage + path.sep)) {
+                const workspace = JSON.parse(fs.readFileSync(path.join(path.dirname(realLedgerRoot), 'workspace.json'), 'utf8'));
+                const { fileURLToPath } = require('node:url');
+                if (workspace.folder) realLedgerRoot = fileURLToPath(workspace.folder);
+                else {
+                    const workspaceFile = fileURLToPath(workspace.workspace);
+                    const { parse } = require('jsonc-parser');
+                    const folder = parse(fs.readFileSync(workspaceFile, 'utf8')).folders?.[0];
+                    assert.ok(folder, 'Seeded workspace must identify its memory ledger root');
+                    realLedgerRoot = folder.uri ? fileURLToPath(folder.uri) : path.resolve(path.dirname(workspaceFile), folder.path);
+                }
+            }
+            const realStore = new RealAgentmemoryStore(realLedgerRoot, 'http://127.0.0.1:3111', secret);
+            realRecallOnly = true;
+            try {
+                // The adapter's secret gate validates the query before any request or output.
+                const hits = await realStore.recall(query, { project: '_user', agentId: 'agents' }, 100);
+                assert.ok(hits.some(item => item.fact.text.toLowerCase().includes(word)),
+                    'Real user recall must return a known word from the seeded Markdown memory');
+                console.log(`PASS EV-MEMORY-REAL-SEED marker=${realMarker} query=${JSON.stringify(query.slice(0, 40))} hits=${hits.length}`);
+            } finally {
+                realRecallOnly = false;
+            }
+        }
+    }
     console.log('PASS EV-MEMORY-SEED-MCP: idempotent read-only seed, LM/MCP read-write, agent isolation, hidden superseded history, JSONL round-trip, secret gate');
 })().catch(error => { console.error(error); process.exitCode = 1; });

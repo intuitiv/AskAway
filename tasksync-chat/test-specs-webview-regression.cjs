@@ -92,7 +92,10 @@ const spec = {
     id: '001',
     slug: '001-example',
     nextTaskId: 'T001',
-    tasks: [],
+    tasks: [
+        { id: 'T001', text: 'Define the worker contract', done: false, story: '' },
+        { id: 'T002', text: 'Completed setup', done: true, story: '' }
+    ],
     cycles: [{
         id: 'CY-001',
         phase: 'P0 Contract and Test Seam',
@@ -111,8 +114,9 @@ const spec = {
 };
 const hierarchy = hierarchyContext.renderSpecWork(spec);
 assert.match(hierarchy, /<details class="spec-work-phase"[^>]* open/);
-assert.match(hierarchy, /<details class="spec-cycle"[^>]* open/);
-assert.match(hierarchy, /data-ref="CY-001"/);
+assert.match(hierarchy, /Not linked to a story/);
+assert.doesNotMatch(hierarchy, /spec-cycle|CY-001|P0 Contract/);
+assert.match(hierarchy, /1\/2 tasks/);
 assert.match(hierarchy, /data-ref="T001"/);
 assert.doesNotMatch(hierarchy, /T002/);
 
@@ -152,7 +156,7 @@ for (const selector of ['.conversation-health', '.spec-work-phase', '.spec-cycle
     assert.match(css, new RegExp(selector.replace('.', '\\.')), `Missing UI contract selector ${selector}`);
 }
 
-console.log('EV-SPECS-WEBVIEW-REGRESSION: PASS banner=last-input+turn-output hierarchy=phase>cycle>task actions=cycle+task');
+console.log('EV-SPECS-WEBVIEW-REGRESSION: PASS banner=last-input+turn-output hierarchy=story>task unlinked=true actions=task');
 
 // Regression (reviewer 2026-09-28, first fixed 2026-08-19): the active spec is never hidden by the Completed filter.
 const specs = [

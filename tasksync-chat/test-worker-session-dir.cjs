@@ -21,9 +21,9 @@ const { registerWorkerTools } = require(path.join(buildDir, 'workerTools.js'));
 
 const MODEL = 'github-copilot/gpt-5.6-luna';
 const profile = parseWorkerProfile(`---\nname: verify\ndescription: "v"\ntier: light\nmodel: ${MODEL}\nthinking: low\nmodels: [${MODEL}]\nthinkingOptions: [low]\nedit: deny\n---\nBody.\n`);
-const ledgerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-sessdir-ledger-'));
-const owner = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-sessdir-owner-'));
-const worktree = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-sessdir-worktree-'));
+const ledgerDir = fs.mkdtempSync(path.join(buildDir, 'askaway-sessdir-ledger-'));
+const owner = fs.mkdtempSync(path.join(buildDir, 'askaway-sessdir-owner-'));
+const worktree = fs.mkdtempSync(path.join(buildDir, 'askaway-sessdir-worktree-'));
 const packet = { profile: 'verify', dispatchTurnId: 'turn-1', baseRevision: 'abc', objective: 'Check', allowedFiles: [], acceptance: 'a', expected: 'e', command: 'true' };
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const arg = (child, flag) => child.args[child.args.indexOf(flag) + 1];
@@ -103,7 +103,7 @@ const ledger = () => fs.readdirSync(ledgerDir).flatMap((file) => fs.readFileSync
 
     // Stall detector: a silent child is STALLED 60 s after spawn; wait returns at once; the process is not killed.
     clock.t += 1000;
-    const silent = await call('start', { ...packet, thinking: undefined, model: undefined, workspacePath: fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-sessdir-silent-')) });
+    const silent = await call('start', { ...packet, thinking: undefined, model: undefined, workspacePath: fs.mkdtempSync(path.join(buildDir, 'askaway-sessdir-silent-')) });
     const stallTimer = timers.filter((t) => t.live).pop();
     assert.equal(stallTimer.ms, 60_000);
     assert.equal((await call('status', { runId: silent.runId })).state, 'STARTING');
@@ -126,13 +126,24 @@ const ledger = () => fs.readdirSync(ledgerDir).flatMap((file) => fs.readFileSync
     await tick();
     assert.equal((await call('status', { runId: silent.runId })).state, 'RUNNING');
     // A child that speaks in time never stalls.
-    const lively = await call('start', { ...packet, workspacePath: fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-sessdir-lively-')) });
+    const lively = await call('start', { ...packet, workspacePath: fs.mkdtempSync(path.join(buildDir, 'askaway-sessdir-lively-')) });
     const livelyTimer = timers.filter((t) => t.live).pop();
     children[children.length - 1].stdout.write(`${JSON.stringify({ type: 'text', sessionID: 'ses_L', part: { type: 'text', text: 'hi' } })}\n`);
     await tick();
     assert.equal(livelyTimer.live, false, 'the first event cancels the stall timer');
     assert.equal((await call('status', { runId: lively.runId })).state, 'RUNNING');
 
-    for (const dir of [buildDir, ledgerDir, owner, worktree]) { fs.rmSync(dir, { recursive: true, force: true }); }
+    // A legacy record imported for B still belongs to A even without cwd.
+    const restoredLedger = fs.mkdtempSync(path.join(buildDir, 'restored-ledger-'));
+    const key = value => value.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
+    const historical = ledger().filter(row => row.runId === first.runId).map(({ cwd, ...row }) => row);
+    fs.writeFileSync(path.join(restoredLedger, key(fs.realpathSync(worktree)) + '.jsonl'), historical.map(JSON.stringify).join('\n') + '\n');
+    const restored = new OpenCodeWorkerRuntime([profile], { ledgerDir: restoredLedger, spawner, setTimer, forkSession, now: () => clock.t });
+    const fresh = restored.start({ ...packet, workspacePath: worktree });
+    assert.notEqual(fresh.workerId, first.workerId);
+    assert.equal(children.at(-1).args.includes('--session'), false, 'legacy directory A session never resumes in directory B');
+    children.at(-1).stdout.write(JSON.stringify({ type: 'error', error: { data: { message: 'Unexpected server error: session directory mismatch' } } }) + '\n');
+    children.at(-1).emit('exit', 1, null);
+    assert.match((await restored.wait(fresh.runId, 1)).reason, /session directory mismatch/);
     console.log('PASS EV-WORKER-SESSION-DIR sameCwd=reused otherCwd=newWorker submitMismatch=CWD_MISMATCH fanoutMismatch=CWD_MISMATCH startFactAtSpawn=pid+dir stalled=60s waitEarly=true');
 })().catch((error) => { console.error(error); process.exit(1); });

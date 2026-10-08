@@ -116,6 +116,19 @@ Reviewer: "agentmemory is replacement for all memory needs. Validator also uses 
 
 ---
 
+## Phase 6c: User Story 7 - Live validator acts for the reviewer while away (Priority: P2)
+
+**Goal**: Reviewer-enabled, Away-only, pull-only safe decisions (2026-10-08).
+**Independent Test**: Beta when off/Here; sourced safe answers and held risky questions when Away; return digest and commentary flags.
+- [x] T014 [US7] Default-off askaway.validator.live setting and workspace availability gate, timed expiry and Here beta fallback; test `tasksync-chat/test-validator-live.cjs` (FR-027). Done 2026-10-08: EV-VALIDATOR-LIVE offline.
+- [x] T015 [US7] Bounded forced live answers/held, risk/reversible/confidence contract, append-only `liveDecisions.ts` records; test `tasksync-chat/test-validator-live.cjs` (FR-028, FR-029; depends T014). Done 2026-10-08: offline cases plus live run against the real OpenCode server (`ASKAWAY_VALIDATOR_LIVE=1`): answer 4 with GOALS.md source.
+- [x] T016 [US7] Digest on reviewer return with decisions, sources, uncertainties and held questions; test `tasksync-chat/test-validator-digest-watch.cjs` (FR-030; depends T015). Done 2026-10-08: EV-VALIDATOR-DIGEST-WATCH offline.
+- [x] T017 [US7] Watch commentary in live Away mode and flag drift/risk to reviewer only, never destructive actions; test `tasksync-chat/test-validator-digest-watch.cjs` (FR-031; depends T014). Done 2026-10-08: offline plus live (`ASKAWAY_VALIDATOR_LIVE=1`): the real validator flagged commentary that contradicts GOALS.md and stayed quiet on aligned commentary.
+
+**Checkpoint**: Live validator safely acts for the absent reviewer and reports on return.
+
+---
+
 ## Phase 7: User Story 5 - Evals for the validator's prompt (Priority: P5)
 
 **Goal**: Three eval suites report results for manual beta review, without automated baseline/regression gate (reviewer: "I'll manually see them few days").

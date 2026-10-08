@@ -612,13 +612,13 @@ export class OpenCodeWorkerRuntime {
             this.runs.set(runId, {
                 runId, workerId: first.workerId, sessionId, state, profile: first.profile, model: first.model, thinking: first.thinking,
                 dispatchTurnId: first.dispatchTurnId, track: first.track ?? '', startedAt: first.ts, endedAt: last.ts, updatedAt: last.ts, elapsedMs: last.ts - first.ts,
-                usage, queuePosition: 0, reason, workspace, cwd: first.cwd ?? workspace, packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
+                usage, queuePosition: 0, reason, workspace, cwd: canonical(first.cwd ?? first.workspace), packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
                 lastPromptTokens, lastCachedTokens, ...(first.forkedFrom ? { forkedFrom: first.forkedFrom } : {}),
             });
             const lastTs = records[records.length - 1].ts;
             const adopted = this.adopted.get(first.workerId);
             if (!adopted || lastTs >= adopted.lastTs) {
-                this.adopted.set(first.workerId, { workspace, cwd: first.cwd ?? workspace, profile: first.profile, model: first.model, thinking: first.thinking,
+                this.adopted.set(first.workerId, { workspace, cwd: canonical(first.cwd ?? first.workspace), profile: first.profile, model: first.model, thinking: first.thinking,
                     sessionId: sessionId || adopted?.sessionId || '', contextTokens: contextTokens || adopted?.contextTokens || 0, lastTs,
                     forkedFrom: first.forkedFrom ?? adopted?.forkedFrom });
             }
@@ -813,8 +813,9 @@ export class OpenCodeWorkerRuntime {
                     run.state = 'WAITING_APPROVAL';
                     this.record(run, { type: 'approval' });
                 } else if (event?.type === 'error') {
-                    run.reason = 'provider or tool error';
-                    this.record(run, { type: 'error' });
+                    const detail = String(event.error?.data?.message ?? event.error?.message ?? event.error?.name ?? event.message ?? 'provider or tool error');
+                    run.reason = CREDENTIAL.test(detail) ? 'provider or tool error (credential omitted)' : detail.replace(/\s+/g, ' ').slice(0, 240);
+                    this.record(run, { type: 'error', reason: run.reason });
                 } else if (part.tool) {
                     const status = String(part.state?.status ?? '');
                     const callId = String(part.callID ?? part.id ?? '');

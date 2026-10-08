@@ -164,7 +164,7 @@ export class CommentaryStore {
      * Internal only (never an MCP tool): the validator's one-line summary plus expandable `detail`. No word cap (R-3);
      * a credential anywhere in text or detail drops the whole item. Stored apart from agent-facing items.
      */
-    postValidator(workspacePath: string, input: { text: string; detail?: Record<string, unknown>; turnId?: string }): PostResult {
+    postValidator(workspacePath: string, input: { text: string; detail?: Record<string, unknown>; turnId?: string; headsUp?: boolean }): PostResult {
         const text = String(input.text ?? '').replace(/\s+/g, ' ').trim();
         if (!text) { return { status: 'REJECTED', reason: 'empty text' }; }
         const body = `${text}\n${JSON.stringify(input.detail ?? {})}`;
@@ -173,7 +173,7 @@ export class CommentaryStore {
         const validatorItems = state.validatorItems ?? [];
         const ts = Math.max(this.now(), (validatorItems[validatorItems.length - 1]?.ts ?? 0) + 1,
             (state.items[state.items.length - 1]?.ts ?? 0) + 1, state.clearedAt + 1);
-        const item: CommentaryItem = { id: `v-${ts.toString(36)}-${++this.sequence}`, ts, kind: 'validator', text, turnId: input.turnId ?? '',
+        const item: CommentaryItem = { id: `v-${ts.toString(36)}-${++this.sequence}`, ts, kind: input.headsUp ? 'heads-up' : 'validator', text, turnId: input.turnId ?? '',
             ...(input.detail ? { detail: input.detail } : {}) };
         state.validatorItems = [...validatorItems, item];
         this.write(state);

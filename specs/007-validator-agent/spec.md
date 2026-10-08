@@ -148,6 +148,24 @@ One local agentmemory server (or a better-reviewed alternative chosen after rese
 
 ---
 
+### User Story 7 - Live validator acts for the reviewer while away (Priority: P2)
+
+Reviewer (2026-10-08): "It should act as me when i am away from keyboard." / "I say when it is ready for live. May be add some setting, when i am happy, i'll turn it on. by default it is off."
+
+**Why this priority**: Work continues during the reviewer's absence without granting destructive authority or unsolicited agent input.
+
+**Independent Test**: Call askaway_validator with live off, then on while Here, then on while Away with safe and unsafe questions; verify beta acknowledgements, sourced answer or held result, append-only decisions, return digest and reviewer-only drift flags.
+
+**Acceptance Scenarios** (recommendations accepted 2026-10-08):
+1. **Given** live is enabled and the reviewer is Away, **When** an agent asks a low-risk reversible sourced question with confidence at least 0.8, **Then** its tool result contains the answer and sources; all other questions are held.
+2. **Given** a live decision, **When** no agent asks, **Then** no answer is pushed into agent input; Commentary still shows the prediction.
+3. **Given** the reviewer is Here or timed Away has expired, **When** the tool is called, **Then** it remains beta, Commentary only.
+4. **Given** decisions and held questions accumulated while Away, **When** the reviewer returns, **Then** a digest shows decisions, sources, uncertainties and held questions.
+5. **Given** live is enabled while Away, **When** commentary indicates drift or risk, **Then** the reviewer receives a flag, never a destructive action.
+6. **Given** a fresh installation, **When** readiness has not been declared by the reviewer enabling the setting, **Then** live is off.
+
+This supersedes the beta-only FR-018 delivery limit ONLY when askaway.validator.live is on and workspace availability is Away. Destructive actions remain forbidden.
+
 ### Edge Cases
 
 - Sources contradict each other (an old ADR vs a newer reviewer reply): the newest reviewer statement wins, and the conflict is shown.
@@ -191,6 +209,11 @@ One local agentmemory server (or a better-reviewed alternative chosen after rese
 - **FR-024**: The memory server MUST run local-only (M2: "Yes"): no cloud calls, no OpenAI key passed to it (its environment MUST NOT inherit `OPENAI_API_KEY` or any provider key), local embeddings, auto-forget and consolidation off. Trial finding 2026-10-07: agentmemory auto-used the shell's `OPENAI_API_KEY` and tried to send observations to OpenAI.
 - **FR-025**: AskAway MUST start or attach to one detached memory server on first use, with the port as the cross-window mutex, exactly like the shared OpenCode server (M4: "Askaway starts it like we start opencode server."). No server per window, worker or agent.
 - **FR-026**: Agent and worker prompts and profiles MUST point to the memory store, not to `/memories`, once seeding is done.
+- **FR-027**: askaway.validator.live MUST be boolean, default false, enabled only by the reviewer when ready; live authority requires workspace Away (timed and unexpired or until back).
+- **FR-028**: Requested live tool calls MUST force observation and wait with a bounded timeout; only low-risk, reversible, sourced answers with confidence >= 0.8 may return; all others MUST return held for the reviewer. No unsolicited agent delivery.
+- **FR-029**: Every live decision MUST append question, answer or held, sources, risk, reversibility, confidence and timestamp to a workspace JSONL ledger; prediction remains in Commentary.
+- **FR-030**: Return to Here MUST produce a reviewer digest of decisions, sources, uncertainties and held questions.
+- **FR-031**: Live commentary watching MUST flag drift/risk only to the reviewer and MUST NOT take destructive actions.
 
 **Validator triggers (resolved 2026-10-07; A15)**: The validator runs at exactly three triggers: main-chat turn end validates the whole final message as sent to Telegram (the reply plus its Response Handoff, not only the handoff section); main-chat turn start observes the previous turn's whole final message paired with the user's response; an agent's memory tool call returns the answer only to the calling agent through the requested memory tool result. OpenCode workers' final replies do not trigger the validator; workers reach memory only through the memory tool. Intermediate replies are ignored in beta; revisit after the review days. The reviewer reads the final response themselves; the validator is their plan B.
 

@@ -103,7 +103,7 @@ export interface SpecSummary {
     facts: SpecFacts;
     /** Artifacts older (by git commit order) than an artifact they are generated from. */
     stale: StaleEntry[];
-    /** User stories from spec.md with progress from tasks tagged `[USn]` or under their story phase. */
+    /** User stories from spec.md with progress from tasks tagged `[USn]`. */
     stories: SpecStory[];
 }
 
@@ -362,8 +362,7 @@ function parseStories(specText: string, tasks: ParsedTask[]): SpecStory[] {
         }
     }
     for (const story of stories) {
-        const phase = new RegExp(`User Story ${story.id.slice(2)}\\b`, 'i');
-        const members = tasks.filter(task => task.story === story.id || (!task.story && phase.test(task.phase)));
+        const members = tasks.filter(task => task.story === story.id);
         story.total = members.length;
         story.done = members.filter(task => task.done).length;
     }

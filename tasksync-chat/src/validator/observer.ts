@@ -21,7 +21,8 @@ export function validatorWorkerRun(runtime: () => Promise<OpenCodeWorkerRuntime>
         const result = await worker.wait(run.runId, 60);
         if (result.status !== 'COMPLETED') {
             worker.cancel(run.runId);
-            throw new Error('Validator worker ' + result.status);
+            const reason = 'reason' in result ? String(result.reason ?? '') : '';
+            throw new Error('Validator worker ' + result.status + (redactOrDrop(reason) !== null && reason ? ': ' + reason.slice(0, 240) : ''));
         }
         const status = worker.status(run.runId);
         if (!status || !('usage' in status)) throw new Error('Validator worker usage unavailable: ' + observedId);
@@ -71,6 +72,29 @@ function num(value: unknown): number { const n = Number(value); return Number.is
 
 function strings(value: unknown): string[] { return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []; }
 
+function replyObject(raw: string): Record<string, unknown> | null {
+    for (let start = raw.indexOf('{'); start >= 0; start = raw.indexOf('{', start + 1)) {
+        let depth = 0, quoted = false, escaped = false;
+        for (let end = start; end < raw.length; end++) {
+            const char = raw[end];
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (char === '\\') escaped = true;
+                else if (char === '"') quoted = false;
+            } else if (char === '"') quoted = true;
+            else if (char === '{') depth++;
+            else if (char === '}' && --depth === 0) {
+                try {
+                    const value = JSON.parse(raw.slice(start, end + 1));
+                    if (value && typeof value === 'object' && 'answer' in value) return value;
+                } catch { /* Try the next surrounded object. */ }
+                break;
+            }
+        }
+    }
+    return null;
+}
+
 export class ValidatorObserver {
     constructor(private readonly ports: ObserverPorts) {}
 
@@ -110,7 +134,7 @@ export class ValidatorObserver {
     }
 
     /** Never throws and never blocks the caller's flow: failures become `error` on the returned response (FR-017). */
-    async observe(response: ObservedResponse): Promise<ValidatorResponse> {
+    async observe(response: ObservedResponse): Promise<ValidatorResponse & { risk?: 'low' | 'high'; reversible?: boolean; confidence?: number }> {
         const specSlug = response.specSlug ?? null;
         const base: ValidatorResponse = {
             id: (this.ports.newId ?? randomUUID)(), observedId: response.id, source: response.source, specSlug, answer: null,
@@ -124,7 +148,7 @@ export class ValidatorObserver {
         }
     }
 
-    private async observeInner(response: ObservedResponse, base: ValidatorResponse, specSlug: string | null): Promise<ValidatorResponse> {
+    private async observeInner(response: ObservedResponse, base: ValidatorResponse, specSlug: string | null): Promise<ValidatorResponse & { risk?: 'low' | 'high'; reversible?: boolean; confidence?: number }> {
         if (!response.force && !needsObserving(String(response.text ?? ''))) { return this.finish({ ...base, skipped: true }, specSlug); }
         const text = redactOrDrop(response.text);
         if (text === null) { return this.finish({ ...base, error: 'response holds a credential; not observed' }, specSlug); }
@@ -132,9 +156,10 @@ export class ValidatorObserver {
         const sources = await this.sources(response, specSlug);
         const prompt = [
             'Observed response:', text, '',
-            'Sources (cite by id, or say "no source answers"):',
+            'Sources (cite by EXACT id, or say "no source answers"):',
             ...sources.map((s) => `--- ${s.id}\n${s.text}`),
-            '', 'Reply as JSON: {"answer": string|null, "sources": string[], "observations": string, "summary": string, "impact": string}.',
+            '', 'Reply as JSON: {"answer": string|null, "sources": string[], "observations": string, "summary": string, "impact": string, "risk": "low"|"high", "reversible": boolean, "confidence": number (0..1)}. High risk or irreversible questions must be held for the reviewer; never authorize destructive actions.',
+            'The sources array MUST contain only exact ids from this list: ' + JSON.stringify(sources.map(s => s.id)) + '. Do not append sections, line numbers, quotes or descriptions to ids. For GOALS.md use exactly "GOALS.md"; put section detail in observations instead. All JSON keys above are required.',
         ].join('\n');
 
         const profile = validatorProfile();
@@ -159,12 +184,7 @@ export class ValidatorObserver {
         const withRun = { ...base, usage, ...(result.workerId ? { workerId: result.workerId } : {}), ...(result.sessionId ? { sessionId: result.sessionId } : {}) };
         const ids = { workerId: result.workerId, sessionId: result.sessionId };
 
-        let parsed: Record<string, unknown> | null = null;
-        try {
-            const raw = String(result.text ?? '');
-            const json = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
-            parsed = json && typeof json === 'object' ? json : null;
-        } catch { parsed = null; }
+        const parsed = replyObject(String(result.text ?? ''));
         if (!parsed) {
             this.emit({ type: 'error', observedId: response.id, ts: this.now(), error: 'unreadable validator output', ...ids });
             return this.finish({ ...withRun, error: 'validator output was not readable' }, specSlug);
@@ -175,12 +195,18 @@ export class ValidatorObserver {
         const cited = strings(parsed.sources).filter((id) => known.has(id));
         const answered = typeof parsed.answer === 'string' && parsed.answer.trim() !== '' && cited.length > 0;
         this.emit({ type: 'stop', observedId: response.id, ts: this.now(), ...ids });
-        return this.finish({
+        const decision = {
+            ...(parsed.risk === 'low' || parsed.risk === 'high' ? { risk: parsed.risk as 'low' | 'high' } : {}),
+            ...(typeof parsed.reversible === 'boolean' ? { reversible: parsed.reversible } : {}),
+            ...(typeof parsed.confidence === 'number' && parsed.confidence >= 0 && parsed.confidence <= 1 ? { confidence: parsed.confidence } : {}),
+        };
+        return Object.assign(this.finish({
             ...withRun,
             answer: answered ? String(parsed.answer) : null,
             sources: answered ? cited : [],
             observations: String(parsed.observations ?? ''), summary: String(parsed.summary ?? ''), impact: String(parsed.impact ?? ''),
-        }, specSlug);
+            ...decision,
+        }, specSlug), decision);
     }
 
     /** Records, posts to Commentary only (FR-018), and counts cost once under `validator:<id>`. */

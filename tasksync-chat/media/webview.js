@@ -5356,7 +5356,7 @@
         return '<div class="cm-item' + (flagged ? ' cm-heads-up' : '') + '" data-id="' + commentaryEsc(item.id) + '">' +
             '<div class="cm-body">' +
             '<div class="cm-text">' + commentaryMarkup(item.text) + '</div>' +
-            (item.kind === 'validator' ? '<table class="observability-table obs-timeline-table">' + TRACE_HEAD +
+            (item.kind === 'validator' || (item.kind === 'heads-up' && item.detail) ? '<table class="observability-table obs-timeline-table">' + TRACE_HEAD +
                 '<tbody>' + traceRowsHtml(validatorTraceRows(item), { openIds: openIds }) + '</tbody></table>' : '') +
             '<div class="cm-meta">' + (flagged ? '<span class="cm-heads-up-tag">HEADS-UP</span>' : '') + '<span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
             '</div></div>';
@@ -5904,11 +5904,6 @@
         return html;
     }
 
-    function specWorkLabel(names) {
-        var allCycles = names.length > 0 && names.every(function(name) { return /(^|\s)(cycle\s+)?CY-\d+/i.test(name); });
-        return allCycles ? 'Cycles' : 'Phases';
-    }
-
     function renderCloudEligibility(task, specSlug) {
         var tags = Array.isArray(task.tags) ? task.tags : [];
         var local = tags.filter(function(tag) { return /^local:/i.test(tag); })[0];
@@ -5919,89 +5914,30 @@
     }
 
     function renderSpecWork(spec) {
-        var cycles = Array.isArray(spec.cycles) ? spec.cycles : [];
-        if (cycles.length) {
-            var phaseOrder = [];
-            var byPhase = {};
-            cycles.forEach(function(cycle) {
-                if (!specsShowDone && cycle.state === 'complete') return;
-                var phase = cycle.phase || 'Other work';
-                if (!byPhase[phase]) { byPhase[phase] = []; phaseOrder.push(phase); }
-                byPhase[phase].push(cycle);
-            });
-            if (!phaseOrder.length) return '';
-            return '<div class="spec-work"><div class="spec-section-label">' + specWorkLabel(phaseOrder) + '</div>' + phaseOrder.map(function(phase) {
-                var phaseCycles = byPhase[phase];
-                var phaseDone = phaseCycles.reduce(function(sum, cycle) { return sum + cycle.done; }, 0);
-                var phaseTotal = phaseCycles.reduce(function(sum, cycle) { return sum + cycle.total; }, 0);
-                var currentPhase = phaseCycles.some(function(cycle) { return cycle.nextTaskId === spec.nextTaskId; });
-                var phaseKey = spec.slug + '|phase|' + phase;
-                var phaseOpen = Object.prototype.hasOwnProperty.call(specsWorkExpanded, phaseKey)
-                    ? specsWorkExpanded[phaseKey] : currentPhase;
-                return '<details class="spec-work-phase" data-work-key="' + escapeHtml(phaseKey) + '"' + (phaseOpen ? ' open' : '') + '>' +
-                    '<summary class="spec-work-phase-title"><span class="codicon codicon-chevron-right spec-phase-caret"></span>' +
-                    '<span class="spec-phase-name">' + formatSpecInline(phase) + '</span>' +
-                    '<span class="spec-phase-count">' + phaseDone + '/' + phaseTotal + ' tasks</span></summary>' +
-                    phaseCycles.map(function(cycle) {
-                        var currentCycle = cycle.nextTaskId === spec.nextTaskId;
-                        var cycleKey = spec.slug + '|cycle|' + cycle.id;
-                        var cycleOpen = Object.prototype.hasOwnProperty.call(specsWorkExpanded, cycleKey)
-                            ? specsWorkExpanded[cycleKey] : currentCycle;
-                        var visibleTasks = specsShowDone ? cycle.tasks : cycle.tasks.filter(function(task) { return !task.done; });
-                        var taskRows = visibleTasks.map(function(task) {
-                            var crossSpec = task.specSlug !== spec.slug
-                                ? '<span class="spec-cycle-task-spec">Spec ' + escapeHtml(task.specId) + '</span>' : '';
-                            return '<div class="spec-work-row' + (task.done ? ' done' : '') + '">' +
-                                '<span class="codicon ' + (task.done ? 'codicon-check' : 'codicon-circle-large-outline') + '"></span>' +
-                                '<span class="spec-work-id">' + escapeHtml(task.id || '') + '</span>' +
-                                '<span class="spec-work-text">' + formatSpecInline(task.text || task.id) + crossSpec +
-                                (task.done ? '<span class="spec-done-label">Done</span>' : '') + '</span>' +
-                                (!task.done && task.id ? '<button class="spec-task-run" data-act="implement-ref" data-ref="' + escapeHtml(task.id) +
-                                    '" title="Implement ' + escapeHtml(task.id) + '" aria-label="Implement ' + escapeHtml(task.id) + '"><span class="codicon codicon-play"></span></button>' : '') +
-                                renderCloudEligibility(task, task.specSlug || spec.slug) +
-                                '</div>' + (task.cloud ? '<table class="obs-event-table"><tbody>' + traceRowsHtml(task.cloud.events) + '</tbody></table>' : '');
-                        }).join('');
-                        return '<details class="spec-cycle" data-work-key="' + escapeHtml(cycleKey) + '"' + (cycleOpen ? ' open' : '') + '>' +
-                            '<summary class="spec-cycle-main"><span class="codicon codicon-chevron-right spec-cycle-caret"></span>' +
-                            '<span class="spec-cycle-id">' + escapeHtml(cycle.id) + '</span>' +
-                            (cycle.title ? '<span class="spec-cycle-title">' + formatSpecInline(cycle.title) + '</span>' : '') +
-                            (cycle.specCount > 1 ? '<span class="spec-cycle-count">' + cycle.specCount + ' specs</span>' : '') +
-                            '<span class="spec-cycle-progress">' + cycle.done + '/' + cycle.total + '</span>' +
-                            '<span class="spec-cycle-state">' + escapeHtml(cycle.state) + '</span>' +
-                            (cycle.state !== 'complete' ? '<button class="spec-task-run spec-cycle-run" data-act="implement-ref" data-ref="' + escapeHtml(cycle.id) +
-                                '" title="Implement ' + escapeHtml(cycle.id) + '" aria-label="Implement ' + escapeHtml(cycle.id) + '"><span class="codicon codicon-play"></span></button>' : '') +
-                            '</summary>' +
-                            (cycle.description ? '<div class="spec-cycle-description">' + formatSpecInline(cycle.description) + '</div>' : '') +
-                            taskRows + '</details>';
-                    }).join('') + '</details>';
-            }).join('') + '</div>';
-        }
-
         var tasks = Array.isArray(spec.tasks) ? spec.tasks : [];
-        if (!tasks.length) return '';
-        var taskPhases = [];
-        var tasksByPhase = {};
-        tasks.forEach(function(task) {
-            if (!specsShowDone && task.done) return;
-            var phase = task.phase || 'Other tasks';
-            if (!tasksByPhase[phase]) { tasksByPhase[phase] = []; taskPhases.push(phase); }
-            tasksByPhase[phase].push(task);
+        var stories = Array.isArray(spec.stories) ? spec.stories : [];
+        var groups = stories.map(function(story) {
+            return { id: story.id, name: 'User Story ' + story.id.slice(2) + ' - ' + story.title +
+                (story.priority ? ' (Priority: ' + story.priority + ')' : ''), story: story,
+                tasks: tasks.filter(function(task) { return task.story === story.id; }) };
         });
-        return '<div class="spec-work"><div class="spec-section-label">' + specWorkLabel(taskPhases) + '</div>' + taskPhases.map(function(phase, index) {
-            var phaseKey = spec.slug + '|phase|' + phase;
+        var unlinked = tasks.filter(function(task) { return !stories.some(function(story) { return task.story === story.id; }); });
+        if (unlinked.length) groups.push({ id: 'unlinked', name: 'Not linked to a story', tasks: unlinked });
+        if (!groups.length) return '';
+        return '<div class="spec-work"><div class="spec-section-label">User stories and tasks</div>' + groups.map(function(group, index) {
+            var phaseKey = spec.slug + '|story|' + group.id;
             var phaseOpen = Object.prototype.hasOwnProperty.call(specsWorkExpanded, phaseKey)
                 ? specsWorkExpanded[phaseKey] : index === 0;
-            var phaseTasks = tasksByPhase[phase];
-            var storyNum = /User Story (\d+)/i.exec(phase);
-            var story = storyNum && (spec.stories || []).filter(function(s) { return s.id === 'US' + storyNum[1]; })[0];
+            var phaseTasks = specsShowDone ? group.tasks : group.tasks.filter(function(task) { return !task.done; });
+            var story = group.story;
             var storyTest = story && story.independentTest
                 ? '<div class="spec-story-test"><strong>Independent Test</strong> ' + formatSpecInline(story.independentTest) +
                   (story.successCriteria && story.successCriteria.length ? ' <span class="specs-muted">· verifies ' + escapeHtml(story.successCriteria.join(', ')) + '</span>' : '') + '</div>'
                 : '';
             return '<details class="spec-work-phase" data-work-key="' + escapeHtml(phaseKey) + '"' + (phaseOpen ? ' open' : '') + '>' +
                 '<summary class="spec-work-phase-title"><span class="codicon codicon-chevron-right spec-phase-caret"></span>' +
-                '<span class="spec-phase-name">' + formatSpecInline(phase) + '</span>' +
-                '<span class="spec-phase-count">' + phaseTasks.filter(function(task) { return task.done; }).length + '/' + phaseTasks.length + ' tasks</span></summary>' +
+                '<span class="spec-phase-name">' + formatSpecInline(group.name) + '</span>' +
+                '<span class="spec-phase-count">' + group.tasks.filter(function(task) { return task.done; }).length + '/' + group.tasks.length + ' tasks</span></summary>' +
                 storyTest +
                 phaseTasks.map(function(task) {
                     return '<div class="spec-work-row' + (task.done ? ' done' : '') + '"><span class="codicon ' +

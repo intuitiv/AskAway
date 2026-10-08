@@ -3,11 +3,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
-import { AskAwayWebviewProvider } from './webview/webviewProvider';
+import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
 import { registerTools } from './tools';
 import { ASKWAY_BUILD_AGENT_FILE, ASKWAY_BUILD_AGENT_CONTENT } from './agents/askawayBuildAgent';
 import { memoryTool } from './validator/memoryTool';
 import { validatorTool } from './validator/validatorTool';
+import { LiveDigest } from './validator/liveDigest';
+import { CommentaryWatch } from './validator/commentaryWatch';
 import { ValidatorObserver, validatorWorkerRun } from './validator/observer';
 import { validatorProfile } from './validator/profile';
 import { OpenCodeWorkerRuntime } from './workers/openCodeRuntime';
@@ -1054,7 +1056,26 @@ export function activate(context: vscode.ExtensionContext) {
         () => { sharedCommentaryStore().postValidator(memoryProject, { text: 'Validator trigger failed; agent flow continued.' }); });
         provider.setValidatorTurnStart((text, id) => { void triggers.turnStart(triggers.previousFinal(), text, id); });
         const memory = memoryTool(getMemory, memoryProject, (query, agentId) => triggers.memoryCall(query, agentId));
-        registerTools(context, provider, memory, validatorTool(text => triggers.validatorCall(text)));
+        registerTools(context, provider, memory, validatorTool(text => triggers.validatorCall(text), {
+            workspace: memoryProject,
+            enabled: () => vscode.workspace.getConfiguration('askaway').get<boolean>('validator.live', false),
+            availability: () => readAvailability(memoryProject),
+        }));
+        const liveEnabled = () => vscode.workspace.getConfiguration('askaway').get<boolean>('validator.live', false);
+        const availability = () => readAvailability(memoryProject);
+        const digest = new LiveDigest(memoryProject, sharedCommentaryStore(), liveEnabled, availability);
+        const watch = new CommentaryWatch(memoryProject, sharedCommentaryStore(), liveEnabled, availability,
+            text => triggers.validatorCall(text));
+        let liveDisposed = false;
+        const checkLive = () => {
+            if (liveDisposed) return;
+            try { digest.check(); } catch { /* retry on the next availability poll */ }
+            void watch.check().catch(() => undefined);
+        };
+        sharedCommentaryStore().onChange(state => { if (state.workspacePath === memoryProject) checkLive(); });
+        checkLive();
+        const livePoll = setInterval(checkLive, 1000);
+        context.subscriptions.push({ dispose: () => { liveDisposed = true; clearInterval(livePoll); } });
 
         // Initialize Plan Board editor (lightweight, no I/O at init)
         logRuntime('Creating PlanEditorProvider', { type: typeof PlanEditorProvider });
