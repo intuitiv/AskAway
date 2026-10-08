@@ -112,9 +112,9 @@ GAP means a missing spec contract, not necessarily missing implementation. Exist
 
 | ID | What | State | Blocker or question | Source file |
 |---|---|---|---|---|
-| GC-G2 | G2: Capture additional reviewer tasks and recommendations into Spec Kit tasks | READY | Extend 005 US3 with incremental intake and caller-visible task update acceptance | GOALS.md 2026-10-08 |
-| GC-G7 | G7: Reply to VS Code from Telegram | READY | New Telegram remote-control spec; retain test-telegram-conversation-reply.cjs and test-telegram-handoff.cjs as existing implementation evidence | GOALS.md 2026-10-08 |
+| GC-G2 | G2: Capture additional reviewer tasks and recommendations into Spec Kit tasks | MOVED to 005 'never miss an ask' story (reviewer 2026-10-08: "yes to cpaturing tasks") | Extend 005 US3 with incremental intake and caller-visible task update acceptance | GOALS.md 2026-10-08 |
+| GC-G7 | G7: Reply to VS Code from Telegram | DONE (reviewer 2026-10-08: "Replying to vscode from telegram already works") | New Telegram remote-control spec; retain test-telegram-conversation-reply.cjs and test-telegram-handoff.cjs as existing implementation evidence | GOALS.md 2026-10-08 |
 | GC-G8 | G8: Proven validator monitors commentary and immediately advises the agent or answers its doubts | BLOCKED | Later 007 live-linking story after beta quality review; current FR-018 forbids unsolicited agent linking | GOALS.md 2026-10-08 |
 | GC-G10 | G10: Live validator represents unavailable reviewer, retains memory tool and reports commentary problems | BLOCKED | Later 007 live-phase story after beta quality review; define authority and advisory boundaries | GOALS.md 2026-10-08 |
 | GC-G11 | G11: Availability decides when validator takes charge | BLOCKED | Later 007 live release; define timed/indefinite-away authority, return and expiry transitions separately from current away policy | GOALS.md 2026-10-08 |
-| GC-G14 | G14: Own tools such as gradle, read_doc and turn budget reduce cost and improve reliability, reuse and control | READY | Extend 001 tooling scope with caller-visible contracts and evals; existing tool tests do not substitute for a complete spec story | GOALS.md 2026-10-08 |
+| GC-G14 | G14: Own tools such as gradle, read_doc and turn budget reduce cost and improve reliability, reuse and control | DONE (reviewer 2026-10-08: "I think we already have all tools.") | Extend 001 tooling scope with caller-visible contracts and evals; existing tool tests do not substitute for a complete spec story | GOALS.md 2026-10-08 |

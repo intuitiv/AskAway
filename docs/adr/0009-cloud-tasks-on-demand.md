@@ -26,5 +26,5 @@ Run cloud work only on the reviewer's demand. Allow delegation at story or task 
 - [Cloud task requirements](../../tasksync-chat/docs/requirements/cloud-tasks.md)
 - [Cloud tasks spec](../../specs/006-cloud-tasks/spec.md)
 
-## Open question
-**Cloud PR (G9).** "take that PR back and review and merge": one PR per delegated story or task, or commits on the spec's one active PR branch as decided on 2026-09-30?
+## Answered
+**Cloud PR (G9), 2026-10-08:** "Sure same PR will reduce the load, but we need to pull latest changes to local, once the story is done." Cloud work commits to the spec's one active PR; when the story is done, its latest changes are pulled to the local checkout.

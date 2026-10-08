@@ -35,5 +35,9 @@ The validator is a decisioning engine with memory, not a simple memory tool: it 
 - [Availability and validator requirements](../../tasksync-chat/docs/requirements/availability-and-validator.md)
 - [Validator agent spec](../../specs/007-validator-agent/spec.md)
 
-## Open question
-**Unfinished line (G10).** The message has "Validator agent should" with nothing after it before "In beta phase". Was something else meant there?
+## Answered
+**Unfinished line (G10), 2026-10-08:** "I mean Validator agent should behave as below, in beta phase and when it is in prod." The lists above are the beta and prod behaviour.
+
+**Live phase, 2026-10-08:** "It should act as me when i am away from keyboard." Its live design is discussed against spec 007 before tasks are written.
+
+**Memory, 2026-10-08:** "We remove vscode memory tool from the agent' tool list, tahts how it will ask new memory tool instead of vscode one." Agents reach memory only through the AskAway memory tool.

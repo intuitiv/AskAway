@@ -32,6 +32,10 @@ Reviewer: "Sure productise cloud thing. As it is triggered only when i ask for i
 
 Live evidence `evidence/proof-2026-10-07.md`: PR #1608, same `askaway/cloud-proof-throwaway` branch, bot commits `[PROOF-1]` `3642c63` and `[PROOF-1b]` `e2f169d`. First start ~51 s after request; pushes 113 s/165 s after respective requests; start-to-report 77 s/50 s. Exact events `copilot_work_started` / `copilot_work_finished`; agent login `Copilot`, app `copilot-swe-agent`, git author `copilot-swe-agent[bot]`. Sessions sequential, not concurrent. Reports self-identify Sonnet 5.5 when requested and GPT-5.6 Terra when not; no independently observed runtime model. Actions `copilot` job ran (`in_progress`, null conclusion), no approval hold observed; repo setting not captured. GitGuardian success/title-check failure are non-Actions checks.
 
+### Session 2026-10-08
+
+- Q: Same PR for cloud work, and how does completed story work return locally? → A: Reviewer: "Sure same PR will reduce the load, but we need to pull latest changes to local, once the story is done." (2026-10-08). Cloud work stays on the spec's one active PR branch; story completion pulls its latest changes into the local checkout for verification, or reports uncommitted local work instead of overwriting it (FR-026; US4).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Live proof of the cloud route (Priority: P1)
@@ -106,6 +110,7 @@ A cloud task is never ticked on the cloud agent's word. When a task reaches Need
 2. **Given** a task in Needs review, **When** any named verification fails, **Then** the task is marked Returned, stays unticked, and the failure is shown on the row and in the digest.
 3. **Given** all tasks of a story are Accepted, **When** the story checkpoint runs, **Then** the 005 checkpoint verification runs exactly as for locally done tasks.
 4. **Given** the cloud agent changed files outside the packet's allowed paths, **When** acceptance runs, **Then** the task is Returned and the out-of-scope paths are listed.
+5. **Given** a cloud-delegated story is done on the spec's active PR branch, **When** the extension prepares local story verification, **Then** it pulls that branch's latest changes into the local checkout before running the unchanged 005 checkpoint; if the checkout has uncommitted work, it preserves that work, reports why the pull and local verification are waiting, and does not claim verification passed.
 
 ---
 
@@ -174,6 +179,7 @@ Once a spec is in implement, the reviewer explicitly delegates a whole user stor
 - **FR-023**: Repository workflows MUST run automatically on cloud-agent pushes to the active PR, so check results are waiting for the developer; the task status shows their pass/fail.
 - **FR-024**: Every cloud task MUST have a wall-clock cap per run; no run continues past it (default 50 min, never above the 59-minute session limit). The US1 live proof has a 61-minute budget (reviewer, 2026-10-06: "61 minutes is okay. I think it is reasonable to have cap on time.").
 - **FR-025**: Cloud tasks MUST start only upon an explicit reviewer request; eligibility, startup, polling and schedules MUST NOT initiate unrequested tasks. No scheduled launches by default. AskAway MUST never merge a PR (reviewer 2026-10-07 GO and "do not merge PRs").
+- **FR-026**: When a cloud-delegated story is done, the extension MUST pull the spec's one active PR branch's latest changes into the local checkout before local story verification. It MUST NOT overwrite uncommitted local work; if such work prevents the pull, it MUST preserve it and report the pull and verification as waiting with the reason instead.
 
 ### Key Entities
 

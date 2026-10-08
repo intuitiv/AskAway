@@ -99,7 +99,7 @@ for (const [name, text] of [
     assert.match(text, /observable assertion, verification command, and exact expected result/, `${name} requires observable evidence`);
 }
 
-const extensionSource = fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8');
+const extensionSource = fs.readFileSync(path.join(__dirname, 'src/agents/askawayBuildAgent.ts'), 'utf8');
 const claudeAssetSource = assetSource;
 for (const [name, text] of [['Copilot agent', extensionSource], ['Claude agent', claudeAssetSource]]) {
     assert.match(text, /implementation intent.*internally route.*\/sk\.implement/is, `${name} routes natural-language implementation`);

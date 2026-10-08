@@ -42,12 +42,12 @@ const registered = new Map();
 const vscode = { lm: { registerTool: (name, tool) => { registered.set(name, tool); return { dispose() {} }; } },
     LanguageModelToolResult: class { constructor(content) { this.content = content; } },
     LanguageModelTextPart: class { constructor(value) { this.value = value; } } };
-function load(file) {
+function load(file, fileSystem = fakeFs) {
     const output = esbuild.buildSync({ entryPoints: [path.join(__dirname, file)], bundle: true,
         platform: 'node', format: 'cjs', write: false, external: ['vscode'] }).outputFiles[0].text;
     const module = { exports: {} };
     vm.runInNewContext(output, { module, exports: module.exports, URL, URLSearchParams, AbortSignal, console,
-        require: name => name === 'fs' ? fakeFs : name === 'vscode' ? vscode : require(name),
+        require: name => name === 'fs' ? fileSystem : name === 'vscode' ? vscode : require(name),
         fetch: async (_url, options) => {
             assert.equal(options.headers.Authorization, `Bearer ${secret}`);
             assert.ok(!options.body || !options.body.includes(secret), 'Bearer must not enter memory bodies');
@@ -82,6 +82,49 @@ const index = [];
     const { AgentmemoryStore } = load('src/validator/agentmemoryStore.ts');
     const { DedupKnowledgeStore } = load('src/validator/knowledgeStore.ts');
     const { seedMemories } = load('src/validator/memorySeed.ts');
+    if (!live) {
+        const defaultsFixture = path.join(__dirname, '.memory-default-sources-fixture');
+        fs.mkdirSync(defaultsFixture, { recursive: true });
+        try {
+            const { defaultMemorySources, seedMemories: seedDefaults } = load('src/validator/memorySeed.ts', fs);
+            const globalStorageDir = path.join(defaultsFixture, 'globalStorage', 'x');
+            const workspaceStorageDir = path.join(defaultsFixture, 'workspaceStorage', 'h', 'x');
+            const userDir = path.join(defaultsFixture, 'globalStorage', 'github.copilot-chat', 'memory-tool', 'memories');
+            const repoDir = path.join(defaultsFixture, 'workspaceStorage', 'h', 'GitHub.copilot-chat', 'memory-tool', 'memories', 'repo');
+            const userSetting = path.join(defaultsFixture, 'override-user');
+            const repoSetting = path.join(defaultsFixture, 'override-repo');
+            for (const directory of [userDir, repoDir, userSetting, repoSetting]) fs.mkdirSync(directory, { recursive: true });
+            fs.writeFileSync(path.join(userDir, 'user.md'), 'DEFAULT_USER_MARKER');
+            fs.writeFileSync(path.join(repoDir, 'repo.md'), 'DEFAULT_REPO_MARKER');
+            fs.writeFileSync(path.join(userDir, 'ignored.txt'), 'NON_MD_MARKER');
+            fs.mkdirSync(path.join(userDir, 'session'), { recursive: true });
+            fs.writeFileSync(path.join(userDir, 'session', 'ignored.md'), 'SUBFOLDER_MARKER');
+            const args = { globalStorageDir, workspaceStorageDir, memoryProject: 'fixture-project', exists: fs.existsSync };
+            const sources = defaultMemorySources(args);
+            const plain = value => JSON.parse(JSON.stringify(value));
+            assert.deepEqual(plain(sources), [
+                { directory: userDir, scope: { project: '_user', agentId: 'agents' } },
+                { directory: repoDir, scope: { project: 'fixture-project', agentId: 'agents' } },
+            ], 'no settings resolve both default Copilot folders with their existing scopes');
+            const imported = [];
+            await seedDefaults({ remember: async (fact, scope) => { imported.push({ text: fact.text, scope }); } },
+                { marker: path.join(defaultsFixture, 'seeded'), sources });
+            assert.deepEqual(plain(imported), [
+                { text: 'DEFAULT_USER_MARKER', scope: { project: '_user', agentId: 'agents' } },
+                { text: 'DEFAULT_REPO_MARKER', scope: { project: 'fixture-project', agentId: 'agents' } },
+            ], 'only top-level Markdown is seeded, never subfolder or non-md files');
+            assert.deepEqual(plain(defaultMemorySources({ ...args, userSetting, repoSetting })).map(source => source.directory),
+                [userSetting, repoSetting], 'settings override the default folders');
+            const missing = path.join(defaultsFixture, 'missing');
+            assert.deepEqual(plain(defaultMemorySources({ ...args, userSetting: missing })), [plain(sources[1])], 'missing user folder skipped');
+            assert.deepEqual(plain(defaultMemorySources({ ...args, repoSetting: missing })), [plain(sources[0])], 'missing repo folder skipped');
+            assert.deepEqual(plain(defaultMemorySources({ ...args, workspaceStorageDir: undefined, repoSetting })), [plain(sources[0])],
+                'without workspace storage, repo source is skipped');
+            console.log('PASS EV-MEMORY-DEFAULT-SOURCES: defaults, overrides, missing folders, top-level md only');
+        } finally {
+            fs.rmSync(defaultsFixture, { recursive: true, force: true });
+        }
+    }
     const { memoryTool } = load('src/validator/memoryTool.ts');
     const { registerLmToolDefinitions } = load('src/workers/lmTools.ts');
     const { registerToolDefinitions } = load('src/workers/workerTools.ts');

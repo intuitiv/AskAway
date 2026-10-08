@@ -47,6 +47,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - Artifacts follow the standard structure: user stories with acceptance criteria, tasks per story, and `[P]` parallel tasks that really run in parallel.
 - When the reviewer gives more tasks or recommendations, they go into Spec Kit tasks.
 - The Specs tab reflects the same state the flow is in.
+- Specs show user stories and tasks, not phases or cycles; older specs migrate to this pattern (2026-10-08).
 - Decision: [ADR 0001](docs/adr/0001-spec-kit-is-mandatory-and-invisible.md) · Requirements: [speckit-flow.md](tasksync-chat/docs/requirements/speckit-flow.md), [specs-tab.md](tasksync-chat/docs/requirements/specs-tab.md) · Spec: [005](specs/005-speckit-guided-flow/spec.md)
 
 ### G3 Never miss a task
@@ -73,7 +74,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 
 ### G7 Telegram: monitor and reply remotely
 - Whatever happens in VS Code reaches Telegram, so the reviewer monitors remotely.
-- The reviewer can respond to VS Code from Telegram.
+- The reviewer can respond to VS Code from Telegram. This already works (2026-10-08).
 - Decision: [ADR 0007](docs/adr/0007-telegram-is-a-remote-control.md) · Requirements: [telegram.md](tasksync-chat/docs/requirements/telegram.md)
 
 ### G8 Commentary shows what the agent is doing
@@ -86,6 +87,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - Used to run work online while the reviewer is away, or to run things in parallel. Entirely on the reviewer's demand.
 - Any independently runnable part can go to the cloud: a user story or a single task.
 - It runs on GitHub, its progress is tracked, and the reviewer is notified when it is done so he can review and merge the PR.
+- Cloud work commits to the spec's one active PR; once the story is done, its latest changes are pulled to local (2026-10-08).
 - Decision: [ADR 0009](docs/adr/0009-cloud-tasks-on-demand.md) · Requirements: [cloud-tasks.md](tasksync-chat/docs/requirements/cloud-tasks.md) · Spec: [006](specs/006-cloud-tasks/)
 
 ### G10 Validator agent learns the reviewer
@@ -95,6 +97,8 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - Learns from the reviewer's responses: answers the agent's questions, compares its answers with the reviewer's real ones, and improves until it can act while the reviewer is away overnight.
 - **Beta phase:** observes user messages and (occasionally, or through a tool the agent calls) assistant messages, the agent-called tool first (2026-10-08); predicts the reviewer's reply to the final assistant response and shows it with how good it is; always reads the reviewer's real reply and learns from it; serves as the memory tool (loads existing memories without deleting them, stores new ones from the agent, gives existing ones back).
 - **Live phase:** answers for the reviewer when he is not available; the memory tool works as in beta; it reads commentary and tells the reviewer what is going wrong.
+- It acts as the reviewer when he is away from keyboard (2026-10-08).
+- Agents reach memory only through the AskAway memory tool; the VS Code memory tool is removed from their tool lists (2026-10-08).
 - Decision: [ADR 0010](docs/adr/0010-validator-agent-learns-the-reviewer.md) · Requirements: [availability-and-validator.md](tasksync-chat/docs/requirements/availability-and-validator.md) · Spec: [007](specs/007-validator-agent/)
 
 ### G11 Availability decides when the validator takes charge
@@ -117,7 +121,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - Decision: [ADR 0013](docs/adr/0013-efficiency-score-is-cost-to-work.md) · Requirements: [efficiency-score.md](tasksync-chat/docs/requirements/efficiency-score.md) · Spec: [008](specs/008-harness-benchmark/)
 
 ### G14 Own tools, prompts and evals
-- Tools such as `gradle`, `read_doc`, the turn budget and others exist to reduce cost and increase reliability, reuse and control.
+- Tools such as `gradle`, `read_doc`, the turn budget and others exist to reduce cost and increase reliability, reuse and control. The reviewer listed the existing tools; no new tool is asked for (2026-10-08).
 - Agent prompts (Build, Orchestrator), worker prompts and their tools have evals.
 - Decision: [ADR 0014](docs/adr/0014-own-tools-prompts-and-evals.md) · Requirements: [tools-and-evals.md](tasksync-chat/docs/requirements/tools-and-evals.md)
 
@@ -141,13 +145,15 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 Collected for one batch to the reviewer. Each answer becomes a dated line in the matching goal above.
 
 1. **Keep-alive count (G5).** Does "keep workers alive for 3-4 times" mean at most 3–4 pings per idle worker (about one prompt-cache window each), after which it may expire? The earlier rule R-WTOOL-24 allowed two pings; this message replaces it. **Answered 2026-10-08: 4 pings per worker.**
-2. **Cloud PR (G9).** "take that PR back and review and merge": one PR per delegated story or task, or commits on the spec's one active PR branch as decided on 2026-09-30? *(Reviewer still reviewing, 2026-10-08.)*
+2. **Cloud PR (G9).** "take that PR back and review and merge": one PR per delegated story or task, or commits on the spec's one active PR branch as decided on 2026-09-30? **Answered 2026-10-08: the same active PR, and pull the latest changes to local once the story is done.**
 3. **Validator observation (G10).** In beta, start with the tool the agent calls, or with periodic observation of assistant messages? **Answered 2026-10-08: tool first.**
-4. **Unfinished line (G10).** The message has "Validator agent should" with nothing after it before "In beta phase". Was something else meant there? *(Reviewer still reviewing, 2026-10-08.)*
-5. **Homes for the 8 gaps** in [docs/goals-coverage.md](docs/goals-coverage.md): G2 new-ask capture, G3 ask ledger and G4 question batch extend spec 005; G7 reply-from-Telegram gets a new Telegram spec; G8, G10 and G11 live-phase validator become a later 007 release; G14 own tools extend spec 001. Agree? *(Reviewer still reviewing, 2026-10-08.)*
+4. **Unfinished line (G10).** The message has "Validator agent should" with nothing after it before "In beta phase". Was something else meant there? **Answered 2026-10-08: the validator should behave as listed below it, in beta and in prod (live).**
+5. **Homes for the 8 gaps** in [docs/goals-coverage.md](docs/goals-coverage.md): G2 new-ask capture, G3 ask ledger and G4 question batch extend spec 005; G7 reply-from-Telegram gets a new Telegram spec; G8, G10 and G11 live-phase validator become a later 007 release; G14 own tools extend spec 001. Agree? **Answered 2026-10-08:** G7 already works (no new spec); G2/G3/G4 yes, into 005; live validator (G8, G10, G11) yes, designed against 007 (item 9); G14 needs nothing new, the tools exist.
 6. **ADR status.** All 16 ADRs are `Proposed`. Accept them as written, or list the ones to change? **Answered 2026-10-08: all 16 accepted.**
-7. **Stopping md memory auto-load (G10, 007 T013).** After the one-time seed into the memory store, how do the `/memories` md files stop entering the conversation? (a) move them to an archive folder, bytes unchanged (recommended); (b) keep them in place and switch off VS Code's memory auto-load, if a setting allows it; (c) replace each with a one-line pointer to the memory tool.
-8. **Waiting on your live look** (no question, just a reload and a glance): 005 T015 worker spend in the shared banner and Telegram, and 005 T016 Specs tab and commentary polish. Both are built; they stay unticked until you accept them live.
+7. **Stopping md memory auto-load (G10, 007 T013).** After the one-time seed into the memory store, how do the `/memories` md files stop entering the conversation? (a) move them to an archive folder, bytes unchanged (recommended); (b) keep them in place and switch off VS Code's memory auto-load, if a setting allows it; (c) replace each with a one-line pointer to the memory tool. **Answered 2026-10-08: remove the VS Code memory tool from the agents' tool lists, so they use the AskAway memory tool.**
+8. **Waiting on your live look** (no question, just a reload and a glance): 005 T015 worker spend in the shared banner and Telegram, and 005 T016 Specs tab and commentary polish. Both are built; they stay unticked until you accept them live. **Shared banner accepted 2026-10-08** ("Shared banner looks good"); the Telegram status and the Specs tab polish still await a look.
+9. **Live validator design (G10, G11).** "It should act as me when i am away from keyboard." To discuss against 007's own design: what it may decide alone, how the agent receives its answer, and how the reviewer reviews its decisions when back.
+10. **Specs as stories and tasks (G2).** How older specs that use phases or cycles migrate to user stories and tasks.
 
 ## 4. Reviewer's words, verbatim
 
@@ -244,3 +250,18 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > validator - tool first
 > accept all 16
 > Still reviewing, 2, 4, 5. i'll respond them later do otehr work.
+
+### 2026-10-08, answers 2
+
+> I gave this whole conversation so that you know holistic view of this project.
+>
+> 2: Sure same PR will reduce the load, but we need to pull latest changes to local, once the story is done.
+> 4: I mean Validator agent should behave as below, in beta phase and when it is in prod.
+> 8: Replying to vscode from telegram already works. yes to cpaturing tasks. yes to live validator.
+> I think we already have all tools.  I just listed all of them.
+>
+> I think validator has its own design. Lets discuss how it is done in there. I told what i am expecting. It should act as me when i am away from keyboard.
+>
+> 7: We remove vscode memory tool from the agent' tool list, tahts how it will ask new memory tool instead of vscode one. Thats how ou stop loading it.
+>
+> Spec should show User stories and tasks not phases/cycles. lets see how we can migrate them to this pattern. Shared banner looks good.

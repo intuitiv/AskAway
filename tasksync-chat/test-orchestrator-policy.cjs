@@ -20,10 +20,12 @@ const leaks = tools.filter((tool) => denied.some((pattern) => pattern.test(tool)
 assert.deepEqual(leaks, [], 'no code edit, code search, or sub-agent tools');
 assert.deepEqual(tools.filter((t) => /^(execute|read)\//.test(t)).sort(), ['execute/runInTerminal', 'read/readFile'], 'only one terminal and one read tool');
 
-// Allowed and required: planning memory, the one worker tool (eight actions), commentary, budget, and the internet.
+// Allowed and required: planning memory (the AskAway memory tool; reviewer 2026-10-08 removed vscode/memory), the one worker
+// tool (eight actions), commentary, budget, and the internet.
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).contributes.languageModelTools.map((t) => t.toolReferenceName);
-const required = ['vscode/memory', 'web', 'intuitiv.askaway/commentary', 'intuitiv.askaway/turnBudget', 'intuitiv.askaway/worker'];
+const required = ['intuitiv.askaway/memory2', 'web', 'intuitiv.askaway/commentary', 'intuitiv.askaway/turnBudget', 'intuitiv.askaway/worker'];
 for (const tool of required) { assert.ok(tools.includes(tool), `orchestrator has ${tool}`); }
+assert.ok(!tools.includes('vscode/memory'), 'orchestrator has no VS Code memory tool');
 assert.ok(!tools.some((t) => /^intuitiv\.askaway\/worker[A-Z]/.test(t)), 'no per-operation worker tools');
 for (const tool of tools.filter((t) => t.startsWith('intuitiv.askaway/'))) {
     assert.ok(manifest.includes(tool.split('/')[1]), `${tool} is a tool this extension declares`);

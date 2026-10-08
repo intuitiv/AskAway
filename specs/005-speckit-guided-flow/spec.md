@@ -129,6 +129,25 @@ The orchestrator is a technical manager: it knows the stages, the repo and the a
 
 ---
 
+### User Story 8 - Never miss an ask (Priority: P3)
+
+Every ask in a reviewer message is captured as a Spec Kit task or backlog row, whether it is a request, bug, correction, side remark or repeated ask. Each ask is closed with evidence or reported waiting with its reason. Open questions go to the reviewer in one batch. This brings the G2/G3/G4 gaps into 005.
+
+> yes to cpaturing tasks (2026-10-08)
+
+**Why this priority**: The flow must not lose work while routing messages or delegating tasks. Capturing every ask and batching questions makes the existing flow reliable without requiring the reviewer to repeat himself.
+
+**Independent Test**: Send a message containing a request, bug, correction, side remark and repeated ask; inspect Spec Kit tasks and the backlog to confirm every ask is accounted for. Complete one ask with evidence and leave another blocked; confirm the report shows the evidence and waiting reason. Seed several open questions and confirm the reviewer receives them together in one message.
+
+**Acceptance Scenarios**:
+
+1. **Given** a reviewer message containing a request, bug, correction and side remark, **When** the agent processes it, **Then** every ask is captured as a Spec Kit task or backlog row without requiring a Spec Kit command.
+2. **Given** an already tracked ask, **When** the reviewer repeats it, **Then** the repeated ask is accounted for by the existing task or backlog row or a new one, and unfinished work is not silently dropped.
+3. **Given** captured asks that are completed or blocked, **When** the agent reports progress, **Then** each completed ask is closed with evidence and each blocked ask is reported waiting with its reason.
+4. **Given** several open questions about captured asks, **When** the agent asks the reviewer for answers, **Then** all open questions are presented in one message so the reviewer can answer in one shot.
+
+---
+
 ### Edge Cases
 
 - Stored stage points past a missing artifact → mismatch shown; the suggested next step is based on the artifacts.
@@ -171,6 +190,9 @@ The orchestrator is a technical manager: it knows the stages, the repo and the a
 - **FR-025**: The readiness summary MUST be identical on the Specs tab, Telegram and the PR text drafted by `/pr-daily`.
 - **FR-026**: Context MUST be written once in spec, plan and constitution and referenced by workers, not repeated in messages.
 - **FR-027**: System MUST provide the hook points feature 006 needs: the stored stage, the per-spec data store, and a per-task flag visible in the Specs tab.
+- **FR-028**: System MUST capture every ask in every reviewer message as a Spec Kit task or backlog row, including requests, bugs, corrections, side remarks and repeated asks; a repeated ask MAY reference its existing tracked row but MUST NOT be silently dropped.
+- **FR-029**: Every captured ask MUST be closed with evidence or reported waiting with its reason.
+- **FR-030**: The agent MUST present all open questions to the reviewer together in one message so they can be answered in one shot.
 
 ### Key Entities
 

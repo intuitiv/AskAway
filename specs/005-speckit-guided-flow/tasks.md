@@ -73,7 +73,7 @@ description: "Task list for 005 Spec Kit Guided Flow"
 
 - [x] T013 [US6] `start` never queues behind a busy worker (reviewer: two starts queued on one worker instead of running in parallel); `submit` is the only way to queue; `submit` past the wait bound is INELIGIBLE, not RETIRED (`workerRouter.ts`, EV-008 in `test-worker-selection.cjs`)
 - [x] T014 [US6] `worker` wait accepts any `timeoutSeconds` and clamps to 240 s instead of rejecting (`workerTools.ts`, `test-worker-mcp-tools.cjs`)
-- [ ] T015 [US4] Worker spend in the shared chat banner and the Telegram status: current-turn worker requests and $ join the totals with the worker part shown; live turn timer; Metrics tab stays current-conversation only; trace credits shown as $ in Metrics and Workers (`usageSince`, `ObservabilityMetrics.workers/turnStartedAt`, banner block; EV-WORKER-TURN-SPEND + webview tests)
+- [ ] T015 [US4] Worker spend in the shared chat banner and the Telegram status: current-turn worker requests and $ join the totals with the worker part shown; live turn timer; Metrics tab stays current-conversation only; trace credits shown as $ in Metrics and Workers (`usageSince`, `ObservabilityMetrics.workers/turnStartedAt`, banner block; EV-WORKER-TURN-SPEND + webview tests). Shared banner accepted live 2026-10-08 ("Shared banner looks good"); Telegram status part still awaits a live look.
 - [ ] T016 [US1] Specs and commentary polish: one next-step button (labelled "Continue" when next = current stage), one plain stale line per upstream, pastel colour per Spec Kit stage; commentary text full width with time and count on a second, right-aligned line
 - [x] T017 [P] [US6] `tools/command-patterns.cjs`: terminal-command bursts, families and the requests spent between burst commands in Copilot debug logs; run on the reviewer's recent conversations and decide bash/git worker vs standalone commands (EV-COMMAND-PATTERNS). Result 2026-10-01 (5 conversations): 158 commands, 103 in bursts, 59 full-context requests between burst commands = 342 AIU; git 34%, reads 34%. Decision proposed: no git/bash worker; a deterministic checkpoint script for diff→add→commit→status, read bursts go to `explore`.
 - [x] T018 [US6] Keep a warm worker warm while the main chat is active and its knowledge fits pending work: minimal `POST /session/:id/message` ping before the 5-min TTL, ping cost in the ledger, stop at 300K context or after N unused pings (research 2026-10-01: a ping is a real request, cache read 0.1×, cold rewrite 1.25×; health checks do not refresh) — done 2026-10-02: `src/workers/keepWarm.ts` + `OpenCodeWorkerRuntime.ping`, setting `askaway.workers.keepWarm`, R-WTOOL-24; evidence `node test-worker-keep-warm.cjs` → `EV-KEEP-WARM: PASS`
@@ -96,6 +96,22 @@ description: "Task list for 005 Spec Kit Guided Flow"
 - [x] T019 [US3] Availability selector "Here · Away (Telegram) · Offline until <time>" per workspace, injected by the spec-context hook. Away/Offline rules: do not stop for small choices (decide, record in a decisions list), keep every lane busy, write a handoff at the end of the session, end with a report of decisions, open questions and cost. Offline never asks; questions are parked for the report. Test: hook output per mode. (Backend done 2026-10-01: state `~/.askaway/availability/<key>.json`, hook block, EV-AVAILABILITY; selector UI open.)
 - [x] T020 [US3] Long or overnight run (Away/Offline): once input exceeds 300K, write `/sk.handoff` and continue in a new conversation (reviewer: "Hand off is not always near 300K"; other handoffs are not tied to 300K); Telegram notice when Away; test with a stubbed token count
 - [x] T021 Spec 007 Validator agent: `/sk.specify` from `specs/007-validator-agent/Goal.md` and `Rules.md` (done 2026-10-01: spec.md Draft, 5 stories, 3 NEEDS CLARIFICATION → next `/sk.check`)
+
+---
+
+## Phase 8: User Story 8 — Never miss an ask (P3)
+
+**Goal**: every ask is a Spec Kit task or backlog row, closed with evidence or reported waiting with its reason; open questions reach the reviewer in one batch (G2/G3/G4).
+
+> yes to cpaturing tasks (2026-10-08)
+
+**Independent Test**: spec.md US8 — send mixed and repeated asks, inspect tracked rows and completion/waiting reports, and confirm several open questions are asked in one message.
+
+- [ ] T033 [US8] Capture every request, bug, correction, side remark and repeated ask as a Spec Kit task or backlog row (FR-028). Caller-view `tasksync-chat/test-spec-ask-capture.cjs`: send mixed messages and repeats, inspect persisted tasks/backlog, and confirm every ask is accounted for without a Spec Kit command or lost unfinished work.
+- [ ] T034 [US8] Close captured asks only with evidence or report them waiting with the reason (FR-029). Caller-view `tasksync-chat/test-spec-ask-outcomes.cjs`: complete one ask and block another, then inspect the tracked rows and progress report for completion evidence and the waiting reason (depends on T033).
+- [ ] T035 [US8] Present all open questions in one reviewer message (FR-030). Caller-view `tasksync-chat/test-spec-question-batch.cjs`: seed several questions across captured asks and confirm one message contains the whole batch, with no one-question-at-a-time interruptions (depends on T034).
+
+**Checkpoint**: US8 Independent Test and the three caller-view tests pass; every ask is accounted for with evidence or a waiting reason, and questions arrive in one batch.
 
 ---
 

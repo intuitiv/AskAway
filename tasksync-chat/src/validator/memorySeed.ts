@@ -8,6 +8,20 @@ export interface MemorySeedOptions {
     sources: Array<{ directory: string; scope: KnowledgeScope }>;
 }
 
+export function defaultMemorySources(options: {
+    globalStorageDir: string; workspaceStorageDir?: string; memoryProject: string;
+    userSetting?: string; repoSetting?: string; exists: (directory: string) => boolean;
+}): MemorySeedOptions['sources'] {
+    const user = options.userSetting || path.join(options.globalStorageDir, '..', 'github.copilot-chat', 'memory-tool', 'memories');
+    const repo = options.workspaceStorageDir
+        ? options.repoSetting || path.join(options.workspaceStorageDir, '..', 'GitHub.copilot-chat', 'memory-tool', 'memories', 'repo')
+        : undefined;
+    return [
+        ...(options.exists(user) ? [{ directory: user, scope: { project: '_user', agentId: 'agents' } }] : []),
+        ...(repo && options.exists(repo) ? [{ directory: repo, scope: { project: options.memoryProject, agentId: 'agents' } }] : []),
+    ];
+}
+
 /** Preserve unstructured files whole, and retain headings/code in structured memories. */
 export function memoryFileFacts(file: string): KnowledgeFact[] {
     const contents = fs.readFileSync(file, 'utf8');
@@ -83,10 +97,6 @@ export async function seedMemories(store: KnowledgeStore, options: MemorySeedOpt
         const visit = async (directory: string) => {
             for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
                 const file = path.join(directory, entry.name);
-                if (entry.isDirectory()) {
-                    if (!options.sources.some(other => other !== source && path.resolve(other.directory) === path.resolve(file))) await visit(file);
-                    continue;
-                }
                 if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
                 const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
                 let text = '', start = 0, fenced = false;

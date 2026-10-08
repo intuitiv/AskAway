@@ -31,3 +31,5 @@
 | R-PLAN-26 | The validator is a decisioning engine with memory: it decides what the reviewer would decide, and memory is one of its inputs. | "It is a decisioning engine, with memory." (2026-10-08) | gap |
 | R-PLAN-27 | The validator decides from the reviewer's goals, decisions and requirement rows. | "And ultimately this will go to validator agent." (2026-10-08) | test-validator-observer.cjs EV-VALIDATOR-GOALS-SOURCE |
 | R-PLAN-28 | In beta, the agent can call a validator tool to have a message observed, and this comes before periodic observation; the prediction goes to the reviewer, not back to the agent. | "validator - tool first" (2026-10-08) | test-validator-tool.cjs EV-VALIDATOR-TOOL |
+| R-PLAN-29 | In the live phase the validator acts as the reviewer while he is away from keyboard. | "It should act as me when i am away from keyboard." (2026-10-08) | gap |
+| R-PLAN-30 | Agents reach memory only through the AskAway memory tool; the VS Code memory tool is removed from their tool lists. | "We remove vscode memory tool from the agent' tool list" (2026-10-08) | test-memory-prompts-switched.cjs EV-MEMORY-PROMPTS-SWITCHED |
