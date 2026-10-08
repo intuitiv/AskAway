@@ -3,18 +3,40 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const esbuild = require('esbuild');
+const live = process.env.ASKAWAY_MEMORY_LIVE === '1';
+// Read credentials only in the explicitly requested live run; never emit them.
+const secret = live ? fs.readFileSync(path.join(require('node:os').homedir(), '.agentmemory/secret'), 'utf8').trim() : 'fixture-bearer';
+const liveId = live ? `${Date.now()}-${process.pid}-${require('node:crypto').randomUUID()}` : undefined;
+const project = live ? `askaway-livetest-${liveId}-repo` : 'TaskSync';
+const userProject = live ? `askaway-livetest-${liveId}-user` : '_user';
+if (live) console.log(`T012 LIVE throwaway projects: user=${userProject} repo=${project}`);
 const rememberShape = require('./test-fixtures/agentmemory-shapes/remember.json');
 const memoriesShape = require('./test-fixtures/agentmemory-shapes/memories.json');
 const fixture = path.join(__dirname, 'test-fixtures/memory-seed');
+const ledgerRoot = live ? path.join(fixture, `live-${liveId}`) : 'fixture-workspace';
+const marker = live ? path.join(ledgerRoot, 'seed-marker') : 'seed-marker';
 const before = ['user/preferences.md', 'repo/rules.md'].map(file => fs.readFileSync(path.join(fixture, file)));
 const files = new Map();
+let frozen = false;
+let sourceReads = 0;
+function guardSource(file) {
+    if (live && path.resolve(String(file)).startsWith(ledgerRoot + path.sep)) return;
+    if (path.resolve(String(file)).startsWith(fixture + path.sep)) {
+        assert.equal(frozen, false, 'Markdown sources must never be read or enumerated after seeding');
+        sourceReads++;
+    }
+}
 const fakeFs = {
     ...fs,
     existsSync: file => files.has(file),
     mkdirSync: () => {},
-    writeFileSync: (file, text) => { assert.equal(file, 'seed-marker'); files.set(file, text); },
-    appendFileSync: (file, text) => files.set(file, (files.get(file) || '') + text),
-    readFileSync: (file, encoding) => files.has(file) ? files.get(file) : fs.readFileSync(file, encoding),
+    writeFileSync: (file, text) => { assert.equal(file, marker); files.set(file, text); },
+    appendFileSync: (file, text) => {
+        if (live) assert.ok(path.resolve(file).startsWith(ledgerRoot + path.sep), 'Live ledger must stay under the repo fixture');
+        files.set(file, (files.get(file) || '') + text);
+    },
+    readFileSync: (file, encoding) => { guardSource(file); return files.has(file) ? files.get(file) : fs.readFileSync(file, encoding); },
+    readdirSync: (file, options) => { guardSource(file); return fs.readdirSync(file, options); },
 };
 const registered = new Map();
 const vscode = { lm: { registerTool: (name, tool) => { registered.set(name, tool); return { dispose() {} }; } },
@@ -27,6 +49,18 @@ function load(file) {
     vm.runInNewContext(output, { module, exports: module.exports, URL, URLSearchParams, AbortSignal, console,
         require: name => name === 'fs' ? fakeFs : name === 'vscode' ? vscode : require(name),
         fetch: async (_url, options) => {
+            assert.equal(options.headers.Authorization, `Bearer ${secret}`);
+            assert.ok(!options.body || !options.body.includes(secret), 'Bearer must not enter memory bodies');
+            if (live) {
+                if (options.body) {
+                    const body = JSON.parse(options.body);
+                    assert.deepEqual(body.concepts.filter(tag => tag.startsWith('project:')),
+                        [body.concepts.includes(`project:${userProject}`) ? `project:${userProject}` : `project:${project}`],
+                        'Live writes must use only throwaway projects');
+                    assert.ok(['agents', 'validator'].includes(body.agentId));
+                }
+                return fetch(_url, options);
+            }
             if (_url.endsWith('/remember')) {
                 assert.equal(options.method, 'POST');
                 const body = JSON.parse(options.body);
@@ -36,7 +70,8 @@ function load(file) {
             const url = new URL(_url);
             assert.equal(url.pathname, '/agentmemory/memories'); assert.equal(options.method, 'GET');
             assert.equal(options.body, undefined);
-            const hits = index.filter(item => item.agentId === url.searchParams.get('agentId'));
+            // Deliberately return other agents and old versions: the store owns filtering.
+            const hits = index;
             return { ok: true, json: async () => ({ ...memoriesShape, memories: hits, total: hits.length,
                 search: { query: url.searchParams.get('q'), mode: 'keyword' } }) };
         } });
@@ -50,19 +85,33 @@ const index = [];
     const { memoryTool } = load('src/validator/memoryTool.ts');
     const { registerLmToolDefinitions } = load('src/workers/lmTools.ts');
     const { registerToolDefinitions } = load('src/workers/workerTools.ts');
-    const store = new DedupKnowledgeStore(new AgentmemoryStore('fixture-workspace', 'http://127.0.0.1:3111', ''));
-    const options = { marker: 'seed-marker', sources: [
-        { directory: path.join(fixture, 'user'), scope: { project: '_user', agentId: 'agents' } },
-        { directory: path.join(fixture, 'repo'), scope: { project: 'TaskSync', agentId: 'agents' } },
+    const store = new DedupKnowledgeStore(new AgentmemoryStore(ledgerRoot, 'http://127.0.0.1:3111', secret));
+    const options = { marker, sources: [
+        { directory: path.join(fixture, 'user'), scope: { project: userProject, agentId: 'agents' } },
+        { directory: path.join(fixture, 'repo'), scope: { project, agentId: 'agents' } },
     ] };
     await seedMemories(store, options);
     assert.equal((await store.export()).length, 4);
+    assert.ok(sourceReads > 0, 'Seed must read source markdown');
+    frozen = true;
+    const readsAfterSeed = sourceReads;
     // A completed seed must not even enumerate the source folders again.
     await seedMemories(store, { ...options, sources: [{ ...options.sources[0], directory: 'nonexistent-source' }] });
+    await seedMemories(new DedupKnowledgeStore(new AgentmemoryStore(ledgerRoot, 'http://127.0.0.1:3111', secret)), options);
     assert.equal((await store.export()).length, 4);
+    console.log('PASS T012 seed idempotence: repeated and reopened seed imports exactly four facts');
     before.forEach((bytes, i) => assert.deepEqual(fs.readFileSync(path.join(fixture, ['user/preferences.md', 'repo/rules.md'][i])), bytes));
     assert.ok((await store.export()).every(item => /\.md:\d+$/.test(item.fact.from)));
-    const definition = memoryTool(async () => store, 'TaskSync');
+    // Mirror the tool's reserved user scope without ever persisting it on the live server.
+    const toolStore = live ? {
+        remember: (fact, scope) => store.remember(fact, { ...scope, project: scope.project === '_user' ? userProject : scope.project }),
+        recall: (query, scope, limit) => store.recall(query, { ...scope, project: scope.project === '_user' ? userProject : scope.project }, limit),
+        export: async () => (await store.export()).map(item => item.scope.project === userProject
+            ? { ...item, scope: { ...item.scope, project: '_user' } } : item),
+        supersede: (id, fact) => store.supersede(id, fact),
+        history: id => store.history(id),
+    } : store;
+    const definition = memoryTool(async () => toolStore, project);
     registerLmToolDefinitions([definition]);
     let mcp;
     registerToolDefinitions((name, _config, handler) => { assert.equal(name, 'askaway_memory'); mcp = handler; }, [definition]);
@@ -73,18 +122,25 @@ const index = [];
         assert.ok((await call({ action: 'view', scope: 'user' })).some(item => item.fact.text.includes('caller-facing')));
         const created = await call({ action: 'remember', text: call === lm ? 'Copilot fact' : 'OpenCode fact' });
         assert.ok((await call({ action: 'view' })).some(item => item.id === created.id));
+        assert.ok((await (call === lm ? worker : lm)({ action: 'view' })).some(item => item.id === created.id));
+        console.log(`PASS T012 ${call === lm ? 'Copilot-side' : 'OpenCode-side'} read+write: seeded fact read, new fact shared through LM/MCP`);
     }
     const hidden = await lm({ action: 'remember', agentId: 'validator', text: 'Private validator fact' });
     assert.ok(!(await worker({ action: 'view' })).some(item => item.id === hidden.id));
     await assert.rejects(worker({ action: 'history', id: hidden.id }));
     await assert.rejects(worker({ action: 'update', id: hidden.id, text: 'Must not change' }));
     assert.ok(!(await worker({ action: 'export' })).jsonl.includes(hidden.id));
+    assert.ok(!(await worker({ action: 'search', query: 'Private validator' })).some(item => item.id === hidden.id));
+    assert.ok((await worker({ action: 'view', agentId: 'validator' })).some(item => item.id === hidden.id));
+    console.log('PASS T012 agentId isolation: validator facts absent from other agent recall, view, export and mutation');
     const old = (await lm({ action: 'view' }))[0];
     const current = await worker({ action: 'update', id: old.id, text: 'Use the shared memory interface' });
     assert.ok(!(await lm({ action: 'view' })).some(item => item.id === old.id));
     assert.ok(!(await worker({ action: 'search', query: 'shared' })).some(item => item.id === old.id));
     const history = await lm({ action: 'history', id: current.id });
     assert.deepEqual(history.map(item => item.id), [old.id, current.id]);
+    assert.ok((await worker({ action: 'search', query: 'shared' })).some(item => item.id === current.id));
+    console.log('PASS T012 hidden superseded versions: recall/view hide old version; history retains both');
     const exported = await worker({ action: 'export' });
     const rows = exported.jsonl.trim().split('\n').map(JSON.parse);
     assert.ok(rows.some(item => item.id === old.id) && rows.some(item => item.id === current.id));
@@ -95,5 +151,9 @@ const index = [];
     const pkg = require('./package.json');
     assert.equal(pkg.contributes.languageModelTools.find(tool => tool.name === definition.name).toolReferenceName, 'memory2');
     assert.match(pkg.scripts['pretest:workers'], /test-memory-seed-and-mcp\.cjs/);
+    assert.equal(sourceReads, readsAfterSeed);
+    before.forEach((bytes, i) => assert.deepEqual(fs.readFileSync(path.join(fixture, ['user/preferences.md', 'repo/rules.md'][i])), bytes));
+    console.log('PASS T012 byte-identical md: no source reads or enumeration after seed, including LM/MCP calls');
+    if (live) console.log('PASS T012 LIVE: real loopback agentmemory Bearer remember/recall through LM/MCP (no server lifecycle or egress claim)');
     console.log('PASS EV-MEMORY-SEED-MCP: idempotent read-only seed, LM/MCP read-write, agent isolation, hidden superseded history, JSONL round-trip, secret gate');
 })().catch(error => { console.error(error); process.exitCode = 1; });

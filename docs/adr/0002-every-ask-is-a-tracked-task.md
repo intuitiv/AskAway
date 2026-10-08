@@ -1,6 +1,6 @@
 # ADR 0002: Every ask is a tracked task
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G3 in [GOALS.md](../../GOALS.md)
 

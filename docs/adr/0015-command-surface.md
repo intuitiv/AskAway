@@ -1,5 +1,5 @@
 # ADR 0015: Command surface
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G15 in [GOALS.md](../../GOALS.md)
 

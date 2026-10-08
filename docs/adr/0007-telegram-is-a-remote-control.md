@@ -1,6 +1,6 @@
 # ADR 0007: Telegram is a remote control
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G7 in [GOALS.md](../../GOALS.md)
 

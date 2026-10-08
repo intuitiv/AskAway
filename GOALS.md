@@ -61,7 +61,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 ### G5 Delegate to reusable, optimal workers; work in parallel
 - Detail work goes to multiple, reusable workers so the main conversation does not carry that data and pay for it again.
 - Workers are optimal and reused.
-- Warm workers are kept alive with a cheap ping (for example "reply ok") 3–4 times, so their context is reused instead of expiring and being recreated.
+- Warm workers are kept alive with a cheap ping (for example "reply ok"), ~~3–4 times~~ at most 4 pings per worker (2026-10-08), so their context is reused instead of expiring and being recreated.
 - Non-functional work (quality and similar) runs in parallel workers, so the main agent stays busy while it delegates.
 - Worker observability is visible in the shared banner and in Telegram.
 - Decisions: [ADR 0004](docs/adr/0004-delegate-to-reusable-parallel-workers.md), [ADR 0005](docs/adr/0005-keep-warm-workers-alive.md) · Requirements: [worker-tool.md](tasksync-chat/docs/requirements/worker-tool.md), [workers-tab.md](tasksync-chat/docs/requirements/workers-tab.md), [orchestrator.md](tasksync-chat/docs/requirements/orchestrator.md) · Spec: [001](specs/001-async-subagent-runner/)
@@ -93,7 +93,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - It decides from this file, the ADRs and the requirement rows, plus what it learned from the reviewer's replies.
 - Knows everything the reviewer wants: instructions, guidelines, best practices, the ultimate goal and the immediate goal.
 - Learns from the reviewer's responses: answers the agent's questions, compares its answers with the reviewer's real ones, and improves until it can act while the reviewer is away overnight.
-- **Beta phase:** observes user messages and (occasionally, or through a tool the agent calls) assistant messages; predicts the reviewer's reply to the final assistant response and shows it with how good it is; always reads the reviewer's real reply and learns from it; serves as the memory tool (loads existing memories without deleting them, stores new ones from the agent, gives existing ones back).
+- **Beta phase:** observes user messages and (occasionally, or through a tool the agent calls) assistant messages, the agent-called tool first (2026-10-08); predicts the reviewer's reply to the final assistant response and shows it with how good it is; always reads the reviewer's real reply and learns from it; serves as the memory tool (loads existing memories without deleting them, stores new ones from the agent, gives existing ones back).
 - **Live phase:** answers for the reviewer when he is not available; the memory tool works as in beta; it reads commentary and tells the reviewer what is going wrong.
 - Decision: [ADR 0010](docs/adr/0010-validator-agent-learns-the-reviewer.md) · Requirements: [availability-and-validator.md](tasksync-chat/docs/requirements/availability-and-validator.md) · Spec: [007](specs/007-validator-agent/)
 
@@ -140,12 +140,14 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 
 Collected for one batch to the reviewer. Each answer becomes a dated line in the matching goal above.
 
-1. **Keep-alive count (G5).** Does "keep workers alive for 3-4 times" mean at most 3–4 pings per idle worker (about one prompt-cache window each), after which it may expire? The earlier rule R-WTOOL-24 allowed two pings; this message replaces it.
-2. **Cloud PR (G9).** "take that PR back and review and merge": one PR per delegated story or task, or commits on the spec's one active PR branch as decided on 2026-09-30?
-3. **Validator observation (G10).** In beta, start with the tool the agent calls, or with periodic observation of assistant messages?
-4. **Unfinished line (G10).** The message has "Validator agent should" with nothing after it before "In beta phase". Was something else meant there?
-5. **Homes for the 8 gaps** in [docs/goals-coverage.md](docs/goals-coverage.md): G2 new-ask capture, G3 ask ledger and G4 question batch extend spec 005; G7 reply-from-Telegram gets a new Telegram spec; G8, G10 and G11 live-phase validator become a later 007 release; G14 own tools extend spec 001. Agree?
-6. **ADR status.** All 16 ADRs are `Proposed`. Accept them as written, or list the ones to change?
+1. **Keep-alive count (G5).** Does "keep workers alive for 3-4 times" mean at most 3–4 pings per idle worker (about one prompt-cache window each), after which it may expire? The earlier rule R-WTOOL-24 allowed two pings; this message replaces it. **Answered 2026-10-08: 4 pings per worker.**
+2. **Cloud PR (G9).** "take that PR back and review and merge": one PR per delegated story or task, or commits on the spec's one active PR branch as decided on 2026-09-30? *(Reviewer still reviewing, 2026-10-08.)*
+3. **Validator observation (G10).** In beta, start with the tool the agent calls, or with periodic observation of assistant messages? **Answered 2026-10-08: tool first.**
+4. **Unfinished line (G10).** The message has "Validator agent should" with nothing after it before "In beta phase". Was something else meant there? *(Reviewer still reviewing, 2026-10-08.)*
+5. **Homes for the 8 gaps** in [docs/goals-coverage.md](docs/goals-coverage.md): G2 new-ask capture, G3 ask ledger and G4 question batch extend spec 005; G7 reply-from-Telegram gets a new Telegram spec; G8, G10 and G11 live-phase validator become a later 007 release; G14 own tools extend spec 001. Agree? *(Reviewer still reviewing, 2026-10-08.)*
+6. **ADR status.** All 16 ADRs are `Proposed`. Accept them as written, or list the ones to change? **Answered 2026-10-08: all 16 accepted.**
+7. **Stopping md memory auto-load (G10, 007 T013).** After the one-time seed into the memory store, how do the `/memories` md files stop entering the conversation? (a) move them to an archive folder, bytes unchanged (recommended); (b) keep them in place and switch off VS Code's memory auto-load, if a setting allows it; (c) replace each with a one-line pointer to the memory tool.
+8. **Waiting on your live look** (no question, just a reload and a glance): 005 T015 worker spend in the shared banner and Telegram, and 005 T016 Specs tab and commentary polish. Both are built; they stay unticked until you accept them live.
 
 ## 4. Reviewer's words, verbatim
 
@@ -235,3 +237,10 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 
 > Update current repos AGENTS.md  file or anything so that we dont break any requirements. And ultimately this will go to validator agent.
 > Remember validator is not a simple memory tool. It is a decisioning engine, with memory.
+
+### 2026-10-08, answers
+
+> 4 pings per worker
+> validator - tool first
+> accept all 16
+> Still reviewing, 2, 4, 5. i'll respond them later do otehr work.

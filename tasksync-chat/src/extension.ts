@@ -6,6 +6,7 @@ import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './consta
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
 import { registerTools } from './tools';
 import { memoryTool } from './validator/memoryTool';
+import { validatorTool } from './validator/validatorTool';
 import { ValidatorObserver, validatorWorkerRun } from './validator/observer';
 import { validatorProfile } from './validator/profile';
 import { OpenCodeWorkerRuntime } from './workers/openCodeRuntime';
@@ -1134,7 +1135,7 @@ export function activate(context: vscode.ExtensionContext) {
         () => { sharedCommentaryStore().postValidator(memoryProject, { text: 'Validator trigger failed; agent flow continued.' }); });
         provider.setValidatorTurnStart((text, id) => { void triggers.turnStart(triggers.previousFinal(), text, id); });
         const memory = memoryTool(getMemory, memoryProject, (query, agentId) => triggers.memoryCall(query, agentId));
-        registerTools(context, provider, memory);
+        registerTools(context, provider, memory, validatorTool(text => triggers.validatorCall(text)));
 
         // Initialize Plan Board editor (lightweight, no I/O at init)
         logRuntime('Creating PlanEditorProvider', { type: typeof PlanEditorProvider });

@@ -1,5 +1,5 @@
 # ADR 0011: Availability decides when the validator takes charge
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G11 in [GOALS.md](../../GOALS.md)
 

@@ -1,5 +1,5 @@
 # ADR 0009: Cloud tasks on demand
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G9 in [GOALS.md](../../GOALS.md)
 

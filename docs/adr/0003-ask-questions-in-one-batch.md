@@ -1,6 +1,6 @@
 # ADR 0003: Ask questions in one batch
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G4 in [GOALS.md](../../GOALS.md)
 

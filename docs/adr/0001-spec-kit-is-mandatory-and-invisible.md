@@ -1,6 +1,6 @@
 # ADR 0001: Spec Kit is mandatory and invisible
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G1, G2 in [GOALS.md](../../GOALS.md)
 

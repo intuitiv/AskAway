@@ -1,6 +1,6 @@
 # ADR 0004: Delegate to reusable parallel workers
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G5 in [GOALS.md](../../GOALS.md)
 

@@ -1,4 +1,4 @@
-// Worker reuse policy (reviewer, 2026-10-07): thinking is not part of the reuse key, pings stop after 3, an expired worker under
+// Worker reuse policy (reviewer, 2026-10-07; pings 4 since 2026-10-08): thinking is not part of the reuse key, pings stop after 4, an expired worker under
 // 100K is reused (warm preferred), a worker idle over 3 hours is never scheduled but stays readable. Run: node test-worker-reuse-policy.cjs
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
@@ -68,7 +68,7 @@ const variant = (child) => child.args[child.args.indexOf('--variant') + 1];
 (async () => {
     assert.equal(WORKER_MAX_IDLE_MS, 3 * HOUR);
     assert.equal(EXPIRED_REUSE_MAX_CONTEXT_TOKENS, 100_000);
-    assert.equal(KEEP_WARM_MAX_UNUSED_PINGS, 3);
+    assert.equal(KEEP_WARM_MAX_UNUSED_PINGS, 4);
 
     // (a) Thinking is not part of the reuse key: the idle worker is reused at ITS thinking and the reply says so.
     const a = harness();
@@ -88,11 +88,11 @@ const variant = (child) => child.args[child.args.indexOf('--variant') + 1];
     assert.equal(variant(a.children[2]), 'high');
     a.cleanup();
 
-    // (b) Keep-warm stops after 3 unused pings.
+    // (b) Keep-warm stops after 4 unused pings (reviewer, 2026-10-08: "4 pings per worker").
     const worker = { workerId: 'w', state: 'IDLE', active: false, queued: 0, cacheExpiresAt: 1_050_000, nextInputTokens: 1000, unusedPings: 0 };
     const ping = (unusedPings) => workersToPing([{ ...worker, unusedPings }], 1_000_000, 990_000);
-    assert.deepEqual([ping(0), ping(1), ping(2)], [['w'], ['w'], ['w']], 'three pings in an idle period');
-    assert.deepEqual(ping(3), [], 'no fourth ping');
+    assert.deepEqual([ping(0), ping(1), ping(2), ping(3)], [['w'], ['w'], ['w'], ['w']], 'four pings in an idle period');
+    assert.deepEqual(ping(4), [], 'no fifth ping');
 
     // (c) After the cache expired, start still reuses a worker under 100K, preferring a warm one.
     const d = harness();
@@ -154,5 +154,5 @@ const variant = (child) => child.args[child.args.indexOf('--variant') + 1];
 
     fs.rmSync(buildDir, { recursive: true, force: true });
     fs.rmSync(workspace, { recursive: true, force: true });
-    console.log('PASS EV-WORKER-REUSE-POLICY thinking=notInKey+workersOwn pings=3 expired<100K=reused warmFirst=true over3h=WORKER_TOO_OLD+readable');
+    console.log('PASS EV-WORKER-REUSE-POLICY thinking=notInKey+workersOwn pings=4 expired<100K=reused warmFirst=true over3h=WORKER_TOO_OLD+readable');
 })().catch((error) => { console.error(error); process.exit(1); });

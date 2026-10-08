@@ -803,8 +803,9 @@ function runReadDoc(input: ReadDocInput): string {
         + `Read any span with mode:"section" (startLine/endLine) or filter with mode:"search" query:"…".`;
 }
 
-export function registerTools(context: vscode.ExtensionContext, provider: AskAwayWebviewProvider, memory?: ToolDefinition) {
+export function registerTools(context: vscode.ExtensionContext, provider: AskAwayWebviewProvider, memory?: ToolDefinition, validator?: ToolDefinition) {
     if (memory) context.subscriptions.push(...registerLmToolDefinitions([memory]));
+    if (validator) context.subscriptions.push(...registerLmToolDefinitions([validator]));
     let askUserTool: vscode.Disposable | undefined;
     try {
         askUserTool = vscode.lm.registerTool('ask_user', {

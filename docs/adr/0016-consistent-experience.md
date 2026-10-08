@@ -1,5 +1,5 @@
 # ADR 0016: Consistent experience
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G16 in [GOALS.md](../../GOALS.md)
 

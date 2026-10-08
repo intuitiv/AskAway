@@ -1,5 +1,5 @@
 # ADR 0014: Own tools, prompts and evals
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G14 in [GOALS.md](../../GOALS.md)
 

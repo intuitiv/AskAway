@@ -1,6 +1,6 @@
 # ADR 0008: Commentary narrates the agent
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G8 in [GOALS.md](../../GOALS.md)
 

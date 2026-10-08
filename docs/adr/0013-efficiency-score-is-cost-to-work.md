@@ -1,5 +1,5 @@
 # ADR 0013: Efficiency score is cost to work
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G13 in [GOALS.md](../../GOALS.md)
 

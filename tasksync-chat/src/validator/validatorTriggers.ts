@@ -42,4 +42,10 @@ export class ValidatorTriggers {
             return result.answer;
         } catch { this.failed(); return null; }
     }
+    async validatorCall(text: string) {
+        try {
+            await (await this.observer()).observe({ id: createHash('sha256').update(text).digest('hex'),
+                source: 'agent', text, specSlug: this.spec(), force: true });
+        } catch { this.failed(); }
+    }
 }
