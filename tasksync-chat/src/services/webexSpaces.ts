@@ -39,7 +39,7 @@ export async function webexSpaces(auth: WebexAuth, workspace: Workspace, options
                 if (!response.ok) {
                     options.onFailure?.(response.status);
                     if (response.status === 401 || response.status === 403) {
-                        await vscode.window.showErrorMessage(`AskAway: Webex space creation failed: ${response.status}. Likely missing scope spark:rooms_write; reauthorize with that registered scope.`);
+                        void vscode.window.showErrorMessage(`AskAway: Webex space creation failed: ${response.status}. Likely missing scope spark:rooms_write; reauthorize with that registered scope.`);
                     }
                     throw new Error(`Space creation failed: ${response.status}`);
                 }
@@ -57,7 +57,7 @@ export async function webexSpaces(auth: WebexAuth, workspace: Workspace, options
             return true;
         } catch (error) {
             await options.status?.record('space resolve', { exception: (error as Error).message });
-            await vscode.window.showErrorMessage('AskAway: Webex workspace space resolution failed.');
+            void vscode.window.showErrorMessage('AskAway: Webex workspace space resolution failed.');
             return false;
         }
     })();

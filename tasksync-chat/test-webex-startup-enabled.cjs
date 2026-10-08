@@ -19,7 +19,8 @@ async function scenario(late, failure = 0) {
         getConfiguration: () => ({ get: (key, fallback) => ['enabled', 'webex.enabled'].includes(key) ? true : fallback, inspect: () => ({ globalValue: true }), update: async () => {} }),
         onDidChangeConfiguration: () => ({ dispose() {} }) },
         commands: { registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() {} }; }, executeCommand: async id => commands.get(id)?.() },
-        window: { showInformationMessage: async text => { notices.push(text); if (text.includes('Configure Webex notifications')) await gate; }, showErrorMessage: async text => notices.push(text), showWarningMessage: async text => notices.push(text) } };
+        // Like real VS Code, a notification settles only when dismissed; an undismissed toast must not stall setup.
+        window: { showInformationMessage: text => { notices.push(text); return text.includes('Configure Webex notifications') ? gate : new Promise(() => {}); }, showErrorMessage: text => { notices.push(text); return new Promise(() => {}); }, showWarningMessage: text => { notices.push(text); return new Promise(() => {}); } } };
     const server = http.createServer(async (req, res) => {
         let raw = ''; for await (const chunk of req) raw += chunk;
         res.setHeader('Content-Type', 'application/json');

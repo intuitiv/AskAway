@@ -89,11 +89,12 @@ export async function webexDiscover(auth: WebexAuth, workspace: { fsPath: string
             catch (error) { await options.status?.record('discovery', { exception: (error as Error).message, mirror: 'failed; SecretStorage remains authoritative' }); }
         }
         await options.status?.record('discovery');
-        await vscode.window.showInformationMessage(`AskAway: Discovered ${teams.length} teams, ${teams.reduce((count, team) => count + team.rooms.length, 0)} rooms. self: ${self ? 'found' : 'not found'}; General: ${general ? 'found' : 'not found'}.`);
+        // Not awaited: a notification promise only settles when the user dismisses it, which stalled space setup.
+        void vscode.window.showInformationMessage(`AskAway: Discovered ${teams.length} teams, ${teams.reduce((count, team) => count + team.rooms.length, 0)} rooms. self: ${self ? 'found' : 'not found'}; General: ${general ? 'found' : 'not found'}.`);
         return true;
     } catch (error) {
         await options.status?.record('discovery', { exception: (error as Error).message });
-        await vscode.window.showErrorMessage('AskAway: Webex space discovery failed.');
+        void vscode.window.showErrorMessage('AskAway: Webex space discovery failed.');
         return false;
     }
 }
