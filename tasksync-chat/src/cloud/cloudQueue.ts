@@ -31,6 +31,7 @@ export interface CloudRun {
     history: Array<{ at: string; state: string; signal: string }>;
     startedAt?: string;
     endedAt?: string;
+    sharedAt?: string;
     commits?: Array<{ sha: string; author: string; at: string; url: string }>;
     checkRuns?: Array<{ name: string; status: string; conclusion: string | null; url: string }>;
     report?: { url: string; result: string; verifyOutput: string; commands: string[]; question: string; model: string };

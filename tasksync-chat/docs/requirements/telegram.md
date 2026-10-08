@@ -20,3 +20,8 @@
 | R-TELE-17 | The Commentary feed reaches Telegram live, so the reviewer sees what the agent is doing, not only the periodic status. | "If we send commentary, that oeuld be great." (2026-10-08) | test-telegram-live-commentary.cjs EV-048 |
 | R-TELE-16 | Telegram shows each turn's cost and the workers' share, requests, input tokens, output tokens, cache percent, worker count and details, and efficiency score. | "Observability of workers should be visible to me in shared banner and telegram." (2026-10-08) | gap |
 | R-TELE-18 | Telegram can be switched off entirely, and Webex then delivers every row above through the same code path. | "can we turn telegram off and use webex instead? … Same thing should just work for webex also." (2026-10-08) | gap |
+| R-TELE-19 | The Telegram code stays; it is only toggled off. | "Keep telegram code, it is just toggled off." (2026-10-08) | gap |
+| R-TELE-20 | The Webex token is set through a command and kept out of settings and chat. | "Token storage is through command." (2026-10-08) | test-webex-token-command.cjs |
+| R-TELE-21 | Webex replies are polled; no webhook and no public endpoint on the laptop. | "we cannot expose my laptop to public api. So, our option is long poll, like we do for telegram" (2026-10-08) | gap |
+| R-TELE-22 | Each workspace posts to its own space in Webex team `self`, created when missing; the team's General space plays the role of Telegram's General. | "we create a space per workspace and post message there. And we have a General space also, so we use it same as that of General of telegram." (2026-10-08) | gap |
+| R-TELE-23 | share-with-me sends documents to the self.General Webex space instead of Telegram. | "We send docs to self.General space instead of telegram." (2026-10-08) | gap |

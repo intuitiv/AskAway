@@ -76,7 +76,8 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - Whatever happens in VS Code reaches Telegram, so the reviewer monitors remotely.
 - The reviewer can respond to VS Code from Telegram. This already works (2026-10-08).
 - His org flagged Telegram: Telegram is switched off, and Webex becomes the remote channel with the same features (2026-10-08). Design choices are open question 11.
-- Decision: [ADR 0007](docs/adr/0007-telegram-is-a-remote-control.md), [ADR 0018](docs/adr/0018-webex-replaces-telegram.md) · Requirements: [telegram.md](tasksync-chat/docs/requirements/telegram.md)
+- Webex decisions (2026-10-08): the Telegram code stays, toggled off; the token is set through a command; replies are polled (no webhook, the laptop is never exposed); team `self` gets one space per workspace, and its General space plays the role of Telegram's General; share-with-me sends documents to self.General instead of Telegram.
+- Decision: [ADR 0007](docs/adr/0007-telegram-is-a-remote-control.md), [ADR 0018](docs/adr/0018-webex-replaces-telegram.md) · Requirements: [telegram.md](tasksync-chat/docs/requirements/telegram.md) · Spec: [009](specs/009-webex-remote-channel/spec.md)
 
 ### G8 Commentary shows what the agent is doing
 - In orchestrator mode, commentary gives a high-level view of what the agent is doing, where it is blocked, and whether it needs help.
@@ -89,7 +90,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - Used to run work online while the reviewer is away, or to run things in parallel. Entirely on the reviewer's demand.
 - Any independently runnable part can go to the cloud: a user story or a single task.
 - It runs on GitHub, its progress is tracked, and the reviewer is notified when it is done so he can review and merge the PR.
-- Cloud work commits to the spec's one active PR; once the story is done, its latest changes are pulled to local (2026-10-08).
+- ~~Cloud work commits to the spec's one active PR; once the story is done, its latest changes are pulled to local (2026-10-08).~~ Superseded the same day: cloud work commits to the spec's one active PR; once a cloud task is done, AskAway shares its PR link and the reviewer reviews and finishes it by hand ([ADR 0019](docs/adr/0019-cloud-task-done-shares-pr-link.md)).
 - Decision: [ADR 0009](docs/adr/0009-cloud-tasks-on-demand.md) · Requirements: [cloud-tasks.md](tasksync-chat/docs/requirements/cloud-tasks.md) · Spec: [006](specs/006-cloud-tasks/)
 
 ### G10 Validator agent learns the reviewer
@@ -157,7 +158,7 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 8. **Waiting on your live look** (no question, just a reload and a glance): 005 T015 worker spend in the shared banner and Telegram, and 005 T016 Specs tab and commentary polish. Both are built; they stay unticked until you accept them live. **Shared banner accepted 2026-10-08** ("Shared banner looks good"); the Telegram status and the Specs tab polish still await a look.
 9. **Live validator design (G10, G11).** "It should act as me when i am away from keyboard." To discuss against 007's own design: what it may decide alone, how the agent receives its answer, and how the reviewer reviews its decisions when back. **Answered 2026-10-08: recommendations accepted (answer low-risk reversible questions, hold the rest; answer returned to the asking agent with sources; only while Away; digest on return; flag drift only), and a setting, off by default, that the reviewer turns on when he is happy.**
 10. **Specs as stories and tasks (G2).** How older specs that use phases or cycles migrate to user stories and tasks. **Answered 2026-10-08: do not rewrite anything; reverse-map tasks.md tasks onto spec.md stories in the Specs tab.**
-11. **Webex instead of Telegram (G7).** Which Webex token (a bot, or his own account through the existing OAuth integration), full Telegram parity or a minimum, keep or delete the Telegram code, one channel picker or two switches, where the token is stored, and how replies arrive. See [ADR 0018](docs/adr/0018-webex-replaces-telegram.md).
+11. **Webex instead of Telegram (G7).** Which Webex token (a bot, or his own account through the existing OAuth integration), full Telegram parity or a minimum, keep or delete the Telegram code, one channel picker or two switches, where the token is stored, and how replies arrive. See [ADR 0018](docs/adr/0018-webex-replaces-telegram.md). **Answered 2026-10-08:** keep the Telegram code toggled off; token through a command; poll for replies, no webhook; one space per workspace in team `self`, its General space like Telegram's General; share-with-me to self.General. Still open: Webex does not notify you about your own posts, so a final message sent with your own token will not ping you (a bot would).
 
 ## 4. Reviewer's words, verbatim
 
@@ -283,3 +284,19 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 ### 2026-10-08, Webex
 
 > And another thing i want to add is, my org reported issue of using telegram, so can we turn telegram off and use webex instead? I can give telegram token. Same thing should just work for webex also.
+
+### 2026-10-08, Webex answers
+
+> Keep telegram code, it is just toggled off.
+> Token storage is through command.
+>
+> I am aware of webhooks, but we cannot expose my laptop to public api. So, our option is long poll, like we do for telegram
+> There is a concept called team and we can create spaces for those teams. I created a team called `self`. So we follow the same thing as telegram, we create a space per workspace and post message there. And we have a General space also, so we use it same as that of General of telegram.
+>
+> Once i give token, you can explore alll these spaces in a worker and get all the team ids, and all kinds of things.
+>
+> And another thing is, we need to change share-with-me script also. This is what caught IT attention. We send docs to self.General space instead of telegram.
+>
+> 006 T021: For cloud, may be you can share PR link once that task is done so that i'll review and manually do stuff from it
+>
+> ~/.webex.md file has client id and secret. and other stuff.

@@ -1,6 +1,6 @@
 # ADR 0018: Webex replaces Telegram as the remote channel
 
-- Status: Proposed
+- Status: Accepted (reviewer's answers, 2026-10-08)
 - Date: 2026-10-08
 - Goal: G7 in [GOALS.md](../../GOALS.md)
 - Amends: [ADR 0007](0007-telegram-is-a-remote-control.md) (the remote control stays; its channel changes)
@@ -15,16 +15,28 @@ AskAway already has a Webex service for `ask_user` questions (Adaptive Cards, th
 
 ## Decision
 
-Proposed, pending open question 11 in GOALS.md.
-
 > can we turn telegram off and use webex instead? (2026-10-08)
 
 > Same thing should just work for webex also. (2026-10-08)
 
-- Telegram is off (`askaway.telegram.enabled: false`); when off it makes no Telegram calls.
+> Keep telegram code, it is just toggled off. (2026-10-08)
+
+> Token storage is through command. (2026-10-08)
+
+> we cannot expose my laptop to public api. So, our option is long poll, like we do for telegram (2026-10-08)
+
+> we create a space per workspace and post message there. And we have a General space also, so we use it same as that of General of telegram. (2026-10-08)
+
+> We send docs to self.General space instead of telegram. (2026-10-08)
+
+- Telegram is toggled off (`askaway.telegram.enabled: false`); its code stays. When off it makes no Telegram calls.
 - One remote-channel interface serves every caller; Telegram and Webex are two adapters behind it, so both show the same thing (G16).
 - Webex reaches parity with every row of [telegram.md](../../tasksync-chat/docs/requirements/telegram.md).
-- Recommended defaults, to confirm: a Webex bot token (its posts notify him; his own token's posts would not), stored in VS Code SecretStorage through a command and never pasted into chat; replies read by polling the bot's 1:1 space (no webhook, no public URL, no new SDK); one channel picker setting.
+- The token is set by the command "AskAway: Set Webex Token" into VS Code SecretStorage, mirrored to the macOS Keychain for share-with-me; never in settings or chat. The integration's client id and secret come from `~/.webex.md`.
+- Replies are polled (Webex has no long poll; the poll interval backs off like Telegram's). No webhook, no public endpoint.
+- Team `self`: one space per workspace, created when missing; the team's General space is used like Telegram's General.
+- share-with-me sends documents to self.General instead of Telegram.
+- Open: Webex does not notify a person about their own posts, so with his own token the final message will not ping him; a bot member of team `self` would (spec 009 US5).
 
 ## Consequences
 

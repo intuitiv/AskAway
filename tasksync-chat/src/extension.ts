@@ -1245,6 +1245,21 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Webex/Telegram commands (services loaded in deferred block)
         context.subscriptions.push(
+            vscode.commands.registerCommand('askaway.webexDiscover', async () => {
+                const folder = vscode.workspace.workspaceFolders?.[0];
+                if (!folder) { await vscode.window.showWarningMessage('AskAway: Open a workspace to discover Webex spaces.'); return; }
+                const { WebexAuth } = await import('./services/webexAuth');
+                const { webexDiscover } = await import('./services/webexDiscover');
+                await webexDiscover(new WebexAuth(context.secrets), { fsPath: folder.uri.fsPath, name: folder.name }, {
+                    refresh: () => webviewProvider?.getWebexService()?.refreshAccessToken() ?? Promise.resolve(undefined)
+                });
+            }),
+            vscode.commands.registerCommand('askaway.setWebexToken', async () => {
+                const { WebexAuth, setWebexToken } = await import('./services/webexAuth');
+                if (await setWebexToken(new WebexAuth(context.secrets))) {
+                    await webviewProvider?.getWebexService()?.reloadConfig();
+                }
+            }),
             vscode.commands.registerCommand('askaway.authorizeWebex', async () => {
                 const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
                 const clientId = config.get<string>('webex.clientId', '');
@@ -1335,7 +1350,9 @@ export function activate(context: vscode.ExtensionContext) {
                     throw new Error('WebexService import is not a constructor function');
                 }
 
-                webexService = new WebexService(outputChannel);
+                const { WebexAuth } = await import('./services/webexAuth');
+                webexService = new WebexService(outputChannel, new WebexAuth(context.secrets));
+                await webexService.reloadConfig();
                 provider.setWebexService(webexService);
                 webexService.start();
                 context.subscriptions.push({ dispose: () => webexService?.dispose() });

@@ -1,0 +1,193 @@
+# Feature Specification: Webex Remote Channel
+
+**Feature Branch**: `009-webex-remote-channel`
+
+**Created**: 2026-10-08
+
+**Status**: Draft
+
+**Input**: User description: "Same thing should just work for webex also." Webex replaces Telegram as the reviewer's active remote channel without losing remote monitoring, documents or replies. Binding sources: [ADR 0018](../../docs/adr/0018-webex-replaces-telegram.md), [Telegram requirements](../../tasksync-chat/docs/requirements/telegram.md), and [GOALS.md](../../GOALS.md) G7, G8 and G16.
+
+## Clarifications
+
+### Session 2026-10-08 — Webex answers
+
+Reviewer verbatim, from GOALS.md section "2026-10-08, Webex answers":
+
+> Keep telegram code, it is just toggled off.
+> Token storage is through command.
+>
+> I am aware of webhooks, but we cannot expose my laptop to public api. So, our option is long poll, like we do for telegram
+> There is a concept called team and we can create spaces for those teams. I created a team called `self`. So we follow the same thing as telegram, we create a space per workspace and post message there. And we have a General space also, so we use it same as that of General of telegram.
+>
+> Once i give token, you can explore alll these spaces in a worker and get all the team ids, and all kinds of things.
+>
+> And another thing is, we need to change share-with-me script also. This is what caught IT attention. We send docs to self.General space instead of telegram.
+>
+> 006 T021: For cloud, may be you can share PR link once that task is done so that i'll review and manually do stuff from it
+>
+> ~/.webex.md file has client id and secret. and other stuff.
+
+Webex has no long-poll endpoint: use outbound reply polling with backoff, not a webhook or public laptop URL. ADR 0018 selects SecretStorage with a macOS Keychain mirror. A personal token does not notify its owner about their own posts; optional bot identity remains an open question in US5. The cloud PR handoff belongs to spec 006; this spec carries it through the shared remote channel without pulling or merging work.
+
+## User Scenarios & Testing *(mandatory)*
+
+### User Story 1 - Set a token and discover destinations safely (Priority: P1)
+
+The reviewer runs "AskAway: Set Webex Token", enters the token in a masked command prompt, and discovers team and space identifiers without placing credentials in chat, settings or the discovery file. SecretStorage holds the token; the macOS Keychain mirror lets share-with-me use it. Discovery writes non-secret metadata to `.askaway/webex-spaces.json`.
+
+**Why this priority**: Safe authentication and known destinations are the smallest usable foundation for sending anything to Webex.
+
+**Independent Test**: Run `tasksync-chat/test-webex-token-command.cjs` and `tasksync-chat/test-webex-discover.cjs` with captured SecretStorage, Keychain and paginated Webex responses; confirm command storage, cancellation, non-secret discovery and no credential leakage.
+
+**Acceptance Scenarios**:
+
+1. **Given** no stored token, **When** the reviewer submits the masked command prompt, **Then** the token enters SecretStorage and the macOS Keychain mirror, never settings, chat, logs or `.askaway/webex-spaces.json`.
+2. **Given** the command prompt, **When** the reviewer cancels, **Then** stored credentials remain unchanged and no discovery request uses an empty token.
+3. **Given** a stored token and paginated teams/spaces, **When** discovery runs, **Then** `.askaway/webex-spaces.json` contains their identifiers and names, including team `self` and its General space, but no secrets.
+4. **Given** a storage or discovery failure, **When** the command completes, **Then** it reports a sanitized failure without claiming successful storage or exposing credentials.
+
+---
+
+### User Story 2 - Keep one remote experience across channels (Priority: P1)
+
+One `RemoteChannel` interface serves live Commentary, turn lifecycle, handoff and PDF, shared-banner status, cloud digest and ask_user replies. Telegram and Webex implement it; callers do not duplicate channel-specific behavior. Telegram code and regression tests stay, but its enabled toggle is off and it makes no network calls while disabled.
+
+**Why this priority**: Channel parity and consistency are the reason for the migration; separate caller paths would immediately drift.
+
+**Independent Test**: Replay the same turn, queued message, heads-up, metrics, handoff, digest and reply through both adapters in `tasksync-chat/test-remote-channel-parity.cjs`; compare caller-visible content, ordering and lifecycle, then prove disabled Telegram receives no calls.
+
+**Acceptance Scenarios**:
+
+1. **Given** either adapter, **When** a new user or queued message starts a turn, **Then** a new live message opens, the previous turn stops reply polling, and Commentary edits the current message with distinct heads-up styling.
+2. **Given** an active turn, **When** two minutes elapse or it ends, **Then** status refreshes with stuck/error indicators and shared metrics, and a new final message replaces the live message; personal-token notification limits are disclosed.
+3. **Given** a final response, **When** handoff is sent, **Then** text contains banner then current handoff, the full response is attached as a mobile-friendly PDF, and conversion failure attaches Markdown instead.
+4. **Given** a remote reply or VS Code reply, **When** it arrives, **Then** the remote reply reaches the correct conversation once, or the VS Code reply stops that turn's remote polling respectively.
+5. **Given** two workspaces and Telegram disabled, **When** monitoring and a cloud digest run, **Then** each workspace sees only its own Commentary and live status, the digest includes PR/evidence/duration/model/blocker/decision without invented cloud price, and no Telegram request occurs.
+6. **Given** an ask_user side-channel question, **When** the reviewer answers remotely, **Then** the same shared reply path resolves it without reinstating a separate legacy conversation flow.
+
+---
+
+### User Story 3 - Deliver and receive reliably in workspace spaces (Priority: P1)
+
+Webex posts to one space per workspace in team `self`, creating the space if absent, and uses that team's General space for general delivery. Replies use outbound polling. Because AskAway and the reviewer may use the same personal identity, AskAway tracks its posted message IDs rather than rejecting every message from that identity. The adapter uploads documents and respects rate limits.
+
+**Why this priority**: Reliable delivery and genuine replies must work before Webex can replace the current channel.
+
+**Independent Test**: In `tasksync-chat/test-webex-remote-adapter.cjs`, use a fake Webex API with existing/missing spaces, same-person messages, duplicate polls, PDF upload and 429 responses; observe routing, reply delivery, retries and zero inbound endpoint creation.
+
+**Acceptance Scenarios**:
+
+1. **Given** team `self` and an existing workspace space, **When** delivery starts, **Then** that space is reused; a missing workspace space is created once and its non-secret mapping survives reload.
+2. **Given** a workspace turn and General space, **When** workspace and general messages are sent, **Then** each reaches its own intended space, never another workspace.
+3. **Given** AskAway and the reviewer share a person ID, **When** polling sees AskAway's recorded post ID and a new reviewer message ID, **Then** it ignores only the recorded own post and delivers the reviewer reply once, including after re-poll or reload.
+4. **Given** a 429 with Retry-After, **When** delivery or polling retries, **Then** no retry happens before the instructed delay and the pending operation is retained.
+5. **Given** oversized or rejected formatted content, or a failed live edit, **When** delivery retries, **Then** content is safely bounded before conversion, plain text is used for formatting rejection, and failed edits are retried without silently losing the update.
+6. **Given** a handoff document, **When** Webex delivery runs, **Then** the PDF is uploaded as a file, or Markdown is uploaded if conversion failed; no webhook or public laptop endpoint is opened.
+
+---
+
+### User Story 4 - Receive shared documents in self.General (Priority: P1)
+
+The reviewer uses `~/.local/bin/share-with-me` as before, but documents go to Webex self.General rather than Telegram. The script was already switched on 2026-10-08 with `SHARE_CHANNEL=webex` as its default; this story verifies it live rather than repeating the switch.
+
+**Why this priority**: The script caused the IT concern and must be checked alongside extension delivery.
+
+**Independent Test**: Run `tasksync-chat/test-share-with-me-webex.cjs` in an explicitly enabled live mode with a harmless document; record its arrival in self.General and confirm no Telegram request, without printing tokens.
+
+**Acceptance Scenarios**:
+
+1. **Given** the switched script and Keychain credentials, **When** the reviewer shares a harmless document with the default channel, **Then** the document arrives in self.General and no Telegram call occurs.
+2. **Given** unavailable Webex credentials or a failed upload, **When** sharing runs, **Then** it reports a sanitized failure instead of falling back silently to Telegram or claiming delivery.
+
+---
+
+### User Story 5 - Optionally notify through a bot identity (Priority: P3)
+
+The reviewer may choose a bot member of team `self` so new final messages can notify him. Personal-token mode remains usable, but cannot promise a notification for the owner's own post. Bot provisioning and identity choice are not approved yet.
+
+**Why this priority**: Monitoring can ship with the personal token; a notifying bot requires a separate reviewer decision.
+
+**Independent Test**: After the reviewer chooses a bot identity, run `tasksync-chat/test-webex-bot-notifications.cjs` with personal and bot modes, then record an explicitly requested live notification on the reviewer's device.
+
+**Acceptance Scenarios**:
+
+1. **Given** personal-token mode, **When** AskAway sends a final, **Then** the final is delivered and the self-post notification limitation is stated, not reported as a successful notification.
+2. **Given** a reviewer-approved bot in team `self`, **When** a final message is sent in bot mode, **Then** it uses the same caller path and the live check confirms whether the reviewer receives a notification.
+3. **Given** no bot decision, **When** the P1 stories ship, **Then** AskAway creates no bot or membership and US5 remains open.
+
+---
+
+### Edge Cases
+
+- Missing or ambiguous team `self` or General destination: report the unresolved destination, never guess another team/space.
+- Expired tokens or denied membership: report a sanitized authentication/permission failure; refresh only through the credential boundary.
+- Same workspace names: route by workspace identity, not display name alone.
+- Reload during a turn: retain own-post IDs and reply deduplication so the reviewer is not echoed or replayed.
+- Disabled channel during a retry: stop its pending network work; do not send through Telegram as an implicit fallback.
+- User preferences or personal-token behavior suppress a notification: delivery evidence is not notification evidence.
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+Each existing requirement row maps explicitly below; its behavior is preserved through the selected adapter unless the documented personal-token notification limitation applies.
+
+- **FR-001**: A new user message MUST open a new live message and stop polling the previous turn (R-TELE-01; US2).
+- **FR-002**: Commentary MUST update the current live message in place (R-TELE-02; US2).
+- **FR-003**: Heads-up Commentary MUST be visibly distinguished (R-TELE-03; US2).
+- **FR-004**: Live status MUST refresh about every two minutes and warn of stuck/error states (R-TELE-04; US2).
+- **FR-005**: The final MUST be a new message replacing the live one; Telegram's notifying behavior MUST remain, while Webex personal-token self-posts MUST disclose their notification limit and bot notification remains subject to US5 (R-TELE-05).
+- **FR-006**: Status and final MUST carry cost and tokens, requests and the number of workers spawned this turn; totals MUST include workers (R-TELE-06; US2).
+- **FR-007**: Handoff text MUST order banner then current handoff, with no later-turn lag; response details belong in the document (R-TELE-07; US2).
+- **FR-008**: Remote replies MUST reach the correct conversation; VS Code replies MUST stop that turn's remote polling (R-TELE-08; US2).
+- **FR-009**: Queued messages MUST remain watchable remotely and the next queued message MUST close the previous turn (R-TELE-09; US2).
+- **FR-010**: Other workspaces MUST receive only their own live conversation status, never this workspace's Commentary (R-TELE-10; US2/US3).
+- **FR-011**: ask_user MUST be reused as a side channel through the shared reply path, not a separate legacy flow (R-TELE-11; US2).
+- **FR-012**: Cloud morning digests MUST deliver PR, evidence, duration, model, blocker and decision needed through the selected channel, with no invented cloud price (R-TELE-12; US2).
+- **FR-013**: Delivery MUST bound oversized content before formatting conversion, retry formatting rejection as plain text, honor rate-limit delays and retry failed live edits; Telegram's safe HTML handling MUST remain (R-TELE-13; US2/US3).
+- **FR-014**: Text MUST contain only banner and response handoff; the whole response MUST be a mobile-friendly PDF attachment, or Markdown when conversion fails (R-TELE-14; US2/US3).
+- **FR-015**: VS Code remote-monitoring events MUST reach the selected channel without losing existing coverage (R-TELE-15; US2).
+- **FR-016**: Turn observability MUST reuse the shared banner data: cost, workers' share, requests, input/output tokens, cache percent, worker count/details and efficiency score (R-TELE-16; US2).
+- **FR-017**: Commentary MUST relay live, not only in periodic status (R-TELE-17; US2).
+- **FR-018**: One RemoteChannel interface implemented by Telegram and Webex MUST serve every caller: Commentary, turn lifecycle, handoff/PDF, banner status, cloud digest and ask_user replies; disabled Telegram MUST make zero network calls (R-TELE-18; US2).
+- **FR-019**: Telegram implementation and regression tests MUST remain; Telegram MUST be toggled off rather than deleted for this migration (R-TELE-19; US2).
+- **FR-020**: "AskAway: Set Webex Token" MUST store credentials in SecretStorage and mirror the access token to macOS Keychain; tokens MUST NOT enter settings, chat, logs or discovery metadata (R-TELE-20; US1).
+- **FR-021**: Webex replies MUST use outbound polling with backoff, no webhook, no public endpoint and no claim of a Webex long-poll API (R-TELE-21; US3).
+- **FR-022**: Each workspace MUST use one space in team `self`, created if missing; that team's General space MUST serve general delivery (R-TELE-22; US3).
+- **FR-023**: share-with-me MUST default to Webex self.General, not Telegram; the already switched script MUST receive a live delivery check (R-TELE-23; US4).
+- **FR-024**: Discovery MUST enumerate teams and spaces and persist only non-secret IDs/names/mappings in `.askaway/webex-spaces.json` (US1).
+- **FR-025**: Webex MUST track AskAway's posted message IDs and deduplicate replies across polling/reload; it MUST NOT filter every reviewer message solely because it has the posting token's person ID (US3).
+- **FR-026**: Webex MUST honor HTTP 429 Retry-After for posting, editing, file upload and reply polling and MUST upload PDF/Markdown documents as files (US3).
+- **FR-027**: OAuth client credentials MUST be read privately from `~/.webex.md` when needed, never copied into discovery, test evidence or chat; refreshed access tokens MUST use the same storage/mirror boundary (US1/US3).
+- **FR-028**: Optional bot mode MUST remain gated by [NEEDS CLARIFICATION: will the reviewer provision/approve a bot member of team self, and which identity should be used?]; P1 delivery MUST NOT silently provision a bot or promise self-post notifications (US5).
+
+### Key Entities *(include if feature involves data)*
+
+- **RemoteChannel**: Shared outbound text/edit/final/document and inbound reply lifecycle contract; channel-neutral message identifiers accommodate Telegram numbers and Webex strings.
+- **Credential record**: Access/optional refresh token in SecretStorage, access-token Keychain mirror and private OAuth configuration; excluded from all metadata.
+- **Space discovery**: Non-secret team/space IDs and names in `.askaway/webex-spaces.json`, with workspace-to-space and self.General destinations.
+- **Remote turn**: Workspace, conversation/turn identity, active live/final message and reply-polling state.
+- **Message ledger**: Posted IDs and processed reply IDs scoped to workspace/space for self-post exclusion and reload-safe deduplication.
+- **Response document**: Whole final response converted to mobile-friendly PDF, with Markdown fallback.
+
+## Success Criteria *(mandatory)*
+
+### Measurable Outcomes
+
+- **SC-001**: All 23 R-TELE rows have explicit FR coverage and caller-view verification; no remote-monitoring capability is lost in the parity replay.
+- **SC-002**: In every seeded credential test, zero secrets appear in settings, chat, logs, discovery files or evidence.
+- **SC-003**: Disabled Telegram generates zero network calls across all shared caller scenarios.
+- **SC-004**: Each tested turn has one active live message, status updates about every two minutes, a new final and exactly one delivery per genuine reviewer reply across re-poll/reload.
+- **SC-005**: All two-workspace scenarios route to the correct workspace space with zero cross-workspace Commentary leakage.
+- **SC-006**: All rate-limit fixtures wait at least Retry-After; all document scenarios deliver PDF or the named Markdown fallback without silently dropping the response.
+- **SC-007**: One explicitly requested live share-with-me check delivers a harmless document to self.General, with zero Telegram calls and no token in evidence.
+- **SC-008**: Personal-token notification limitations are disclosed in every tested configuration; bot notification is claimed only after a reviewer-approved live device check.
+
+## Assumptions
+
+- Existing `tasksync-chat/src/services/webexService.ts` and `webexAuth.ts` are reused for Webex/authentication; current settings/file token fallbacks are not proof of the command-only requirement.
+- Existing `telegramService.ts`, `commentary/telegramLive.ts`, `services/handoffNotifier.ts` and `cloud/cloudDigest.ts` are integration points, not parallel implementations to replace with look-alikes.
+- The reviewer can access team `self`; discovery determines actual IDs without reading credentials into agent context.
+- The script switch and `SHARE_CHANNEL=webex` default are reported as already done on 2026-10-08; arrival remains unproven until US4's live check.
+- This is documentation only. T001/T002 are in progress elsewhere and remain unchecked until their evidence passes. plan.md, contracts and the bot decision precede further implementation where required.

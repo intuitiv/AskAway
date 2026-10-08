@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE } from '../constants/branding';
+import { WebexAuth, readWebexCredentials } from './webexAuth';
 
 // ── Interfaces ─────────────────────────────────────────────────
 
@@ -59,31 +60,55 @@ export class WebexService {
     private _clientSecret: string | undefined;
     private _refreshToken: string | undefined;
 
-    constructor(private logger?: vscode.OutputChannel) {
-        this.reloadConfig();
+    private _ready: Promise<void> = Promise.resolve();
+
+    constructor(private logger?: vscode.OutputChannel, private auth?: WebexAuth, private credentialsFile?: string) {
+        this._ready = this.reloadConfig();
     }
 
     // ── Configuration ──────────────────────────────────────────
 
-    public reloadConfig() {
+    public reloadConfig(): Promise<void> {
+        this._ready = this._reloadConfig();
+        return this._ready;
+    }
+
+    public async refreshAccessToken(): Promise<string | undefined> {
+        await this._ready;
+        return this._refreshAccessToken();
+    }
+
+    private async _reloadConfig(): Promise<void> {
         const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         this._enabled = config.get<boolean>('webex.enabled', false);
         this._roomId = config.get<string>('webex.roomId', '');
         this._tokenFilePath = config.get<string>('webex.tokenFilePath', '');
         const directToken = config.get<string>('webex.accessToken', '');
 
-        this.logger?.appendLine(`[WebexService] Reloading config. Enabled: ${this._enabled}, TokenPath: ${this._tokenFilePath}`);
+        this.logger?.appendLine(`[WebexService] Reloading config. Enabled: ${this._enabled}`);
 
         // OAuth credentials for auto-refresh
         this._clientId = config.get<string>('webex.clientId', '') || undefined;
         this._clientSecret = config.get<string>('webex.clientSecret', '') || undefined;
+        if (!this._clientId || !this._clientSecret) {
+            const credentials = readWebexCredentials(this.credentialsFile);
+            this._clientId ||= credentials.clientId;
+            this._clientSecret ||= credentials.clientSecret;
+        }
         this._refreshToken = config.get<string>('webex.refreshToken', '') || undefined;
 
         // Resolve token: file takes precedence over direct token
         this._accessToken = undefined;
         this._myPersonId = undefined; // clear cache on reload
 
-        if (this._tokenFilePath) {
+        if (this.auth) {
+            try {
+                const tokens = await this.auth.tokens();
+                this._accessToken = tokens.accessToken;
+                this._refreshToken = tokens.refreshToken || this._refreshToken;
+            } catch { console.warn('AskAway/Webex: Could not read stored credentials.'); }
+        }
+        if (!this._accessToken && this._tokenFilePath) {
             this._accessToken = this._loadTokenFromFile(this._tokenFilePath);
         }
         if (!this._accessToken && directToken) {
@@ -92,7 +117,7 @@ export class WebexService {
 
         // If no token but OAuth credentials exist, try to get one
         if (!this._accessToken && this._clientId && this._clientSecret && this._refreshToken) {
-            this._refreshAccessToken().then(token => {
+            await this._refreshAccessToken().then(token => {
                 if (token) {
                     this._accessToken = token;
                     if (this._enabled && this._roomId && this._activeTasks.size > 0) {
@@ -120,7 +145,6 @@ export class WebexService {
                 ? path.join(os.homedir(), filePath.slice(1))
                 : filePath;
             
-            this.logger?.appendLine(`[WebexService] Reading token file: ${resolved}`);
             const content = fs.readFileSync(resolved, 'utf8');
             const json = JSON.parse(content);
 
@@ -131,7 +155,7 @@ export class WebexService {
 
             return json.access_token || undefined;
         } catch (e) {
-            console.warn(`AskAway/Webex: Could not load token from "${filePath}":`, e);
+            console.warn('AskAway/Webex: Could not load token file.');
             return undefined;
         }
     }
@@ -186,8 +210,7 @@ export class WebexService {
             });
 
             if (!resp.ok) {
-                const errText = await resp.text();
-                console.error(`AskAway/Webex: Token refresh failed: ${resp.status} ${errText}`);
+                console.error(`AskAway/Webex: Token refresh failed: ${resp.status}`);
                 return undefined;
             }
 
@@ -201,12 +224,10 @@ export class WebexService {
             this._accessToken = data.access_token;
             this._myPersonId = undefined; // re-cache identity
 
-            // Persist the new refresh token to settings (Webex rotates it)
+            await this.auth?.store(data.access_token, data.refresh_token);
+            // Webex rotates the refresh token.
             if (data.refresh_token && data.refresh_token !== this._refreshToken) {
                 this._refreshToken = data.refresh_token;
-                const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-                await config.update('webex.refreshToken', data.refresh_token, vscode.ConfigurationTarget.Global);
-                console.log('AskAway/Webex: New refresh token saved to settings');
             }
 
             // Also save to token file if configured
@@ -219,7 +240,7 @@ export class WebexService {
                     fs.writeFileSync(resolved, json, 'utf8');
                     console.log('AskAway/Webex: Access token saved to file');
                 } catch (e) {
-                    console.warn('AskAway/Webex: Could not save token to file:', e);
+                    console.warn('AskAway/Webex: Could not save token to file.');
                 }
             }
 
@@ -227,7 +248,7 @@ export class WebexService {
             console.log(`AskAway/Webex: Token refreshed successfully (expires in ${data.expires_in}s)`);
             return data.access_token;
         } catch (e) {
-            console.error('AskAway/Webex: Token refresh error:', e);
+            console.error('AskAway/Webex: Token refresh error.');
             return undefined;
         }
     }
@@ -278,9 +299,9 @@ export class WebexService {
     }
 
     public start() {
-        if (!this.isConfigured()) { return; }
-        // Pre-cache identity
-        this._cacheMyId().catch(() => {});
+        void this._ready.then(() => {
+            if (this.isConfigured()) { this._cacheMyId().catch(() => {}); }
+        });
     }
 
     public stop() {
@@ -356,6 +377,7 @@ export class WebexService {
 
     /** Post a plain markdown message (no card, no reply tracking). Used for turn-end handoffs. */
     public async postText(markdown: string, fallback: string): Promise<boolean> {
+        await this._ready;
         if (!this.isConfigured() || !markdown.trim()) { return false; }
         try {
             const resp = await fetch(`${WEBEX_API}/messages`, {
@@ -364,12 +386,12 @@ export class WebexService {
                 body: JSON.stringify({ roomId: this._roomId, markdown, text: fallback })
             });
             if (!resp.ok) {
-                this.logger?.appendLine(`AskAway/Webex: postText failed ${resp.status} ${await resp.text()}`);
+                this.logger?.appendLine(`AskAway/Webex: postText failed ${resp.status}`);
                 return false;
             }
             return true;
         } catch (err) {
-            this.logger?.appendLine(`AskAway/Webex: postText error ${err instanceof Error ? err.message : String(err)}`);
+            this.logger?.appendLine('AskAway/Webex: postText error.');
             return false;
         }
     }
@@ -377,6 +399,7 @@ export class WebexService {
     // ── Post Adaptive Card ────────────────────────────────────
 
     public async postAdaptiveCard(taskId: string, question: string, choices?: string[]): Promise<void> {
+        await this._ready;
         if (!this.isConfigured()) {
             return;
         }
