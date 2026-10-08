@@ -901,6 +901,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      */
     public setWebexService(service: any): void {
         this._webexService = service;
+        this._updateSettingsUI();
         // Wire up response callback so Webex replies resolve pending requests
         if (service && typeof service.setResponseCallback === 'function') {
             service.setResponseCallback((taskId: string, response: string, user: string, attachments?: AttachmentInfo[]) => {

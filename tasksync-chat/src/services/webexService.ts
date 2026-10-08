@@ -91,6 +91,12 @@ export class WebexService implements RemoteChannel {
         this._enabled = config.get<boolean>('webex.enabled', false);
         this._roomId = config.get<string>('webex.roomId', '');
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (root) {
+            try {
+                const facts = JSON.parse(fs.readFileSync(path.join(root, '.askaway/webex-spaces.json'), 'utf8'));
+                this._roomId = facts.self?.workspaceRoomId || this._roomId;
+            } catch { /* Setup has not resolved this workspace yet. */ }
+        }
         const ledgerPath = root ? path.join(root, '.askaway/webex-messages.json') : undefined;
         if (ledgerPath && this._ledgerPath !== ledgerPath) {
             this._ledgerPath = ledgerPath;

@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
-import { registerWebexAuthCommands } from './services/webexAuth';
+import { registerWebexAuthCommands, WebexAuth } from './services/webexAuth';
 import { registerTools } from './tools';
 import { ASKWAY_BUILD_AGENT_FILE, ASKWAY_BUILD_AGENT_CONTENT } from './agents/askawayBuildAgent';
 import { memoryTool } from './validator/memoryTool';
@@ -1245,21 +1245,26 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         // Webex/Telegram commands (services loaded in deferred block)
+        const webexAuth = new WebexAuth(context.secrets);
         registerWebexAuthCommands(context, async () => {
+            await webviewProvider?.getWebexService()?.reloadConfig();
             await vscode.commands.executeCommand('askaway.webexDiscover');
             await webviewProvider?.getWebexService()?.reloadConfig();
-        });
+            const service = webviewProvider?.getWebexService();
+            if (service) { webviewProvider?.setWebexService(service); }
+        }, webexAuth);
         context.subscriptions.push(
             vscode.commands.registerCommand('askaway.webexDiscover', async () => {
                 const folder = vscode.workspace.workspaceFolders?.[0];
                 if (!folder) { await vscode.window.showWarningMessage('AskAway: Open a workspace to discover Webex spaces.'); return; }
-                const { WebexAuth } = await import('./services/webexAuth');
                 const { setupWebex } = await import('./services/webexSpaces');
                 const { WebexIncomingWebhook } = await import('./services/webexIncomingWebhook');
-                await setupWebex(new WebexAuth(context.secrets), { fsPath: folder.uri.fsPath, name: folder.name }, {
+                await setupWebex(webexAuth, { fsPath: folder.uri.fsPath, name: folder.name }, {
                     onResolved: () => new WebexIncomingWebhook(context.secrets).prompt(folder.uri.fsPath, context.workspaceState),
                     refresh: () => webviewProvider?.getWebexService()?.refreshAccessToken() ?? Promise.resolve(undefined)
                 });
+                const service = webviewProvider?.getWebexService();
+                if (service) { await service.reloadConfig(); webviewProvider?.setWebexService(service); }
             }),
             vscode.commands.registerCommand('askaway.getTelegramChatId', async () => {
                 if (telegramServiceInstance) { await telegramServiceInstance.getChatId(); }
@@ -1290,18 +1295,17 @@ export function activate(context: vscode.ExtensionContext) {
                     throw new Error('WebexService import is not a constructor function');
                 }
 
-                const { WebexAuth } = await import('./services/webexAuth');
                 const { WebexIncomingWebhook } = await import('./services/webexIncomingWebhook');
                 const incoming = new WebexIncomingWebhook(context.secrets);
                 context.subscriptions.push(vscode.commands.registerCommand('askaway.configureWebexNotifications', async () => {
                     const folder = vscode.workspace.workspaceFolders?.[0];
                     if (folder) { await incoming.configure(folder.uri.fsPath); }
                 }));
-                webexService = new WebexService(outputChannel, new WebexAuth(context.secrets), undefined, {}, incoming);
+                webexService = new WebexService(outputChannel, webexAuth, undefined, {}, incoming);
                 const { ensureWebexWorkspace } = await import('./services/webexSpaces');
                 const ensureWorkspace = async () => {
                     const folder = vscode.workspace.workspaceFolders?.[0];
-                    if (folder) { await ensureWebexWorkspace(new WebexAuth(context.secrets), { fsPath: folder.uri.fsPath, name: folder.name }, {
+                    if (folder) { await ensureWebexWorkspace(webexAuth, { fsPath: folder.uri.fsPath, name: folder.name }, {
                         onResolved: () => incoming.prompt(folder.uri.fsPath, context.workspaceState)
                     }); }
                 };
@@ -1316,6 +1320,8 @@ export function activate(context: vscode.ExtensionContext) {
                         webexService.stop();
                         await webexService.reloadConfig();
                         await ensureWorkspace();
+                        await webexService.reloadConfig();
+                        provider.setWebexService(webexService);
                         if (vscode.workspace.getConfiguration('askaway.webex').get<boolean>('enabled', false)) { webexService.start(); }
                     }
                 }));
