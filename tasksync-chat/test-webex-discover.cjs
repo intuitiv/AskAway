@@ -1,3 +1,4 @@
+process.env.ASKAWAY_TEST_NO_KEYCHAIN = '1';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -83,7 +84,8 @@ async function main() {
         await new WebexAuth(storage, async (file, args) => security.push({ file, args }), 'linux').mirror('webex-general-room-id', 'general-room');
         assert.equal(security.length, before);
         assert.ok(require('./package.json').contributes.commands.some(command => command.command === 'askaway.webexDiscover' && command.title === 'AskAway: Discover Webex Spaces'));
-        assert.match(fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8'), /registerCommand\('askaway\.webexDiscover'/);
+        assert.match(fs.readFileSync(path.join(__dirname, 'src/services/webexWiring.ts'), 'utf8'), /registerCommand\('askaway\.webexDiscover'/);
+        assert.match(fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8'), /wireWebex\(context, provider,/);
     } finally {
         Object.assign(console, original);
         await new Promise(resolve => server.close(resolve));
@@ -91,4 +93,4 @@ async function main() {
     console.log('PASS Webex discovery: teams and rooms paginated, 429 waited and retried, 401 refreshed once');
     console.log('PASS Webex discovery: non-secret workspace file, self/General routing, exact Keychain args, safe notifications');
 }
-main().catch(() => { console.error('FAIL Webex discovery acceptance'); process.exitCode = 1; });
+main().catch(error => { console.error('FAIL Webex discovery acceptance:', String(error.message || error).slice(0, 1000)); process.exitCode = 1; });

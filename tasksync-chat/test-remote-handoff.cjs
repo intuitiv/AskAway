@@ -16,7 +16,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(req.method === 'GET' ? { items } : { id: 'webex-' + ++next }));
 });
-const bundle = esbuild.buildSync({ stdin: { contents: "export * from './src/services/handoffNotifier'; export * from './src/services/webexService'; export * from './src/services/webexIncomingWebhook'; export * from './src/services/telegramService'; export * from './src/services/telegramConversationReply';", resolveDir: __dirname, loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
+const bundle = esbuild.buildSync({ stdin: { contents: "export * from './src/services/handoffNotifier'; export * from './src/services/webexService'; export * from './src/services/webexIncomingWebhook'; export * from './src/services/telegramService'; export * from './src/services/telegramConversationReply'; export * from './src/services/webexWiring';", resolveDir: __dirname, loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
 const loaded = { exports: {} };
 new Function('require', 'module', 'exports', 'setTimeout', 'clearTimeout', bundle.outputFiles[0].text)(id => id === 'vscode' ? vscode : id === 'child_process' ? { execFile: (file, args, options, callback) => { if (pdf) fs.writeFileSync(args[1], '%PDF-fixture\n' + fs.readFileSync(args[0])); callback(pdf ? null : new Error('converter unavailable')); } } : require(id), loaded, loaded.exports, () => ({}), () => {});
 const nativeFetch = global.fetch;
@@ -37,10 +37,8 @@ const nativeFetch = global.fetch;
         await webex.reloadConfig();
         for (const [name, service] of [['Webex', webex], ['Telegram', telegram]]) {
             if (name === 'Webex') {
-                const source = fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8');
-                const wiring = source.slice(source.indexOf('        const { isTelegramHandoffTaskId, submitTelegramConversationReply } = require'), source.indexOf('        const webexRoot ='));
-                const code = require('typescript').transpileModule(wiring + '\npublishWebex();', { compilerOptions: { module: 1 } }).outputText;
-                new Function('require', 'webviewProvider', code)(() => loaded.exports, { getWebexService: () => service, setWebexService: () => {}, _handleMessagingResponse: () => assert.fail('handoff must reach conversation, not tool callback') });
+                loaded.exports.publishWebex({ getWebexService: () => service, setWebexService: () => {} },
+                    () => assert.fail('handoff must reach conversation, not tool callback'));
             } else service.onReply(async (task, text) => { assert.match(task, /^handoff:/); await loaded.exports.submitTelegramConversationReply(text); });
             for (const [index, kind] of ['pdf', 'md'].entries()) {
                 pdf = kind === 'pdf';
@@ -53,11 +51,11 @@ const nativeFetch = global.fetch;
                 const sent = calls.slice(before).filter(call => name === 'Webex' ? call.method === 'POST' : ['sendMessage', 'sendDocument'].includes(call.method));
                 assert.equal(sent.length, 2, `${name} must send handoff then whole-response document`);
                 if (name === 'Webex') {
-                    assert.equal(JSON.parse(sent[0].raw).markdown, loaded.exports.telegramHandoffUpdate(parts, metrics));
-                    assert.ok(sent[0].url.startsWith('/incoming/')); assert.equal(sent[0].auth, undefined);
-                    assert.equal(sent[1].auth, 'Bearer fixture-token'); assert.ok(sent[1].raw.includes(`filename="response.${kind}"`));
+                    assert.ok(sent[0].raw.replace(/\r\n/g, '\n').includes(loaded.exports.telegramHandoffUpdate(parts, metrics)));
+                    assert.ok(sent[1].url.startsWith('/incoming/')); assert.equal(sent[1].auth, undefined);
+                    assert.equal(sent[0].auth, 'Bearer fixture-token'); assert.ok(sent[0].raw.includes(`filename="response.${kind}"`));
                 } else assert.ok(JSON.parse(sent[0].raw).text.includes('12.5K last in'));
-                assert.ok(sent[1].raw.includes(`Whole response ${kind}`));
+                assert.ok(sent[name === 'Webex' ? 0 : 1].raw.includes(`Whole response ${kind}`));
                 assert.equal(service.getActiveTaskCount(), 1);
                 const answer = { id: `answer-${kind}`, text: `Continue ${kind}`, personEmail: 'reviewer', created: new Date().toISOString() };
                 items = kind === 'pdf' ? [{ id: 'hook-parent', text: 'own', personEmail: 'incoming-webhooks@webex.bot' }, { ...answer, parentId: 'hook-parent' }] : [answer];

@@ -1,3 +1,4 @@
+process.env.ASKAWAY_TEST_NO_KEYCHAIN = '1';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -10,7 +11,7 @@ async function main() {
     let enabled = false, created = 0, generalCreated = 0, current, displayed;
     const tokens = new Map(), listeners = [], commands = new Map(), notices = [], rooms = [{ id: 'general', title: 'self' }];
     const context = { secrets: { get: async key => tokens.get(key), store: async (key, value) => tokens.set(key, value) }, subscriptions: [], workspaceState: { get: (key, fallback) => fallback, update: async () => {} } };
-    const provider = { setWebexService: service => { current = service; displayed = service.getTokenStatus(); }, getWebexService: () => current };
+    const provider = { setWebexService: service => { current = service; displayed = service.getTokenStatus(); }, getWebexService: () => current, getTurnActivity: () => ({}) };
     // The Settings listener runs before the extension's deferred service listener, as in VS Code.
     listeners.push(() => { displayed = current?.getTokenStatus(); });
     const vscode = { ConfigurationTarget: { Global: 1 }, workspace: { workspaceFolders: [{ name: 'Display name', uri: { fsPath: root } }],
@@ -34,18 +35,14 @@ async function main() {
         else res.end('{}');
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    const source = fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8');
-    const commandsBlock = source.slice(source.indexOf('        // Webex/Telegram commands'), source.indexOf('        // Initialize remote server context'));
-    const deferred = source.slice(source.indexOf('                const webexModule ='), source.indexOf('            } catch (err)', source.indexOf('                const webexModule =')));
-    const code = `import * as vscode from 'vscode'; import { WebexStatus } from './services/webexStatus'; import { registerWebexAuthCommands, WebexAuth } from './services/webexAuth';
-        export async function wire(context, provider) { const webviewProvider = provider; const outputChannel = undefined; const CONFIG_NAMESPACE = 'askaway'; let telegramServiceInstance; let webexService; const logRuntime = () => {}; ${commandsBlock} ${deferred} }`;
-    const build = esbuild.buildSync({ stdin: { contents: code, resolveDir: path.join(__dirname, 'src'), loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
+    const build = esbuild.buildSync({ entryPoints: [path.join(__dirname, 'src/services/webexWiring.ts')], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
     const loaded = { exports: {} };
-    new Function('require', 'module', 'exports', build.outputFiles[0].text)(name => name === 'vscode' ? vscode : require(name), loaded, loaded.exports);
+    new Function('require', 'module', 'exports', build.outputFiles[0].text)(name => name === 'vscode' ? vscode : name === 'child_process' ? { execFile: (...args) => args.at(-1)(null) } : require(name), loaded, loaded.exports);
     const originalFetch = global.fetch;
     global.fetch = (url, options) => originalFetch(String(url).replace('https://webexapis.com', `http://127.0.0.1:${server.address().port}`), options);
     try {
-        await loaded.exports.wire(context, provider);
+        const commentary = { onChange: () => ({ dispose() {} }), turnStarts: () => [], currentPrompt: () => '', read: () => ({ workspacePath: root, goal: '', goalUpdatedAt: 0, clearedAt: 0, items: [] }), file: () => path.join(root, 'commentary.json'), turnsFile: () => path.join(root, 'turns.json') };
+        await loaded.exports.wireWebex(context, provider, undefined, commentary, () => {}, () => {}, error => error)();
         tokens.set('askaway.webex.accessToken', 'fixture-access'); tokens.set('askaway.webex.refreshToken', 'fixture-refresh');
         enabled = true;
         for (const listener of listeners) await listener({ affectsConfiguration: name => name.startsWith('askaway') });
@@ -60,6 +57,6 @@ async function main() {
         assert.equal(current.getTokenStatus().hasToken, true);
         assert.ok(!notices.some(text => text.includes('not signed in')));
         console.log('PASS enable after sign-in: actual extension wiring reloads shared credentials, publishes signed-in status and creates one self workspace space');
-    } finally { global.fetch = originalFetch; current?.dispose(); await new Promise(resolve => server.close(resolve)); }
+    } finally { global.fetch = originalFetch; for (const subscription of context.subscriptions) subscription.dispose(); current?.dispose(); await new Promise(resolve => server.close(resolve)); }
 }
 main().catch(error => { console.error('FAIL enable after sign-in:', error.message); process.exitCode = 1; });

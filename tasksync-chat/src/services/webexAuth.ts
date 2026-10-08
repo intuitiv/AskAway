@@ -51,6 +51,7 @@ export class WebexAuth {
     }
 
     async mirror(service: 'webex-access-token' | 'webex-general-room-id', value: string): Promise<void> {
+        if (process.env.ASKAWAY_TEST_NO_KEYCHAIN === '1' && this.runner === securityRunner) { return; }
         try {
             if (this.platform === 'darwin') {
                 await this.runner('security', ['add-generic-password', '-U', '-a', 'vibecoding', '-s', service, '-w', value]);

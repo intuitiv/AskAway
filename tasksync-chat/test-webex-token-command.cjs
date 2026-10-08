@@ -1,3 +1,4 @@
+process.env.ASKAWAY_TEST_NO_KEYCHAIN = '1';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -225,7 +226,8 @@ async function main() {
         const manifest = require('./package.json');
         assert.ok(manifest.contributes.commands.some(command => command.command === 'askaway.setWebexToken' && command.title === 'AskAway: Set Webex Token'));
         const extension = fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8');
-        assert.match(extension, /registerWebexAuthCommands\(context,/);
+        assert.match(fs.readFileSync(path.join(__dirname, 'src/services/webexWiring.ts'), 'utf8'), /registerWebexAuthCommands\(context,/);
+        assert.match(extension, /wireWebex\(context, provider,/);
         assert.ok(!extension.includes('callbackPort = 54321'));
         assert.ok(!extension.includes("config.update('webex.accessToken'"));
     } finally {
@@ -239,4 +241,4 @@ async function main() {
     console.log('PASS unchanged reload: valid refresh rotates SecretStorage, Keychain and subsequent request credentials');
     console.log('PASS Webex scopes: exact local or prompted names, no broad default, invalid_scope guidance with no exchange or token changes');
 }
-main().catch(() => { console.error('FAIL Webex token command acceptance'); process.exitCode = 1; });
+main().catch(error => { console.error('FAIL Webex token command acceptance:', String(error.message || error).slice(0, 1000)); process.exitCode = 1; });

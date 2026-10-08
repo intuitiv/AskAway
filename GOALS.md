@@ -337,3 +337,16 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > run share with me once, i'll verify the doc.
 > i posted yes in space, but looks like you haven;t recieved. and i see the message. i got 2 messages, attachment and message. Cant we club them both?
 > And i also heared that we can do awesome formatting and some cards in webex too.
+
+### 2026-10-09, Webex turn thread
+
+> I asked for sending attachment and message in same message, for final response. not as a thread.
+> I see few messages are sent by my token rather than webhook route. Always send me message through webhooks. If we need to send message to someone else, we need to use my token. In that space, it is always through webhook. I think i see your concern. DOes that webhook api only accpets message not cards or attachments? If thats the case, dont push it. Accept it and proceed.
+> Lets do one thing, we'll use webhook for notification, i mean alerting and all. You cannot edit same message and all.
+> You can send a message in teh beginnign as an alert that new user message sent and all, to that thread, we can have an updateable card every 2 min or for commentary. At the end we send response handoff and also attach doc to it (this tou can do i guess).
+> And as the last message is sent by me, i dont get notification, then bot can alert it and i can reply to the same thread, so that you can poll wit that id or something? See if you can comeup with something better.
+>
+> In webex spec, can you add some tasks to create command style tools to read messages from webex and so on?
+>
+> After doing this,
+> /sk.handoff store all teh rules and work and check all the completed tasks, lets continue tmr.

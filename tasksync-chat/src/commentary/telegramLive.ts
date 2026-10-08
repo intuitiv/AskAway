@@ -1,6 +1,24 @@
 import * as fs from 'fs';
 import type { CommentaryItem, CommentaryStore, CommentaryView } from './commentary';
 import { commentaryView } from './commentary';
+import type { RemoteChannel } from '../services/remoteChannel';
+
+export function webexLivePoster(channel: RemoteChannel, workspace: string): LiveMessagePoster {
+    const markdown = (html: string) => html.replace(/<b>(.*?)<\/b>/g, '**$1**').replace(/<code>(.*?)<\/code>/g, '`$1`')
+        .replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    const heads = new Set<string>();
+    return {
+        isConfigured: () => channel.isConfigured(),
+        sendLive: async html => await channel.beginTurn?.(workspace, /💬 <i>(.*?)<\/i>/.exec(html)?.[1] || '', markdown(html)) as number | undefined,
+        editLive: async (id, html) => {
+            for (const line of html.split('\n').filter(line => line.includes('HEADS-UP'))) {
+                if (!heads.has(line)) { heads.add(line); await channel.sendText(`❓ ${workspace}: ${markdown(line)}`, markdown(line), undefined, { notify: true }); }
+            }
+            return channel.editLive(id, markdown(html));
+        },
+        finishLive: (id, head, final, task) => channel.finishLive(id, markdown(head), final, task)
+    };
+}
 
 /**
  * One Telegram message per chat turn, driven by three events (reviewer, 2026-09-28):
@@ -153,6 +171,8 @@ export class TelegramLiveCommentary {
         this.cancelPending();
         this.stopTicker();
     }
+
+    complete(): void { this.finished = true; this.cancelPending(); this.stopTicker(); }
 
     private startTicker(): void {
         if (this.ticker || !this.options.activity) { return; }

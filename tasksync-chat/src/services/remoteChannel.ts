@@ -12,4 +12,6 @@ export interface RemoteChannel {
     postQuestion(taskId: string, question: string, choices?: string[]): Promise<void>;
     onReply(callback: RemoteReply): void;
     resolveTask(taskId: string): void;
+    beginTurn?(workspace: string, prompt: string, status: string): Promise<RemoteMessageId | undefined>;
+    finishTurn?(markdown: string, taskId: string, filePath: string): Promise<boolean>;
 }

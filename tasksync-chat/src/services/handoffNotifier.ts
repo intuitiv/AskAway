@@ -32,7 +32,7 @@ export interface TurnMetricsSnapshot {
     turnNanoAiu: number;
 }
 
-export type HandoffPoster = Pick<RemoteChannel, 'isConfigured' | 'postText'> & Partial<Pick<RemoteChannel, 'sendDocument'>>;
+export type HandoffPoster = Pick<RemoteChannel, 'isConfigured' | 'postText'> & Partial<Pick<RemoteChannel, 'sendDocument' | 'finishTurn'>>;
 
 export interface HandoffTarget {
     name: string;
@@ -131,6 +131,13 @@ ${text}`, `AskAway: ${text}`);
                 }
                 configuredTargets++;
                 const markdown = telegramHandoffUpdate(parts, turnMetrics);
+                if (poster.finishTurn) {
+                    const rendered = await renderResponseFile(fullResponseMarkdown(parts));
+                    try {
+                        if (await poster.finishTurn(markdown, createTelegramHandoffTaskId(ts), rendered.file)) { postedTargets++; }
+                    } finally { rendered.cleanup(); }
+                    continue;
+                }
                 const ok = await poster.postText(
                     markdown,
                     `AskAway — turn complete: ${parts.handoff.slice(0, 200)}`,

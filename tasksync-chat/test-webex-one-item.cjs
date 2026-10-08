@@ -34,20 +34,18 @@ const server = http.createServer(async (req, res) => {
             notifier._readStamp = () => 100 + index; notifier._findHandoff = () => ({ details: 'Whole response', handoff: 'Next: ' + kind });
             const before = calls.length; await notifier._onTurnEnd();
             const sent = calls.slice(before).filter(call => call.method === 'POST'); assert.equal(sent.length, 2);
-            assert.ok(sent[0].url.startsWith('/incoming/')); assert.equal(sent[0].auth, undefined);
-            assert.equal(sent[1].auth, 'Bearer fixture-token'); assert.ok(sent[1].raw.includes('name="files"'));
-            if (visible) {
-                assert.ok(sent[1].raw.includes('name="parentId"'), 'document must be a reply, not a second space item');
-                assert.ok(sent[1].raw.includes(messages.at(-1).id)); assert.ok(sent[1].raw.includes('name="markdown"'));
-                assert.ok(reads >= 2, 'retry until summary appears');
-            } else { assert.ok(!sent[1].raw.includes('name="parentId"')); assert.equal(reads, 5, 'fallback after bounded retries'); }
-            assert.ok(sent[1].raw.includes(`filename="response.${pdf ? 'pdf' : 'md'}"`));
+            assert.ok(sent[1].url.startsWith('/incoming/')); assert.equal(sent[1].auth, undefined);
+            assert.equal(sent[0].auth, 'Bearer fixture-token'); assert.ok(sent[0].raw.includes('name="files"'));
+            assert.ok(sent[0].raw.includes('name="markdown"') && sent[0].raw.includes('Next: ' + kind));
+            if (visible) { assert.ok(reads >= 2, 'retry until finish alert appears'); }
+            else { assert.equal(reads, 5, 'unresolved finish alert retains synthetic tracking after bounded retries'); }
+            assert.ok(sent[0].raw.includes(`filename="response.${pdf ? 'pdf' : 'md'}"`));
             let status = service.getTokenStatus(); assert.equal(status.isPolling, true); assert.equal(status.lastPollAt, null); assert.ok(status.nextPollAt >= Date.now());
             const [id, timer] = timers.entries().next().value; timers.delete(id); await timer.callback();
             status = service.getTokenStatus(); assert.ok(status.lastPollAt <= Date.now() && status.lastPollAt > 0); assert.ok(status.nextPollAt > status.lastPollAt);
             service.resolveTask('handoff:' + (100 + index)); status = service.getTokenStatus(); assert.equal(status.lastPollAt, null); assert.equal(status.nextPollAt, null);
         }
         assert.ok(waits.every(ms => ms > 0 && ms <= 1000));
-        console.log('PASS Webex one item: no-ID notifying summary, PDF/MD threaded under real ID, bounded top-level fallback, lastPollAt/nextPollAt while polling and null when stopped');
+        console.log('PASS Webex combined final: PDF/MD with handoff markdown, no-ID finish alert, bounded ID lookup, lastPollAt/nextPollAt while polling and null when stopped');
     } finally { service.dispose(); delete process.env.ASKAWAY_MD_TO_PDF; await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error('FAIL Webex one item:', error.message); process.exitCode = 1; });

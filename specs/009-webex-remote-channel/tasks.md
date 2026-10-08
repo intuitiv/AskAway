@@ -16,7 +16,7 @@ description: "Task list for 009 Webex Remote Channel"
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies).
-- **[Story]**: User story traceability (US1 to US5).
+- **[Story]**: User story traceability (US1 to US7).
 - Include exact file paths and caller-view verification in each task.
 
 ## Path Conventions
@@ -93,7 +93,7 @@ T029 subsequent retry (2026-10-08): `invalid_scope` persists with KMS included. 
 ### Implementation for User Story 2
 
 - [x] T009 [US2] Implement `tasksync-chat/src/services/remoteChannel.ts` and adapt `telegramService.ts` and `webexService.ts` to the shared contract with channel-neutral IDs and enabled gating; caller-view `tasksync-chat/test-remote-channel-contract.cjs` asserts both adapters against fakes and zero disabled-channel requests. Done 2026-10-08: three PASS lines, five named regressions and TypeScript noEmit pass. No caller rerouting; full caller parity remains T008, persisted message IDs and space creation remain T006/T015/T017.
-- [ ] T010 [US2] Route live Commentary, turn starts/queued turns, periodic banner status and stop-on-VS-Code-reply through the shared channel in `tasksync-chat/src/commentary/telegramLive.ts`, `src/extension.ts` and `src/webview/webviewProvider.ts`; caller-view `tasksync-chat/test-remote-turn-lifecycle.cjs` asserts in-place edits, heads-up, two-minute refresh, workspace isolation and prior-turn polling cancellation (FR-001 to FR-010/FR-015 to FR-019; depends on T009).
+- [x] T010 [US2] Route live Commentary, turn starts/queued turns, periodic banner status and stop-on-VS-Code-reply through the shared channel in `tasksync-chat/src/commentary/telegramLive.ts`, `src/extension.ts` and `src/webview/webviewProvider.ts`; caller-view `tasksync-chat/test-remote-turn-lifecycle.cjs` asserts in-place edits, heads-up, two-minute refresh, workspace isolation and prior-turn polling cancellation (FR-001 to FR-010/FR-015 to FR-019; depends on T009). Verified 2026-10-09: `rtk node tasksync-chat/test-webex-turn-thread.cjs` PASS for notifying root, edited threaded status, combined final/document, finish alert, turn/alert/top-level replies once and token fallback. Telegram turn-lifecycle, live-commentary and handoff; remote-handoff; Webex live-reply and incoming-webhook regressions pass; TypeScript noEmit clean. Fake-backed evidence, not live device notification.
 - [x] T011 [US2] Route handoff and PDF/Markdown upload through the shared channel in `tasksync-chat/src/services/handoffNotifier.ts`; caller-view `tasksync-chat/test-remote-handoff.cjs` asserts banner-then-current-handoff, new final and whole-response document/fallback with no lag (FR-005/FR-007/FR-014/FR-016; depends on T009 and US3 upload T016). Verified 2026-10-09: `rtk node tasksync-chat/test-remote-handoff.cjs` exits 0 with PASS for both Webex and Telegram: shared banner then handoff, notifying final, full PDF/MD, once-only conversation reply and local resolve. Fake-backed delivery evidence; no live device notification claimed.
 - [ ] T012 [P] [US2] Route cloud digest through the selected shared channel using `tasksync-chat/src/cloud/cloudDigest.ts` and the existing `remoteDigestPoster` boundary; caller-view `tasksync-chat/test-remote-cloud-digest.cjs` asserts PR/evidence/duration/model/blocker/decision, no invented cloud price and no disabled-channel calls (FR-012/FR-018; depends on T009; no concurrent edit of `commentary/telegramLive.ts` with T010).
 - [ ] T013 [US2] Reuse ask_user as the side channel and route incoming replies through the same contract in `tasksync-chat/src/tools.ts`, `src/extension.ts` and `src/webview/webviewProvider.ts`; caller-view `tasksync-chat/test-remote-conversation-reply.cjs` asserts once-only correct-conversation delivery and VS Code reply cancellation; toggle Telegram off without deleting its service/tests (FR-008/FR-011/FR-018/FR-019; depends on T010, T017).
@@ -115,7 +115,7 @@ T029 subsequent retry (2026-10-08): `invalid_scope` persists with KMS included. 
 ### Implementation for User Story 3
 
 - [x] T015 [US3] Resolve/create one space per workspace in team self and record its General space through `tasksync-chat/src/services/webexSpaces.ts`, retaining non-secret mappings in `.askaway/webex-spaces.json`. Verified 2026-10-08: `node tasksync-chat/test-webex-workspace-space.cjs` passes reuse, idempotent creation, folder-name title, General recording, global enabled setup and zero disabled requests; discovery, token-command, remote-channel-contract regressions and TypeScript noEmit pass. Sign-in runs setup; enabling resolves missing workspace metadata or offers sign-in; disabling stops polling. Broader US3 adapter verification remains T014/T016/T017.
-- [ ] T016 [US3] Add Webex text/edit/final and PDF/Markdown file operations with safe format fallback and 429 Retry-After in `tasksync-chat/src/services/webexService.ts`; caller-view `tasksync-chat/test-webex-remote-adapter.cjs` asserts upload bytes, no premature retry, pending edit recovery and no silent drop (FR-013/FR-014/FR-026; depends on T015).
+- [x] T016 [US3] Add Webex text/edit/final and PDF/Markdown file operations with safe format fallback and 429 Retry-After in `tasksync-chat/src/services/webexService.ts`; caller-view `tasksync-chat/test-webex-remote-adapter.cjs` asserts upload bytes, no premature retry, pending edit recovery and no silent drop (FR-013/FR-014/FR-026; depends on T015).
 - [x] T017 [US3] Poll replies with backoff and persisted posted/processed IDs in `tasksync-chat/src/services/webexService.ts`; caller-view `tasksync-chat/test-webex-reply-poll.cjs` asserts own-post exclusion by ID, genuine reviewer replies with the same person ID, re-poll/reload deduplication, turn cancellation and no inbound endpoint (FR-008/FR-021/FR-025; depends on T016). Verified 2026-10-08: localhost fake-server test passes space/thread polling, reload restoration, bounded ledger and post/reply backoff reset; remote-channel-contract and webex-token-command regressions pass, TypeScript noEmit passes. No live delivery claimed.
 
 **Checkpoint**: US3 replay and upload/reply scenarios pass; no self-identity blanket filter or exposed laptop endpoint remains.
@@ -134,7 +134,7 @@ T029 subsequent retry (2026-10-08): `invalid_scope` persists with KMS included. 
 
 ### Implementation for User Story 4
 
-- [ ] T019 [US4] Live-check the already switched `~/.local/bin/share-with-me` using `tasksync-chat/test-share-with-me-webex.cjs` and a harmless document; record self.General arrival in `specs/009-webex-remote-channel/evidence/share-with-me.md` without credentials. No script rewrite: default was switched 2026-10-08; fail or wait explicitly if delivery cannot be observed (depends on T018, T001/T002 and explicit live request).
+- [x] T019 [US4] Live-check the already switched `~/.local/bin/share-with-me` using `tasksync-chat/test-share-with-me-webex.cjs` and a harmless document; record self.General arrival in `specs/009-webex-remote-channel/evidence/share-with-me.md` without credentials. No script rewrite: default was switched 2026-10-08; fail or wait explicitly if delivery cannot be observed (depends on T018, T001/T002 and explicit live request).
 
 **Checkpoint**: Observed live arrival, not just the default setting, proves US4; no Telegram delivery occurs.
 
@@ -158,7 +158,45 @@ T029 subsequent retry (2026-10-08): `invalid_scope` persists with KMS included. 
 
 ---
 
-## Phase 8: Polish & Cross-Cutting Concerns
+## Phase 8: User Story 6 - Turn thread with webhook alerts (Priority: P1)
+
+**Goal**: Webhook start/finish alerts, one editable token status in the turn thread and one final token message containing handoff text AND PDF together; cards are not pushed.
+
+**Independent Test**: `tasksync-chat/test-webex-turn-thread.cjs` replays alert/root discovery, status edits, combined final and all reply locations; `tasksync-chat/test-webex-keychain-isolation.cjs` proves zero real Keychain access.
+
+### Tests for User Story 6
+
+Write caller-view tests first against fake webhook/token APIs and a controlled clock; the webhook returns no id and ignores parentId. No live credentials or Keychain access.
+
+### Implementation for User Story 6
+
+- [x] T031 [US6] Implement turn start webhook alert (thread root, prompt excerpt), root-id resolution by polling, one threaded token status edited for Commentary and two-minute shared metrics, one threaded token final with handoff markdown AND PDF together (Markdown fallback), then a top-level webhook finish alert carrying the Next question in `tasksync-chat/src/services/webexService.ts`, `src/commentary/telegramLive.ts`, `src/services/handoffNotifier.ts`, `src/extension.ts` and `src/webview/webviewProvider.ts`; accept replies in the turn thread, on the alert or top-level after it, once only with own-post/reload/cancellation safeguards. Webhooks only alert in his own spaces; token messages to other people, status and finals; no cards. Caller-view `tasksync-chat/test-webex-turn-thread.cjs` guards the whole lifecycle and failed delivery; delivers T010, which stays unticked until this evidence passes (FR-033..035; depends on T009/T017/T021).
+- [x] T032 [US6] Isolate all Webex test credential reads/writes through fake SecretStorage/Keychain boundaries in `tasksync-chat/test-webex-*.cjs`; caller-view `tasksync-chat/test-webex-keychain-isolation.cjs` proves tests never touch the real Keychain. A test wrote `askaway-general` into the real Keychain on 2026-10-09; fix the shared test boundary, not just that value (FR-036; required before running credential-writing tests).
+
+**Checkpoint**: Whole-turn replay and Keychain-isolation tests pass; no live phone notification claimed from fake evidence.
+
+---
+
+## Phase 9: User Story 7 - Command-style Webex tools (Priority: P2)
+
+**Goal**: One safe `askaway_webex` LM + AskAway MCP tool and profiles that know when to use it.
+
+**Independent Test**: `tasksync-chat/test-webex-tools.cjs` checks both public surfaces; `tasksync-chat/test-orchestrator-policy.cjs` checks Build/worker guidance.
+
+### Tests for User Story 7
+
+Write caller-view command tests first using fake APIs, bounded data and seeded fake secrets; assert no secrets in arguments, results or errors.
+
+### Implementation for User Story 7
+
+- [ ] T033 [US7] Add one `askaway_webex` command-style LM + AskAway MCP tool through the shared boundary in `tasksync-chat/src/tools.ts`, `src/mcp/` and `tasksync-chat/package.json`: `spaces` lists teams/spaces, `read` reads recent messages in a space, `thread` reads a thread by message id, `search` finds text in a space, `send` uses the token for another person/space and the webhook for own-space alerts. Define shared validation/policy, enabled gating, bounded output with truncation/pagination, sanitized observability and no secrets in arguments/results/errors; caller-view `tasksync-chat/test-webex-tools.cjs` verifies both adapters (FR-037/038; depends on US1 and T031/T032).
+- [ ] T034 [US7] Teach AskAway Build in `.github/agents/` and portable worker profiles in `tasksync-chat/` when to use `askaway_webex` for spaces/read/thread/search/send instead of raw secret-bearing calls, including bounded output and own-space webhook alerts versus token sends; caller-view `tasksync-chat/test-orchestrator-policy.cjs` guards the guidance (FR-038; depends on T033).
+
+**Checkpoint**: Both tool surfaces and Build/worker policy tests pass with bounded secret-free results.
+
+---
+
+## Phase 10: Polish & Cross-Cutting Concerns
 
 **Purpose**: Verify parity, secrecy and requirement coverage together.
 
@@ -234,6 +272,9 @@ Test-only work is parallel; integration edits to webexAuth.ts/webexService.ts ar
 ---
 
 ## Notes
+
+- Completion evidence supplied for this docs update: T016 — `tasksync-chat/test-remote-channel-contract.cjs` and `tasksync-chat/test-webex-one-item.cjs`; T019 — live share-with-me runs 2026-10-09 delivered a notifying message plus spec.pdf to AskAway General. Existing task row text is preserved except those two ticks.
+- US6 supersedes earlier split-final/bot proposals: incoming webhooks accept only text/markdown, ignore parentId and return no id; token markdown + files share ONE message. US5 is confirmed, not an optional bot decision. T031 delivers T010; T032 guards all Webex tests; US7 follows the shared boundary. No inbound webhook/public laptop endpoint.
 
 - This packet updates documentation only; T024–T028 close with the verified OAuth evidence in `quickstart.md`. Other task states are preserved; T007 remains open. Deployment and live browser authorization are pending.
 - [P] denotes real disjoint work, not concurrent edits to the same adapter.

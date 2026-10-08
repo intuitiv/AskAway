@@ -1,3 +1,4 @@
+process.env.ASKAWAY_TEST_NO_KEYCHAIN = '1';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -13,7 +14,7 @@ async function scenario(late, failure = 0) {
     const rooms = [{ id: 'general', title: 'self' }];
     const gate = new Promise(resolve => { release = resolve; });
     const publish = () => { if (resolved && service) messages.push(service.getTokenStatus()); };
-    const provider = { setWebexService: value => { service = value; publish(); }, getWebexService: () => service };
+    const provider = { setWebexService: value => { service = value; publish(); }, getWebexService: () => service, getTurnActivity: () => ({}) };
     const context = { secrets: { get: async key => tokens.get(key), store: async (key, value) => tokens.set(key, value) }, subscriptions: [], workspaceState: { get: (_, fallback) => fallback, update: async () => {} } };
     const vscode = { ConfigurationTarget: { Global: 1 }, workspace: {
         workspaceFolders: [{ name: 'Display name', uri: { fsPath: root } }],
@@ -38,17 +39,14 @@ async function scenario(late, failure = 0) {
         } else res.end(JSON.stringify({ items: rooms }));
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    const source = fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8');
-    const commandsBlock = source.slice(source.indexOf('        // Webex/Telegram commands'), source.indexOf('        // Initialize remote server context'));
-    const deferred = source.slice(source.indexOf('                const webexModule ='), source.indexOf('            } catch (err)', source.indexOf('                const webexModule =')));
-    const code = `import * as vscode from 'vscode'; import { WebexStatus } from './services/webexStatus'; import { registerWebexAuthCommands, WebexAuth } from './services/webexAuth'; export async function wire(context, provider, outputChannel) { const webviewProvider = provider; const CONFIG_NAMESPACE = 'askaway'; let telegramServiceInstance; let webexService; const logRuntime = () => {}; ${commandsBlock} ${deferred} }`;
-    const build = esbuild.buildSync({ stdin: { contents: code, resolveDir: path.join(__dirname, 'src'), loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
+    const build = esbuild.buildSync({ entryPoints: [path.join(__dirname, 'src/services/webexWiring.ts')], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
     const loaded = { exports: {} };
     new Function('require', 'module', 'exports', build.outputFiles[0].text)(name => name === 'vscode' ? vscode : name === 'child_process' ? { execFile: (...args) => args.at(-1)(new Error('Keychain unavailable')) } : require(name), loaded, loaded.exports);
     const original = global.fetch;
     global.fetch = (url, options) => original(String(url).replace('https://webexapis.com', `http://127.0.0.1:${server.address().port}`), options);
     try {
-        const wiring = loaded.exports.wire(context, provider, { appendLine: line => lines.push(line) });
+        const commentary = { onChange: () => ({ dispose() {} }), turnStarts: () => [], currentPrompt: () => '', read: () => ({ workspacePath: root, goal: '', goalUpdatedAt: 0, clearedAt: 0, items: [] }), file: () => path.join(root, 'commentary.json'), turnsFile: () => path.join(root, 'turns.json') };
+        const wiring = loaded.exports.wireWebex(context, provider, { appendLine: line => lines.push(line) }, commentary, () => {}, () => {}, error => error)();
         await new Promise(resolve => setTimeout(resolve, 150));
         if (!late) assert.ok(messages.some(status => status.hasToken), 'Settings must report signed in before a startup prompt completes');
         release(); await wiring;
@@ -70,6 +68,6 @@ async function scenario(late, failure = 0) {
         assert.ok(diagnostic.includes('activation') && diagnostic.includes('space resolve'));
         assert.ok(!diagnostic.includes('access-canary') && !diagnostic.includes('refresh-canary'));
         assert.ok(!lines.join('\n').includes('access-canary'));
-    } finally { release(); global.fetch = original; service?.dispose(); await new Promise(resolve => server.close(resolve)); }
+    } finally { release(); global.fetch = original; for (const subscription of context.subscriptions) subscription.dispose(); service?.dispose(); await new Promise(resolve => server.close(resolve)); }
 }
 (async () => { await scenario(false); await scenario(true); await scenario(false, 401); await scenario(true, 403); console.log('PASS startup enabled: activation publishes signed-in status before/after view resolution, creates one space, prompts, records secret-free diagnostics and surfaces 401/403 scope failures'); })().catch(error => { console.error('FAIL startup enabled:', error.message); process.exitCode = 1; });

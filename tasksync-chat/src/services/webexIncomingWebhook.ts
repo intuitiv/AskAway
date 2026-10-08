@@ -48,7 +48,8 @@ export class WebexIncomingWebhook {
             if (!url) { return; }
             if (!valid(url)) { throw new Error('Invalid webhook.'); }
             await this.secrets.store(key(chosen.roomId), url);
-            if (chosen.roomId === facts.self.generalRoomId && this.platform === 'darwin') {
+            if (chosen.roomId === facts.self.generalRoomId && this.platform === 'darwin' &&
+                !(process.env.ASKAWAY_TEST_NO_KEYCHAIN === '1' && this.runner === security)) {
                 await this.runner('security', ['add-generic-password', '-U', '-a', 'vibecoding', '-s', 'webex-general-webhook-url', '-w', url]);
             }
             if (!await this.send(chosen.roomId, 'AskAway: Webex notifications configured.')) { throw new Error('Confirmation failed.'); }

@@ -1,3 +1,4 @@
+process.env.ASKAWAY_TEST_NO_KEYCHAIN = '1';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -52,7 +53,7 @@ async function main() {
         assert.equal(mirrors.at(-1).args.at(-1), 'askaway-general');
         await loaded.exports.webexDiscover(auth, workspace('webex-existing'), options);
         assert.equal(facts('webex-existing').self.generalRoomId, 'askaway-general');
-        const hook = new loaded.exports.WebexIncomingWebhook({ get: async key => secrets.get(key) });
+    const hook = new loaded.exports.WebexIncomingWebhook({ get: async key => secrets.get(key) }, async (file, args) => mirrors.push({ file, args }), 'darwin');
         await hook.prompt(workspace('webex-existing').fsPath, { get: (_, fallback) => fallback, update: async () => {} });
         assert.ok(notices.some(message => message.includes('Configure Webex notifications for AskAway General')));
         assert.equal(enabled, true);

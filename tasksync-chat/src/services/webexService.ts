@@ -294,6 +294,48 @@ export class WebexService implements RemoteChannel {
         if (summary?.id) { task.messageId = summary.id; this._recordPost(summary.id); }
     }
 
+    private turnRoot?: string;
+    private turnWorkspace = '';
+    public async beginTurn(workspace: string, prompt: string, status: string): Promise<RemoteMessageId | undefined> {
+        this.resolveHandoffs();
+        this.turnWorkspace = workspace;
+        const alert = `💬 ${workspace}: ${prompt.slice(0, 120)}`;
+        const id = await this.sendText(alert, alert, undefined, { notify: true });
+        if (!id) { return undefined; }
+        const task: TrackedTask = { taskId: 'turn-root', messageId: String(id), question: alert, timestamp: Date.now(), handoff: true };
+        await this.findSummary(task);
+        this.turnRoot = task.messageId.startsWith('incoming:') ? undefined : task.messageId;
+        const response = await this.remoteRequest('POST', 'messages', { roomId: this._roomId, parentId: this.turnRoot, markdown: status });
+        if (!response.ok) { return undefined; }
+        const data = await response.json() as { id: string }; this._recordPost(data.id); return data.id;
+    }
+
+    private async findSummary(task: TrackedTask): Promise<void> {
+        for (let attempt = 0; task.messageId.startsWith('incoming:') && attempt < 5; attempt++) {
+            const response = await this.remoteRequest('GET', `messages?roomId=${encodeURIComponent(this._roomId!)}&max=100`);
+            if (response.ok) { this.resolveHandoffSummary(task, (await response.json() as { items: any[] }).items || []); }
+            if (task.messageId.startsWith('incoming:') && attempt < 4) { await (this.remoteOptions.wait ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(1000); }
+        }
+    }
+
+    public async finishTurn(markdown: string, taskId: string, filePath: string): Promise<boolean> {
+        if (!this.isConfigured()) { return false; }
+        const form = new FormData(); form.set('roomId', this._roomId!); form.set('markdown', markdown);
+        if (this.turnRoot) { form.set('parentId', this.turnRoot); }
+        form.set('files', new Blob([new Uint8Array(await fs.promises.readFile(filePath))], { type: filePath.endsWith('.pdf') ? 'application/pdf' : 'text/markdown' }), path.basename(filePath));
+        const response = await this.remoteRequest('POST', 'messages', form);
+        if (!response.ok) { return false; }
+        const { id } = await response.json() as { id: string }; this._recordPost(id);
+        const next = /(?:^|\n)(?:\*\*)?Next(?:\*\*)?\s*:\s*(.*)/i.exec(markdown)?.[1] || 'Reply to continue';
+        const alert = `✅ ${this.turnWorkspace || path.basename(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || 'workspace')}: finished - ${next}`;
+        const alertId = await this.sendText(alert, alert, undefined, { notify: true });
+        if (!alertId) { return false; }
+        this.trackHandoff(taskId, String(alertId), alert);
+        const task = this._activeTasks.get(taskId)!;
+        (task as TrackedTask & { turnRoot?: string }).turnRoot = this.turnRoot || id;
+        await this.findSummary(task); this._persistMessages(); return true;
+    }
+
     public async sendDocument(filePath: string, caption: string, replyTaskId?: string): Promise<boolean> {
         if (!this.isConfigured()) { return false; }
         try {
@@ -853,6 +895,11 @@ export class WebexService implements RemoteChannel {
         for (const [taskId, task] of this._activeTasks.entries()) {
             try {
                 this.resolveHandoffSummary(task, roomReplies);
+                const turnRoot = (task as TrackedTask & { turnRoot?: string }).turnRoot;
+                if (turnRoot) {
+                    const thread = await this.remoteRequest('GET', `messages?roomId=${encodeURIComponent(this._roomId!)}&parentId=${encodeURIComponent(turnRoot)}&max=100`);
+                    if (thread.ok) { roomReplies.push(...((await thread.json() as { items: any[] }).items || [])); }
+                }
                 const url = `${WEBEX_API}/messages?roomId=${this._roomId}&parentId=${task.messageId}&max=10`;
                 console.log(`AskAway/Webex: Polling URL: ${url}`);
                 const resp = task.messageId.startsWith('incoming:') ? new Response(JSON.stringify({ items: [] })) :
@@ -875,7 +922,7 @@ export class WebexService implements RemoteChannel {
                 const data = await resp.json() as { items: any[] };
                 const latestHandoff = [...this._activeTasks.values()].filter(item => item.handoff).sort((a, b) => b.timestamp - a.timestamp)[0];
                 const webhookParents = new Set(roomReplies.filter(isIncomingWebhookSender).map(reply => reply.id));
-                const replies = [...(data.items || []), ...roomReplies.filter(reply => !reply.parentId || reply.parentId === task.messageId ||
+                const replies = [...(data.items || []), ...roomReplies.filter(reply => !reply.parentId || reply.parentId === task.messageId || reply.parentId === turnRoot ||
                     (latestHandoff?.taskId === taskId && webhookParents.has(reply.parentId)))]
                     .sort((a, b) => String(a.created || '').localeCompare(String(b.created || '')));
                 console.log(`AskAway/Webex: Found ${replies.length} replies for task ${taskId}`);

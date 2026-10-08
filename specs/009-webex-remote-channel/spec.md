@@ -30,6 +30,20 @@ Reviewer verbatim, from GOALS.md section "2026-10-08, Webex answers":
 
 Webex has no long-poll endpoint: use outbound reply polling with backoff, not a webhook or public laptop URL. ADR 0018 selects SecretStorage with a macOS Keychain mirror. A personal token does not notify its owner about their own posts; optional bot identity remains an open question in US5. The cloud PR handoff belongs to spec 006; this spec carries it through the shared remote channel without pulling or merging work.
 
+### Session 2026-10-09 — turn thread and command-style tools
+
+Reviewer verbatim (GOALS.md section 4, Webex turn thread):
+
+> I asked for sending attachment and message in same message, for final response. not as a thread.
+> I see few messages are sent by my token rather than webhook route. Always send me message through webhooks. If we need to send message to someone else, we need to use my token. In that space, it is always through webhook. I think i see your concern. DOes that webhook api only accpets message not cards or attachments? If thats the case, dont push it. Accept it and proceed.
+> Lets do one thing, we'll use webhook for notification, i mean alerting and all. You cannot edit same message and all.
+> You can send a message in teh beginnign as an alert that new user message sent and all, to that thread, we can have an updateable card every 2 min or for commentary. At the end we send response handoff and also attach doc to it (this tou can do i guess).
+> And as the last message is sent by me, i dont get notification, then bot can alert it and i can reply to the same thread, so that you can poll wit that id or something? See if you can comeup with something better.
+>
+> In webex spec, can you add some tasks to create command style tools to read messages from webex and so on?
+
+Live facts: incoming webhook = text/markdown only, no cards, ignores `parentId`, returns no message id, notifies. Token posts never notify the reviewer, but can be edited and carry markdown + files in ONE message. US6 supersedes the earlier US5 split delivery and open bot/card proposal: webhook alerts only, token status/final messages in the turn thread. Resolve webhook root ids through outbound polling with a non-secret turn correlation marker, never an assumed POST response id. General now means created **AskAway General** in team `self`, not built-in General (R-TELE-33). [Rules.md](Rules.md) retains the dated reviewer decisions and verbatim sources.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### Session 2026-10-08 — confirmed browser OAuth
@@ -129,6 +143,42 @@ The reviewer confirmed (2026-10-08): "this integration is logged in with my cred
 
 ---
 
+### User Story 6 - Turn thread with webhook alerts (Priority: P1)
+
+Each turn starts with a notifying webhook alert containing a prompt excerpt and serving as the thread root. One token status message in that thread is edited for live Commentary and the two-minute shared-banner status. Turn end posts one token message in the thread with Response Handoff text AND the PDF attached together (Markdown fallback), then a webhook finish alert carrying the **Next question**. The finish alert is top-level because the webhook ignores `parentId`. Webhooks are only for alerts in his own spaces; token messages serve editable status, combined finals and messages to other people. Cards are not pushed.
+
+**Why this priority**: Notifications, a final text/document in one message and mobile replies must work together.
+
+**Independent Test**: `tasksync-chat/test-webex-turn-thread.cjs` replays the whole shared-caller turn against fake webhook/token APIs and a controlled clock. `tasksync-chat/test-webex-keychain-isolation.cjs` proves every Webex test uses fake credential storage, never the real Keychain.
+
+**Acceptance Scenarios**:
+
+1. **Given** an enabled own-space webhook and new turn, **When** it starts, **Then** a text/markdown alert contains the prompt excerpt, polling resolves its thread-root id despite no returned id, and one token status message is posted under that root; no cards or inbound laptop endpoint are used.
+2. **Given** the turn thread, **When** Commentary arrives or two minutes elapse, **Then** the same token status message is edited with Commentary, current shared metrics and stuck/error indicators, without a webhook alert for each update.
+3. **Given** a completed response, **When** handoff runs, **Then** one token message under the root contains banner then current handoff AND the full PDF together (Markdown on conversion failure); after successful delivery a top-level webhook finish alert carries the Next question.
+4. **Given** an open handoff, **When** the reviewer replies in the turn thread, on the finish alert, or top-level after it, **Then** outbound polling routes the reply to the correct conversation once, excludes recorded own posts and preserves reload deduplication; a local reply or next turn cancels prior polling.
+5. **Given** an unresolved webhook root or failed upload, **When** delivery cannot complete, **Then** it reports sanitized pending/failure and retries within rate limits, never invents an id, claims completion or silently splits the final into two messages.
+6. **Given** test credentials, **When** any Webex test runs, **Then** all SecretStorage/Keychain reads and writes use fakes and cannot touch the real Keychain, including `askaway-general`, which a test wrote there on 2026-10-09.
+
+---
+
+### User Story 7 - Command-style Webex tools (Priority: P2)
+
+Reviewer: "In webex spec, can you add some tasks to create command style tools to read messages from webex and so on?" (2026-10-09). Agents use one `askaway_webex` tool exposed as a VS Code LM tool and an AskAway MCP tool through one shared boundary, without handling credentials.
+
+**Why this priority**: Agents need remote context and messaging without parallel tool implementations.
+
+**Independent Test**: `tasksync-chat/test-webex-tools.cjs` exercises both public tool adapters with fake APIs; `tasksync-chat/test-orchestrator-policy.cjs` verifies Build and worker guidance chooses the tool appropriately.
+
+**Acceptance Scenarios**:
+
+1. **Given** authorized fake data, **When** `spaces`, `read`, `thread` or `search` runs, **Then** results contain teams/spaces, recent messages in a space, a thread by message id, or text matches within the selected space respectively, with bounded output and explicit truncation/pagination information.
+2. **Given** `send`, **When** the destination is another person or space, **Then** delivery uses the token; an alert to his own configured spaces uses the webhook, without claiming token self-posts notify.
+3. **Given** either LM or MCP invocation, **When** arguments/results/errors are observed, **Then** no token, webhook URL or private OAuth credential appears; both surfaces share validation, enabled gating, policy and sanitized observability.
+4. **Given** Build or a worker needs Webex context, **When** choosing tools, **Then** its profile teaches the matching `askaway_webex` command instead of raw credential-bearing HTTP/shell calls and the own-space alert versus token-send distinction.
+
+---
+
 ### Edge Cases
 
 - Missing or ambiguous team `self` or General destination: report the unresolved destination, never guess another team/space.
@@ -175,6 +225,15 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 - **FR-029**: The command MUST start fresh browser OAuth using private integration credentials and exactly `http://localhost:5000/callback`, with no local listener; a local masked VS Code prompt MUST accept the full return URL, NEVER chat, validate redirect/state/code, exchange it and securely store access/refresh tokens (R-TELE-24/25/27/28; US1; T024/T026–T028).
 - **FR-030**: Later requests MUST reuse stored tokens and refresh/rotate them when needed through the credential boundary; this MUST NOT replace fresh browser authorization on command invocation (R-TELE-26; US1; T007/T025).
 
+- **FR-031**: Setup MUST follow `askaway.webex.enabled`: completing setup enables it, enabling starts setup and disabling stops all calls. General delivery/share-with-me MUST use created AskAway General in team `self` (R-TELE-32/33; US1/US3/US4).
+- **FR-032**: Webex MUST expose Telegram-equivalent polling status/countdown and accept genuine space replies (R-TELE-34/35; US2/US3/US6).
+- **FR-033**: A turn MUST start with a webhook prompt-excerpt alert, resolve its root id by polling and keep one threaded token status message edited for Commentary and two-minute status. Webhooks MUST be text/markdown only; ignored parentId and absent returned id MUST NOT be treated as threading support; cards MUST NOT be pushed (R-TELE-38/39; US6; T031 delivers T010).
+- **FR-034**: Final handoff markdown AND PDF MUST be in ONE token message under the root (Markdown fallback), followed by a webhook finish alert carrying the Next question. This supersedes FR-028's earlier split final routing and R-TELE-36/37; token posts never notify, bots MUST NOT be provisioned (R-TELE-38/39; US6).
+- **FR-035**: Replies in the turn thread, on the finish alert or top-level after it MUST reach the correct conversation once, retaining own-post exclusion, reload deduplication and prior-turn/local-reply polling cancellation (R-TELE-40; US6).
+- **FR-036**: Every Webex test MUST fake SecretStorage and Keychain reads/writes, never touch the real Keychain; guard the 2026-10-09 `askaway-general` contamination (US6; T032).
+- **FR-037**: One `askaway_webex` LM + AskAway MCP tool MUST support `spaces` (teams/spaces), `read` (recent space messages), `thread` (message-id thread), `search` (text within a space) and `send` (person/space), with bounded output and explicit truncation/pagination; arguments/results/errors MUST contain no secrets (R-TELE-41; US7; T033).
+- **FR-038**: Sends MUST use the token for other people/spaces and webhook only for own-space alerts; AskAway Build and worker profiles MUST teach when to use the shared tool and its secret/policy boundary (R-TELE-38/41; US7; T033/T034).
+
 ### Key Entities *(include if feature involves data)*
 
 - **RemoteChannel**: Shared outbound text/edit/final/document and inbound reply lifecycle contract; channel-neutral message identifiers accommodate Telegram numbers and Webex strings.
@@ -195,12 +254,14 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 - **SC-005**: All two-workspace scenarios route to the correct workspace space with zero cross-workspace Commentary leakage.
 - **SC-006**: All rate-limit fixtures wait at least Retry-After; all document scenarios deliver PDF or the named Markdown fallback without silently dropping the response.
 - **SC-007**: One explicitly requested live share-with-me check delivers a harmless document to self.General, with zero Telegram calls and no token in evidence.
-- **SC-008**: Personal-token notification limitations are disclosed in every tested configuration; bot notification is claimed only after a reviewer-approved live device check.
+- **SC-008**: Personal-token notification limitations are disclosed in every tested configuration; webhook phone notification needs separate live evidence, and bots are not provisioned.
+- **SC-009**: US6 turn replays produce one start alert, one edited threaded status, one combined final and one finish alert; all supported reply locations route once, with zero real Keychain calls.
+- **SC-010**: All five commands pass both tool surfaces with bounded secret-free output; Build/worker policy checks select the shared tool.
 
 ## Assumptions
 
 - Existing `tasksync-chat/src/services/webexService.ts` and `webexAuth.ts` are reused for Webex/authentication; current settings/file token fallbacks are not proof of the command-only requirement.
 - Existing `telegramService.ts`, `commentary/telegramLive.ts`, `services/handoffNotifier.ts` and `cloud/cloudDigest.ts` are integration points, not parallel implementations to replace with look-alikes.
 - The reviewer can access team `self`; discovery determines actual IDs without reading credentials into agent context.
-- The script switch and `SHARE_CHANNEL=webex` default are reported as already done on 2026-10-08; arrival remains unproven until US4's live check.
+- The script switch and `SHARE_CHANNEL=webex` default were done on 2026-10-08; live share-with-me runs on 2026-10-09 delivered a notifying message plus spec.pdf to AskAway General (T019), not proof of US6's lifecycle.
 - This is documentation only. T001/T002 are in progress elsewhere and remain unchecked until their evidence passes. plan.md, contracts and the bot decision precede further implementation where required.

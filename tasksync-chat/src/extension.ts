@@ -4,8 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
-import { registerWebexAuthCommands, WebexAuth } from './services/webexAuth';
-import { WebexStatus } from './services/webexStatus';
+import { wireWebex } from './services/webexWiring';
 import { registerTools } from './tools';
 import { ASKWAY_BUILD_AGENT_FILE, ASKWAY_BUILD_AGENT_CONTENT } from './agents/askawayBuildAgent';
 import { memoryTool } from './validator/memoryTool';
@@ -1246,43 +1245,9 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         // Webex/Telegram commands (services loaded in deferred block)
-        const webexAuth = new WebexAuth(context.secrets);
-        const { isTelegramHandoffTaskId, submitTelegramConversationReply } = require('./services/telegramConversationReply') as typeof import('./services/telegramConversationReply');
-        const publishWebex = () => {
-            const service = webviewProvider?.getWebexService();
-            if (!service) { return; }
-            webviewProvider?.setWebexService(service);
-            service.onReply(async (taskId: string, text: string, user: string) => {
-                if (isTelegramHandoffTaskId(taskId)) { await submitTelegramConversationReply(text); }
-                else { (webviewProvider as any)._handleMessagingResponse(taskId, text, user); }
-            });
-        };
-        const webexRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const webexStatus = webexRoot ? new WebexStatus(webexRoot, webexAuth, outputChannel,
-            () => webviewProvider?.getWebexService()?.getTokenStatus() ?? { hasToken: false }) : undefined;
-        registerWebexAuthCommands(context, async () => {
-            await webexStatus?.record('sign-in');
-            await webviewProvider?.getWebexService()?.reloadConfig();
-            await vscode.commands.executeCommand('askaway.webexDiscover');
-            await webviewProvider?.getWebexService()?.reloadConfig();
-            const service = webviewProvider?.getWebexService();
-            if (service) { publishWebex(); }
-        }, webexAuth);
+        const initializeWebex = wireWebex(context, provider, outputChannel, sharedCommentaryStore(),
+            (taskId, text, user) => (provider as any)._handleMessagingResponse(taskId, text, user), logRuntime, formatError);
         context.subscriptions.push(
-            vscode.commands.registerCommand('askaway.webexDiscover', async () => {
-                const folder = vscode.workspace.workspaceFolders?.[0];
-                if (!folder) { await vscode.window.showWarningMessage('AskAway: Open a workspace to discover Webex spaces.'); return; }
-                const { setupWebex } = await import('./services/webexSpaces');
-                const { WebexIncomingWebhook } = await import('./services/webexIncomingWebhook');
-                await setupWebex(webexAuth, { fsPath: folder.uri.fsPath, name: folder.name }, {
-                    status: webexStatus,
-                    onFailure: status => webviewProvider?.getWebexService()?.setSetupFailure(status),
-                    onResolved: () => new WebexIncomingWebhook(context.secrets, undefined, undefined, undefined, webexStatus).prompt(folder.uri.fsPath, context.workspaceState),
-                    refresh: () => webviewProvider?.getWebexService()?.refreshAccessToken() ?? Promise.resolve(undefined)
-                });
-                const service = webviewProvider?.getWebexService();
-                if (service) { await service.reloadConfig(); publishWebex(); }
-            }),
             vscode.commands.registerCommand('askaway.getTelegramChatId', async () => {
                 if (telegramServiceInstance) { await telegramServiceInstance.getChatId(); }
                 else { vscode.window.showWarningMessage('Telegram service not initialized yet.'); }
@@ -1295,66 +1260,13 @@ export function activate(context: vscode.ExtensionContext) {
         // ── Deferred initialization — heavy services loaded AFTER sidebar is ready ──
         setImmediate(async () => {
             let webexService: WebexServiceType | undefined;
+            let webexRelay: import('./commentary/telegramLive').TelegramLiveCommentary | undefined;
             let telegramService: TelegramServiceType | undefined;
             let telegramLiveCommentary: import('./commentary/telegramLive').TelegramLiveCommentary | undefined;
             let telegramTurn: ReturnType<typeof import('./commentary/telegramLive').telegramTurnTarget> | undefined;
 
             // Initialize Webex independently so its failure does not block Telegram.
-            try {
-                const webexModule = await import('./services/webexService');
-                await webexStatus?.record('activation');
-                const { WebexService } = webexModule;
-                logRuntime('Webex module loaded', {
-                    moduleKeys: Object.keys(webexModule),
-                    ctorType: typeof WebexService
-                });
-
-                if (typeof WebexService !== 'function') {
-                    throw new Error('WebexService import is not a constructor function');
-                }
-
-                const { WebexIncomingWebhook } = await import('./services/webexIncomingWebhook');
-                const incoming = new WebexIncomingWebhook(context.secrets, undefined, undefined, undefined, webexStatus);
-                context.subscriptions.push(vscode.commands.registerCommand('askaway.configureWebexNotifications', async () => {
-                    const folder = vscode.workspace.workspaceFolders?.[0];
-                    if (folder) { await incoming.configure(folder.uri.fsPath); }
-                }));
-                webexService = new WebexService(outputChannel, webexAuth, undefined, {}, incoming);
-                await webexService.reloadConfig();
-                provider.setWebexService(webexService);
-                publishWebex();
-                const { ensureWebexWorkspace } = await import('./services/webexSpaces');
-                const ensureWorkspace = async () => {
-                    const folder = vscode.workspace.workspaceFolders?.[0];
-                    if (folder) { await ensureWebexWorkspace(webexAuth, { fsPath: folder.uri.fsPath, name: folder.name }, {
-                        status: webexStatus,
-                        onFailure: status => { webexService?.setSetupFailure(status); provider.setWebexService(webexService); },
-                        onResolved: () => incoming.prompt(folder.uri.fsPath, context.workspaceState)
-                    }); }
-                };
-                await ensureWorkspace();
-                await webexService.reloadConfig();
-                publishWebex();
-                webexService.start();
-                context.subscriptions.push({ dispose: () => webexService?.dispose() });
-
-                context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(async e => {
-                    if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.webex`) && webexService) {
-                        await webexStatus?.record('setting change');
-                        webexService.setSetupFailure();
-                        webexService.stop();
-                        await webexService.reloadConfig();
-                        await ensureWorkspace();
-                        await webexService.reloadConfig();
-                        publishWebex();
-                        if (vscode.workspace.getConfiguration('askaway.webex').get<boolean>('enabled', false)) { webexService.start(); }
-                    }
-                }));
-            } catch (err) {
-                await webexStatus?.record('activation', { exception: err instanceof Error ? err.message : String(err) });
-                logRuntime('Webex deferred init failed', formatError(err));
-                console.error('[AskAway] Webex deferred init error:', err);
-            }
+            ({ service: webexService, relay: webexRelay } = await initializeWebex());
 
             // Initialize Telegram independently so it is available even if Webex fails.
             try {
@@ -1411,7 +1323,11 @@ export function activate(context: vscode.ExtensionContext) {
                 const { HandoffNotifier, createHandoffTargets } = await import('./services/handoffNotifier');
                 const debugLogsDir = path.join(path.dirname(storagePath), 'GitHub.copilot-chat', 'debug-logs');
                 const notifier = new HandoffNotifier(
-                    createHandoffTargets(() => webexService, () => telegramTurn ?? telegramService),
+                    createHandoffTargets(() => webexService ? {
+                        isConfigured: () => webexService!.isConfigured(),
+                        postText: (...args) => webexService!.postText(...args),
+                        finishTurn: async (...args) => { const ok = await webexService!.finishTurn(...args); if (ok) { webexRelay?.complete(); } return ok; }
+                    } : undefined, () => telegramTurn ?? telegramService),
                     debugLogsDir,
                     logRuntime,
                     () => provider.getTurnMetricsSnapshot(),
