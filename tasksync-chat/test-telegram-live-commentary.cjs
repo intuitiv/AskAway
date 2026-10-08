@@ -30,7 +30,7 @@ async function runLive() {
             stdin: { contents: "export { TelegramService } from './src/services/telegramService'; export { CommentaryStore } from './src/commentary/commentary'; export { TelegramLiveCommentary, relayCommentaryToTelegram } from './src/commentary/telegramLive';", resolveDir: __dirname, loader: 'ts' },
             bundle: true, platform: 'node', format: 'cjs', write: false, logLevel: 'silent', external: ['vscode'],
         });
-        const fixture = path.join(__dirname, '.telegram-live-test-fixture');
+        const fixture = path.join(__dirname, 'build', 'telegram-live-test-fixture');
         fs.mkdirSync(fixture, { recursive: true });
         const fixtureRun = fs.mkdtempSync(path.join(fixture, 'turn-'));
         const vscode = {
