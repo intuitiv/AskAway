@@ -46,9 +46,11 @@ async function main() {
         await service.reloadConfig(); service.onReply((task, text) => replies.push({ task, text }));
         assert.ok(await service.sendText('Heads-up', 'Heads-up'));
         assert.equal(await service.finishLive('live', 'Final', 'Handoff', 'handoff'), true);
+        assert.equal(await service.postText('Turn handoff', 'Turn handoff'), true);
         fs.writeFileSync(path.join(root, 'document.md'), 'Full response');
         assert.equal(await service.sendDocument(path.join(root, 'document.md'), 'Document'), true);
         assert.ok(requests.some(req => req.url.startsWith('/incoming/') && JSON.parse(req.body).markdown.includes('Final')));
+        assert.ok(requests.some(req => req.url.startsWith('/incoming/') && JSON.parse(req.body).markdown.includes('Turn handoff')), 'turn-end handoff must notify through the incoming webhook');
         assert.ok(requests.some(req => req.url === '/v1/messages' && req.auth === 'Bearer fixture-token' && req.body.includes('Full response')));
         assert.ok(requests.filter(req => req.url.startsWith('/incoming/')).every(req => !req.auth && Object.keys(JSON.parse(req.body)).join() === 'markdown'));
         items = [{ id: 'sender-post', personEmail: 'incoming-webhooks@webex.bot', text: 'Not a reply', created: new Date().toISOString() }];

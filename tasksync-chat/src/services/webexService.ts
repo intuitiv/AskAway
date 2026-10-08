@@ -540,23 +540,13 @@ export class WebexService implements RemoteChannel {
 
     // ── Post plain message ────────────────────────────────────
 
-    /** Post a plain markdown message (no card, no reply tracking). Used for turn-end handoffs. */
+    /** Post a plain markdown message (no card, no reply tracking). Used for turn-end handoffs, which must notify. */
     public async postText(markdown: string, fallback: string): Promise<boolean> {
         await this._ready;
         if (!this.isConfigured() || !markdown.trim()) { return false; }
-        try {
-            const resp = await this.remoteRequest('POST', 'messages', { roomId: this._roomId, markdown, text: fallback });
-            if (!resp.ok) {
-                this.logger?.appendLine(`AskAway/Webex: postText failed ${resp.status}`);
-                return false;
-            }
-            const { id } = await resp.json() as { id?: string };
-            if (id) { this._recordPost(id); }
-            return true;
-        } catch (err) {
-            this.logger?.appendLine('AskAway/Webex: postText error.');
-            return false;
-        }
+        const id = await this.sendText(markdown, fallback, undefined, { notify: true });
+        if (!id) { this.logger?.appendLine('AskAway/Webex: postText failed.'); }
+        return !!id;
     }
 
     // ── Post Adaptive Card ────────────────────────────────────
