@@ -1,6 +1,6 @@
 # ADR 0017: Never break a requirement
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-10: "accept")
 - Date: 2026-10-08
 - Goal: G17 in [GOALS.md](../../GOALS.md)
 

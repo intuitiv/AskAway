@@ -11,3 +11,10 @@ Reviewer requirements captured for this draft (2026-10-07). Change a rule only w
 - Efficiency formula is OPEN in spec.md: (a) prompt tokens processed per output token (context amplification, price-independent), (b) $ per accepted task on the benchmark, or (c) both, with (a) live in the banner and (b) on the scoreboard. Recommend (c); do not treat it as approved.
 - Undefined ratios, incomplete runs and incompatible benchmark versions must be visible, never presented as cheap successful work.
 - Specify stage only: Draft spec, Goal and Rules; no implementation plan, live paid runs or benchmark implementation in this packet.
+
+## Reviewer decisions 2026-10-10
+- Fixture: a synthetic spec-bearing workspace in the repo with four levels (simple, medium, complex, batch of 20 in one message) — recommendation accepted.
+- Main agent runs headless as the Build/Orchestrator prompt in OpenCode (Copilot Chat cannot be scripted) — recommendation accepted.
+- Score: keep the live formula, gate on full completion, revise after the first run's data. "score is very inconsistent. Fix it first."
+- Spend cap: "spending limit per benchmark run is 2$ not 10$."
+- "Dont run evals today. defer it to tmr." No paid benchmark or eval run before 2026-10-11.

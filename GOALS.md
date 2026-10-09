@@ -371,3 +371,14 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > 5. add some evals for the webex prompt. And can you popup mac fingerprint? for permission, where show message and ask for permission?
 >
 > still reviewiing, dont start yet.
+
+### 2026-10-10, answers (6–11)
+
+> 6. dont worry about github internals. If it stops after 60/45 min, so be it.
+> 7. Sure, use cheaper model or use Auto, if possible.
+> 8. yes
+> 9. testing whcih requires me, do it at the end or tmr.
+> 10. accept
+> 11. spending limit per benchmark run is 2$ not 10$. And score is very inconsistent. Fix it first. Dont run evals today. defer it to tmr.
+>
+> We'll think about this permission thing deep. I need some persmission mechanism, where i see message and recipient and persmission thing,

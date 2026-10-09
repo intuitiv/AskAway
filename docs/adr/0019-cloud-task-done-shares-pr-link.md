@@ -1,6 +1,6 @@
 # ADR 0019: A finished cloud task shares its PR link; the reviewer finishes it by hand
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-10: "accept")
 - Date: 2026-10-08
 - Goal: G9 in [GOALS.md](../../GOALS.md)
 - Supersedes: the "pull latest changes to local" part of [ADR 0009](0009-cloud-tasks-on-demand.md) (2026-10-08)
