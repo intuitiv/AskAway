@@ -90,5 +90,63 @@ async function main() {
     await run({ action: 'read', roomId: 'room & one' });
     assert.doesNotMatch(JSON.stringify(outputs), /hidden-secret|request-secret|response-secret|approval-secret|access_token|Bearer/);
     console.log('PASS secret-free output allowlisted fields, redacted text, sanitized errors and strict token-free inputs');
+    const hostBuild = await esbuild.build({ entryPoints: [path.join(__dirname, 'src/services/webexToolsHost.ts')], bundle: true, platform: 'node', format: 'cjs', write: false,
+        external: ['vscode', '../webview/webviewProvider', './webexAuth'] });
+    let mode = 'away', choice = 'Send', enabled = true, token = 'host-token-canary';
+    const modals = [], httpCalls = [];
+    const vscode = { workspace: { getConfiguration: () => ({ get: () => enabled }) },
+        window: { showWarningMessage: async (...args) => { modals.push(args); return choice; } } };
+    const hostLoaded = { exports: {} };
+    new Function('require', 'module', 'exports', hostBuild.outputFiles[0].text)(name => {
+        if (name === 'vscode') return vscode;
+        if (name.includes('webviewProvider')) return { readAvailability: () => ({ mode }) };
+        if (name.includes('webexAuth')) return { WebexAuth: class { async tokens() { return { accessToken: token }; } } };
+        return require(name);
+    }, hostLoaded, hostLoaded.exports);
+    const host = hostLoaded.exports.createWebexToolsHost({}, 'fixture');
+    const originalFetch = global.fetch;
+    global.fetch = async (url, options) => { httpCalls.push({ url, options }); return { ok: true, headers: { get: () => null }, text: async () => JSON.stringify({ id: 'posted', items: [] }) }; };
+    try {
+        const send = { action: 'send', toPersonEmail: 'reviewer@example.test', text: 'Full message\n' + 'z'.repeat(900) };
+        for (mode of ['away', 'offline']) {
+            assert.equal((await host(send)).status, 'draft');
+            assert.equal(modals.length, 0); assert.equal(httpCalls.length, 0);
+        }
+        mode = 'here';
+        assert.equal((await host(send)).status, 'sent');
+        assert.ok(modals[0][0].includes(send.toPersonEmail)); assert.ok(modals[0][0].includes(send.text));
+        assert.deepEqual(modals[0].slice(1), [{ modal: true }, 'Send', 'Cancel']);
+        assert.equal(httpCalls[0].options.headers.Authorization, 'Bearer host-token-canary');
+        choice = 'Cancel'; assert.equal((await host(send)).status, 'draft'); assert.equal(httpCalls.length, 1);
+        enabled = false; assert.equal((await host(send)).status, 'disabled');
+        enabled = true; token = ''; assert.equal((await host(send)).status, 'disabled');
+        console.log('PASS Webex host approval: not Here draft without modal; Here full recipient+text modal; Cancel and disabled never post');
+    } finally { global.fetch = originalFetch; }
+    const adaptersBuild = await esbuild.build({ stdin: { contents: "export { webexTool, registerToolDefinitions } from './src/workers/workerTools'; export { registerLmToolDefinitions } from './src/workers/lmTools';", resolveDir: __dirname, loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
+    const lm = new Map(), mcp = new Map(), adapters = { exports: {} };
+    new Function('require', 'module', 'exports', adaptersBuild.outputFiles[0].text)(name => name === 'vscode' ? {
+        lm: { registerTool: (name, tool) => { lm.set(name, tool); return { dispose() {} }; } },
+        LanguageModelToolResult: class { constructor(content) { this.content = content; } },
+        LanguageModelTextPart: class { constructor(value) { this.value = value; } },
+    } : require(name), adapters, adapters.exports);
+    const definition = adapters.exports.webexTool(host);
+    adapters.exports.registerLmToolDefinitions([definition]);
+    adapters.exports.registerToolDefinitions((name, config, handler) => mcp.set(name, handler), [definition]);
+    const lmResult = await lm.get('askaway_webex').invoke({ input: { action: 'spaces' } });
+    const mcpResult = await mcp.get('askaway_webex')({ action: 'spaces' });
+    assert.equal(lmResult.content[0].value, mcpResult.content[0].text);
+    assert.equal(JSON.parse(lmResult.content[0].value).status, 'disabled');
+    token = 'host-token-canary'; mode = 'away';
+    const sendInput = { action: 'send', roomId: 'another-space', text: 'Please check this.' };
+    const modalCount = modals.length;
+    assert.equal(JSON.parse((await lm.get('askaway_webex').invoke({ input: sendInput })).content[0].value).status, 'draft');
+    assert.equal(JSON.parse((await mcp.get('askaway_webex')(sendInput)).content[0].text).status, 'draft');
+    assert.equal(modals.length, modalCount);
+    const fs = require('node:fs');
+    assert.match(fs.readFileSync(path.join(__dirname, 'src/tools.ts'), 'utf8'), /webexTool\(createWebexToolsHost\(context.secrets/);
+    assert.match(fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8'), /new McpServerManager\(provider, memory, webexTool/);
+    assert.match(fs.readFileSync(path.join(__dirname, 'src/mcp/mcpServer.ts'), 'utf8'), /\[this.webex\]/);
+    assert.ok(require('./package.json').contributes.languageModelTools.some(tool => tool.name === 'askaway_webex'));
+    console.log('PASS EV-WEBEX-TOOLS-ADAPTERS shared LM and MCP askaway_webex; host wired with SecretStorage; disabled results identical');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

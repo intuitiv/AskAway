@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import type { CommentaryItem, CommentaryStore, CommentaryView } from './commentary';
 import { commentaryView } from './commentary';
 import type { RemoteChannel } from '../services/remoteChannel';
+import type { updatePolicy } from '../services/availabilityGate';
 
 export function webexLivePoster(channel: RemoteChannel, workspace: string): LiveMessagePoster {
     const markdown = (html: string) => html.replace(/<b>(.*?)<\/b>/g, '**$1**').replace(/<code>(.*?)<\/code>/g, '`$1`')
@@ -133,7 +134,7 @@ export class TelegramLiveCommentary {
     constructor(
         private readonly poster: () => LiveMessagePoster | undefined,
         private readonly workspaceName: string,
-        private readonly options: { minEditMs?: number; now?: () => number; enabled?: () => boolean; activity?: () => TurnActivity; tickMs?: number; retryMs?: number } = {},
+        private readonly options: { minEditMs?: number; now?: () => number; enabled?: () => boolean; activity?: () => TurnActivity; tickMs?: number; retryMs?: number; policy?: () => ReturnType<typeof updatePolicy> } = {},
     ) { }
 
     /** Serialized so a burst of events never opens two messages for one turn. */
@@ -145,7 +146,7 @@ export class TelegramLiveCommentary {
     /** Refreshes the status line of a live turn; the ticker calls this every `tickMs` (default 2 minutes). */
     tick(): Promise<void> {
         return this.enqueue(async () => {
-            if (!this.options.activity || this.messageId === undefined || this.finished || !this.lastView) { return; }
+            if (!this.options.activity || this.finished || !this.lastView) { return; }
             this.footer = statusFooter(this.now(), this.turnStartedAt, this.options.activity());
             this.lastEditAt = 0;
             await this.apply(this.lastView);
@@ -156,6 +157,7 @@ export class TelegramLiveCommentary {
     finish(finalMarkdown: string, replyTaskId: string): Promise<boolean> {
         return this.enqueue(async () => {
             const poster = this.active();
+            if (!this.policy().final) { this.complete(); return true; }
             if (!poster || this.messageId === undefined || this.finished) { return false; }
             this.cancelPending();
             this.stopTicker();
@@ -194,13 +196,19 @@ export class TelegramLiveCommentary {
         return poster?.isConfigured() && this.options.enabled?.() !== false ? poster : undefined;
     }
 
+    private workspacePath?: string;
+    setWorkspace(workspace: string): void { this.workspacePath = workspace; }
+    policy(): ReturnType<typeof updatePolicy> {
+        return this.options.policy?.() ?? (this.workspacePath ? (require('../services/availabilityGate') as typeof import('../services/availabilityGate')).availabilityPolicy(this.workspacePath) : { startAlert: true, liveStatus: true, final: true, endAlert: true, notify: true });
+    }
+
     private async apply(view: CommentaryView): Promise<void> {
         const poster = this.active();
         if (!poster) { return; }
         const turn = currentTurn(view);
         if (turn.startedAt !== this.turnStartedAt) {
             // A new user message: close the previous live message if its turn never reached a final response.
-            if (this.messageId !== undefined && !this.finished) {
+            if (this.policy().liveStatus && this.messageId !== undefined && !this.finished) {
                 this.cancelPending();
                 await poster.editLive(this.messageId, liveCommentaryHtml(this.workspaceName, this.turn.prompt, this.turn.items, 'continued'));
             }
@@ -211,6 +219,8 @@ export class TelegramLiveCommentary {
             this.footer = '';
         }
         this.turn = { prompt: turn.prompt, items: turn.items };
+        this.startTicker();
+        if (!this.policy().liveStatus) { return; }
         if (this.finished || (!turn.items.length && !turn.prompt)) { return; }
         const html = liveCommentaryHtml(this.workspaceName, turn.prompt, turn.items, 'live', MAX_HTML, this.footer);
         if (html === this.lastHtml) { return; }
@@ -250,14 +260,15 @@ export class TelegramLiveCommentary {
 export function telegramTurnTarget(relay: TelegramLiveCommentary, telegram: () => (LiveMessagePoster & { postText(markdown: string, fallback: string, replyTaskId?: string): Promise<boolean>; sendDocument?(filePath: string, caption: string): Promise<boolean> }) | undefined) {
     return {
         isConfigured: () => telegram()?.isConfigured() ?? false,
-        sendDocument: async (filePath: string, caption: string): Promise<boolean> => await telegram()?.sendDocument?.(filePath, caption) ?? false,
+        sendDocument: async (filePath: string, caption: string): Promise<boolean> => relay.policy().notify ? await telegram()?.sendDocument?.(filePath, caption) ?? false : true,
         postText: async (markdown: string, fallback: string, replyTaskId?: string): Promise<boolean> =>
-            (replyTaskId !== undefined && await relay.finish(markdown, replyTaskId)) || (await telegram()?.postText(markdown, fallback, replyTaskId) ?? false),
+            !relay.policy().final || (relay.policy().liveStatus && replyTaskId !== undefined && await relay.finish(markdown, replyTaskId)) || (await telegram()?.postText(markdown, fallback, replyTaskId) ?? false),
     };
 }
 
 /** Feeds the relay from commentary posts and from user messages (turns file); `onNewTurn` fires once per new user message. */
 export function relayCommentaryToTelegram(relay: TelegramLiveCommentary, store: CommentaryStore, workspacePath: string, onNewTurn?: () => void): { dispose(): void } {
+    relay.setWorkspace?.(workspacePath);
     let lastStart = Math.max(0, ...store.turnStarts(workspacePath));
     const view = () => commentaryView(store.read(workspacePath), store.turnStarts(workspacePath), store.currentPrompt(workspacePath));
     const push = () => void relay.update(view());

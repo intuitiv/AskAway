@@ -10,6 +10,8 @@
 
 ## Clarifications
 
+- **Score revision 2026-10-10 (proposed, pending reviewer veto)**: Score = round(100 × CacheHit × ContextFactor × PriceFactor), 0–100. CacheHit = cached / total input (main + workers); ContextFactor = 64000 / max(64000, average prompt tokens across ALL main-agent requests, excluding child rows); PriceFactor = min(1, 0.30 / (turn dollars / ((total input + output) / 1e6))). The $0.30 reference is calibrated from observed well-cached main turns (~$0.31/1M), to be revised by benchmark data. The old cumulative-cost/request formula fell as turns grew at unchanged efficiency. Missing/zero input or cost shows '–'; timer and Score lead the existing shared summary. Guard: test-efficiency-score.cjs EV-EFFICIENCY-SCORE.
+
 ### Reviewer decision 2026-10-07
 
 - Reviewer: "We want to reuse efficeicy score. In benchmark we know workc opleteion and effieniyc score we should use it."

@@ -268,63 +268,6 @@ body {
     background-clip: padding-box !important;
 }
 
-.observability-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    margin-top: 8px;
-}
-
-.observability-card {
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 6px;
-    padding: 8px;
-    background: var(--vscode-sideBar-background);
-}
-
-.observability-label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--vscode-descriptionForeground);
-}
-
-.observability-value {
-    margin-top: 4px;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--vscode-foreground);
-}
-
-.observability-subtext {
-    margin-top: 3px;
-    font-size: 11px;
-    color: var(--vscode-descriptionForeground);
-}
-
-.settings-debug-details {
-    margin-top: 10px;
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 6px;
-    padding: 6px 8px;
-    background: color-mix(in srgb, var(--vscode-editor-background) 85%, transparent);
-}
-
-.settings-debug-details > summary {
-    cursor: pointer;
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground);
-    user-select: none;
-}
-
-.settings-debug-details[open] > summary {
-    margin-bottom: 8px;
-}
-
-.debug-observability-grid {
-    margin-top: 0;
-}
-
 /* ── Observability metrics table ── */
 .observability-table {
     width: 100%;
@@ -912,29 +855,6 @@ span.obs-tag-retry { background: var(--vscode-charts-red, #f14c4c); }
     font-weight: 600;
 }
 
-/* Turn ⇄ month view toggle in the Observability tab */
-.obs-view-toggle {
-    display: inline-flex;
-    gap: 2px;
-    margin: 6px 0 8px;
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 6px;
-    overflow: hidden;
-}
-.obs-view-btn {
-    padding: 3px 12px;
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground);
-    text-decoration: none;
-    cursor: pointer;
-    background: transparent;
-}
-.obs-view-btn:hover { color: var(--vscode-foreground); }
-.obs-view-btn.active {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    font-weight: 600;
-}
 .obs-turn-summary {
     font-size: 12px;
     color: var(--vscode-foreground);
@@ -945,45 +865,6 @@ span.obs-tag-retry { background: var(--vscode-charts-red, #f14c4c); }
     font-weight: 600;
     letter-spacing: 0.5px;
     color: var(--vscode-textLink-foreground);
-}
-
-.obs-mem-count {
-    background: var(--vscode-badge-background);
-    color: var(--vscode-badge-foreground);
-    border-radius: 8px;
-    padding: 0 6px;
-    font-size: 10px;
-    margin-left: 4px;
-}
-
-.observability-memory-list {
-    list-style: none;
-    margin: 6px 0 0 0;
-    padding: 0;
-    max-height: 180px;
-    overflow-y: auto;
-}
-
-.observability-memory-list li.obs-mem-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    padding: 3px 0;
-    font-size: 12px;
-    border-bottom: 1px solid var(--vscode-widget-border);
-}
-
-.observability-memory-list .obs-mem-title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.observability-memory-list .obs-mem-meta {
-    color: var(--vscode-descriptionForeground);
-    font-size: 10px;
-    flex-shrink: 0;
 }
 
 /* ── Worker Panel ── */
@@ -1390,17 +1271,6 @@ span.obs-tag-retry { background: var(--vscode-charts-red, #f14c4c); }
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 220px;
-}
-
-/* ── Observability scope note ── */
-.observability-scope-note {
-    font-size: 11px;
-    color: var(--vscode-descriptionForeground);
-    background: var(--vscode-input-background);
-    border-left: 3px solid var(--vscode-textLink-foreground);
-    padding: 4px 8px;
-    border-radius: 0 4px 4px 0;
-    margin-bottom: 8px;
 }
 
 /* ── manual response area ── */

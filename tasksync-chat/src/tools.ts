@@ -12,7 +12,8 @@ import { cacheSafeWaitMs } from './observability/cacheClock';
 import { commentaryToolDefinitions } from './commentary/commentary';
 import { registerLmToolDefinitions } from './workers/lmTools';
 import { sharedCommentaryStore, sharedWorkerRuntimeReady, workerSpendSince } from './workers/workerHost';
-import { workerTool, ToolDefinition } from './workers/workerTools';
+import { workerTool, webexTool, ToolDefinition } from './workers/workerTools';
+import { createWebexToolsHost } from './services/webexToolsHost';
 import { turnBudget as computeTurnBudget, turnTotals } from './workers/turnBudget';
 
 /**
@@ -929,6 +930,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     context.subscriptions.push(...registerLmToolDefinitions([
         workerTool(() => sharedWorkerRuntimeReady(workspaceRoot), workspaceRoot, { waitBudgetMs: (ms) => cacheSafeWaitMs(ms), turnBudget: async () => (await currentTurnBudget(context)).budget }),
         ...commentaryToolDefinitions(sharedCommentaryStore, workspaceRoot),
+        webexTool(createWebexToolsHost(context.secrets, workspaceRoot)),
     ]));
 
     // ── bash_task + research_on delegated worker tools are DISABLED for shipping ──

@@ -235,6 +235,7 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 - **FR-038**: Sends MUST use the token for other people/spaces and webhook only for own-space alerts; AskAway Build and worker profiles MUST teach when to use the shared tool and its secret/policy boundary (R-TELE-38/41; US7; T033/T034).
 
 ### Key Entities *(include if feature involves data)*
+- **FR-039**: Availability is evaluated at each turn send: Here sends nothing; away-prefixed modes send the full flow; Offline sends only the silent reply-tracked final; entering Away mid-turn opens the thread. Reply polling remains available (2026-10-10; test-availability-updates.cjs).
 
 - **RemoteChannel**: Shared outbound text/edit/final/document and inbound reply lifecycle contract; channel-neutral message identifiers accommodate Telegram numbers and Webex strings.
 - **Credential record**: Access/optional refresh token in SecretStorage, access-token Keychain mirror and private OAuth configuration; excluded from all metadata.

@@ -9,26 +9,31 @@ const context = { acquireVsCodeApi: () => ({ getState: () => ({}), setState() {}
     window: {}, console: { ...console, log() {} }, setTimeout: () => 0, setInterval: () => 0, clearTimeout() {}, clearInterval() {}, Date };
 vm.runInNewContext(source.replace(/\}\(\)\);\s*$/, 'globalThis.ui = { handleExtensionMessage, efficiencyScore, usageBannerHtml, workerBannerHtml }; }());'), context);
 const ui = context.ui;
-const sample = (dollars, hit, averagePrompt, requests) => ({ dollars, lastCached: hit * 1e6, cacheInput: 1e6, averagePrompt, requests, turnOut: 1000 });
-const first = sample(3.56, .95, 295000, 68);
-const second = sample(.65, .99, 143000, 33);
-assert.ok(Math.abs(ui.efficiencyScore(first).value - 8.5) < .1);
-assert.ok(Math.abs(ui.efficiencyScore(second).value - 207) < 1);
-for (const change of [{ requests: 34 }, { averagePrompt: 143000 }, { dollars: .65 }, { lastCached: 990000 }]) {
-    assert.ok(ui.efficiencyScore({ ...first, ...change }).value > ui.efficiencyScore(first).value);
-}
-for (const b of [first, second]) {
+const request = { inputTokens: 64000, cachedTokens: 57600, outputTokens: 1000 };
+function render(rows, workers = {}, cost) {
+    const sum = key => rows.reduce((n, row) => n + row[key], 0);
     ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics: {
-        lastRequest: { requestCount: b.requests - 2, nanoAiu: (b.dollars - .1) * 100e9, inputTokens: 800000, cachedTokens: b.lastCached - 190000, outputTokens: 900 },
-        workers: { requests: 2, dollars: .1, inputTokens: 200000, cachedTokens: 190000, outputTokens: 100 },
-        turnRequests: [{ inputTokens: b.averagePrompt }],
+        lastRequest: { requestCount: rows.length, inputTokens: sum('inputTokens'), cachedTokens: sum('cachedTokens'),
+            outputTokens: sum('outputTokens'), nanoAiu: cost === undefined ? sum('inputTokens') / 1e6 * .30 * 100e9 : cost * 100e9 },
+        workers, turnRequests: rows, turnStartedAt: Date.now() - 60000, lastRequestTs: Date.now()
     } } });
-    const label = ui.efficiencyScore(b).value < 10 ? ui.efficiencyScore(b).value.toFixed(1) : String(Math.round(ui.efficiencyScore(b).value));
-    assert.ok(summary.innerHTML.includes('Score ' + label), summary.innerHTML);
-    for (const factor of ['CacheHit=', 'ContextFactor=', 'RequestFactor=', 'cache misses=', 'main context', 'EFFICIENCY_CONTEXT_BASE=64000']) assert.ok(summary.innerHTML.includes(factor));
+    return summary.innerHTML;
 }
-assert.match(ui.usageBannerHtml({ ...first, dollars: 0 }), /Score –/);
-assert.match(ui.usageBannerHtml({ ...first, cacheInput: 0 }), /Score –/);
-const usage = { input: 100000, cacheRead: 900000, cacheWrite: 0 };
-assert.match(ui.workerBannerHtml({ banner: { requests: 10, dollars: 1 }, runs: [{ usage }] }, 1000), /Score 576/);
-console.log('PASS EV-EFFICIENCY-SCORE samples=8.5/207 monotonic=requests/context/cost/cache live=metrics shared=workers');
+const score = html => Number(html.match(/>Score (\d+)<\/span>/)[1]);
+const one = render([request]);
+assert.equal(score(one), 90);
+assert.equal(score(render([request, request])), score(one), 'doubling equal-efficiency requests preserves score');
+assert.ok(Math.abs(score(render([request], { requests: 1, dollars: .0192, inputTokens: 64000, cachedTokens: 57600, outputTokens: 1000 })) - score(one)) <= 5, 'late equally efficient worker checkpoint is stable');
+const child = { inputTokens: 1000000, cachedTokens: 900000, outputTokens: 1000, subagentId: 'child' };
+assert.match(render([request, child]), /main context\) \(average prompt\)=64000|main context \(average prompt\)=64000/);
+const many = [{ ...request, inputTokens: 640000, cachedTokens: 576000 }, ...Array.from({ length: 500 }, () => request)];
+assert.match(render(many), /requests=501;/);
+assert.ok(render(many).includes('main context (average prompt)=' + (32640000 / 501)), 'context includes the first request beyond 500');
+for (const factor of ['CacheHit=', 'ContextFactor=', 'PriceFactor=', 'cost=$', 'cache misses=', 'input=', 'output=', 'requests=', 'main context']) assert.ok(one.includes(factor));
+assert.match(render([request], {}, 0), />Score –<\/span>/);
+assert.match(ui.usageBannerHtml({ cacheInput: 100 }), />Score –<\/span>/);
+assert.match(ui.usageBannerHtml({ dollars: 1, cacheInput: 0 }), />Score –<\/span>/);
+assert.match(one.replace(/<[^>]+>/g, ''), /^Turn 1:0\d &middot; Score 90 &middot; 1 req/);
+const usage = { input: 6400, cacheRead: 57600, cacheWrite: 0, output: 1000 };
+assert.match(ui.workerBannerHtml({ banner: { requests: 1, dollars: .0192, turnOut: 1000 }, runs: [{ usage }] }, 1000), />Score 90<\/span>/);
+console.log('PASS EV-EFFICIENCY-SCORE doubling=stable checkpoint=stable mainOnly=true requests=501 missing=– timer+score=first shared=workers');

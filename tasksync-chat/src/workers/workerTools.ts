@@ -17,6 +17,16 @@ export interface ToolDefinition {
     run: (args: any) => unknown | Promise<unknown>;
 }
 
+export function webexTool(host: (input: unknown) => Promise<Record<string, unknown>>): ToolDefinition {
+    const { webexToolSchema } = require('../services/webexTools') as typeof import('../services/webexTools');
+    return {
+        name: 'askaway_webex',
+        description: 'Webex actions: spaces lists recent spaces; read reads a room (mine:true learns your writing style); thread reads roomId+parentId; search filters recent room messages by query; people finds email/displayName; send posts to roomId or toPersonEmail with optional parentId. Output is bounded to 50 messages and 1000 characters each, with truncation/pagination flags. Sends require approval showing recipient and full text; when not Here they return a draft. Disabled unless Webex is configured. Never supply tokens or secrets.',
+        inputSchema: webexToolSchema,
+        run: host,
+    };
+}
+
 const packetShape = {
     profile: z.string().describe('Worker mode: build, code, test, explore, research, verify, gradle, rca, review, quality, perf, authoring, devx.'),
     model: z.string().optional().describe('provider/model; must be allowed by the mode. Omit for the mode default.'),

@@ -5,6 +5,8 @@ import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
 import { wireWebex } from './services/webexWiring';
+import { createWebexToolsHost } from './services/webexToolsHost';
+import { webexTool } from './workers/workerTools';
 import { registerTools } from './tools';
 import { ASKWAY_BUILD_AGENT_FILE, ASKWAY_BUILD_AGENT_CONTENT } from './agents/askawayBuildAgent';
 import { memoryTool } from './validator/memoryTool';
@@ -1354,7 +1356,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             // MCP Server initialization should not block other services.
             try {
-                mcpServer = new McpServerManager(provider, memory);
+                mcpServer = new McpServerManager(provider, memory, webexTool(createWebexToolsHost(context.secrets, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd())));
                 const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
                 const mcpEnabled = config.get<boolean>('mcpEnabled', false);
                 const autoStartIfClients = config.get<boolean>('mcpAutoStartIfClients', true);

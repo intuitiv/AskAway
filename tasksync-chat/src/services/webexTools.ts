@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const schema = z.object({
+export const webexToolSchema = z.object({
     action: z.enum(['spaces', 'read', 'thread', 'search', 'people', 'send']),
     max: z.number().int().positive().optional(),
     roomId: z.string().trim().min(1).max(1000).optional(),
@@ -13,7 +13,7 @@ const schema = z.object({
     text: z.string().min(1).max(1000).optional(),
 }).strict();
 
-export type WebexToolInput = z.infer<typeof schema>;
+export type WebexToolInput = z.infer<typeof webexToolSchema>;
 export interface WebexToolDeps {
     request(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>): Promise<{
         ok: boolean; json(): Promise<unknown>; headers?: { get(name: string): string | null };
@@ -27,7 +27,7 @@ const trim = (value: unknown): string => typeof value === 'string' ? value.repla
 
 /** Auth, enabled gating and approval UI belong to the host; this boundary never receives a token. */
 export async function runWebexTool(input: unknown, deps: WebexToolDeps): Promise<Record<string, unknown>> {
-    const parsed = schema.safeParse(input);
+    const parsed = webexToolSchema.safeParse(input);
     if (!parsed.success || Object.values(parsed.data).some(value => typeof value === 'string' && trim(value) !== value)) {
         return { status: 'invalid', reason: 'Invalid Webex tool input.' };
     }

@@ -22,7 +22,15 @@ fs.writeFileSync(
 const { loadWorkerProfiles, syncOpenCodeAgents } = require(path.join(buildDir, 'workerProfiles.js'));
 fs.rmSync(buildDir, { recursive: true, force: true });
 
-const profiles = loadWorkerProfiles(profileDir);
+const repoProfileDir = path.join(__dirname, '..', 'worker-profiles');
+const repoProfiles = fs.existsSync(repoProfileDir) ? loadWorkerProfiles(repoProfileDir) : [];
+const localProfiles = fs.existsSync(profileDir) ? loadWorkerProfiles(profileDir) : [];
+const profiles = [...new Map([...localProfiles, ...repoProfiles].map(profile => [profile.name, profile])).values()];
+// Install checked-in sources for the runtime, which loads this directory (not the generated OpenCode agents).
+fs.mkdirSync(profileDir, { recursive: true });
+for (const profile of repoProfiles) {
+    fs.copyFileSync(profile.source, path.join(profileDir, `${profile.name}.md`));
+}
 const agents = syncOpenCodeAgents(profiles, path.join(opencodeDir, 'agents'));
 
 let linked = 0;

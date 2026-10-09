@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { availabilityPolicy } from './availabilityGate';
 import { CONFIG_NAMESPACE } from '../constants/branding';
 import { WebexAuth, readWebexCredentials, isWebexToken } from './webexAuth';
 import { WebexIncomingWebhook, isIncomingWebhookSender } from './webexIncomingWebhook';
@@ -271,6 +272,7 @@ export class WebexService implements RemoteChannel {
         } catch { return undefined; }
     }
     public async editLive(messageId: RemoteMessageId, formatted: string): Promise<boolean> {
+        if (!this.turnPolicy().liveStatus) { return true; }
         if (!this.isConfigured()) { return false; }
         try {
             let response = await this.remoteRequest('PUT', `messages/${encodeURIComponent(String(messageId))}`, { roomId: this._roomId, markdown: formatted, text: formatted });
@@ -295,16 +297,20 @@ export class WebexService implements RemoteChannel {
     }
 
     private turnRoot?: string;
+    private turnPolicy() { return availabilityPolicy(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || ''); }
     private turnWorkspace = '';
     public async beginTurn(workspace: string, prompt: string, status: string): Promise<RemoteMessageId | undefined> {
         this.resolveHandoffs();
         this.turnWorkspace = workspace;
+        this.turnRoot = undefined;
+        if (!this.turnPolicy().startAlert) { return undefined; }
         const alert = `💬 ${workspace}: ${prompt.slice(0, 120)}`;
         const id = await this.sendText(alert, alert, undefined, { notify: true });
         if (!id) { return undefined; }
         const task: TrackedTask = { taskId: 'turn-root', messageId: String(id), question: alert, timestamp: Date.now(), handoff: true };
         await this.findSummary(task);
         this.turnRoot = task.messageId.startsWith('incoming:') ? undefined : task.messageId;
+        if (!this.turnPolicy().liveStatus) { return undefined; }
         const response = await this.remoteRequest('POST', 'messages', { roomId: this._roomId, parentId: this.turnRoot, markdown: status });
         if (!response.ok) { return undefined; }
         const data = await response.json() as { id: string }; this._recordPost(data.id); return data.id;
@@ -320,12 +326,14 @@ export class WebexService implements RemoteChannel {
 
     public async finishTurn(markdown: string, taskId: string, filePath: string): Promise<boolean> {
         if (!this.isConfigured()) { return false; }
+        if (!this.turnPolicy().final) { return true; }
         const form = new FormData(); form.set('roomId', this._roomId!); form.set('markdown', markdown);
         if (this.turnRoot) { form.set('parentId', this.turnRoot); }
         form.set('files', new Blob([new Uint8Array(await fs.promises.readFile(filePath))], { type: filePath.endsWith('.pdf') ? 'application/pdf' : 'text/markdown' }), path.basename(filePath));
         const response = await this.remoteRequest('POST', 'messages', form);
         if (!response.ok) { return false; }
         const { id } = await response.json() as { id: string }; this._recordPost(id);
+        if (!this.turnPolicy().endAlert) { this.trackHandoff(taskId, id, markdown); return true; }
         const next = /(?:^|\n)(?:\*\*)?Next(?:\*\*)?\s*:\s*(.*)/i.exec(markdown)?.[1] || 'Reply to continue';
         const alert = `✅ ${this.turnWorkspace || path.basename(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || 'workspace')}: finished - ${next}`;
         const alertId = await this.sendText(alert, alert, undefined, { notify: true });

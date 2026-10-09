@@ -56,21 +56,120 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["capture", "close", "wait", "report", "questions"] },
-            "spec": { "type": "string" },
-            "asks": { "type": "array", "items": { "type": "object", "properties": { "kind": { "type": "string", "enum": ["request", "bug", "correction", "side remark", "repeated ask"] }, "text": { "type": "string" }, "existingRow": { "$ref": "#/definitions/row" }, "questions": { "$ref": "#/definitions/questions" } }, "required": ["kind", "text"] } },
-            "row": { "$ref": "#/definitions/row" },
-            "evidence": { "type": "string" },
-            "reason": { "type": "string" },
-            "questions": { "$ref": "#/definitions/questions" },
-            "offset": { "type": "integer", "minimum": 0 },
-            "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
+            "action": {
+              "type": "string",
+              "enum": [
+                "capture",
+                "close",
+                "wait",
+                "report",
+                "questions"
+              ]
+            },
+            "spec": {
+              "type": "string"
+            },
+            "asks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "request",
+                      "bug",
+                      "correction",
+                      "side remark",
+                      "repeated ask"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "existingRow": {
+                    "$ref": "#/definitions/row"
+                  },
+                  "questions": {
+                    "$ref": "#/definitions/questions"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "text"
+                ]
+              }
+            },
+            "row": {
+              "$ref": "#/definitions/row"
+            },
+            "evidence": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "questions": {
+              "$ref": "#/definitions/questions"
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
           },
           "definitions": {
-            "row": { "type": "object", "properties": { "file": { "type": "string" }, "id": { "type": "string" } }, "required": ["file", "id"] },
-            "questions": { "type": "array", "items": { "type": "object", "properties": { "text": { "type": "string" }, "options": { "type": "array", "items": { "type": "string" } }, "recommendation": { "type": "string" }, "answer": { "type": "string" } }, "required": ["text", "options", "recommendation"] } }
+            "row": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file",
+                "id"
+              ]
+            },
+            "questions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "options": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "recommendation": {
+                    "type": "string"
+                  },
+                  "answer": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "options",
+                  "recommendation"
+                ]
+              }
+            }
           },
-          "required": ["action"],
+          "required": [
+            "action"
+          ],
           "additionalProperties": false
         }
       },
@@ -83,16 +182,47 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["view", "search", "remember", "update", "history", "export"] },
-            "scope": { "type": "string", "enum": ["user", "repo"] },
-            "agentId": { "type": "string" },
-            "spec": { "type": "string" },
-            "query": { "type": "string" },
-            "text": { "type": "string" },
-            "id": { "type": "string" },
-            "limit": { "type": "integer", "minimum": 1 }
+            "action": {
+              "type": "string",
+              "enum": [
+                "view",
+                "search",
+                "remember",
+                "update",
+                "history",
+                "export"
+              ]
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "user",
+                "repo"
+              ]
+            },
+            "agentId": {
+              "type": "string"
+            },
+            "spec": {
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1
+            }
           },
-          "required": ["action"]
+          "required": [
+            "action"
+          ]
         }
       },
       {
@@ -104,10 +234,17 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "message": { "type": "string", "minLength": 1 },
-            "context": { "type": "string" }
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "context": {
+              "type": "string"
+            }
           },
-          "required": ["message"],
+          "required": [
+            "message"
+          ],
           "additionalProperties": false
         }
       },
@@ -693,6 +830,82 @@
           ],
           "additionalProperties": false
         }
+      },
+      {
+        "name": "askaway_webex",
+        "tags": [
+          "askaway",
+          "workers",
+          "opencode",
+          "orchestrator"
+        ],
+        "toolReferenceName": "askawayWebex",
+        "displayName": "Askaway Webex",
+        "modelDescription": "Webex actions: spaces lists recent spaces; read reads a room (mine:true learns your writing style); thread reads roomId+parentId; search filters recent room messages by query; people finds email/displayName; send posts to roomId or toPersonEmail with optional parentId. Output is bounded to 50 messages and 1000 characters each, with truncation/pagination flags. Sends require approval showing recipient and full text; when not Here they return a draft. Disabled unless Webex is configured. Never supply tokens or secrets.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(server-process)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "spaces",
+                "read",
+                "thread",
+                "search",
+                "people",
+                "send"
+              ]
+            },
+            "max": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "roomId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "parentId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "mine": {
+              "type": "boolean"
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "maxLength": 1000
+            },
+            "displayName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "toPersonEmail": {
+              "type": "string",
+              "format": "email",
+              "maxLength": 1000
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        }
       }
     ],
     "viewsContainers": {
@@ -734,8 +947,12 @@
         },
         "askaway.cloud.agentLogins": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["Copilot"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Copilot"
+          ],
           "description": "Authenticated cloud agent report logins. Model claims remain self-reported."
         },
         "askaway.cloud.digestTime": {
@@ -1175,7 +1392,7 @@
     "compile": "tsc -p ./",
     "watch": "node esbuild.js --watch",
     "lint": "eslint src --ext ts",
-    "test:workers": "node test-worker-turn-accounting.cjs && node test-worker-profile-refresh.cjs && node test-worker-selection.cjs && node test-worker-observability.cjs && node test-worker-mcp-tools.cjs && node test-worker-turn-spend.cjs && node test-worker-fork.cjs && node test-worker-runtime-contract.cjs && node test-workers-control-plane.cjs && node test-commentary-backend.cjs && node test-vscode-tool-bridge.cjs && node test-commentary-ui.cjs && node test-subagent-timer.cjs && node test-shared-server-attach.cjs && node test-async-subagent-runner-e2e.cjs && node test-conversation-hooks.cjs && node test-orchestrator-policy.cjs && node test-turn-replay.cjs && node test-mcp-port-reclaim.cjs && node test-telegram-live-commentary.cjs && node test-telegram-conversation-reply.cjs && node test-telegram-turn-lifecycle.cjs && node test-telegram-delivery.cjs && node test-task-budget.cjs && node test-specs-webview-regression.cjs && node test-webview-card-timer-settings.cjs && node test-spec-stages.cjs && node test-spec-run-records.cjs && node test-spec-staleness.cjs && node test-spec-stories.cjs && node test-spec-reverse-map.cjs && node test-spec-readiness.cjs && node test-cloud-gh.cjs && node test-cloud-secrets.cjs && node test-cloud-proof.cjs && node test-eval-graders.cjs && node test-pr-daily-facts.cjs && node test-cache-clock-waits.cjs && node test-log-cursor.cjs && node test-command-patterns.cjs && node test-checkpoint.cjs && node test-requirements-docs.cjs && node test-goals-docs.cjs && node test-batch.cjs && node test-spec-facts-cli.cjs && node test-spec-planning-contract.cjs && node test-availability.cjs && node test-availability-ui.cjs && node test-turn-budget-workers.cjs && node test-worker-keep-warm.cjs && node test-long-run-handoff.cjs && node test-worker-worktree-visibility.cjs && node test-validator-records.cjs && node test-validator-foundation.cjs && node test-validator-observer.cjs && node test-validator-tool.cjs && node test-worker-fanout.cjs && node test-worker-analyst.cjs && node test-worker-cross-host-reuse.cjs && node test-banner-worker-requests.cjs && node test-worker-session-dir.cjs && node test-worker-reuse-policy.cjs && node test-copilot-usage-extract.cjs && node test-workers-turn-consistency.cjs && node test-cloud-eligibility.cjs && node test-cloud-packet.cjs && node test-cloud-queue.cjs && node test-cloud-task-report.cjs && node test-cloud-specs-card.cjs && node test-knowledge-store.cjs && node test-validator-dedup.cjs && node test-memory-server-lifecycle.cjs && node test-validator-commentary-entry.cjs && node test-memory-prompts-switched.cjs && node test-spec-ask-capture.cjs && node test-spec-ask-outcomes.cjs && node test-spec-question-batch.cjs && node test-spec-ask-tool.cjs && node test-cloud-state.cjs && node test-cloud-digest.cjs && node test-validator-close-loop.cjs && node test-cloud-accept.cjs && node test-cloud-pr-link.cjs && node test-webex-token-command.cjs && node test-webex-discover.cjs && node test-remote-channel-contract.cjs && node test-webex-reply-poll.cjs && node test-webex-workspace-space.cjs && node test-webex-incoming-webhook.cjs && node test-webex-enable-after-signin.cjs && node test-webex-startup-enabled.cjs && node test-workers-server-status.cjs && node test-remote-handoff.cjs && node test-remote-polling-status.cjs && node test-webex-live-reply.cjs && node test-webex-one-item.cjs && node test-webex-turn-thread.cjs && node test-webex-keychain-isolation.cjs && node test-worker-resume-routing.cjs"
+    "test:workers": "export ASKAWAY_AVAILABILITY_MODE=away && node test-worker-turn-accounting.cjs && node test-worker-profile-refresh.cjs && node test-worker-selection.cjs && node test-worker-observability.cjs && node test-worker-mcp-tools.cjs && node test-worker-turn-spend.cjs && node test-worker-fork.cjs && node test-worker-runtime-contract.cjs && node test-workers-control-plane.cjs && node test-commentary-backend.cjs && node test-vscode-tool-bridge.cjs && node test-commentary-ui.cjs && node test-subagent-timer.cjs && node test-shared-server-attach.cjs && node test-async-subagent-runner-e2e.cjs && node test-conversation-hooks.cjs && node test-orchestrator-policy.cjs && node test-turn-replay.cjs && node test-mcp-port-reclaim.cjs && node test-telegram-live-commentary.cjs && node test-telegram-conversation-reply.cjs && node test-telegram-turn-lifecycle.cjs && node test-telegram-delivery.cjs && node test-task-budget.cjs && node test-specs-webview-regression.cjs && node test-webview-card-timer-settings.cjs && node test-spec-stages.cjs && node test-spec-run-records.cjs && node test-spec-staleness.cjs && node test-spec-stories.cjs && node test-spec-reverse-map.cjs && node test-spec-readiness.cjs && node test-cloud-gh.cjs && node test-cloud-secrets.cjs && node test-cloud-proof.cjs && node test-eval-graders.cjs && node test-pr-daily-facts.cjs && node test-cache-clock-waits.cjs && node test-log-cursor.cjs && node test-command-patterns.cjs && node test-checkpoint.cjs && node test-requirements-docs.cjs && node test-goals-docs.cjs && node test-batch.cjs && node test-spec-facts-cli.cjs && node test-spec-planning-contract.cjs && node test-availability.cjs && node test-availability-ui.cjs && node test-turn-budget-workers.cjs && node test-worker-keep-warm.cjs && node test-long-run-handoff.cjs && node test-worker-worktree-visibility.cjs && node test-validator-records.cjs && node test-validator-foundation.cjs && node test-validator-observer.cjs && node test-validator-tool.cjs && node test-worker-fanout.cjs && node test-worker-analyst.cjs && node test-worker-cross-host-reuse.cjs && node test-banner-worker-requests.cjs && node test-worker-session-dir.cjs && node test-worker-reuse-policy.cjs && node test-copilot-usage-extract.cjs && node test-workers-turn-consistency.cjs && node test-cloud-eligibility.cjs && node test-cloud-packet.cjs && node test-cloud-queue.cjs && node test-cloud-task-report.cjs && node test-cloud-specs-card.cjs && node test-knowledge-store.cjs && node test-validator-dedup.cjs && node test-memory-server-lifecycle.cjs && node test-validator-commentary-entry.cjs && node test-memory-prompts-switched.cjs && node test-spec-ask-capture.cjs && node test-spec-ask-outcomes.cjs && node test-spec-question-batch.cjs && node test-spec-ask-tool.cjs && node test-cloud-state.cjs && node test-cloud-digest.cjs && node test-validator-close-loop.cjs && node test-cloud-accept.cjs && node test-cloud-pr-link.cjs && node test-webex-token-command.cjs && node test-webex-discover.cjs && node test-remote-channel-contract.cjs && node test-webex-reply-poll.cjs && node test-webex-workspace-space.cjs && node test-webex-incoming-webhook.cjs && node test-webex-enable-after-signin.cjs && node test-webex-startup-enabled.cjs && node test-workers-server-status.cjs && node test-remote-handoff.cjs && node test-remote-polling-status.cjs && node test-webex-live-reply.cjs && node test-webex-one-item.cjs && node test-webex-turn-thread.cjs && node test-webex-keychain-isolation.cjs && node test-worker-resume-routing.cjs && node test-webex-tools.cjs && node test-webex-prompt-graders.cjs && node test-availability-updates.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",

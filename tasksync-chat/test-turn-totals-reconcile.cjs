@@ -77,22 +77,30 @@ assert.deepEqual(plain(workerMessage.data.turnWorkerIds), expected.workerIds);
 // Execute the complete webview in a browser VM; dispatch through its actual message handler.
 function browser(source, extra = {}) {
     const summary = { innerHTML: '', classList: { toggle() {} } };
-    const elements = Object.fromEntries(['obs-turn-summary', 'obs-all-reqs', 'obs-all-credits', 'obs-all-input', 'obs-all-output', 'obs-all-cached', 'obs-all-hit', 'obs-all-compaction', 'obs-turn-tool-tbody', 'obs-month-tool-tbody', 'observability-model-tbody'].map(id => [id, { innerHTML: '', textContent: '', classList: { toggle() {} } }]));
+    const element = () => ({ innerHTML: '', textContent: '', children: [], appendChild(child) { this.children.push(child); }, addEventListener() {}, querySelectorAll: () => [], classList: { toggle() {} } });
+    const elements = Object.fromEntries(['obs-turn-summary', 'obs-turn-event-tbody', 'observability-tab-shell'].map(id => [id, element()]));
     const context = { acquireVsCodeApi: () => ({ getState: () => ({}), setState() {}, postMessage() {} }),
-        document: { readyState: 'loading', addEventListener() {}, createElement: () => ({ textContent: '', get innerHTML() { return this.textContent; } }), getElementById: (id) => id === 'common-turn-summary' ? summary : elements[id] || null, querySelectorAll: () => [] },
+        document: { readyState: 'loading', addEventListener() {}, createElement: element, getElementById: (id) => id === 'common-turn-summary' ? summary : elements[id] || null, querySelectorAll: () => [] },
         window: {}, console: { ...console, log() {} }, setTimeout: () => 0, setInterval: () => 0, clearTimeout() {}, clearInterval() {}, Date };
-    source = source.replace(/\}\(\)\);\s*$/, 'observabilityModelTbody = document.getElementById("observability-model-tbody"); globalThis.ui = { handleExtensionMessage, chatBannerHtml, turnTotalsLead, metrics: () => observabilityMetrics }; }());');
+    source = source.replace(/\}\(\)\);\s*$/, 'globalThis.ui = { createObservabilityTab, handleExtensionMessage, chatBannerHtml, turnTotalsLead, metrics: () => observabilityMetrics }; }());');
     vm.runInNewContext(source, context);
     context.ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics: { lastRequest: main, workers, turnRequests: mainRequests.map((r) => r.attrs), turnStartedAt: turnStart, ...extra } } });
     return { ui: context.ui, summary, elements };
 }
 const source = fs.readFileSync(path.join(__dirname, 'media/webview.js'), 'utf8');
 const { ui, summary, elements } = browser(source);
+ui.createObservabilityTab();
+const renderedTab = (node) => node.innerHTML + node.children.map(renderedTab).join('');
+const tab = renderedTab(elements['observability-tab-shell']);
+assert.doesNotMatch(tab, /This month|Per-model|Tool calls|Debug Details|Memories|obs-all-|obs-month-|observability-model-tbody|obs-turn-tool-tbody/);
+assert.match(tab, /obs-turn-event-tbody/);
+assert.equal((elements['obs-turn-event-tbody'].innerHTML.match(/<tr\b/g) || []).length, 2, 'both request rows still render');
+assert.match(elements['obs-turn-event-tbody'].innerHTML, /<td>200<\/td><td>20<\/td>/);
+console.log('PASS EV-METRICS-UI-REMOVAL retired sections absent; turn trace renders');
 const normalized = ui.metrics();
 assert.deepEqual(plain(normalized.workers), plain(workers), 'the provider metrics message retains every ledger field');
 const banner = ui.chatBannerHtml(normalized, 16000).replace(/<[^>]+>/g, '').replaceAll('&middot;', '·');
-assert.match(banner, /^6 reqs · \$0\.60 \(2 workers · 4 reqs · \$0\.40\)/);
-assert.match(banner, /Score 333/);
+assert.match(banner, /^Turn 0:06 · Score 0 · 6 reqs · \$0\.60 \(2 workers · 4 reqs · \$0\.40\)/);
 assert.match(banner, /80 turn out · 20% cache/);
 assert.match(summary.innerHTML, /Main agent own context length/);
 assert.match(elements['obs-turn-summary'].innerHTML, /1K in \/ 80 out · 20% cache hit/);
@@ -170,11 +178,6 @@ vm.runInNewContext(ts.transpileModule(tools.slice(begin, end) + registration, { 
     const currentTools = provider._withWorkerTools(toolMain);
     assert.equal(currentTools.totalOutputTokens, 50);
     files.set(`/ledger/${key}.jsonl`, ledger.map(JSON.stringify).join('\n'));
-    const renderedMonth = browser(source, { overall: month.totals, perModel: month.perModel, toolCalls: { ...currentTools, turn: tools.turn } }).elements;
-    for (const [id, expected] of Object.entries({ 'obs-all-reqs': '7', 'obs-all-credits': '960', 'obs-all-input': '1.15K', 'obs-all-output': '90', 'obs-all-cached': '250', 'obs-all-hit': '22%' })) assert.equal(renderedMonth[id].textContent, expected, id);
-    assert.match(renderedMonth['observability-model-tbody'].innerHTML, /worker-model<\/td><td>5<\/td><td>940/);
-    for (const id of ['obs-turn-tool-tbody', 'obs-month-tool-tbody']) assert.match(renderedMonth[id].innerHTML, /build<\/td><td>2<\/td><td>50/);
-    assert.match(renderedMonth['obs-all-compaction'].innerHTML, /Main agent compaction/);
     console.log('PASS EV-TURN-MONTH-CACHE-TOOLS turn=6/60AIU/1000in/80out/20%cache month=7/960AIU/1150in/90out/22%cache tools=50out');
     console.log('PASS EV-TURN-TOTALS-SNAPSHOT-SPEC-FINAL requests=6 AIU=60 input=1000 output=80');
     for (const consumer of ['banner', 'Observability', 'turn_budget', 'Telegram', 'Workers filter']) console.log(`${consumer}: requests=6 dollars=0.60 AIU=60 workers=2 ids=w1,w2 input=1000 output=80`);

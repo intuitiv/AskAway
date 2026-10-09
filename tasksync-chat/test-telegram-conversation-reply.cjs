@@ -68,6 +68,7 @@ function jsonResponse(body) {
 }
 
 async function main() {
+    process.env.ASKAWAY_AVAILABILITY_MODE = 'away';
     globalThis.__askawayCommands = [];
     const runtime = await loadRuntime();
 

@@ -54,7 +54,6 @@
     let workersKeepWarmEnabled = true; // askaway.workers.keepWarm (package.json default true)
     let workersKeepWarmToggle;
     let toolScopeMode = 'month'; // 'month' | 'turn' — toggles the tool-call table scope
-    let obsView = 'turn'; // 'turn' | 'month' — drives the whole Observability panel
     let observabilityMetrics = {
         requestCount: 0,
         inputTokens: 0,
@@ -78,7 +77,6 @@
         source: 'unavailable',
         updatedAt: 0
     };
-    let memoriesList = [];
     // Keep timeout options aligned with select values to avoid invalid UI state.
     var RESPONSE_TIMEOUT_ALLOWED_VALUES = new Set([0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 210, 240]);
     var RESPONSE_TIMEOUT_DEFAULT = 60;
@@ -154,12 +152,9 @@
     let responseTimeoutSelect, sessionWarningHoursSelect, maxAutoResponsesInput;
     let turnBudgetInput;
     let humanDelayToggle, humanDelayRangeContainer, humanDelayMinInput, humanDelayMaxInput;
-    let observabilitySessionCalls, observabilityHistoryCount, observabilityPendingCommands, observabilityPendingAgents;
-    let observabilitySource, observabilityRtkLine, observabilityModelTbody;
+    let observabilityRtkLine;
     let obsLastReqs, obsLastCredits, obsLastInput, obsLastOutput, obsLastCached;
     let obsWsReqs, obsWsCredits, obsWsInput, obsWsOutput, obsWsCached;
-    let obsAllReqs, obsAllCredits;
-    let observabilityMemoryList, observabilityMemoryCount;
 
     // ── Worker tab state ──
     var workerTasks = []; // [{id, role, task, status, createdAt}]
@@ -790,8 +785,7 @@
         workersKeepWarmToggle = document.getElementById('workers-keep-warm-toggle');
     }
 
-    // Build the Observability ("Metrics") tab: the credits table, RTK/Gradle savings,
-    // per-model + tool-call breakdowns, and the memories list. Kept separate from Settings.
+    // Build the Metrics turn trace and RTK/Gradle savings, separate from Settings.
     function createObservabilityTab() {
         var host = document.getElementById('observability-tab-shell');
         if (!host) return;
@@ -819,11 +813,6 @@
             '<div class="observability-rtk-line" id="observability-rtk-line">RTK: 0 calls \u00b7 0 saved \u00b7 0%</div>' +
             '<div class="observability-rtk-line" id="observability-gradle-line">Gradle: 0 runs \u00b7 0 optimized \u00b7 ~0 tokens saved</div>' +
             '</div>' +
-            '<div class="obs-view-toggle">' +
-            '<a href="#" id="obs-view-turn" class="obs-view-btn active">This turn</a>' +
-            '<a href="#" id="obs-view-month" class="obs-view-btn">This month</a>' +
-            '</div>' +
-            // ── This turn: individual requests (growing) + this turn's tool calls ──
             '<div id="obs-turn-view">' +
             '<div class="obs-turn-summary" id="obs-turn-summary">No requests yet this turn</div>' +
             '<div class="obs-cache-row">' +
@@ -835,71 +824,14 @@
             '<thead><tr><th>ID</th><th>Model / Tool</th><th>Credits</th><th>Input</th><th>Output</th><th>Cached</th><th title="cached / input">Hit%</th></tr></thead>' +
             '<tbody id="obs-turn-event-tbody"><tr><td colspan="7" class="obs-na">No events yet</td></tr></tbody>' +
             '</table>' +
-            '<div class="observability-model-note">Tool calls this turn (main + workers)</div>' +
-            '<table class="observability-table observability-model-table">' +
-            '<thead><tr><th>Tool</th><th>Calls</th><th>Out tok</th><th>avg s</th><th>min s</th><th>max s</th><th>err</th></tr></thead>' +
-            '<tbody id="obs-turn-tool-tbody"><tr><td colspan="7" class="obs-na">No data yet</td></tr></tbody>' +
-            '</table>' +
-            '</div>' +
-            // ── This month: consolidated totals + per-model + this month's tool calls ──
-            '<div id="obs-month-view" style="display:none">' +
-            '<div class="observability-scope-note">Credits in AIU \u2014 current calendar month across all AskAway workspaces.</div>' +
-            '<table class="observability-table">' +
-            '<thead><tr><th>Reqs</th><th>Credits</th><th>Input</th><th>Output</th><th>Cached</th><th title="cached / input">Hit%</th><th title="requests with <50% cache">Miss</th></tr></thead>' +
-            '<tbody><tr>' +
-            '<td id="obs-all-reqs">0</td><td id="obs-all-credits">0</td><td id="obs-all-input">0</td><td id="obs-all-output">0</td><td id="obs-all-cached">0</td><td id="obs-all-hit">\u2013</td><td id="obs-all-miss">0</td>' +
-            '</tr></tbody></table>' +
-            '<div class="observability-scope-note" id="obs-all-compaction">Compaction: 0 requests</div>' +
-            '<div class="observability-model-note">Per-model \u2014 this month</div>' +
-            '<table class="observability-table observability-model-table">' +
-            '<thead><tr><th>Model</th><th>Reqs</th><th>Credits</th><th>Input</th><th>Output</th><th>Cached</th></tr></thead>' +
-            '<tbody id="observability-model-tbody"><tr><td colspan="6" class="obs-na">No data yet</td></tr></tbody>' +
-            '</table>' +
-            '<div class="observability-model-note">Tool calls this month (main + workers)</div>' +
-            '<table class="observability-table observability-model-table">' +
-            '<thead><tr><th>Tool</th><th>Calls</th><th>Out tok</th><th>avg s</th><th>min s</th><th>max s</th><th>err</th></tr></thead>' +
-            '<tbody id="obs-month-tool-tbody"><tr><td colspan="7" class="obs-na">No data yet</td></tr></tbody>' +
-            '</table>' +
-            '</div>' +
-            '<details class="settings-debug-details">' +
-            '<summary>Debug Details</summary>' +
-            '<div class="observability-grid debug-observability-grid">' +
-            '<div class="observability-card"><div class="observability-label">Session Calls</div><div class="observability-value" id="observability-session-calls">0</div><div class="observability-subtext">Current AskAway exchange count</div></div>' +
-            '<div class="observability-card"><div class="observability-label">Saved History</div><div class="observability-value" id="observability-history-count">0</div><div class="observability-subtext">Persisted conversation records</div></div>' +
-            '<div class="observability-card"><div class="observability-label">Pending Commands</div><div class="observability-value" id="observability-pending-commands">0</div><div class="observability-subtext">Worker queue items waiting to run</div></div>' +
-            '<div class="observability-card"><div class="observability-label">Pending Agents</div><div class="observability-value" id="observability-pending-agents">0</div><div class="observability-subtext">Research tasks waiting in queue</div></div>' +
-            '<div class="observability-card"><div class="observability-label">Log Source</div><div class="observability-value" id="observability-source">unavailable</div><div class="observability-subtext">Latest debug-log session folder</div></div>' +
-            '</div>' +
-            '</details>' +
-            '<details class="settings-debug-details" id="observability-memories-details">' +
-            '<summary>Memories <span class="obs-mem-count" id="observability-memory-count">0</span></summary>' +
-            '<div class="observability-model-note">Durable notes saved by sub-agents (shared memory store)</div>' +
-            '<ul class="observability-memory-list" id="observability-memory-list"><li class="obs-na">No memories yet</li></ul>' +
-            '</details>';
+            '</div>';
         content.appendChild(observabilitySection);
         container.appendChild(content);
 
         host.innerHTML = '';
         host.appendChild(container);
 
-        // View toggle: turn ⇄ month drives the whole panel.
-        var turnBtn = document.getElementById('obs-view-turn');
-        var monthBtn = document.getElementById('obs-view-month');
-        if (turnBtn) turnBtn.addEventListener('click', function (e) { e.preventDefault(); obsView = 'turn'; updateObservabilityUI(); });
-        if (monthBtn) monthBtn.addEventListener('click', function (e) { e.preventDefault(); obsView = 'month'; updateObservabilityUI(); });
-
-        // Cache observability element references now that they exist in the DOM.
-        observabilitySessionCalls = document.getElementById('observability-session-calls');
-        observabilityHistoryCount = document.getElementById('observability-history-count');
-        observabilityPendingCommands = document.getElementById('observability-pending-commands');
-        observabilityPendingAgents = document.getElementById('observability-pending-agents');
-        observabilitySource = document.getElementById('observability-source');
         observabilityRtkLine = document.getElementById('observability-rtk-line');
-        observabilityModelTbody = document.getElementById('observability-model-tbody');
-        obsAllReqs = document.getElementById('obs-all-reqs');
-        obsAllCredits = document.getElementById('obs-all-credits');
-        observabilityMemoryList = document.getElementById('observability-memory-list');
-        observabilityMemoryCount = document.getElementById('observability-memory-count');
     }
 
     function bindEventListeners() {
@@ -1642,7 +1574,8 @@
                                 cachedTokens: Number(r.cachedTokens) || 0,
                                 cacheHitPct: Number(r.cacheHitPct) || 0,
                                 kindTag: typeof r.kindTag === 'string' ? r.kindTag : 'normal',
-                                subagent: (typeof r.subagent === 'string' && r.subagent) ? r.subagent : null
+                                subagent: (typeof r.subagent === 'string' && r.subagent) ? r.subagent : null,
+                                subagentId: typeof r.subagentId === 'string' ? r.subagentId : null
                             };
                         }) : [],
                         turnEvents: Array.isArray(message.metrics.turnEvents) ? message.metrics.turnEvents.map(function (event) {
@@ -1793,10 +1726,6 @@
                     };
                 }
                 updateObservabilityUI();
-                break;
-            case 'updateMemoriesList':
-                memoriesList = Array.isArray(message.memories) ? message.memories : [];
-                renderMemoriesList();
                 break;
             case 'slashCommandResults':
                 showSlashDropdown(message.prompts || []);
@@ -2950,25 +2879,26 @@
         dollars = Number(dollars) || 0;
         return '$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2);
     }
-    var EFFICIENCY_SCORE_SCALE = 1000;
+    var EFFICIENCY_SCORE_SCALE = 100;
     var EFFICIENCY_CONTEXT_BASE = 64000;
-    var EFFICIENCY_REQUEST_BASE = 10;
+    // Calibrated from 2026-10-10 observed well-cached main turns (~$0.31/1M tokens); revised by 008 benchmark data.
+    const SCORE_REF_USD_PER_MTOK = 0.30;
     function efficiencyScore(b) {
         var input = Number(b.cacheInput) || 0;
         var cost = Number(b.dollars) || 0;
-        var cacheHit = input > 0 ? (Number(b.lastCached) || 0) / input : 0;
+        var cacheHit = input > 0 ? Math.min(1, Math.max(0, (Number(b.lastCached) || 0) / input)) : 0;
         var contextFactor = EFFICIENCY_CONTEXT_BASE / Math.max(EFFICIENCY_CONTEXT_BASE, Number(b.averagePrompt) || 0);
-        var requestFactor = EFFICIENCY_REQUEST_BASE / Math.max(EFFICIENCY_REQUEST_BASE, Number(b.requests) || 0);
-        return { value: cost > 0 && input > 0 ? EFFICIENCY_SCORE_SCALE * cacheHit * contextFactor * requestFactor / cost : null,
-            cacheHit: cacheHit, contextFactor: contextFactor, requestFactor: requestFactor };
+        var priceFactor = cost > 0 ? Math.min(1, SCORE_REF_USD_PER_MTOK * (input + (Number(b.turnOut) || 0)) / 1000000 / cost) : 0;
+        return { value: cost > 0 && input > 0 ? Math.round(EFFICIENCY_SCORE_SCALE * cacheHit * contextFactor * priceFactor) : null,
+            cacheHit: cacheHit, contextFactor: contextFactor, priceFactor: priceFactor };
     }
     function usageBannerHtml(b) {
         var score = efficiencyScore(b);
-        var scoreLabel = score.value === null ? '\u2013' : score.value < 10 ? score.value.toFixed(1) : String(Math.round(score.value));
-        var scoreTitle = 'Score = EFFICIENCY_SCORE_SCALE (' + EFFICIENCY_SCORE_SCALE + ') × CacheHit × ContextFactor × RequestFactor / Cost($); ' +
+        var scoreLabel = score.value === null ? '\u2013' : String(score.value);
+        var scoreTitle = 'Score = round(100 × CacheHit × ContextFactor × PriceFactor); ' +
             'CacheHit=' + score.cacheHit.toFixed(4) + '; ContextFactor=' + score.contextFactor.toFixed(4) +
-            ' (EFFICIENCY_CONTEXT_BASE=' + EFFICIENCY_CONTEXT_BASE + '); RequestFactor=' + score.requestFactor.toFixed(4) +
-            ' (EFFICIENCY_REQUEST_BASE=' + EFFICIENCY_REQUEST_BASE + '); cost=$' + (Number(b.dollars) || 0) +
+            ' (EFFICIENCY_CONTEXT_BASE=' + EFFICIENCY_CONTEXT_BASE + '); PriceFactor=' + score.priceFactor.toFixed(4) +
+            ' (SCORE_REF_USD_PER_MTOK=' + SCORE_REF_USD_PER_MTOK + '); cost=$' + (Number(b.dollars) || 0) +
             '; cache misses=' + (Number(b.cacheMisses) || 0) + '; input=' + (Number(b.cacheInput) || 0) +
             '; output=' + (Number(b.turnOut) || 0) + '; requests=' + (Number(b.requests) || 0) +
             '; ' + (b.mainContext ? 'main context' : 'worker context') + ' (average prompt)=' + (Number(b.averagePrompt) || 0);
@@ -2989,11 +2919,12 @@
         var lastInHtml = flag.over
             ? '<span class="' + flag.cls.trim() + '" title="' + flag.title + '">' + formatObservabilityCompact(lastIn) + '</span>'
             : b.mainContext ? '<span title="Main agent own context length">' + formatObservabilityCompact(lastIn) + '</span>' : formatObservabilityCompact(lastIn);
-        return requests + ' req' + (requests === 1 ? '' : 's') +
+        return (b.timer ? '<span class="health-turn-timer" title="Time since this turn started">' + b.timer + '</span> &middot; ' : '') +
+            '<span title="' + scoreTitle + '">Score ' + scoreLabel + '</span> &middot; ' +
+            requests + ' req' + (requests === 1 ? '' : 's') +
             ' &middot; <strong class="health-cost">' + bannerDollars(dollars) + '</strong>' + workerPart +
             ' &middot; ' + lastInHtml + ' last in / ' + formatObservabilityCompact(b.turnOut) + ' turn out' +
-            ' &middot; ' + hit + ' cache' + (b.timer ? ' &middot; <span class="health-turn-timer" title="Time since this turn started">' + b.timer + '</span>' : '') +
-            ' &middot; <span title="' + scoreTitle + '">Score ' + scoreLabel + '</span>';
+            ' &middot; ' + hit + ' cache';
     }
     // Live turn timer: '' when no turn is running (turnStartedAt 0), else m:ss or h:mm:ss.
     // A turn is finished once its prompt cache went cold (no request for 5 minutes): the timer then shows the final
@@ -3021,7 +2952,8 @@
     function chatBannerHtml(metrics, now) {
         var turn = metrics.lastRequest || {};
         var turnRequests = Array.isArray(metrics.turnRequests) ? metrics.turnRequests : [];
-        var latest = turnRequests.length ? turnRequests[turnRequests.length - 1] : turn;
+        var mainRequests = turnRequests.filter(function (r) { return !r.subagent && !r.subagentId; });
+        var latest = mainRequests.length ? mainRequests[mainRequests.length - 1] : turn;
         var w = metrics.workers || {};
         var totals = turnTotalsLead(turn, w);
         var workerRuns = Number(w.workers) || 0;
@@ -3035,7 +2967,7 @@
             cacheInput: totals.inputTokens, turnOut: totals.outputTokens,
             workers: { workers: workerRuns, requests: workerRequests, dollars: workerDollars },
             timer: timer,
-            averagePrompt: turnRequests.length ? turnRequests.reduce(function (sum, r) { return sum + (Number(r.inputTokens) || 0); }, 0) / turnRequests.length : 0,
+            averagePrompt: mainRequests.length ? mainRequests.reduce(function (sum, r) { return sum + (Number(r.inputTokens) || 0); }, 0) / mainRequests.length : 0,
             cacheMisses: (Number(turn.cacheMisses) || 0) + (Number(w.cacheMisses) || 0),
         });
     }
@@ -3296,72 +3228,15 @@
 
     function updateObservabilityUI() {
         renderConversationHealth();
-        var pendingCommands = workerTasks.filter(function (t) { return t.role === 'command' && t.status !== 'done'; }).length;
-        var pendingAgents = workerTasks.filter(function (t) { return t.role === 'subagent' && t.status !== 'done'; }).length;
-        if (observabilitySessionCalls) observabilitySessionCalls.textContent = String(currentSessionCalls.length);
-        if (observabilityHistoryCount) observabilityHistoryCount.textContent = String(persistedHistory.length);
-        if (observabilityPendingCommands) observabilityPendingCommands.textContent = String(pendingCommands);
-        if (observabilityPendingAgents) observabilityPendingAgents.textContent = String(pendingAgents);
-        if (observabilitySource) observabilitySource.textContent = observabilityMetrics.source || 'unavailable';
-
         var aiu = function (nano) { return formatObservabilityCompact((Number(nano) || 0) / 1000000000); };
         var num = formatObservabilityNumber;
         var tok = formatObservabilityCompact;
-
-        var aiu = function (nano) { return formatObservabilityCompact((Number(nano) || 0) / 1000000000); };
-        var num = formatObservabilityNumber;
-        var tok = formatObservabilityCompact;
-        var sec = function (ms) { return ((Number(ms) || 0) / 1000).toFixed(2); };
-
-        var all = observabilityMetrics.overall || {};
-        var tc = observabilityMetrics.toolCalls || {};
 
         var hitPct = function (s) {
             var inp = Number(s.inputTokens) || 0;
             if (inp <= 0) return '\u2013';
             return Math.round((Number(s.cachedTokens) || 0) / inp * 100) + '%';
         };
-        var setCell = function (id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
-        var setHit = function (id, s) {
-            var el = document.getElementById(id); if (!el) return;
-            el.textContent = hitPct(s);
-            var inp = Number(s.inputTokens) || 0;
-            var pct = inp > 0 ? (Number(s.cachedTokens) || 0) / inp : 1;
-            el.className = (inp > 0 && pct < 0.5) ? 'obs-cache-risk' : '';
-        };
-        // Render a per-tool table (times in seconds, 2dp) into the given tbody.
-        var renderToolTable = function (tbodyId, scope) {
-            var tb = document.getElementById(tbodyId);
-            if (!tb) return;
-            var bt = (scope && scope.byTool) || [];
-            if (!bt.length) { tb.innerHTML = '<tr><td colspan="7" class="obs-na">No data yet</td></tr>'; return; }
-            var rows = '';
-            for (var j = 0; j < bt.length; j++) {
-                var r = bt[j];
-                var name = escapeHtml(String(r.tool || 'unknown'));
-                if (r.cacheRisk) name += ' \u26a0';
-                var maxCls = r.cacheRisk ? ' class="obs-cache-risk"' : '';
-                rows += '<tr><td class="obs-scope">' + name + '</td>' +
-                    '<td>' + num(r.calls) + '</td>' +
-                    '<td>' + tok(r.outputTokens) + '</td>' +
-                    '<td>' + sec(r.avgMs) + '</td>' +
-                    '<td>' + sec(r.minMs) + '</td>' +
-                    '<td' + maxCls + '>' + sec(r.maxMs) + '</td>' +
-                    '<td>' + (r.errors ? num(r.errors) : '\u2013') + '</td></tr>';
-            }
-            tb.innerHTML = rows;
-        };
-
-        // ── View toggle: turn ⇄ month ──
-        var turnView = document.getElementById('obs-turn-view');
-        var monthView = document.getElementById('obs-month-view');
-        var turnBtn = document.getElementById('obs-view-turn');
-        var monthBtn = document.getElementById('obs-view-month');
-        if (turnView) turnView.style.display = (obsView === 'turn') ? '' : 'none';
-        if (monthView) monthView.style.display = (obsView === 'month') ? '' : 'none';
-        if (turnBtn) turnBtn.classList.toggle('active', obsView === 'turn');
-        if (monthBtn) monthBtn.classList.toggle('active', obsView === 'month');
-
         // Renders the per-request input breakdown shown inside an expandable detail row.
         function renderSplitDetail(split) {
             var sysT = Number(split.systemTokens) || 0;
@@ -3563,49 +3438,11 @@
                 setTimeout(function () { pingBtn.disabled = false; pingBtn.textContent = '\u26a1 Ping'; }, 4000);
             });
         }
-        renderToolTable('obs-turn-tool-tbody', tc.turn || {});
-
-        // ── This month: consolidated totals + per-model + tools ──
-        setCell('obs-all-reqs', num(all.requestCount));
-        setCell('obs-all-credits', aiu(all.nanoAiu));
-        setCell('obs-all-input', tok(all.inputTokens));
-        setCell('obs-all-output', tok(all.outputTokens));
-        setCell('obs-all-cached', tok(all.cachedTokens));
-        setHit('obs-all-hit', all);
-        setCell('obs-all-miss', num(all.cacheMisses || 0));
-        var comp = observabilityMetrics.overallCompaction || { count: 0, nanoAiu: 0 };
-        var compEl = document.getElementById('obs-all-compaction');
-        if (compEl) {
-            var cc = Number(comp.count) || 0;
-            compEl.innerHTML = cc
-                ? 'Main agent compaction: <span class="obs-tag-compaction">' + num(cc) + ' request' + (cc === 1 ? '' : 's') + '</span> \u00b7 ' + aiu(comp.nanoAiu) + ' AIU spent auto-summarizing main context this month'
-                : 'Main agent compaction: 0 requests this month';
-        }
-        renderToolTable('obs-month-tool-tbody', tc);
 
         if (observabilityRtkLine) {
             observabilityRtkLine.textContent = 'RTK: ' + num(observabilityMetrics.rtkCommandCount) +
                 ' calls \u00b7 ' + tok(observabilityMetrics.rtkSavedTokens) + ' saved \u00b7 ' +
                 formatPercent(observabilityMetrics.rtkSavingsPct);
-        }
-
-        if (observabilityModelTbody) {
-            var models = observabilityMetrics.perModel || [];
-            if (!models.length) {
-                observabilityModelTbody.innerHTML = '<tr><td colspan="6" class="obs-na">No data yet</td></tr>';
-            } else {
-                var rows = '';
-                for (var i = 0; i < models.length; i++) {
-                    var m = models[i];
-                    rows += '<tr><td class="obs-scope">' + escapeHtml(String(m.model || 'unknown')) + '</td>' +
-                        '<td>' + num(m.requestCount) + '</td>' +
-                        '<td>' + aiu(m.nanoAiu) + '</td>' +
-                        '<td>' + tok(m.inputTokens) + '</td>' +
-                        '<td>' + tok(m.outputTokens) + '</td>' +
-                        '<td>' + tok(m.cachedTokens) + '</td></tr>';
-                }
-                observabilityModelTbody.innerHTML = rows;
-            }
         }
 
         var gradleLine = document.getElementById('observability-gradle-line');
@@ -3616,25 +3453,6 @@
                 (g.tasksAvoided ? ' \u00b7 ' + num(g.tasksAvoided) + ' tasks cached' : '') +
                 (g.configCacheReuses ? ' \u00b7 ' + num(g.configCacheReuses) + ' cfg-cache reuse' : '');
         }
-    }
-
-    function renderMemoriesList() {
-        if (observabilityMemoryCount) observabilityMemoryCount.textContent = String(memoriesList.length);
-        if (!observabilityMemoryList) return;
-        if (!memoriesList.length) {
-            observabilityMemoryList.innerHTML = '<li class="obs-na">No memories yet</li>';
-            return;
-        }
-        var html = '';
-        for (var i = 0; i < memoriesList.length; i++) {
-            var m = memoriesList[i];
-            var when = m.modified ? new Date(m.modified).toLocaleDateString() : '';
-            var kb = m.size ? (m.size >= 1024 ? Math.round(m.size / 1024) + 'K' : m.size + 'B') : '';
-            html += '<li class="obs-mem-item" title="' + escapeHtml(String(m.file || '')) + '">' +
-                '<span class="obs-mem-title">' + escapeHtml(String(m.title || m.file || 'memory')) + '</span>' +
-                '<span class="obs-mem-meta">' + escapeHtml(when) + (kb ? ' \u00b7 ' + kb : '') + '</span></li>';
-        }
-        observabilityMemoryList.innerHTML = html;
     }
 
     function formatObservabilityNumber(value) {

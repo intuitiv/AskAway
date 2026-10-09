@@ -71,7 +71,7 @@ assert.match(banner, /\(2 workers &middot; 1 req &middot; \$0.02\)/);
 assert.equal(banner, ui.banner({ requests: 3, dollars: .03, mainContext: true, lastIn: 2000,
     lastCached: 2600, cacheInput: 3000, turnOut: 30, workers: { workers: 2, requests: 1, dollars: .02 },
     timer: 'Turn 0:00', averagePrompt: 0, cacheMisses: spend.cacheMisses }));
-assert.match(banner, />Score 28889<\/span>$/);
+assert.match(banner, />Score 3<\/span> &middot; 3 reqs/);
 const cards = ui.render(state, '', {}, false);
 assert.equal((cards.match(/class="worker-card"/g) || []).length, spend.workers);
 assert.match(cards, /data-worker-id="cancelled"/);
@@ -80,6 +80,6 @@ assert.match(cards, /worker-state-cancelled">CANCELLED|worker-state-orphaned">OR
 assert.doesNotMatch(cards, /data-worker-id="old"|data-worker-id="queued"/);
 assert.ok(state.workers.filter((w) => spend.workerIds.includes(w.workerId)).every((w) => w.expired));
 assert.ok((ui.render(state, '', {}, true).match(/class="worker-card"/g) || []).length > spend.workers);
-assert.match(ui.chat({ lastRequest: { inputTokens: 2000, outputTokens: 0 }, workers: { ...spend, outputTokens: 0 } }, 200), />Score 13333<\/span>$/);
-assert.match(ui.chat({ lastRequest: { inputTokens: 4, outputTokens: 3 }, workers: { inputTokens: 4, outputTokens: 0 } }, 200), />Score –<\/span>$/);
+assert.match(ui.chat({ lastRequest: { inputTokens: 2000, outputTokens: 0 }, workers: { ...spend, outputTokens: 0 } }, 200), />Score 1<\/span> &middot;/);
+assert.match(ui.chat({ lastRequest: { inputTokens: 4, outputTokens: 3 }, workers: { inputTokens: 4, outputTokens: 0 } }, 200), />Score –<\/span> &middot;/);
 console.log('PASS EV-WORKERS-TURN-CONSISTENCY');

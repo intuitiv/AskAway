@@ -11,17 +11,17 @@ function loadDefinitions() {
     // Built inside the package so `zod` resolves from node_modules; layout mirrors src/.
     const buildDir = path.join(root, '.lm-manifest-build');
     fs.rmSync(buildDir, { recursive: true, force: true });
-    const files = ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary'];
+    const files = ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary', 'services/webexTools'];
     for (const name of files) {
         const out = path.join(buildDir, `${name}.js`);
         fs.mkdirSync(path.dirname(out), { recursive: true });
         fs.writeFileSync(out, ts.transpileModule(fs.readFileSync(path.join(root, 'src', `${name}.ts`), 'utf8'),
             { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
     }
-    const { workerTool } = require(path.join(buildDir, 'workers', 'workerTools.js'));
+    const { workerTool, webexTool } = require(path.join(buildDir, 'workers', 'workerTools.js'));
     const { commentaryToolDefinitions } = require(path.join(buildDir, 'commentary', 'commentary.js'));
     const unused = () => { throw new Error('manifest generation never runs tools'); };
-    const definitions = [workerTool(unused, ''), ...commentaryToolDefinitions(unused, '')];
+    const definitions = [workerTool(unused, ''), ...commentaryToolDefinitions(unused, ''), webexTool(unused)];
     fs.rmSync(buildDir, { recursive: true, force: true });
     return definitions;
 }

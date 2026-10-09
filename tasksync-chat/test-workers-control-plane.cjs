@@ -172,7 +172,7 @@ const packet = (overrides = {}) => ({
     assert.equal((withExpired.match(/class="worker-card"/g) || []).length, 3, 'the toggle reveals the retired worker');
     const currentBanner = ui.chatBanner({ ...a.banner, cacheInput: t2.usage.input + t2.usage.cacheRead + t2.usage.cacheWrite,
         lastCached: t2.usage.cacheRead, averagePrompt: (t2.usage.input + t2.usage.cacheRead + t2.usage.cacheWrite) / a.banner.requests, flagContext: true });
-    assert.match(currentBanner, /^1 req &middot; <strong class="health-cost">\$0\.0004<\/strong> &middot; 1\.80K last in \/ 20 turn out &middot; 83% cache &middot; <span title="[^"]+">Score 2083333<\/span>$/);
+    assert.match(currentBanner, /^<span title="[^"]+">Score 83<\/span> &middot; 1 req &middot; <strong class="health-cost">\$0\.0004<\/strong> &middot; 1\.80K last in \/ 20 turn out &middot; 83% cache$/);
     assert.ok(all.includes('<span class="worker-banner-metrics">' + currentBanner + '</span><strong class="health-cache warm">Age: 0:00 warm</strong>'),
         'running worker: the chat banner for its current run');
     assert.ok(all.includes(currentBanner), 'the card uses exactly the chat banner template');
@@ -243,7 +243,7 @@ const packet = (overrides = {}) => ({
     assert.match(ui.trace([{ kind: 'request', id: 'W2', model: 'm', dollars: 0.25, inputTokens: 1, outputTokens: 1, cachedTokens: 0 }], {}), /<td>25<\/td>/, 'a worker request of $0.25 is 25 credits');
 
     // Chat banner (shared block) vs worker card: only the chat banner carries the worker part.
-    assert.match(ui.chatBanner({ requests: 34, dollars: 1.95, lastIn: 100, lastCached: 50, turnOut: 7, workers: { workers: 3, runs: 4, dollars: 0.42 } }), /^34 reqs &middot; <strong class="health-cost">\$1\.95<\/strong> <span class="health-workers"[^>]*>\(3 workers &middot; \$0\.42\)<\/span> &middot;/);
+    assert.match(ui.chatBanner({ requests: 34, dollars: 1.95, lastIn: 100, lastCached: 50, turnOut: 7, workers: { workers: 3, runs: 4, dollars: 0.42 } }), /^<span title="[^"]+">Score –<\/span> &middot; 34 reqs &middot; <strong class="health-cost">\$1\.95<\/strong> <span class="health-workers"[^>]*>\(3 workers &middot; \$0\.42\)<\/span> &middot;/);
     assert.doesNotMatch(all, /\d workers? &middot;/, 'worker cards keep the plain banner without a worker part');
     assert.match(downView, /<span class="obs-req-id">STEP1<\/span><\/td><td class="obs-scope">gpt-5\.6-terra<\/td><td>0\.21<\/td><td>1\.25K<\/td><td>340<\/td><td>50<\/td><td class="obs-cache-risk">4%<\/td>/);
     const kept = ui.render(state, '', { [run1.workerId]: true }, false, { 't:EDIT1:1': true }, { [run1.workerId]: down });

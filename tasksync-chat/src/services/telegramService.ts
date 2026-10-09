@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import { availabilityPolicy } from './availabilityGate';
 import { CONFIG_NAMESPACE } from '../constants/branding';
 import type { AttachmentInfo } from '../webview/webviewProvider';
 import { isTelegramHandoffTaskId } from './telegramConversationReply';
@@ -2019,8 +2020,10 @@ export class TelegramService implements RemoteChannel {
      * Reuses (edits) the same message to avoid spamming the chat.
      */
     /** Post a one-off markdown message (turn-end handoff). Unlike the heartbeat this is never throttled or edited in place. */
-    public async postText(markdown: string, fallback: string, replyTaskId?: string): Promise<boolean> {
+    public async postText(markdown: string, fallback: string, replyTaskId?: string, options?: { notify?: boolean }): Promise<boolean> {
         if (!this.isConfigured()) { return false; }
+        const policy = availabilityPolicy(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '');
+        if (replyTaskId && !policy.final) { return true; }
         const workspaceName = this._workspaceName();
         const head = `📋 <b>AskAway · ${this._escapeHtml(workspaceName)}</b>\n\n`;
         const html = this._boundedHtml(markdown, 4000 - head.length, fallback);
@@ -2031,6 +2034,7 @@ export class TelegramService implements RemoteChannel {
             parse_mode: 'HTML',
             disable_web_page_preview: true
         };
+        if (replyTaskId) { body.disable_notification = !(options?.notify ?? policy.notify); }
         if (threadId) { body.message_thread_id = threadId; }
         try {
             const sent = await this._postTelegram('sendMessage', body);
@@ -2114,13 +2118,15 @@ export class TelegramService implements RemoteChannel {
     }
 
     /** The final response replaces the turn's live message and is tracked for replies, like a posted handoff. */
-    public async finishLive(liveMessageId: RemoteMessageId, headHtml: string, finalMarkdown: string, replyTaskId: string): Promise<boolean> {
+    public async finishLive(liveMessageId: RemoteMessageId, headHtml: string, finalMarkdown: string, replyTaskId: string, options?: { notify?: boolean }): Promise<boolean> {
         liveMessageId = Number(liveMessageId);
         if (!this.isConfigured()) { return false; }
+        const policy = availabilityPolicy(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '');
+        if (!policy.final) { return true; }
         const finalHtml = this._boundedHtml(finalMarkdown, Math.max(200, 4000 - headHtml.length - 2));
         const text = `${headHtml}\n\n${finalHtml}`;
         // Edits never notify, so the final response is re-sent with sound and the silent live message removed.
-        let messageId = await this.sendLive(text, false);
+        let messageId = await this.sendLive(text, !(options?.notify ?? policy.notify));
         if (messageId !== undefined) {
             void this._deleteMessage(liveMessageId);
         } else if (await this.editLive(liveMessageId, text)) {

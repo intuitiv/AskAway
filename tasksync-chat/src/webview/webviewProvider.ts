@@ -10,7 +10,7 @@ import { FILE_EXCLUSION_PATTERNS, FILE_SEARCH_EXCLUSION_PATTERNS, formatExcludeP
 import { ContextManager, ContextReferenceType, ContextReference } from '../context';
 import { Plan, PlanTask, PlanTaskStatus, createPlan, createTask, findTaskById, getNextPendingTask, countByStatus } from '../plan/planTypes';
 import { PlanEditorProvider } from '../plan/planEditorProvider';
-import { getUserMemoryDir, summarizeAndStoreMemory, listMemories } from '../memory/memoryStore';
+import { getUserMemoryDir, summarizeAndStoreMemory } from '../memory/memoryStore';
 import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
 import { CloudSpecsController, shouldPollCloud } from '../cloud/cloudSpecs';
 import { defaultIO } from '../cloud/cloudQueue';
@@ -476,7 +476,6 @@ type ToWebviewMessage =
         workersKeepWarm?: boolean;
     }
     | { type: 'updateObservabilityMetrics'; metrics: ObservabilityMetrics }
-    | { type: 'updateMemoriesList'; memories: Array<{ file: string; title: string; size: number; modified: number }> }
     | { type: 'slashCommandResults'; prompts: ReusablePrompt[] }
     | { type: 'playNotificationSound' }
     | { type: 'contextSearchResults'; suggestions: Array<{ type: string; label: string; description: string; detail: string }> }
@@ -2166,7 +2165,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 this._observabilityScanning = false;
                 this._observabilityScanPromise = undefined;
             }
-            void this._broadcastMemoriesList();
         })();
         return this._observabilityScanPromise;
     }
@@ -2214,15 +2212,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             await new Promise(resolve => setTimeout(resolve, 250));
         }
         return snapshot;
-    }
-
-    private async _broadcastMemoriesList(): Promise<void> {
-        try {
-            const memories = await listMemories(getUserMemoryDir(this._context));
-            this._broadcast({ type: 'updateMemoriesList', memories });
-        } catch {
-            // Best-effort; memories list is non-critical.
-        }
     }
 
     private _stabilizeObservabilityMetrics(next: ObservabilityMetrics): ObservabilityMetrics {
@@ -2588,7 +2577,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                         this._lastRequestMetrics.cachedTokens += cachedTokens;
                         this._lastRequestMetrics.nanoAiu += nanoAiu;
                         if (isMiss) { this._lastRequestMetrics.cacheMisses = (this._lastRequestMetrics.cacheMisses || 0) + 1; }
-                        // Individual row for the "This turn" requests table (capped to bound memory).
+                        // Keep the whole turn so the main prompt average includes every request.
                         const turnRequest: TurnRequest = {
                             id: this._shortReqId(sessionId, lineIndex),
                             ts, model, nanoAiu,
@@ -2599,7 +2588,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                             subagentId,
                         };
                         this._turnRequests.push(turnRequest);
-                        if (this._turnRequests.length > 500) { this._turnRequests.shift(); }
                         const reqEvent: TurnRequestEvent = { kind: 'request', ...turnRequest };
                         // Per-request input breakdown (system prompt + tool defs + history),
                         // powering the expandable detail row. Sidecar reads are cached.
@@ -6801,7 +6789,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <button class="widget-tab hidden" data-tab="specs" id="tab-specs" title="Spec Kit features: progress, next task, active feature">Specs</button>
             <button class="widget-tab" data-tab="workers" title="OpenCode workers in this workspace: state, cost, session links">Workers <span class="tab-badge hidden" id="tab-badge-workers"></span></button>
             <button class="widget-tab" data-tab="commentary" title="Live orchestrator commentary and the main goal">Commentary <span class="tab-badge hidden" id="tab-badge-commentary"></span></button>
-            <button class="widget-tab" data-tab="observability" title="Observability metrics, RTK/Gradle savings, requests and memories">Metrics</button>
+            <button class="widget-tab" data-tab="observability" title="Turn trace and RTK/Gradle savings">Metrics</button>
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
         </div>
         <div class="conversation-health" title="Conversation cost and cache health">
