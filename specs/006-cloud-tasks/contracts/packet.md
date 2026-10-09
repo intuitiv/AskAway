@@ -77,3 +77,15 @@ Parse a task-labelled, unquoted `Report <taskId>` line from the authenticated bo
 ## Refusals (before any write, first failing check wins)
 
 `explicit reviewer request required` · `gh not authenticated` · `no active PR for <slug>` · `no push permission on <repo>` · `<taskId> is not cloud-eligible: <reason>` · `<taskId> already queued (<state>)` · `secret detected in <field>`. Holding is not refusal: `held: one cloud task at a time on this PR`; no packet/comment while Held, even for disjoint paths.
+
+## Whole-story delegation (US6)
+
+F23(a), approved 2026-10-10: one explicit story request in `implement` expands to these existing per-task packets/runs on the active PR branch; no aggregate story packet/session or schema change. Every story task must be tagged `cloud` and have no `local:` tag; validate all before posting anything. Existing eligibility, auth/permission and secret checks still apply. Reject an ineligible story rather than delegating a subset.
+
+Expand in `tasks.md` row order, skipping already Accepted tasks without reposting. Preserve each task's exact verification commands, scope, report format and current PR-head base. Only one active attempt per PR; additional explicitly requested work is Held. F24(a): overlap releases at Needs review or terminal just like disjoint work; review does not impose a terminal-only hold.
+
+A queue refusal, blocked report, failing checks/verification, Returned, No response or Timed out stops dispatch of that story's remaining tasks. Unposted tasks stay **Not queued**, without packets/comments; keep them out of generic Held release on failure. A later local failure cannot undo an already-posted task. Retry requires an explicit request for the failed task only; earlier successes are retained and the suffix does not resume automatically. Timed out/No response create attempt n+1; other failed-task retry integration is not built yet. A fresh explicit continuation is required for remaining tasks.
+
+Derive story status from latest task attempts: no runs = Not queued; a failed task = Blocked with task/reason; otherwise show the active task's state, Held when waiting, or Needs review while local acceptance is pending. All tasks Accepted permits the unchanged 005 checkpoint, not immediate story acceptance. Story Accepted requires that checkpoint's local passing evidence; checkpoint failure is Blocked. No report alone ticks tasks, no human gate is passed, and AskAway never merges or starts unrelated work.
+
+F25(b), reviewer 2026-10-10: "dont worry about github internals. If it stops after 60/45 min, so be it." Each packet has its own default-50/max-59-minute ceiling; total story duration may exceed one cap. The guarantee is local Timed out reporting plus GitHub's own hard stop, not remote cancellation or verified remote stop timing. `test-cloud-story.cjs` distinguishes passing existing per-task caller cases from PENDING coordinator/aggregate/checkpoint cases.

@@ -14,7 +14,7 @@ See [contracts/cloud-run.schema.json](contracts/cloud-run.schema.json). Written 
 | From | Signal | To |
 |---|---|---|
 | (new) | one-at-a-time rule (from US2) or overlap rule (US5) | Held |
-| Held | one-at-a-time: blocking task leaves Working/Pushed/Checks (enters Needs review or a terminal state); overlap: blocking task terminal | Queued (comment posted) |
+| Held | one-at-a-time or overlap: blocking task leaves Queued/Working/Pushed/Checks and enters Needs review or a terminal state (F24(a), reviewer 2026-10-10); an active attempt still blocks release | Queued (comment posted) |
 | Timed out / No response | same task queued again | new attempt n+1 with a new packet and run |
 | Queued | 👀 on our comment or started-work event | Working |
 | Queued | 10 min without either | No response |

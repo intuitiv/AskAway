@@ -107,13 +107,13 @@ description: "Task list for 006 Cloud Tasks"
 
 ## Phase 8: User Story 6 — Delegate a whole user story to GitHub (Later; planning gate)
 
-**Goal**: Prepare the ultimate goal on the active PR branch in implement, reusing per-task status/acceptance rules. No story-level runtime design is approved yet.
+**Goal**: Prepare the ultimate goal on the active PR branch in implement, reusing per-task status/acceptance rules. F23(a) serial per-task design approved 2026-10-10; runtime implementation remains pending.
 
 **Independent Test**: spec.md US6: explicit delegation in implement lands story tasks on the active PR branch, Actions run, and the unchanged 005 checkpoint passes locally before acceptance; human merges only.
 
-- [ ] T020 [local: open question] [US6] Resolve F23 with the reviewer before implementation; then extend `specs/006-cloud-tasks/plan.md` and `contracts/packet.md` / `contracts/cloud-run.schema.json` with the chosen story-delegation boundary and caller-view cases for `tasksync-chat/test-cloud-story.cjs`. Trace FR-004/FR-005/FR-007/FR-014/FR-016/FR-017/FR-023/FR-024/FR-025 and US6 Independent Test: explicit implement-only request, same PR branch, exact per-task verification, unchanged checkpoint, no merge/unrequested dispatch. Do not invent US6 acceptance scenarios or claim a passing test; approved plan must name implementation files and small follow-up tasks within budget (depends on US5 and reviewer decision).
+- [x] T020 [local: planning only] [US6] Resolve F23 with the reviewer before implementation; then extend `specs/006-cloud-tasks/plan.md` and `contracts/packet.md` with the chosen story-delegation boundary and caller-view cases for `tasksync-chat/test-cloud-story.cjs`. Trace FR-004/FR-005/FR-007/FR-014/FR-016/FR-017/FR-023/FR-024/FR-025 and US6 Independent Test: explicit implement-only request, same PR branch, exact per-task verification, unchanged checkpoint, no merge/unrequested dispatch. Done 2026-10-10: F23(a) documented eligibility/order/failure-stop/failed-task-only retry/derived aggregate status; F24(a) Held overlap releases at Needs review; F25(b) local timeout plus GitHub hard stop, no remote cancellation. Existing per-task run schema stays unchanged. Plan Later US6 names three implementation follow-ups/files; runtime-only cases remain PENDING. Evidence: `rtk node tasksync-chat/test-cloud-story.cjs` → `test-cloud-story: 5 passed, 0 failed, 5 matched, 6 pending` (existing queue/state caller cases, not whole-story delivery).
 
-**Checkpoint**: Blocked on F23: reviewer approves the story contract/test cases before implementation tasks are generated. US6 is not delivered by this planning task; its Independent Test still needs automated coverage and an explicitly requested live run.
+**Checkpoint**: F23(a) resolved and contract/caller cases recorded; schedule the three plan follow-ups after US5. US6 is not delivered by this planning task; six runtime cases remain PENDING, and its Independent Test still needs an explicitly requested live run. Local tests do not prove GitHub Actions or remote stop timing.
 
 ---
 
