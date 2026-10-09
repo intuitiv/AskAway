@@ -109,13 +109,16 @@ export function refusalFor(request: QueueRequest, runs: CloudRun[] = []): string
 async function prepare(request: QueueRequest, io: QueueIO, runs: CloudRun[]) {
     // The active PR URL, not the checkout remote, is the repository authority.
     const [, , , owner, repo, , number] = request.pr.split('/');
+    const refusal = refusalFor(request, runs);
+    if (refusal) { throw new Error(refusal); }
+    // Dry build refuses secrets before any GitHub call (006 T018); the real build below uses the PR head.
+    const dry = buildPacket(request.task, request.story, { slug: request.slug, attempt: 1, base: '0'.repeat(40), knownValues: io.knownValues() });
+    buildComment({ slug: request.slug, taskId: request.task.taskId, story: request.story.story, stage: request.task.stage, packetPath: dry.path, packetSha: '0'.repeat(40), knownValues: io.knownValues() });
     await io.gh.text(['auth', 'status']);
     const pr = await io.gh.json<{ state: string; head: { ref: string; sha: string; repo: { full_name: string; clone_url: string } } }>(['api', `repos/${owner}/${repo}/pulls/${number}`]);
     if (pr.state !== 'open') { throw new Error(`no active PR for ${request.slug}`); }
     const permission = await io.gh.json<{ permissions: { push: boolean } }>(['api', `repos/${pr.head.repo.full_name}`]);
     if (!permission.permissions?.push) { throw new Error(`no push permission on ${pr.head.repo.full_name}`); }
-    const refusal = refusalFor(request, runs);
-    if (refusal) { throw new Error(refusal); }
     const attempt = 1 + Math.max(0, ...runs.filter(run => run.slug === request.slug && run.taskId === request.task.taskId).map(run => run.attempt));
     const packet = buildPacket(request.task, request.story, { slug: request.slug, attempt, base: pr.head.sha, knownValues: io.knownValues() });
     buildComment({ slug: request.slug, taskId: request.task.taskId, story: request.story.story, stage: request.task.stage, packetPath: packet.path, packetSha: pr.head.sha, knownValues: io.knownValues() });
