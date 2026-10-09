@@ -350,3 +350,24 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 >
 > After doing this,
 > /sk.handoff store all teh rules and work and check all the completed tasks, lets continue tmr.
+
+### 2026-10-10, finish specs, UI cleanup, availability, Webex worker
+
+> Continue where you left. Finish all the remaining tasks, from 005, 006, 007 and 009. Then do 008.
+> Use workers to optimise the work. Ask all questions you need upfront so that you dont be blocked later.
+> We have this observability board for this month and tool calls and model wise split and all, i dont se much use with it. Remove it from UI.
+> But one thing would be helpful is, this month credits tracking for this month for this workspace (not all, only current workspace)
+> I am not using debug details, you can remove it, and memories tab also, dont show them.
+> Another UX thing is, Availablity. It is in comentary. But it should be on top, beside settings icon, View History icon, New session icon and all, there should be availability button like we have in microsoft teams app. And add a border for the whole wdiget(use gradient wdiget) reflecting the availability. When Validator is active or user is online or user is offline and so on. Lets make this widget UI, awesome.
+> And may be regular updates sent to telegram or webex can be dynamic, we only send when the availabilit is away. Thoughts?
+> And another idea, we can enhance webex tool to send message to a person or a space, read messages from space or a personal chat, and reply to a particular message. Sometimes i can ask, any updates on some space, or do somethign and update that person and all. I need a specific worker to send or read messages, where it has tools and we should tune that worker such that when we send any message to person, it should not be ai slop, if needed read my earlier responses in different webex spaces. so that agent should write like me, not as agent. Worker agent should be tuned like that. And it can be better but when asking something, it should be in simple english with some examples. It shouldnt exceed more than 20-30 words.
+
+### 2026-10-10, answers (1–5 of 11)
+
+> 1. i dont want to bloat shared banner. I cant see turn time and efficneicy even now.
+> 2. a
+> 3. remove dropdown from commentary. But for now we set it manually. UX is like mcrisoft teams availability.
+> 4. Okay
+> 5. add some evals for the webex prompt. And can you popup mac fingerprint? for permission, where show message and ask for permission?
+>
+> still reviewiing, dont start yet.

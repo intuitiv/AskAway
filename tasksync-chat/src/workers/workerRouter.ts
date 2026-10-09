@@ -240,6 +240,14 @@ export class WorkerRouter {
         return { status: 'CANCELLED' };
     }
 
+    /** Reserves an idle worker for a previously finished run before its session is relaunched. */
+    resumeRun(workerId: string, runId: string, packetId: string, estimatedSeconds: number): boolean {
+        const worker = this.workersById.get(workerId);
+        if (!worker || worker.state !== 'IDLE' || worker.active || worker.busyElsewhere) { return false; }
+        this.start(worker, { runId, packetId, estimatedSeconds, enqueuedAt: this.now() });
+        return true;
+    }
+
     /** Records a finished run and starts the next queued entry, if any. */
     complete(workerId: string, runId: string, usage: { contextTokens: number }): QueueEntry | undefined {
         const worker = this.workersById.get(workerId);

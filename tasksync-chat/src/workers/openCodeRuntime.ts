@@ -468,6 +468,10 @@ export class OpenCodeWorkerRuntime {
         if (!run.sessionId) { return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: 'no OpenCode session to resume' }; }
         if (!this.terminal(run.state)) { return this.view(run); }
         if (run.state === 'COMPLETED') { return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: 'run already completed' }; }
+        this.refreshFromLedger(run.workspace);
+        if (!this.router.resumeRun(run.workerId, run.runId, run.packet.slice(0, 40), 60)) {
+            return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: 'worker is no longer idle; submit fresh work' };
+        }
         run.state = 'STARTING';
         run.endedAt = undefined;
         run.reason = undefined;
