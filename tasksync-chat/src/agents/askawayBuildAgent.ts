@@ -31,6 +31,7 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - Do not perform a runtime file check before each command; treat RTK mode as a design-time/session-start decision.
 - If RTK is toggled during a chat, restart the agent session so RTK mode is re-evaluated.
 - Keep commands simple (avoid unnecessary pipes or chaining) so RTK can compress output effectively.
+- Never run a terminal command async or in the background (\`mode: async\`, \`isBackground: true\`), and never poll \`get_terminal_output\`/\`send_to_terminal\` (reviewer, 2026-10-11: "Never run these async tasks... they send notitication and they mess up cahce so badly"). Each completion notification is an extra full-context request that breaks the cache. One-shot commands run sync; anything long (gate, build, server, watcher) goes to a cheap worker (\`verify\` on Luna).
 - Never count RTK saved tokens as Copilot credits. RTK savings come from \`rtk gain\`; Copilot credits come from Copilot log \`copilotUsageNanoAiu\`.
 
 ## Observability Rules

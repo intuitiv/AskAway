@@ -407,3 +407,16 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > We have some code for live server, History, New session button and settings gear icon on teh top, I am not using any of them. ask_user, tool do we need it? we have this commentary tool and do we need some other tool for AITalk thing? We can remove ask_user tool also.
 > For all the UX work, create a storybook with all the simulation. I want to review the UX first.
 > It goes without saying, use workers to optimise cost.
+
+### 2026-10-11, answers (AITalk 1–8) and no async terminals
+
+> Never run these async tasks, i am trying very hard to save cost, the moment they run `async tasks`, they send notitication and they mess up cahce so badly. Add some instruction in all our agents, if needed to remove that. We have workers for that. And we are building a new capability, so they should use it.
+> 1. Name: AITalk or aiTalk
+> 2. Yes
+> 3. Okay
+> 4. WHat is agent progress lines?
+> 5. Sure or Run in some cheap worker. as workers are in opencode they deal with bash and all, we go out of vscode eco system
+> 6. Okay
+> 7. Sure. But thumbs down, dont need any box, user can reply to agent directly for that querion, by quoting or reply to it. I mean thumbs up will add anew messge quotintg sgant message and
+> 8.
+> **Still reviewining. DOnt start yet.**

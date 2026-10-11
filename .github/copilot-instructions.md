@@ -14,6 +14,7 @@ The reviewer's goals, decisions and requirements live in one place: [GOALS.md](.
 - VS Code does NOT hot-reload on `cp` — **RELOAD THE WINDOW** after deploy.
 - After editing `media/webview.js`, run `node --check media/webview.js` (tsc/esbuild never parse it).
 - Record proof after changes: compile result, deploy marker (`DEPLOYED OK`), or relevant log source.
+- Never run terminal commands async/background or poll terminal output (reviewer, 2026-10-11): completion notifications add full-context requests and break the cache. Sync for one-shot commands; long runs (gate, build, server) go to a cheap `verify` worker.
 
 ## Observability Rules (AskAway metrics)
 - Observability is per workspace — never aggregate logs across unrelated VS Code workspaceStorage folders.
