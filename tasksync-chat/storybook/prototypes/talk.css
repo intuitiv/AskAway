@@ -234,6 +234,14 @@
 .talk-sender.who-p3 { color: var(--who-p3); }
 
 .talk-text { white-space: pre-wrap; }
+.talk-more { display: block; margin: 2px 0 0; padding: 0; border: 0; background: none; color: var(--tk-mention); font-size: 13px; cursor: pointer; }
+.talk-more:hover { text-decoration: underline; }
+.talk-more:focus-visible { outline: 2px solid var(--tk-green); outline-offset: 2px; border-radius: 3px; }
+.talk-details { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--tk-border); font-size: 13px; }
+.talk-details p { margin: 0 0 4px; }
+.talk-details ul { margin: 0 0 4px; padding-left: 18px; }
+.talk-details li { margin-bottom: 2px; }
+.talk-details code { padding: 0 3px; border-radius: 3px; background: rgba(134, 150, 160, .2); font-family: var(--vscode-editor-font-family, Menlo, monospace); font-size: 12px; }
 .talk-mention { color: var(--tk-mention); font-weight: 700; }
 
 /* Time + ticks sit inside the bubble, bottom-right. */

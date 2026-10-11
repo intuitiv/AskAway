@@ -83,6 +83,51 @@ export function reactionsHtml(message) {
     return `<span class="talk-reaction" aria-label="Reactions">${pills}</span>`;
 }
 
+export const COLLAPSE_CHARS = 240;
+export const COLLAPSE_LINES = 4;
+const SUMMARY_CHARS = 140;
+
+// Short body for a long message: first line, cut at a word boundary.
+function summaryOf(text) {
+    const first = text.split('\n')[0];
+    if (first.length <= SUMMARY_CHARS && first.length < text.length) return first;
+    const cut = first.slice(0, SUMMARY_CHARS);
+    return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 40)).trimEnd()}…`;
+}
+
+// One rule for every participant: `details` hides behind Read more; so does any text over ~240 chars or 4 lines.
+export function splitBody(message) {
+    const text = message.text || '';
+    if (message.details) return { short: text, full: text, details: message.details, collapsible: true };
+    if (text.length > COLLAPSE_CHARS || text.split('\n').length > COLLAPSE_LINES) return { short: summaryOf(text), full: text, details: '', collapsible: true };
+    return { short: text, full: text, details: '', collapsible: false };
+}
+
+// Details support short "- item" lists and `code`; everything else is plain paragraphs.
+export function detailsHtml(details, members = defaultMembers) {
+    const out = [];
+    let list = [];
+    const flush = () => { if (list.length) { out.push(`<ul>${list.map(i => `<li>${i}</li>`).join('')}</ul>`); list = []; } };
+    const inline = line => textHtml(line, members).replace(/`([^`]+)`/g, '<code>$1</code>');
+    for (const line of details.split('\n')) {
+        if (/^\s*[-•] /.test(line)) list.push(inline(line.replace(/^\s*[-•] /, '')));
+        else { flush(); if (line.trim()) out.push(`<p>${inline(line)}</p>`); }
+    }
+    flush();
+    return out.join('');
+}
+
+export function bodyHtml(message, members = defaultMembers) {
+    if (!message.text && !message.details) return '';
+    const { short, full, details, collapsible } = splitBody(message);
+    const id = escapeHtml(message.id || '');
+    const open = !!message.expanded;
+    const text = `<span class="talk-text">${textHtml(open && !details ? full : short, members)}</span>`;
+    if (!collapsible) return text;
+    const body = open && details ? `<div class="talk-details" id="talk-details-${id}">${detailsHtml(details, members)}</div>` : '';
+    return `${text}${body}<button type="button" class="talk-more" data-more="${id}" aria-expanded="${open}"${open && details ? ` aria-controls="talk-details-${id}"` : ''}>${open ? 'Show less' : 'Read more'}</button>`;
+}
+
 export function bubbleHtml(message, { messages = [], members = defaultMembers, first = true } = {}) {
     const mine = message.author === 'You';
     const parent = message.replyTo && messages.find(m => m.id === message.replyTo);
@@ -91,7 +136,7 @@ export function bubbleHtml(message, { messages = [], members = defaultMembers, f
     const name = !mine && first ? `<span class="talk-sender ${whoClass(message.author)}">${escapeHtml(message.author)}</span>` : '';
     const avatar = mine ? '' : first ? `<span class="talk-avatar ${whoClass(message.author)}" aria-hidden="true">${escapeHtml(initialsOf(message.author))}</span>` : '<span class="talk-avatar-gap" aria-hidden="true"></span>';
     const trace = message.trace ? `<a class="talk-trace-link" href="#trace" data-tab="Trace">View trace ↗</a>` : '';
-    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'}" id="talk-${escapeHtml(message.id || '')}">${avatar}<div class="talk-bubble ${first ? 'tail' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${escapeHtml(message.id || '')}" aria-label="${escapeHtml(message.author)}: message. Right-click, long-press or press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${message.text ? `<span class="talk-text">${textHtml(message.text, members)}</span>` : ''}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${ticksHtml(message)}</span>${reactions}</div></div>`;
+    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'}" id="talk-${escapeHtml(message.id || '')}">${avatar}<div class="talk-bubble ${first ? 'tail' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${escapeHtml(message.id || '')}" aria-label="${escapeHtml(message.author)}: message. Right-click, long-press or press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${bodyHtml(message, members)}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${ticksHtml(message)}</span>${reactions}</div></div>`;
 }
 
 export function systemHtml(item) {
@@ -176,6 +221,8 @@ const today = [
     { id: 'y4', author: 'You', text: 'ok', time: '10:42', delivery: 'delivered', tool: 'read_file', reactions: [{ emoji: '👍', count: 1, by: ['Agent'] }] },
     { id: 'y5', author: 'You', text: 'thanks both', time: '10:43', delivery: 'posted', reactions: [{ emoji: '🙏', count: 1, by: ['Validator'] }] },
     { id: 'a3', author: 'Agent', text: 'Kept them collapsed. 12 checks passed.', time: '10:44', trace: true, reactions: [{ emoji: '👍', count: 1, mine: true, delivery: 'posted' }] },
+    { id: 'a6', author: 'Agent', text: 'Ship the score fix now or after the gate?', time: '10:46', details: 'Two ways to go:\n- A) Now: users get the fix today, but the gate has not seen it.\n- B) After the gate: about 20 minutes later, and it ships with a green run.\nI would pick `B` unless the score bug is blocking someone.' },
+    { id: 'v4', author: 'Validator', replyTo: 'a6', text: 'After the gate. The last two score changes both broke the Trace tab on first run, and the gate catches exactly that. Twenty minutes is cheap next to a rollback, and nobody is blocked on the score today, so there is no reason to skip the check. If the gate fails, fix forward and rerun it before shipping anything.', time: '10:47' },
     { kind: 'system', text: 'Agent left — joins again when you message it' },
 ];
 
@@ -201,7 +248,10 @@ export const liveScript = [
     { do: 'deliver', id: 'l6', tool: 'read_file', after: 1500 },
     { do: 'typing', who: 'Agent is typing…' },
     { do: 'add', message: { id: 'l5', author: 'Agent', text: 'Spacing is fixed. 12 checks passed.', time: '10:53', trace: true } },
-    { do: 'add', message: { id: 'l7', author: 'You', text: 'thanks', time: '10:54', delivery: 'posted' } },
+    { do: 'add', message: { id: 'l8', author: 'Agent', text: 'Ship the score fix now or after the gate?', time: '10:54', details: 'Two ways to go:\n- A) Now: users get the fix today, but the gate has not seen it.\n- B) After the gate: about 20 minutes later, and it ships with a green run.' } },
+    { do: 'typing', who: 'Validator is typing…' },
+    { do: 'add', message: { id: 'l9', author: 'Validator', replyTo: 'l8', text: 'After the gate. The last two score changes both broke the Trace tab on first run, and the gate catches exactly that. Twenty minutes is cheap next to a rollback, and nobody is blocked on the score today. If the gate fails, fix forward and rerun it before shipping.', time: '10:54' } },
+    { do: 'add', message: { id: 'l7', author: 'You', text: 'thanks', time: '10:55', delivery: 'posted' } },
     { do: 'react', id: 'l7', emoji: '🙏', by: 'Validator', after: 1200 },
     { do: 'deliver', id: 'l7', tool: 'commentary', after: 1500 },
 ];

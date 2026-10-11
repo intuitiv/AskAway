@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { talkHtml, traceHtml, scenarios, traceSessions, liveStart, liveScript, ticksHtml, whoClass, reactionNote } from './talk.js';
+import { talkHtml, traceHtml, scenarios, traceSessions, liveStart, liveScript, ticksHtml, whoClass, reactionNote, splitBody, bodyHtml } from './talk.js';
 import { buildCommentaryKit } from '../kit.js';
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const count = (html, pattern) => (html.match(pattern) || []).length;
@@ -197,4 +197,43 @@ test('ticks: Full shows both states; Live goes single grey to double blue after 
     assert.match(css, /\.talk-ticks\.posted \{ color: var\(--tk-tick-grey\)/);
     assert.match(css, /\.talk-ticks\.delivered \{ color: var\(--tk-tick-blue\)/);
     assert.match(css, /--tk-tick-blue: #53bdeb/);
+});
+
+test('Read more: details hide behind a button; expanded shows them with Show less', () => {
+    const message = { id: 'q', author: 'Agent', text: 'Ship it now or later?', details: 'Options:\n- A) now: fast\n- B) later: safe\nPick `B`.', time: '1' };
+    const closed = bodyHtml(message);
+    assert.match(closed, /Ship it now or later\?/);
+    assert.match(closed, /<button type="button" class="talk-more" data-more="q" aria-expanded="false">Read more<\/button>/);
+    assert.doesNotMatch(closed, /class="talk-details"|A\) now/);
+    const open = bodyHtml({ ...message, expanded: true });
+    assert.match(open, /aria-expanded="true" aria-controls="talk-details-q">Show less</);
+    assert.match(open, /<div class="talk-details" id="talk-details-q"><p>Options:<\/p><ul><li>A\) now: fast<\/li><li>B\) later: safe<\/li><\/ul><p>Pick <code>B<\/code>\.<\/p>/);
+    assert.match(talkHtml([message]), /data-more="q"/);
+});
+
+test('Read more: long text auto-collapses to a summary; short text has no link; every participant shares it', () => {
+    const long = 'First line that explains the answer. ' + 'More words here. '.repeat(20);
+    for (const author of ['Agent', 'Validator', 'build-1', 'You']) {
+        const html = bodyHtml({ id: 'x', author, text: long });
+        assert.match(html, /Read more/);
+        assert.ok(html.length < long.length, `${author} body is shortened`);
+        assert.match(html, /…<\/span>|\.<\/span>/);
+    }
+    assert.equal(splitBody({ text: 'a\nb\nc\nd\ne' }).collapsible, true);
+    assert.equal(splitBody({ text: 'a short one' }).collapsible, false);
+    assert.doesNotMatch(bodyHtml({ id: 's', text: 'ok' }), /talk-more/);
+    const expanded = bodyHtml({ id: 'x', author: 'Agent', text: long, expanded: true });
+    assert.ok(expanded.includes('More words here. More words here.'));
+    assert.match(expanded, /Show less/);
+});
+
+test('Full and Live stories include the short Agent question with details and a long collapsed Validator answer', () => {
+    const full = talkHtml(scenarios.Full.messages);
+    assert.match(full, /Ship the score fix now or after the gate\?/);
+    assert.match(full, /data-more="a6"[^>]*aria-expanded="false"/);
+    assert.match(full, /data-more="v4"[^>]*aria-expanded="false"/);
+    assert.doesNotMatch(full, /about 20 minutes later/);
+    assert.ok(liveScript.some(s => s.message?.id === 'l8' && s.message.details));
+    assert.ok(liveScript.some(s => s.message?.id === 'l9' && splitBody(s.message).collapsible));
+    assert.match(read('./mount.js'), /message\.expanded = !message\.expanded/);
 });

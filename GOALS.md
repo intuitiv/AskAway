@@ -459,3 +459,5 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > Teach emojies to agent and validator also or adapter in between can do that. I mean, if i say somethign which is trivial, validator or agent can simply reply with emoji with a thumbs up or a folding emoji. Need not reply always back.
 > On hover we show these emojies, but may be show on some right click or something, hover showing is kinda disturbing when i just scroll thru the conversation.
 > Double tick is not in whatsapp style.
+
+> With this style of conversation, agent cannot ask some lengthy questions, may be a short question and and longer version can be under show more or soemthing? So that it doesnt distract the ux. For long conversations we have main vscode chat. this is for quickies.

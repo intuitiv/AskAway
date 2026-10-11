@@ -133,6 +133,11 @@ export function mountTalk(options = {}) {
             paint({ stick: true });
             const area = root.querySelector('.talk-composer textarea'); area.focus(); area.setSelectionRange(draft.length, draft.length);
         }
+        if (button.dataset.more) {
+            const message = messages.find(m => m.id === button.dataset.more);
+            if (message) { message.expanded = !message.expanded; paint(); root.querySelector(`.talk-more[data-more="${CSS.escape(message.id)}"]`)?.focus(); }
+            return;
+        }
         if (button.hasAttribute('data-react-more')) { const extra = button.parentElement.querySelector('.talk-react-extra'); extra.hidden = !extra.hidden; return; }
         if (button.dataset.react) {
             const message = messages.find(m => m.id === button.dataset.msg);
