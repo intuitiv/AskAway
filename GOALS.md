@@ -449,3 +449,7 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > - When user is away and user asks valdiator as proxy, i mean after beta, valdiator will read all mesages when user is away.
 >
 > Storybook seems old. If thats new, i am very disapppointed, i asked for whatsapp style chat. but i dont see one.
+
+### 2026-10-12, Storybook review
+
+> UI is excellent. I was seeing some old storybook. I dont see an option to thumbs up or down someothers message.

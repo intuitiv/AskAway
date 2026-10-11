@@ -269,18 +269,48 @@
 .talk-quote-text { color: var(--tk-in-fg); opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .talk-row.out .talk-quote-text { color: var(--tk-out-fg); }
 
+/* ---- Floating reaction bar (hover, focus or Enter) ---- */
+.talk-bubble[data-msg] { outline: 0; }
+.talk-bubble[data-msg]:focus-visible { box-shadow: 0 0 0 2px var(--tk-green); }
+.talk-react-bar {
+    position: absolute;
+    top: -34px;
+    left: 0;
+    z-index: 5;
+    display: none;
+    align-items: center;
+    gap: 2px;
+    padding: 3px 6px;
+    border: 1px solid var(--tk-border);
+    border-radius: 20px;
+    background: var(--tk-surface);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .4);
+    white-space: nowrap;
+}
+.talk-react-bar::after { content: ''; position: absolute; left: 0; right: 0; bottom: -8px; height: 8px; }
+.talk-bubble[data-msg]:hover > .talk-react-bar,
+.talk-bubble[data-msg]:focus-within > .talk-react-bar,
+.talk-bubble.reacting > .talk-react-bar { display: flex; }
+.talk-react-extra { display: inline-flex; gap: 2px; }
+.talk-react-extra[hidden] { display: none; }
+.talk-react-btn { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; font-size: 17px; line-height: 28px; transition: transform .12s; }
+.talk-react-btn:hover, .talk-react-btn:focus-visible { background: rgba(134, 150, 160, .25); outline: 0; transform: scale(1.25); }
+.talk-react-btn.more { font-size: 16px; color: var(--tk-muted); }
+
 /* ---- Reaction pill overlapping the bottom edge ---- */
+.talk-reaction-pill { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border: 1px solid var(--tk-border); border-radius: 12px; background: var(--tk-surface); box-shadow: var(--tk-shadow); color: var(--tk-fg); font-size: 12px; line-height: 18px; }
+.talk-reaction-pill small { color: var(--tk-muted); font-size: 11px; }
+.talk-reaction-pill.mine { border-color: var(--tk-green); background: rgba(0, 168, 132, .22); }
+.talk-reaction-pill .talk-ticks { font-size: 10px; padding-right: 2px; }
+@media (prefers-reduced-motion: reduce) { .talk-react-btn { transition: none; } }
+
 .talk-reaction {
     position: absolute;
     bottom: -13px;
     left: 8px;
-    padding: 1px 6px;
-    border: 1px solid var(--tk-border);
-    border-radius: 12px;
-    background: var(--tk-surface);
-    box-shadow: var(--tk-shadow);
-    color: var(--tk-fg);
-    font-size: 12px;
+    display: inline-flex;
+    gap: 3px;
+    z-index: 2;
 }
 .talk-row.out .talk-reaction { left: auto; right: 8px; }
 

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { talkHtml, traceHtml, scenarios, traceSessions, liveStart, liveScript, ticksHtml, whoClass } from './talk.js';
+import { talkHtml, traceHtml, scenarios, traceSessions, liveStart, liveScript, ticksHtml, whoClass, reactionNote } from './talk.js';
 import { buildCommentaryKit } from '../kit.js';
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const count = (html, pattern) => (html.match(pattern) || []).length;
@@ -94,4 +94,61 @@ test('css is readable, 420px, reduced-motion aware; stories live under AITalk/',
     assert.match(read('../stories/Trace.stories.js'), /title: 'AITalk\/Trace tab'/);
     assert.match(read('./mount.js'), /prefers-reduced-motion/);
     assert.match(read('./mount.js'), /setInterval/);
+});
+
+test('every message from someone else gets a focusable bubble with a reaction bar; your own do not', () => {
+    const messages = [
+        { id: 'a', author: 'Agent', text: 'hi', time: '1' },
+        { id: 'v', author: 'Validator', text: 'hello', time: '2' },
+        { id: 'w', author: 'build-1', text: 'yo', time: '3' },
+        { id: 'y', author: 'You', text: 'mine', time: '4' },
+    ];
+    const html = talkHtml(messages);
+    assert.equal(count(html, /class="talk-react-bar"/g), 3);
+    assert.equal(count(html, /<div class="talk-bubble[^"]*"[^>]*tabindex="0" data-msg=/g), 3);
+    for (const emoji of ['👍', '👎', '❤️', '😂', '🙏']) assert.equal(count(html, new RegExp(`class="talk-react-btn " data-react="${emoji}" data-msg="[avw]"`, 'g')), 3);
+    assert.equal(count(html, /data-react-more/g), 3);
+    assert.match(html, /role="menu" aria-label="React to build-1"/);
+    // Your own bubble has neither bar nor tabindex.
+    assert.match(html, /id="talk-y"><div class="talk-bubble[^"]*">/);
+});
+
+test('reaction tooltips say who receives it', () => {
+    assert.match(reactionNote('Agent', '👍'), /Delivered to Agent with its next tool call/);
+    assert.match(reactionNote('build-1', '❤️'), /Delivered to build-1/);
+    assert.match(reactionNote('Validator', '👎'), /learning/);
+    const html = talkHtml([{ id: 'a', author: 'Agent', text: 'x', reactions: [] }]);
+    assert.match(html, /data-react="👍"[^>]*title="👍 · Delivered to Agent with its next tool call"/);
+    const v = talkHtml([{ id: 'v', author: 'Validator', text: 'x' }]);
+    assert.match(v, /data-react="👎"[^>]*title="👎 · Marks this for Validator learning"/);
+});
+
+test('reaction pills show count, your own state and ✓ → ✓✓ delivery in the tooltip', () => {
+    const html = talkHtml([{ id: 'a', author: 'Agent', text: 'x', reactions: [
+        { emoji: '👍', count: 3, mine: true, delivery: 'posted' },
+        { emoji: '🙏', count: 1, mine: true, delivery: 'delivered', tool: 'read_file' },
+        '❤️ 2',
+    ] }]);
+    assert.match(html, /talk-reaction-pill mine"[^>]*aria-pressed="true" title="[^"]*✓ posted[^"]*">👍 <small>3<\/small><span class="talk-ticks posted">✓</);
+    assert.match(html, /title="[^"]*✓✓ delivered · read_file[^"]*">🙏<span class="talk-ticks delivered">✓✓</);
+    assert.match(html, /aria-pressed="false" title="2 reacted">❤️ <small>2<\/small>/);
+    // Validator reactions have no delivery ticks: Validator learns from them.
+    const v = talkHtml([{ id: 'v', author: 'Validator', text: 'x', reactions: [{ emoji: '👎', count: 1, mine: true }] }]);
+    assert.match(v, /talk-reaction-pill mine/);
+    assert.doesNotMatch(v, /talk-reaction"[^]*talk-ticks/);
+});
+
+test('Full conversation and Live simulation show pre-reacted messages; quiz votes stay', () => {
+    assert.ok(count(talkHtml(scenarios.Full.messages), /talk-reaction-pill/g) >= 4);
+    assert.match(talkHtml(liveStart.concat(liveScript.filter(s => s.do === 'add').map(s => s.message))), /talk-reaction-pill mine/);
+    assert.ok(liveScript.some(s => s.do === 'deliverReaction'));
+    assert.match(talkHtml(scenarios.Full.messages), /data-vote="down"/);
+});
+
+test('keyboard handling and hover/focus css exist', () => {
+    const mount = read('./mount.js');
+    for (const key of ['Enter', 'ArrowRight', 'ArrowLeft', 'Escape']) assert.ok(mount.includes(`'${key}'`));
+    const css = read('./talk.css');
+    assert.match(css, /\.talk-bubble\[data-msg\]:hover > \.talk-react-bar/);
+    assert.match(css, /:focus-within > \.talk-react-bar/);
 });

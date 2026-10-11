@@ -51,6 +51,35 @@ export function mountTalk(options = {}) {
         later(() => { messages = messages.map(m => m.id === id ? { ...m, delivery: 'delivered', tool: 'read_file' } : m); paint(); }, delivered ?? 1600);
     };
 
+    // Toggle your reaction; a count shows when several people reacted.
+    const react = (message, emoji) => {
+        const list = (message.reactions || []).map(r => typeof r === 'string' ? { emoji: r.split(' ')[0], count: Number(r.split(' ')[1]) || 1 } : { ...r });
+        const found = list.find(r => r.emoji === emoji);
+        if (found?.mine) {
+            found.count -= 1; found.mine = false; delete found.delivery; delete found.tool;
+            if (found.count <= 0) list.splice(list.indexOf(found), 1);
+        } else if (found) { found.count += 1; found.mine = true; found.delivery = 'posted'; }
+        else list.push({ emoji, count: 1, mine: true, delivery: 'posted' });
+        message.reactions = list;
+        paint();
+        focusBubble(message.id);
+        if (message.author !== 'Validator') later(() => { message.reactions = message.reactions.map(r => r.mine && r.emoji === emoji ? { ...r, delivery: 'delivered', tool: 'read_file' } : r); paint(); }, 1600);
+    };
+    const focusBubble = id => root.querySelector(`.talk-bubble[data-msg="${CSS.escape(id)}"]`)?.focus();
+
+    root.addEventListener('keydown', event => {
+        const bubble = event.target.closest?.('.talk-bubble[data-msg]');
+        if (!bubble) return;
+        const buttons = [...bubble.querySelectorAll('.talk-react-bar .talk-react-btn')].filter(b => !b.closest('[hidden]'));
+        if (event.target === bubble && event.key === 'Enter') { event.preventDefault(); bubble.classList.add('reacting'); buttons[0]?.focus(); return; }
+        const index = buttons.indexOf(event.target);
+        if (index < 0) return;
+        if (event.key === 'ArrowRight') { event.preventDefault(); buttons[(index + 1) % buttons.length].focus(); }
+        if (event.key === 'ArrowLeft') { event.preventDefault(); buttons[(index - 1 + buttons.length) % buttons.length].focus(); }
+        if (event.key === 'Escape') { event.preventDefault(); bubble.classList.remove('reacting'); bubble.focus(); }
+    });
+    root.addEventListener('focusout', event => { const bubble = event.target.closest?.('.talk-bubble.reacting'); if (bubble && !bubble.contains(event.relatedTarget)) bubble.classList.remove('reacting'); });
+
     root.addEventListener('input', event => { if (event.target.matches('.talk-composer textarea')) { draft = event.target.value; const hasPopover = !!root.querySelector('.talk-mentions'); if (draft.endsWith('@') !== hasPopover) { paint(); const area = root.querySelector('.talk-composer textarea'); area.focus(); area.setSelectionRange(draft.length, draft.length); } } });
 
     root.addEventListener('click', event => {
@@ -66,6 +95,11 @@ export function mountTalk(options = {}) {
             draft = `${draft.replace(/@$/, '')}@${name} `;
             paint({ stick: true });
             const area = root.querySelector('.talk-composer textarea'); area.focus(); area.setSelectionRange(draft.length, draft.length);
+        }
+        if (button.hasAttribute('data-react-more')) { const extra = button.parentElement.querySelector('.talk-react-extra'); extra.hidden = !extra.hidden; return; }
+        if (button.dataset.react) {
+            const message = messages.find(m => m.id === button.dataset.msg);
+            if (message) react(message, button.dataset.react);
         }
         if (button.dataset.vote) {
             const message = messages.find(m => m.id === button.dataset.msg);
@@ -100,6 +134,7 @@ export function mountTalk(options = {}) {
             if (!step) return stop();
             if (step.do === 'typing') typing = step.who;
             if (step.do === 'add') { typing = ''; messages.push(step.message); }
+            if (step.do === 'deliverReaction') messages = messages.map(m => m.id === step.id ? { ...m, reactions: (m.reactions || []).map(r => r.mine ? { ...r, delivery: 'delivered', tool: step.tool } : r) } : m);
             if (step.do === 'deliver') messages = messages.map(m => m.id === step.id ? { ...m, delivery: 'delivered', tool: step.tool } : m);
             paint({ stick: true });
         };

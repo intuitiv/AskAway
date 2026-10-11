@@ -42,15 +42,52 @@ export function questionsHtml(message, members) {
     return `<ol class="talk-questions">${message.questions.map((q, i) => `<li class="talk-question" data-question="${i}"><div class="talk-q">${escapeHtml(q.question)}</div><div class="talk-a">${textHtml(q.answer, members)}</div><div class="talk-votes"><button type="button" data-vote="up" data-msg="${escapeHtml(message.id)}" data-q="${i}" aria-label="Approve answer ${i + 1}" aria-pressed="${q.vote === 'up'}">👍</button><button type="button" data-vote="down" data-msg="${escapeHtml(message.id)}" data-q="${i}" aria-label="Reject answer ${i + 1}" aria-pressed="${q.vote === 'down'}">👎</button></div></li>`).join('')}</ol>`;
 }
 
+export const reactionChoices = ['👍', '👎', '❤️', '😂', '🙏'];
+export const moreReactions = ['🎉', '👀', '✅', '🤔'];
+
+// Reactions come as {emoji, count, mine, delivery, tool} or legacy strings like '👍 2'.
+export function normalizeReactions(list = []) {
+    return list.map(r => {
+        if (typeof r !== 'string') return { count: 1, ...r };
+        const [emoji, count] = r.split(' ');
+        return { emoji, count: Number(count) || 1, mine: false };
+    });
+}
+
+// Who receives a reaction: Validator learns from it, everyone else gets it with its next tool call.
+export function reactionNote(author, emoji) {
+    if (author === 'Validator') return emoji === '👎' ? 'Marks this for Validator learning' : 'Validator sees every reaction';
+    return `Delivered to ${author} with its next tool call`;
+}
+
+export function reactBarHtml(message) {
+    const button = (emoji, extra = '') => `<button type="button" role="menuitem" tabindex="-1" class="talk-react-btn ${extra}" data-react="${emoji}" data-msg="${escapeHtml(message.id || '')}" aria-label="React ${emoji}" title="${emoji} · ${escapeHtml(reactionNote(message.author, emoji))}">${emoji}</button>`;
+    return `<div class="talk-react-bar" role="menu" aria-label="React to ${escapeHtml(message.author)}">${reactionChoices.map(e => button(e)).join('')}<button type="button" role="menuitem" tabindex="-1" class="talk-react-btn more" data-react-more aria-label="More reactions" title="More reactions">+</button><span class="talk-react-extra" hidden>${moreReactions.map(e => button(e)).join('')}</span></div>`;
+}
+
+export function reactionsHtml(message) {
+    const list = normalizeReactions(message.reactions);
+    if (!list.length) return '';
+    const pills = list.map(r => {
+        const delivered = r.delivery === 'delivered';
+        const tip = r.mine
+            ? (message.author === 'Validator' ? reactionNote('Validator', r.emoji) : `${reactionNote(message.author, r.emoji)} · ${delivered ? `✓✓ delivered · ${r.tool || 'tool call'}` : '✓ posted'}`)
+            : `${r.count} reacted`;
+        const ticks = r.mine && message.author !== 'Validator' ? `<span class="talk-ticks ${delivered ? 'delivered' : 'posted'}">${delivered ? '✓✓' : '✓'}</span>` : '';
+        return `<button type="button" class="talk-reaction-pill ${r.mine ? 'mine' : ''}" data-react="${r.emoji}" data-msg="${escapeHtml(message.id || '')}" aria-pressed="${!!r.mine}" title="${escapeHtml(tip)}">${r.emoji}${r.count > 1 ? ` <small>${r.count}</small>` : ''}${ticks}</button>`;
+    }).join('');
+    return `<span class="talk-reaction" aria-label="Reactions">${pills}</span>`;
+}
+
 export function bubbleHtml(message, { messages = [], members = defaultMembers, first = true } = {}) {
     const mine = message.author === 'You';
     const parent = message.replyTo && messages.find(m => m.id === message.replyTo);
     const quote = message.quote || (parent && { author: parent.author, text: parent.text });
-    const reactions = message.reactions?.length ? `<span class="talk-reaction" aria-label="Reactions">${message.reactions.map(escapeHtml).join(' ')}</span>` : '';
+    const reactions = reactionsHtml(message);
     const name = !mine && first ? `<span class="talk-sender ${whoClass(message.author)}">${escapeHtml(message.author)}</span>` : '';
     const avatar = mine ? '' : first ? `<span class="talk-avatar ${whoClass(message.author)}" aria-hidden="true">${escapeHtml(initialsOf(message.author))}</span>` : '<span class="talk-avatar-gap" aria-hidden="true"></span>';
     const trace = message.trace ? `<a class="talk-trace-link" href="#trace" data-tab="Trace">View trace ↗</a>` : '';
-    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'}" id="talk-${escapeHtml(message.id || '')}">${avatar}<div class="talk-bubble ${first ? 'tail' : ''} ${message.questions ? 'has-quiz' : ''} ${message.reactions?.length ? 'has-reaction' : ''}">${name}${quote ? quoteHtml(quote, members) : ''}${message.text ? `<span class="talk-text">${textHtml(message.text, members)}</span>` : ''}${message.questions ? questionsHtml(message, members) : ''}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${ticksHtml(message)}</span>${reactions}</div></div>`;
+    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'}" id="talk-${escapeHtml(message.id || '')}">${avatar}<div class="talk-bubble ${first ? 'tail' : ''} ${message.questions ? 'has-quiz' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${escapeHtml(message.id || '')}" aria-label="${escapeHtml(message.author)}: message. Press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${message.text ? `<span class="talk-text">${textHtml(message.text, members)}</span>` : ''}${message.questions ? questionsHtml(message, members) : ''}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${ticksHtml(message)}</span>${reactions}</div></div>`;
 }
 
 export function systemHtml(item) {
@@ -108,7 +145,7 @@ const earlier = [
     { id: 'e3', author: 'Agent', text: 'Tab strip is in webview.js, the chat tab is separate.', time: '09:05', trace: true },
     { id: 'e4', author: 'Validator', text: 'Remove the chat tab, commentary becomes the first one.', time: '09:06' },
     { id: 'e5', author: 'You', text: 'yes, do that', time: '09:07', delivery: 'delivered', tool: 'read_file' },
-    { id: 'e6', author: 'Agent', text: 'Done. Tabs are AITalk, Specs, Trace, Workers, Settings.', time: '09:20', reactions: ['👍'] },
+    { id: 'e6', author: 'Agent', text: 'Done. Tabs are AITalk, Specs, Trace, Workers, Settings.', time: '09:20', reactions: [{ emoji: '👍', count: 1, mine: true, delivery: 'delivered', tool: 'read_file' }, { emoji: '🙏', count: 1 }] },
     { id: 'e7', author: 'You', text: 'good, thanks', time: '09:21', delivery: 'delivered', tool: 'commentary' },
     { id: 'e8', author: 'Agent', text: 'Tests pass. Stopping here for today.', time: '09:40' },
     { id: 'e9', author: 'Agent', text: 'Metrics tab renamed to Trace.', time: '09:41', trace: true },
@@ -124,7 +161,7 @@ const today = [
     { id: 'y1', author: 'You', text: '@Agent keep it narrow, 420px', time: '10:33', delivery: 'delivered', tool: 'commentary' },
     { kind: 'system', text: 'build-1 joined' },
     { id: 'w1', author: 'build-1', text: '@Validator should the reply preview stay on one line?', time: '10:35' },
-    { id: 'v1', author: 'Validator', text: 'Yes. Open the full quote on click.', replyTo: 'w1', time: '10:35', reactions: ['👍 2'] },
+    { id: 'v1', author: 'Validator', text: 'Yes. Open the full quote on click.', replyTo: 'w1', time: '10:35', reactions: [{ emoji: '👍', count: 2 }, { emoji: '👎', count: 1, mine: true }] },
     { kind: 'system', text: 'build-1 left' },
     { id: 'v2', author: 'Validator', text: 'Agent asked two things. My answers:', time: '10:38', questions: [
         { question: 'Keep the name AITalk?', answer: 'Yes, AITalk for beta.', vote: 'up' },
@@ -132,7 +169,7 @@ const today = [
     ] },
     { id: 'y2', author: 'You', quote: { author: 'Agent', text: 'Keep the name AITalk?' }, text: 'Yes, AITalk for beta.', time: '10:39', delivery: 'delivered', tool: 'read_file' },
     { id: 'y3', author: 'You', quote: { author: 'Agent', text: 'Hide old progress lines?' }, text: 'No, keep them collapsed, not deleted.', time: '10:40', delivery: 'posted' },
-    { id: 'a3', author: 'Agent', text: 'Kept them collapsed. 12 checks passed.', time: '10:44', trace: true, reactions: ['👍 1'] },
+    { id: 'a3', author: 'Agent', text: 'Kept them collapsed. 12 checks passed.', time: '10:44', trace: true, reactions: [{ emoji: '👍', count: 1, mine: true, delivery: 'posted' }] },
     { kind: 'system', text: 'Agent left — joins again when you message it' },
 ];
 
@@ -145,8 +182,9 @@ export const liveStart = [
 
 export const liveScript = [
     { do: 'typing', who: 'Agent is typing…' },
-    { do: 'add', message: { id: 'l2', author: 'Agent', text: 'On it.', time: '10:50' } },
+    { do: 'add', message: { id: 'l2', author: 'Agent', text: 'On it.', time: '10:50', reactions: [{ emoji: '👍', count: 1, mine: true, delivery: 'posted' }] } },
     { do: 'deliver', id: 'l1', tool: 'read_file' },
+    { do: 'deliverReaction', id: 'l2', tool: 'read_file' },
     { do: 'add', message: { kind: 'system', text: 'build-1 joined' } },
     { do: 'add', message: { id: 'l3', author: 'build-1', text: '@Validator is 8px padding enough?', time: '10:51' } },
     { do: 'typing', who: 'Validator is typing…' },
