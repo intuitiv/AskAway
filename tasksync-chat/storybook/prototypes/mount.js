@@ -31,6 +31,7 @@ export function mountTalk(options = {}) {
         root.innerHTML = `<style>${cssText}\n${VSCODE_DARK_THEME}\n${prototypeCss}</style>${talkHtml(messages, { ...options, members, typing, draft, reply, popover: draft.endsWith('@'), trace: traceHtml(traceSessions, traceRowsHtml) })}`;
         const next = thread();
         if (!next) return;
+        if (openId) root.querySelector(`.talk-bubble[data-msg="${CSS.escape(openId)}"]`)?.classList.add('reacting');
         if (previousTop === undefined) next.scrollTop = options.unread ? Math.max(0, next.scrollHeight - next.clientHeight - 260) : next.scrollHeight;
         else if (stick || wasAtBottom) next.scrollTop = next.scrollHeight;
         else next.scrollTop = previousTop;
@@ -61,24 +62,60 @@ export function mountTalk(options = {}) {
         } else if (found) { found.count += 1; found.mine = true; found.delivery = 'posted'; }
         else list.push({ emoji, count: 1, mine: true, delivery: 'posted' });
         message.reactions = list;
+        openId = null;
         paint();
         focusBubble(message.id);
+        const added = list.find(r => r.emoji === emoji)?.mine;
+        if (added && message.author === 'Validator') {
+            const parent = messages.find(m => m.id === message.replyTo);
+            const quote = parent ? { author: parent.author, text: parent.text } : { author: message.author, text: message.text };
+            // 👍 = use this answer: post it as your reply quoting the question. 👎 only marks it for learning and opens a quoted reply.
+            if (emoji === '👍' && message.proposal) post({ quote, text: message.proposal });
+            if (emoji === '👎') { reply = quote; paint(); root.querySelector('.talk-composer textarea').focus(); }
+        }
         if (message.author !== 'Validator') later(() => { message.reactions = message.reactions.map(r => r.mine && r.emoji === emoji ? { ...r, delivery: 'delivered', tool: 'read_file' } : r); paint(); }, 1600);
     };
     const focusBubble = id => root.querySelector(`.talk-bubble[data-msg="${CSS.escape(id)}"]`)?.focus();
 
+    // The reaction bar never opens on hover (scrolling used to trigger it). It opens on right-click, long-press or keyboard.
+    let openId = null;
+    let pressTimer;
+    const barButtons = bubble => [...bubble.querySelectorAll('.talk-react-bar .talk-react-btn')].filter(b => !b.closest('[hidden]'));
+    const applyOpen = () => root.querySelectorAll('.talk-bubble.reacting').forEach(b => { if (b.dataset.msg !== openId) b.classList.remove('reacting'); });
+    const openBar = (bubble, { focus = false } = {}) => {
+        openId = bubble.dataset.msg;
+        applyOpen();
+        bubble.classList.add('reacting');
+        if (focus) barButtons(bubble)[0]?.focus();
+    };
+    const closeBar = () => { openId = null; applyOpen(); };
+
+    root.addEventListener('contextmenu', event => {
+        const bubble = event.target.closest?.('.talk-bubble[data-msg]');
+        if (!bubble) return;
+        event.preventDefault();
+        openBar(bubble);
+    });
+    root.addEventListener('pointerdown', event => {
+        const bubble = event.target.closest?.('.talk-bubble[data-msg]');
+        if (!bubble || event.pointerType !== 'touch' || event.target.closest('.talk-react-bar')) return;
+        clearTimeout(pressTimer);
+        pressTimer = setTimeout(() => openBar(bubble), 500);
+    });
+    for (const type of ['pointerup', 'pointercancel', 'pointermove']) root.addEventListener(type, () => clearTimeout(pressTimer));
+    root.addEventListener('scroll', () => { clearTimeout(pressTimer); if (openId) closeBar(); }, true);
     root.addEventListener('keydown', event => {
         const bubble = event.target.closest?.('.talk-bubble[data-msg]');
         if (!bubble) return;
-        const buttons = [...bubble.querySelectorAll('.talk-react-bar .talk-react-btn')].filter(b => !b.closest('[hidden]'));
-        if (event.target === bubble && event.key === 'Enter') { event.preventDefault(); bubble.classList.add('reacting'); buttons[0]?.focus(); return; }
+        const buttons = barButtons(bubble);
+        if (event.target === bubble && (event.key === 'Enter' || event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) { event.preventDefault(); openBar(bubble, { focus: true }); return; }
         const index = buttons.indexOf(event.target);
         if (index < 0) return;
         if (event.key === 'ArrowRight') { event.preventDefault(); buttons[(index + 1) % buttons.length].focus(); }
         if (event.key === 'ArrowLeft') { event.preventDefault(); buttons[(index - 1 + buttons.length) % buttons.length].focus(); }
-        if (event.key === 'Escape') { event.preventDefault(); bubble.classList.remove('reacting'); bubble.focus(); }
+        if (event.key === 'Escape') { event.preventDefault(); closeBar(); bubble.focus(); }
     });
-    root.addEventListener('focusout', event => { const bubble = event.target.closest?.('.talk-bubble.reacting'); if (bubble && !bubble.contains(event.relatedTarget)) bubble.classList.remove('reacting'); });
+    root.addEventListener('click', event => { if (openId && !event.target.closest('.talk-react-bar')) closeBar(); }, true);
 
     root.addEventListener('input', event => { if (event.target.matches('.talk-composer textarea')) { draft = event.target.value; const hasPopover = !!root.querySelector('.talk-mentions'); if (draft.endsWith('@') !== hasPopover) { paint(); const area = root.querySelector('.talk-composer textarea'); area.focus(); area.setSelectionRange(draft.length, draft.length); } } });
 
@@ -101,20 +138,6 @@ export function mountTalk(options = {}) {
             const message = messages.find(m => m.id === button.dataset.msg);
             if (message) react(message, button.dataset.react);
         }
-        if (button.dataset.vote) {
-            const message = messages.find(m => m.id === button.dataset.msg);
-            const q = message?.questions?.[Number(button.dataset.q)];
-            if (!q || q.vote === button.dataset.vote) return;
-            q.vote = button.dataset.vote;
-            if (button.dataset.vote === 'up') {
-                post({ quote: { author: 'Agent', text: q.question }, text: q.answer });
-            } else {
-                // 👎 only marks the item for Validator learning; You answer by quoting.
-                reply = { author: 'Agent', text: q.question };
-                paint();
-                root.querySelector('.talk-composer textarea').focus();
-            }
-        }
         if (button.hasAttribute('data-send')) {
             const text = root.querySelector('.talk-composer textarea').value.trim();
             if (!text) return;
@@ -128,19 +151,24 @@ export function mountTalk(options = {}) {
 
     if (options.live) {
         const script = [...options.live.script];
-        const tick = () => {
-            if (!root.isConnected && root.dataset.mounted) return stop();
-            const step = script.shift();
-            if (!step) return stop();
+        let connected = false;
+        const run = step => {
+            // Stop once the story was shown and then removed from the page.
+            if (root.isConnected) connected = true;
+            else if (connected) return;
             if (step.do === 'typing') typing = step.who;
             if (step.do === 'add') { typing = ''; messages.push(step.message); }
-            if (step.do === 'deliverReaction') messages = messages.map(m => m.id === step.id ? { ...m, reactions: (m.reactions || []).map(r => r.mine ? { ...r, delivery: 'delivered', tool: step.tool } : r) } : m);
             if (step.do === 'deliver') messages = messages.map(m => m.id === step.id ? { ...m, delivery: 'delivered', tool: step.tool } : m);
+            if (step.do === 'react') messages = messages.map(m => m.id === step.id ? { ...m, reactions: [...(m.reactions || []), { emoji: step.emoji, count: 1, by: [step.by] }] } : m);
             paint({ stick: true });
+            next();
         };
-        const interval = setInterval(tick, reducedMotion() ? 2600 : 1700);
-        const stop = () => { clearInterval(interval); timers.forEach(clearTimeout); };
-        later(() => { root.dataset.mounted = '1'; }, 500);
+        const next = () => {
+            const step = script.shift();
+            if (!step) return;
+            later(() => run(step), (step.after ?? 1700) * (reducedMotion() ? 1.5 : 1));
+        };
+        next();
     }
     return root;
 }

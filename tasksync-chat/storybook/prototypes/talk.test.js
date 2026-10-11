@@ -34,10 +34,14 @@ test('sender name appears only on the first bubble of a run, with a stable colou
 });
 
 test('ticks: grey check = posted, blue double check = delivered with tool in tooltip', () => {
-    assert.match(ticksHtml({ delivery: 'posted' }), /class="talk-ticks posted"[^>]*>✓</);
+    const posted = ticksHtml({ delivery: 'posted' });
+    assert.match(posted, /class="talk-ticks posted"[^>]*><svg class="talk-tick-svg"/);
+    assert.equal(count(posted, /<path /g), 1);
+    assert.doesNotMatch(posted, /✓/);
     const delivered = ticksHtml({ delivery: 'delivered', tool: 'read_file' });
     assert.match(delivered, /class="talk-ticks delivered"/);
-    assert.match(delivered, /✓✓/);
+    assert.equal(count(delivered, /<path /g), 2);
+    assert.doesNotMatch(delivered, /✓/);
     assert.match(delivered, /title="[^"]*read_file/);
     assert.equal(ticksHtml({}), '');
 });
@@ -45,8 +49,7 @@ test('ticks: grey check = posted, blue double check = delivered with tool in too
 test('quote block, quiz votes and reactions render inside the bubble', () => {
     const html = talkHtml(scenarios.Full.messages);
     assert.match(html, /<div class="talk-quote who-agent"><b class="talk-quote-who">Agent<\/b><span class="talk-quote-text">Keep the name AITalk\?/);
-    assert.match(html, /<ol class="talk-questions">.*data-vote="up".*data-vote="down"/s);
-    assert.match(html, /data-vote="up"[^>]*aria-pressed="true"/);
+    assert.doesNotMatch(html, /talk-questions|data-vote|talk-votes/);
     // Validator reply with replyTo quotes the worker message.
     assert.match(html, /talk-quote who-worker.*should the reply preview/s);
 });
@@ -93,7 +96,7 @@ test('css is readable, 420px, reduced-motion aware; stories live under AITalk/',
     for (const name of ['FullConversation', 'LiveSimulation', 'ValidatorWhileAgentAway', 'LightTheme', 'ValidatorAsProxy', 'EmptyState']) assert.ok(stories.includes(`export const ${name} =`));
     assert.match(read('../stories/Trace.stories.js'), /title: 'AITalk\/Trace tab'/);
     assert.match(read('./mount.js'), /prefers-reduced-motion/);
-    assert.match(read('./mount.js'), /setInterval/);
+    assert.match(read('./mount.js'), /later\(\(\) => run\(step\)/);
 });
 
 test('every message from someone else gets a focusable bubble with a reaction bar; your own do not', () => {
@@ -123,14 +126,14 @@ test('reaction tooltips say who receives it', () => {
     assert.match(v, /data-react="👎"[^>]*title="👎 · Marks this for Validator learning"/);
 });
 
-test('reaction pills show count, your own state and ✓ → ✓✓ delivery in the tooltip', () => {
+test('reaction pills show count, your own state and single → double check delivery', () => {
     const html = talkHtml([{ id: 'a', author: 'Agent', text: 'x', reactions: [
         { emoji: '👍', count: 3, mine: true, delivery: 'posted' },
         { emoji: '🙏', count: 1, mine: true, delivery: 'delivered', tool: 'read_file' },
         '❤️ 2',
     ] }]);
-    assert.match(html, /talk-reaction-pill mine"[^>]*aria-pressed="true" title="[^"]*✓ posted[^"]*">👍 <small>3<\/small><span class="talk-ticks posted">✓</);
-    assert.match(html, /title="[^"]*✓✓ delivered · read_file[^"]*">🙏<span class="talk-ticks delivered">✓✓</);
+    assert.match(html, /talk-reaction-pill mine"[^>]*aria-pressed="true" title="[^"]*single check, posted[^"]*">👍 <small>3<\/small><span class="talk-ticks posted"><svg/);
+    assert.match(html, /title="[^"]*double check, delivered · read_file[^"]*">🙏<span class="talk-ticks delivered"><svg/);
     assert.match(html, /aria-pressed="false" title="2 reacted">❤️ <small>2<\/small>/);
     // Validator reactions have no delivery ticks: Validator learns from them.
     const v = talkHtml([{ id: 'v', author: 'Validator', text: 'x', reactions: [{ emoji: '👎', count: 1, mine: true }] }]);
@@ -138,17 +141,60 @@ test('reaction pills show count, your own state and ✓ → ✓✓ delivery in t
     assert.doesNotMatch(v, /talk-reaction"[^]*talk-ticks/);
 });
 
-test('Full conversation and Live simulation show pre-reacted messages; quiz votes stay', () => {
+test('Full conversation and Live simulation show pre-reacted messages; other participants react', () => {
     assert.ok(count(talkHtml(scenarios.Full.messages), /talk-reaction-pill/g) >= 4);
-    assert.match(talkHtml(liveStart.concat(liveScript.filter(s => s.do === 'add').map(s => s.message))), /talk-reaction-pill mine/);
-    assert.ok(liveScript.some(s => s.do === 'deliverReaction'));
-    assert.match(talkHtml(scenarios.Full.messages), /data-vote="down"/);
+    assert.ok(liveScript.filter(s => s.do === 'react').length >= 2);
 });
 
-test('keyboard handling and hover/focus css exist', () => {
+test('reaction bar opens only by right-click, long-press or keyboard; never on hover or focus', () => {
     const mount = read('./mount.js');
-    for (const key of ['Enter', 'ArrowRight', 'ArrowLeft', 'Escape']) assert.ok(mount.includes(`'${key}'`));
+    for (const key of ['Enter', 'ContextMenu', 'F10', 'ArrowRight', 'ArrowLeft', 'Escape']) assert.ok(mount.includes(`'${key}'`));
+    assert.match(mount, /addEventListener\('contextmenu'/);
+    assert.match(mount, /pointerType !== 'touch'[\s\S]*setTimeout\(\(\) => openBar\(bubble\), 500\)/);
+    assert.match(mount, /addEventListener\('scroll'[\s\S]*closeBar\(\)/);
+    assert.match(mount, /addEventListener\('click'[\s\S]*closeBar\(\)/);
     const css = read('./talk.css');
-    assert.match(css, /\.talk-bubble\[data-msg\]:hover > \.talk-react-bar/);
-    assert.match(css, /:focus-within > \.talk-react-bar/);
+    assert.doesNotMatch(css, /:hover > \.talk-react-bar/);
+    assert.doesNotMatch(css, /:focus-within > \.talk-react-bar/);
+    assert.match(css, /\.talk-bubble\.reacting > \.talk-react-bar \{ display: flex; \}/);
+    assert.match(css, /\.talk-react-bar \{[^}]*display: none;/);
+});
+
+test('each Validator answer is its own message; no multi-item bubble code remains', () => {
+    const html = talkHtml(scenarios.Full.messages);
+    assert.match(html, /id="talk-v2"/);
+    assert.match(html, /id="talk-v3"/);
+    assert.equal(scenarios.Full.messages.find(m => m.id === 'v2').proposal, 'Yes, AITalk for beta.');
+    assert.ok(scenarios.Full.messages.every(m => !m.questions));
+    assert.doesNotMatch(read('./talk.css'), /talk-question|talk-votes|has-quiz/);
+    assert.doesNotMatch(read('./talk.js'), /questionsHtml/);
+    assert.match(read('./mount.js'), /emoji === '👍' && message\.proposal/);
+});
+
+test('Agent and Validator answer trivial messages with a reaction pill naming who reacted', () => {
+    const msgs = scenarios.Full.messages;
+    const ok = msgs.find(m => m.id === 'y4');
+    assert.equal(ok.text, 'ok');
+    const html = talkHtml(msgs);
+    assert.match(html, /id="talk-y4"[^]*?title="Agent reacted">👍/);
+    assert.match(html, /id="talk-y5"[^]*?title="Validator reacted">🙏/);
+    // No reply bubble follows the trivial message.
+    const order = msgs.filter(m => m.id).map(m => m.id);
+    assert.equal(msgs.find(m => m.id === order[order.indexOf('y4') + 1]).author, 'You');
+    assert.ok(liveScript.some(s => s.do === 'react' && s.by === 'Agent') && liveScript.some(s => s.do === 'react' && s.by === 'Validator'));
+});
+
+test('ticks: Full shows both states; Live goes single grey to double blue after 1.5s and the runner handles it', () => {
+    const html = talkHtml(scenarios.Full.messages);
+    assert.match(html, /talk-ticks posted/);
+    assert.match(html, /talk-ticks delivered/);
+    assert.deepEqual(liveScript[0], { do: 'deliver', id: 'l1', tool: 'read_file', after: 1500 });
+    assert.equal(liveStart.find(m => m.id === 'l1').delivery, 'posted');
+    const mount = read('./mount.js');
+    assert.match(mount, /step\.do === 'deliver'[^\n]*delivery: 'delivered'/);
+    assert.match(mount, /step\.after \?\? 1700/);
+    const css = read('./talk.css');
+    assert.match(css, /\.talk-ticks\.posted \{ color: var\(--tk-tick-grey\)/);
+    assert.match(css, /\.talk-ticks\.delivered \{ color: var\(--tk-tick-blue\)/);
+    assert.match(css, /--tk-tick-blue: #53bdeb/);
 });

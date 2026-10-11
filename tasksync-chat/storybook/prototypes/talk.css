@@ -222,7 +222,6 @@
 .talk-row.in .talk-bubble.tail::before { left: -7px; clip-path: polygon(100% 0, 100% 100%, 0 0); }
 .talk-row.out .talk-bubble.tail::before { right: -7px; clip-path: polygon(0 0, 100% 0, 0 100%); }
 .talk-bubble.has-reaction { margin-bottom: 14px; }
-.talk-bubble.has-quiz { max-width: 88%; }
 
 .talk-sender { display: block; margin-bottom: 1px; font-size: 13px; font-weight: 600; }
 .talk-sender.who-you { color: var(--who-you); }
@@ -241,9 +240,11 @@
 .talk-meta { float: right; display: inline-flex; align-items: center; gap: 3px; margin: 6px 0 -3px 10px; color: var(--tk-muted); font-size: 11px; line-height: 1; }
 .talk-row.out .talk-meta { color: rgba(233, 237, 239, .6); }
 .theme-light .talk-row.out .talk-meta { color: #667781; }
-.talk-ticks { font-size: 12px; letter-spacing: -3px; padding-right: 3px; cursor: help; }
+.talk-ticks { display: inline-flex; align-items: center; cursor: help; }
+.talk-tick-svg { display: block; width: 16px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .talk-ticks.posted { color: var(--tk-tick-grey); }
 .talk-ticks.delivered { color: var(--tk-tick-blue); }
+.talk-ticks.delivered .talk-tick-svg { transition: color .3s; }
 
 /* ---- Quote block ---- */
 .talk-quote {
@@ -269,7 +270,7 @@
 .talk-quote-text { color: var(--tk-in-fg); opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .talk-row.out .talk-quote-text { color: var(--tk-out-fg); }
 
-/* ---- Floating reaction bar (hover, focus or Enter) ---- */
+/* ---- Floating reaction bar (right-click, long-press or keyboard; never hover) ---- */
 .talk-bubble[data-msg] { outline: 0; }
 .talk-bubble[data-msg]:focus-visible { box-shadow: 0 0 0 2px var(--tk-green); }
 .talk-react-bar {
@@ -287,9 +288,6 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, .4);
     white-space: nowrap;
 }
-.talk-react-bar::after { content: ''; position: absolute; left: 0; right: 0; bottom: -8px; height: 8px; }
-.talk-bubble[data-msg]:hover > .talk-react-bar,
-.talk-bubble[data-msg]:focus-within > .talk-react-bar,
 .talk-bubble.reacting > .talk-react-bar { display: flex; }
 .talk-react-extra { display: inline-flex; gap: 2px; }
 .talk-react-extra[hidden] { display: none; }
@@ -301,7 +299,7 @@
 .talk-reaction-pill { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border: 1px solid var(--tk-border); border-radius: 12px; background: var(--tk-surface); box-shadow: var(--tk-shadow); color: var(--tk-fg); font-size: 12px; line-height: 18px; }
 .talk-reaction-pill small { color: var(--tk-muted); font-size: 11px; }
 .talk-reaction-pill.mine { border-color: var(--tk-green); background: rgba(0, 168, 132, .22); }
-.talk-reaction-pill .talk-ticks { font-size: 10px; padding-right: 2px; }
+.talk-reaction-pill .talk-tick-svg { width: 12px; height: 8px; }
 @media (prefers-reduced-motion: reduce) { .talk-react-btn { transition: none; } }
 
 .talk-reaction {
@@ -313,24 +311,6 @@
     z-index: 2;
 }
 .talk-row.out .talk-reaction { left: auto; right: 8px; }
-
-/* ---- Validator quiz ---- */
-.talk-questions { margin: 6px 0 2px; padding: 0 0 0 20px; }
-.talk-question { margin-bottom: 8px; padding-left: 2px; }
-.talk-q { font-weight: 600; }
-.talk-a { color: var(--tk-muted); }
-.talk-votes { display: flex; gap: 6px; margin-top: 3px; }
-.talk-votes button {
-    padding: 0 6px;
-    border: 1px solid var(--tk-border);
-    border-radius: 10px;
-    background: transparent;
-    font-size: 12px;
-    line-height: 20px;
-}
-.talk-votes button:hover { background: rgba(134, 150, 160, .2); }
-.talk-votes button[aria-pressed='true'] { background: rgba(0, 168, 132, .25); border-color: var(--tk-green); }
-.talk-votes button[data-vote='down'][aria-pressed='true'] { background: rgba(226, 106, 106, .25); border-color: #e26a6a; }
 
 .talk-trace-link { display: inline-block; margin-top: 4px; color: var(--tk-mention); font-size: 12px; text-decoration: none; }
 .talk-trace-link:hover { text-decoration: underline; }

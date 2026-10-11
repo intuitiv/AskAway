@@ -453,3 +453,9 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 ### 2026-10-12, Storybook review
 
 > UI is excellent. I was seeing some old storybook. I dont see an option to thumbs up or down someothers message.
+
+> I dont see blueticks or double ticks thing happening. If it is hard to implement, tahts okay.
+> Each answer should be its own message, that is easy to implement messaging thing. Dont diverge by supporting more responses in one message. Keep it ismple and reusable.
+> Teach emojies to agent and validator also or adapter in between can do that. I mean, if i say somethign which is trivial, validator or agent can simply reply with emoji with a thumbs up or a folding emoji. Need not reply always back.
+> On hover we show these emojies, but may be show on some right click or something, hover showing is kinda disturbing when i just scroll thru the conversation.
+> Double tick is not in whatsapp style.
