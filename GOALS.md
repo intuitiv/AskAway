@@ -382,3 +382,28 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > 11. spending limit per benchmark run is 2$ not 10$. And score is very inconsistent. Fix it first. Dont run evals today. defer it to tmr.
 >
 > We'll think about this permission thing deep. I need some persmission mechanism, where i see message and recipient and persmission thing,
+
+### 2026-10-11, AITalk group chat and UX redesign
+
+> Why commentary tab has these trace records? I think i understand now. As validator also runs some sessions, and we dont have a place to show traces, and you are showing them here? Your intent is good, but implementation is not. We can move them to trace tab(whcih will discuss below) and show some links in comentary.
+> And Validator response flow is good. But one enhancement could be Validator could format them as a number question and proposed answer format and add a small thumbs up and down button to each question, so that i can react to it immediately. Or could it be part of 003, where i can react to stuff from commentary which can be fed to agent along with someotehr tool call. I think i need whatsapp or anyother chat interface structure.
+> Here Validator, Main agent and I will be in this group. When i send a message i'll get single tick and when it is sent in some tool response then it can be double blue tick. What say? I think it can be exactly like whatsapp, Validator will respond to questions, i'll react and respond to agent or validator messages. And user responses will take ultimate priority. And I can tag either agent or validator using @ and they should read and respond to it.
+> Think in those lines where if we want to extend this to workers also. They can join the chat if needed and talk to validator or main agent or user.
+> Validator and User will get everything. tagged or untagged. So, they know exactly whats happening. But for main agent or worker, they get messages only when someone tags them or someone reply to their messages.
+> And after beta phase, Validator will reply to main agent from this channel only, it will sart replying to main agent' messages.
+> To keep the design extendable, what we can do is, in beta phase or Validator will reply in the chat not to agent' message. User will reply to agent message. User can reply in the chat, Validator will still get it. The only difference is, this chatting, main agent cannot see. It can only see when someone responds to its messages or someone tags it in regular message. Thats how we wire it.
+> Some redesign of the UX:
+> - Remove first tab `Chat`. I though we could reuse it in commentary but i dont think we do.
+> - Make comentary as first tab and give it a better name like AITalk or Agently so on
+> - Rename Metrics tab as `Trace`, and remove RTK saved tokens thing, Gradle optimisations thing. I am not monitoring them. Remove duplicate words Observability.
+> - Order of the tabs will be, Commentary, Specs, Trace, Workers, Settings
+> - When Moderator or owner is User, color of the commentary tab border should be one thing and when Validator is doing, it shoudl be different.
+> - **UX should be awesome.**
+> - In the chat, messages should be simple, like human chat. No AI slop.
+> - AITalk or something we name, that tab should be awesome. You will get 30% of the window width. Arrange accordingly.
+> - People should use the extension to see the UX in action.
+> Clean the code and run all tests. No regressions at all.
+> These async tasks are very bad. They kinda interrupt the turn. We'll be replacing them with either a cheap worker (where we can track them and query the result back) or we can send the tasks as a response of some other tool call saying, the task you asked for is complete if needed you can check teh result. And we should add that feature, thats how we send feedback and side channel is implemented. We send as an additional response of some tool call. We have to tune our system prompt accordingly, that every tool call response whenwrapped with some other thing, that is how system will send some extra infomration or asking somethign else.
+> We have some code for live server, History, New session button and settings gear icon on teh top, I am not using any of them. ask_user, tool do we need it? we have this commentary tool and do we need some other tool for AITalk thing? We can remove ask_user tool also.
+> For all the UX work, create a storybook with all the simulation. I want to review the UX first.
+> It goes without saying, use workers to optimise cost.

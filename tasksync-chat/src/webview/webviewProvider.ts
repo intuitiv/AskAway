@@ -22,12 +22,12 @@ import { commentaryKey, commentaryView, CommentaryView } from '../commentary/com
 import { noteRequestStart } from '../observability/cacheClock';
 import { LogCursor, readLogIncrement } from '../observability/logCursor';
 import type { TurnActivity } from '../commentary/telegramLive';
-import { remoteDigestPoster } from '../commentary/telegramLive';
-import { CloudDigestScheduler } from '../cloud/cloudDigest';
+import { CloudDigestScheduler, cloudDigestPoster } from '../cloud/cloudDigest';
+import { postRemoteQuestion } from '../services/remoteChannel';
 import { LongRunHandoff } from '../specs/handoffThreshold';
 import { HandoffNotifier } from '../services/handoffNotifier';
 import { observeWorkers, sharedCommentaryStore, sharedWorkerRuntime, workerSpendSince } from '../workers/workerHost';
-import { turnTotals, usageScope, mergeToolUsage, persistTurnTotals } from '../workers/turnBudget';
+import { turnTotals, mergeToolUsage, persistTurnTotals } from '../workers/turnBudget';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
 
@@ -125,6 +125,7 @@ interface ModelBreakdown extends ScopeMetrics {
 }
 
 interface ObservabilityMetrics {
+    monthCredits?: { label: string; aiu: number; workerDollars: number };
     // Flat fields mirror the workspace cumulative scope (kept for backward compatibility).
     requestCount: number;
     inputTokens: number;
@@ -350,19 +351,6 @@ interface MonthBucket extends ScopeMetrics {
     compactionNanoAiu?: number;
 }
 
-/** Per-file, per-month aggregate for the stateless month recompute (memoized in _monthFileCache). */
-interface FileMonthAgg {
-    requestCount: number;
-    inputTokens: number;
-    outputTokens: number;
-    cachedTokens: number;
-    nanoAiu: number;
-    cacheMisses: number;
-    compactionCount: number;
-    compactionNanoAiu: number;
-    perModel: Map<string, ScopeMetrics>;
-}
-
 interface MonthShard {
     version: 1;
     workspaceKey: string;
@@ -404,7 +392,7 @@ interface ToolShard {
 
 const execFileAsync = promisify(execFile);
 // ── availability state (pure; the hook hooks/spec-context-inject.cjs reads the same file) ──
-export type AvailabilityState = { mode: 'here' | 'away' | 'offline'; until?: string; note?: string; setAt: string };
+export type AvailabilityState = { mode: 'here' | 'away' | 'awayValidator' | 'offline'; until?: string; note?: string; setAt: string };
 export function availabilityFile(workspace: string, home: string = os.homedir()): string {
     return path.join(home, '.askaway', 'availability', `${commentaryKey(workspace)}.json`);
 }
@@ -412,7 +400,7 @@ export function readAvailability(workspace: string, home: string = os.homedir())
     try { return JSON.parse(fs.readFileSync(availabilityFile(workspace, home), 'utf8')); } catch { return null; }
 }
 export function writeAvailability(workspace: string, input: { mode?: unknown; until?: unknown; note?: unknown }, home: string = os.homedir()): AvailabilityState {
-    const mode = input.mode === 'away' || input.mode === 'offline' ? input.mode : 'here';
+    const mode = input.mode === 'away' || input.mode === 'awayValidator' || input.mode === 'offline' ? input.mode : 'here';
     const state: AvailabilityState = { mode, setAt: new Date().toISOString() };
     const until = typeof input.until === 'string' && Number.isFinite(Date.parse(input.until)) ? new Date(input.until).toISOString() : '';
     const note = typeof input.note === 'string' ? input.note.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
@@ -425,7 +413,6 @@ export function writeAvailability(workspace: string, input: { mode?: unknown; un
 }
 // ── end availability state ──
 /** Bump to force a one-time clean rebuild of the global month shard when fold logic changes. */
-const GLOBAL_FOLD_VERSION = 4;
 // Message types
 type ToWebviewMessage =
     | { type: 'specsData'; data: SpecScanResult }
@@ -625,9 +612,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private readonly _logFileReadOffsets = new Map<string, LogCursor>();
     /** Guards one-time load of persisted read offsets (survives extension restart → no re-scan / duplicate appends). */
     private _logOffsetsLoaded = false;
-    /** Persisted per-file read cursors for the ALL-workspace global credit ingest (separate from the workspace scan). */
-    private readonly _globalLogOffsets = new Map<string, { byteOffset: number; lineCount: number }>();
-    private _globalOffsetsLoaded = false;
 
     private readonly _WEBVIEW_UI_VERSION = 'specs-health-telegram-v9';
 
@@ -699,24 +683,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _lastSubmitTs = Date.now();
     /** Highest user_message.ts seen in log files — prevents duplicate turn resets on re-scan. */
     private _logTurnStartTs: number = 0;
-    // Throttle the cross-workspace overall(month) computation (reads all month shards).
-    private _overallLastComputedAt: number = 0;
-    private _overallCache: { totals: ScopeMetrics; perModel: ModelBreakdown[]; compaction: { count: number; nanoAiu: number } } = {
-        totals: { requestCount: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, nanoAiu: 0 },
-        perModel: [],
-        compaction: { count: 0, nanoAiu: 0 }
-    };
-    private readonly _OVERALL_RECOMPUTE_MS = 5000;
-    /**
-     * Per-file memoized month sums for the STATELESS month recompute. Keyed by absolute log path.
-     * Each entry caches the file's size+mtime and its per-month aggregates; a file is only re-read
-     * when it grows/changes. This replaces the fragile byte-cursor + additive shard (which drifted
-     * on log rotation and latched bad values). The total is recomputed from current on-disk data
-     * every cycle, so it always self-heals to reality — no cursors, no fold versions, no latch.
-     */
-    private _monthFileCache = new Map<string, { size: number; mtime: number; months: Map<string, FileMonthAgg> }>();
-    /** True once the persisted month-file cache has been loaded from disk. */
-    private _monthCacheLoaded = false;
 
     // Debounce timer for queue persistence
     private _queueSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1421,7 +1387,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private _handleMessagingResponse(taskId: string, response: string, user: string, attachments?: AttachmentInfo[]): void {
         // The taskId from messaging services is the toolCallId
-        if (!this._currentToolCallId) { return; }
+        if (!this._currentToolCallId || taskId !== this._currentToolCallId) { return; }
 
         const resolve = this._pendingRequests.get(this._currentToolCallId);
         if (!resolve) { return; }
@@ -1565,9 +1531,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private _commentarySubscribed = false;
 
-    private _pushAvailability(): void {
+    public _pushAvailability(): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        this._broadcast({ type: 'availabilityState', data: root ? readAvailability(root) : null });
+        const state = root ? readAvailability(root) : null;
+        void vscode.commands.executeCommand('setContext', 'askaway.availability', state?.mode || 'here');
+        this._broadcast({ type: 'availabilityState', data: state });
     }
 
     private _handleCommentary(action: 'request' | 'goal' | 'clear', value?: string): void {
@@ -2177,7 +2145,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         if (!root) { return ''; }
         const state = readAvailability(root);
         const expired = !!state?.until && !(Date.parse(state.until) >= Date.now());
-        return this._longRunHandoff.check(availabilityFile(root), this.getTurnActivity().lastIn ?? 0, expired ? 'here' : state?.mode);
+        return this._longRunHandoff.check(availabilityFile(root), this.getTurnActivity().lastIn ?? 0, expired ? 'here' : state?.mode === 'awayValidator' ? 'away' : state?.mode);
     }
 
     /** For the Telegram status line: the chat banner's turn numbers plus when the agent last made a model request. */
@@ -2307,7 +2275,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 const rtk = await this._collectRtkObservability();
                 const gradleObs = await this._collectGradleObservability();
                 const toolObs = await this._collectToolCallObservability();
-                const overall = await this._computeOverallMonth(currentMonth);
+                const monthCredits = await this._computeWorkspaceMonth();
                 const workspaceScope: ScopeMetrics = {
                     requestCount: ledger.requestCount,
                     inputTokens: ledger.inputTokens,
@@ -2329,9 +2297,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     nanoAiu: workspaceScope.nanoAiu,
                     workspace: workspaceScope,
                     lastRequest: this._deriveLastRequest(),
-                    overall: overall.totals,
-                    perModel: overall.perModel,
-                    overallCompaction: overall.compaction,
+                    monthCredits,
                     turnRequests: [...this._turnRequests],
                     turnEvents: [...this._turnEvents],
                     turnSubagents: Array.from(this._turnSubagents.values()),
@@ -2706,7 +2672,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 nanoAiu: ledger.nanoAiu,
                 cacheMisses: ledger.cacheMisses || 0
             };
-            const overall = await this._computeOverallMonth(currentMonth);
+            const monthCredits = await this._computeWorkspaceMonth();
             const rtk = await this._collectRtkObservability();
             const gradleObs = await this._collectGradleObservability();
             const toolObs = await this._collectToolCallObservability();
@@ -2719,9 +2685,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 nanoAiu: workspaceScope.nanoAiu,
                 lastRequest: this._deriveLastRequest(),
                 workspace: workspaceScope,
-                overall: overall.totals,
-                perModel: overall.perModel,
-                overallCompaction: overall.compaction,
+                overall: this._emptyScope(),
+                perModel: [],
+                overallCompaction: { count: 0, nanoAiu: 0 },
+                monthCredits,
                 turnRequests: [...this._turnRequests],
                 turnEvents: [...this._turnEvents],
                 turnSubagents: Array.from(this._turnSubagents.values()),
@@ -2756,254 +2723,25 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         return { ...this._lastRequestMetrics };
     }
 
-    /**
-     * Current-month totals across all workspaces, read from ONE durable, additive "global"
-     * month shard. The shard is fed by streaming EVERY workspace's Copilot debug log
-     * (`main.jsonl`) through persisted per-file byte cursors — the debug logs are the
-     * comprehensive, append-only source Copilot maintains, so this captures every request
-     * (not just the ones AskAway happened to mirror). The shard only ever grows and is
-     * persisted, so the credit figure can never drop even if debug logs later rotate away.
-     */
-    private async _computeOverallMonth(currentMonth: string): Promise<{ totals: ScopeMetrics; perModel: ModelBreakdown[]; compaction: { count: number; nanoAiu: number } }> {
-        const now = Date.now();
-        if (now - this._overallLastComputedAt < this._OVERALL_RECOMPUTE_MS) {
-            return this._withMonthWorkers(this._overallCache, currentMonth);
-        }
-        this._overallLastComputedAt = now;
-
-        // Durable-but-safe month source. Each debug-log file's per-month sums are memoized by
-        // size+mtime and persisted. A file is re-summed ONLY when it changes (whole-file re-sum →
-        // no double count, self-healing); when Copilot ROTATES a file away we KEEP its last-known
-        // sum so the month total never shrinks. This is corruption-proof: keyed by file path with
-        // whole-file sums — no byte cursors, no additive drift, no monotonic latch.
-        await this._loadMonthFileCache();
-        let changed = false;
-        let files: string[] = [];
-        try { files = await this._findAllCopilotDebugLogFiles(); } catch { /* keep cached */ }
-        for (const file of files) {
-            try {
-                const st = await fs.promises.stat(file);
-                const cached = this._monthFileCache.get(file);
-                if (cached && cached.size === st.size && cached.mtime === st.mtimeMs) { continue; }
-                const agg = await this._sumFileByMonth(file);
-                this._monthFileCache.set(file, { size: st.size, mtime: st.mtimeMs, months: agg });
-                changed = true;
-            } catch {
-                // Transient stat/read failure: keep the last-good cached entry (no flicker).
+    private async _computeWorkspaceMonth(): Promise<{ label: string; aiu: number; workerDollars: number }> {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+        let nanoAiu = 0;
+        for (const file of (await this._findWorkspaceCopilotDebugLogFiles()).filter(file => path.basename(file) === 'main.jsonl')) {
+            let raw: string;
+            try { raw = await fs.promises.readFile(file, 'utf8'); } catch { continue; }
+            for (const line of raw.split('\n')) {
+                try {
+                    const row = JSON.parse(line);
+                    const nano = row?.attrs?.copilotUsageNanoAiu;
+                    if (typeof row?.ts === 'number' && row.ts >= start && row.ts < end && typeof nano === 'number' && Number.isFinite(nano)) { nanoAiu += nano; }
+                } catch { /* Malformed lines do not hide readable usage. */ }
             }
         }
-
-        // Prune entries with no activity in the current or previous month (bounds growth). This
-        // keeps rotated-away files that still contribute to the visible window.
-        const keep = new Set<string>([currentMonth, this._prevMonthKey(currentMonth)]);
-        for (const [key, entry] of Array.from(this._monthFileCache.entries())) {
-            let relevant = false;
-            for (const mk of entry.months.keys()) { if (keep.has(mk)) { relevant = true; break; } }
-            if (!relevant) { this._monthFileCache.delete(key); changed = true; }
-        }
-
-        // Aggregate the target month across ALL cached files (current + rotated-away).
-        const totals = this._emptyScope();
-        const perModelMap = new Map<string, ScopeMetrics>();
-        const compaction = { count: 0, nanoAiu: 0 };
-        for (const entry of this._monthFileCache.values()) {
-            const bucket = entry.months.get(currentMonth);
-            if (!bucket) { continue; }
-            totals.requestCount += bucket.requestCount;
-            totals.inputTokens += bucket.inputTokens;
-            totals.outputTokens += bucket.outputTokens;
-            totals.cachedTokens += bucket.cachedTokens;
-            totals.nanoAiu += bucket.nanoAiu;
-            totals.cacheMisses = (totals.cacheMisses || 0) + bucket.cacheMisses;
-            compaction.count += bucket.compactionCount;
-            compaction.nanoAiu += bucket.compactionNanoAiu;
-            for (const [model, s] of bucket.perModel) {
-                const acc = perModelMap.get(model) ?? this._emptyScope();
-                acc.requestCount += s.requestCount;
-                acc.inputTokens += s.inputTokens;
-                acc.outputTokens += s.outputTokens;
-                acc.cachedTokens += s.cachedTokens;
-                acc.nanoAiu += s.nanoAiu;
-                acc.cacheMisses = (acc.cacheMisses || 0) + (s.cacheMisses || 0);
-                perModelMap.set(model, acc);
-            }
-        }
-        if (changed) { void this._saveMonthFileCache(); }
-
-        const perModel: ModelBreakdown[] = Array.from(perModelMap.entries())
-            .map(([model, s]) => ({ model, ...s }))
-            .sort((a, b) => b.nanoAiu - a.nanoAiu);
-
-        this._overallCache = { totals, perModel, compaction };
-        return this._withMonthWorkers(this._overallCache, currentMonth);
-    }
-
-    private _withMonthWorkers(main: { totals: ScopeMetrics; perModel: ModelBreakdown[]; compaction: { count: number; nanoAiu: number } }, month: string) {
-        const workers = workerSpendSince(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, new Date(month + '-01T00:00:00').getTime());
-        const models = new Map(main.perModel.map(row => [row.model, { ...row }]));
-        for (const [model, worker] of Object.entries(workers.perModel ?? {})) {
-            models.set(model, { model, ...usageScope(models.get(model) ?? this._emptyScope(), worker) });
-        }
-        return { ...main, totals: { ...usageScope(main.totals, workers), cacheMisses: (main.totals.cacheMisses ?? 0) + (workers.cacheMisses ?? 0) },
-            perModel: [...models.values()].sort((a, b) => b.nanoAiu - a.nanoAiu) };
-    }
-
-    /** Month key one month before the given `YYYY-MM`. */
-    private _prevMonthKey(monthKey: string): string {
-        const [y, m] = monthKey.split('-').map(Number);
-        if (!y || !m) { return monthKey; }
-        const d = new Date(y, m - 2, 1); // m is 1-based; m-2 = previous month 0-based
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    }
-
-    private _getMonthCachePath(): string {
-        return path.join(this._context.globalStorageUri.fsPath, 'observability-monthcache.json');
-    }
-
-    /** Load the persisted per-file month sums once. Corrupt/missing → start empty (self-heals). */
-    private async _loadMonthFileCache(): Promise<void> {
-        if (this._monthCacheLoaded) { return; }
-        this._monthCacheLoaded = true;
-        try {
-            const raw = await fs.promises.readFile(this._getMonthCachePath(), 'utf8');
-            const parsed = JSON.parse(raw) as { files?: Record<string, { size: number; mtime: number; months: Record<string, unknown> }> };
-            for (const [file, e] of Object.entries(parsed.files || {})) {
-                const months = new Map<string, FileMonthAgg>();
-                for (const [mk, b] of Object.entries(e.months || {})) {
-                    const bb = b as Record<string, unknown>;
-                    const perModel = new Map<string, ScopeMetrics>();
-                    for (const [model, s] of Object.entries((bb.perModel as Record<string, unknown>) || {})) {
-                        const ss = s as Record<string, number>;
-                        perModel.set(model, { requestCount: ss.requestCount || 0, inputTokens: ss.inputTokens || 0, outputTokens: ss.outputTokens || 0, cachedTokens: ss.cachedTokens || 0, nanoAiu: ss.nanoAiu || 0, cacheMisses: ss.cacheMisses || 0 });
-                    }
-                    months.set(mk, {
-                        requestCount: Number(bb.requestCount) || 0, inputTokens: Number(bb.inputTokens) || 0,
-                        outputTokens: Number(bb.outputTokens) || 0, cachedTokens: Number(bb.cachedTokens) || 0,
-                        nanoAiu: Number(bb.nanoAiu) || 0, cacheMisses: Number(bb.cacheMisses) || 0,
-                        compactionCount: Number(bb.compactionCount) || 0, compactionNanoAiu: Number(bb.compactionNanoAiu) || 0,
-                        perModel,
-                    });
-                }
-                this._monthFileCache.set(file, { size: Number(e.size) || 0, mtime: Number(e.mtime) || 0, months });
-            }
-        } catch { /* none yet / corrupt → rebuild from logs */ }
-    }
-
-    private async _saveMonthFileCache(): Promise<void> {
-        try {
-            const files: Record<string, unknown> = {};
-            for (const [file, e] of this._monthFileCache.entries()) {
-                const months: Record<string, unknown> = {};
-                for (const [mk, b] of e.months.entries()) {
-                    const perModel: Record<string, unknown> = {};
-                    for (const [model, s] of b.perModel.entries()) { perModel[model] = s; }
-                    months[mk] = {
-                        requestCount: b.requestCount, inputTokens: b.inputTokens, outputTokens: b.outputTokens,
-                        cachedTokens: b.cachedTokens, nanoAiu: b.nanoAiu, cacheMisses: b.cacheMisses,
-                        compactionCount: b.compactionCount, compactionNanoAiu: b.compactionNanoAiu, perModel,
-                    };
-                }
-                files[file] = { size: e.size, mtime: e.mtime, months };
-            }
-            const p = this._getMonthCachePath();
-            await fs.promises.mkdir(path.dirname(p), { recursive: true });
-            await fs.promises.writeFile(p, JSON.stringify({ version: 1, files }));
-        } catch { /* best-effort */ }
-    }
-
-    /** Read one debug-log file fully and bucket its llm_requests by month (stateless month recompute). */
-    private async _sumFileByMonth(file: string): Promise<Map<string, FileMonthAgg>> {
-        const out = new Map<string, FileMonthAgg>();
-        let data: string;
-        try { data = await fs.promises.readFile(file, 'utf8'); } catch { return out; }
-        const empty = (): FileMonthAgg => ({
-            requestCount: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, nanoAiu: 0,
-            cacheMisses: 0, compactionCount: 0, compactionNanoAiu: 0, perModel: new Map(),
-        });
-        for (const line of data.split('\n')) {
-            if (!line || line.indexOf('llm_request') === -1) { continue; }
-            let p: Record<string, unknown>;
-            try { p = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
-            const attrs = p.attrs as Record<string, unknown> | undefined;
-            if (!attrs) { continue; }
-            const ts = typeof p.ts === 'number' ? p.ts : 0;
-            const inTok = typeof attrs.inputTokens === 'number' ? attrs.inputTokens : 0;
-            const outTok = typeof attrs.outputTokens === 'number' ? attrs.outputTokens : 0;
-            const cachedTok = typeof attrs.cachedTokens === 'number' ? attrs.cachedTokens : 0;
-            const nano = typeof attrs.copilotUsageNanoAiu === 'number' ? attrs.copilotUsageNanoAiu : 0;
-            const model = typeof attrs.model === 'string' ? attrs.model : 'unknown';
-            const role = typeof attrs.debugName === 'string' ? attrs.debugName : '';
-            if (model === 'unknown' && inTok === 0 && outTok === 0 && cachedTok === 0 && nano === 0) { continue; }
-            const mk = this._getMonthKey(ts);
-            let b = out.get(mk);
-            if (!b) { b = empty(); out.set(mk, b); }
-            b.requestCount += 1; b.inputTokens += inTok; b.outputTokens += outTok; b.cachedTokens += cachedTok; b.nanoAiu += nano;
-            if (this._isCacheMiss(inTok, cachedTok)) { b.cacheMisses += 1; }
-            if (this._classifyRole(role) === 'compaction') { b.compactionCount += 1; b.compactionNanoAiu += nano; }
-            let pm = b.perModel.get(model);
-            if (!pm) { pm = this._emptyScope(); b.perModel.set(model, pm); }
-            pm.requestCount += 1; pm.inputTokens += inTok; pm.outputTokens += outTok; pm.cachedTokens += cachedTok; pm.nanoAiu += nano;
-            if (this._isCacheMiss(inTok, cachedTok)) { pm.cacheMisses = (pm.cacheMisses || 0) + 1; }
-        }
-        return out;
-    }
-
-    /** Path of the persisted cursor file for the all-workspace global ingest. */
-    private _getGlobalOffsetsPath(): string {
-        return path.join(this._context.globalStorageUri.fsPath, 'observability-global-offsets.json');
-    }
-
-    private async _loadGlobalOffsets(): Promise<void> {
-        if (this._globalOffsetsLoaded) { return; }
-        this._globalOffsetsLoaded = true;
-        try {
-            const raw = await fs.promises.readFile(this._getGlobalOffsetsPath(), 'utf8');
-            const parsed = JSON.parse(raw) as Record<string, { byteOffset: number; lineCount: number }>;
-            for (const [file, off] of Object.entries(parsed)) {
-                if (off && typeof off.byteOffset === 'number') {
-                    this._globalLogOffsets.set(file, { byteOffset: off.byteOffset, lineCount: Number(off.lineCount) || 0 });
-                }
-            }
-        } catch { /* none yet */ }
-    }
-
-    private async _saveGlobalOffsets(): Promise<void> {
-        try {
-            const obj: Record<string, { byteOffset: number; lineCount: number }> = {};
-            for (const [file, off] of this._globalLogOffsets.entries()) { obj[file] = off; }
-            const p = this._getGlobalOffsetsPath();
-            await fs.promises.mkdir(path.dirname(p), { recursive: true });
-            await fs.promises.writeFile(p, JSON.stringify(obj));
-        } catch { /* best-effort */ }
-    }
-
-    /** Find EVERY workspace's Copilot debug-log main.jsonl under the shared workspaceStorage dir. */
-    private async _findAllCopilotDebugLogFiles(): Promise<string[]> {
-        // globalStorage/<ext> → ../.. → User/ ; sibling User/workspaceStorage holds all workspaces.
-        const userDir = path.dirname(path.dirname(this._context.globalStorageUri.fsPath));
-        const wsStorage = path.join(userDir, 'workspaceStorage');
-        const out: string[] = [];
-        let wsDirs: fs.Dirent[] = [];
-        try { wsDirs = await fs.promises.readdir(wsStorage, { withFileTypes: true }); } catch { return out; }
-        for (const ws of wsDirs) {
-            if (!ws.isDirectory()) { continue; }
-            const debugRoot = path.join(wsStorage, ws.name, 'GitHub.copilot-chat', 'debug-logs');
-            let sessions: fs.Dirent[] = [];
-            try { sessions = await fs.promises.readdir(debugRoot, { withFileTypes: true }); } catch { continue; }
-            for (const s of sessions) {
-                if (!s.isDirectory()) { continue; }
-                // Include the parent main.jsonl AND every runSubagent-*.jsonl child session
-                // so sub-agent credits are folded into the month total (see finder above).
-                let entries: fs.Dirent[] = [];
-                try { entries = await fs.promises.readdir(path.join(debugRoot, s.name), { withFileTypes: true }); } catch { continue; }
-                for (const f of entries) {
-                    if (f.isFile() && this._isRequestLogFile(f.name)) {
-                        out.push(path.join(debugRoot, s.name, f.name));
-                    }
-                }
-            }
-        }
-        return out;
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        return { label: now.toLocaleString('en', { month: 'long' }), aiu: nanoAiu / 1e9,
+            workerDollars: root ? workerSpendSince(root, start).dollars : 0 };
     }
 
     /** A request is a "cache miss" when its cached portion is < 50% of its input tokens. */
@@ -3018,94 +2756,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         if (r.indexOf('summarize') !== -1) { return 'compaction'; }
         if (r.indexOf('retry') !== -1) { return 'retry'; }
         return 'normal';
-    }
-
-    /** Fold one request's usage into the global month shard (dedup handled by caller). */
-    private _foldReqIntoShard(shard: MonthShard, ts: number, model: string, inTok: number, outTok: number, cachedTok: number, nano: number, role?: string): void {
-        const monthKey = this._getMonthKey(ts);
-        const miss = this._isCacheMiss(inTok, cachedTok) ? 1 : 0;
-        let bucket = shard.months[monthKey];
-        if (!bucket) { bucket = { requestCount: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, nanoAiu: 0, cacheMisses: 0, perModel: {} }; shard.months[monthKey] = bucket; }
-        bucket.requestCount += 1; bucket.inputTokens += inTok; bucket.outputTokens += outTok; bucket.cachedTokens += cachedTok; bucket.nanoAiu += nano;
-        bucket.cacheMisses = (bucket.cacheMisses || 0) + miss;
-        if (role && this._classifyRole(role) === 'compaction') {
-            bucket.compactionCount = (bucket.compactionCount || 0) + 1;
-            bucket.compactionNanoAiu = (bucket.compactionNanoAiu || 0) + nano;
-        }
-        let pm = bucket.perModel[model];
-        if (!pm) { pm = { requestCount: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, nanoAiu: 0, cacheMisses: 0 }; bucket.perModel[model] = pm; }
-        pm.requestCount += 1; pm.inputTokens += inTok; pm.outputTokens += outTok; pm.cachedTokens += cachedTok; pm.nanoAiu += nano;
-        pm.cacheMisses = (pm.cacheMisses || 0) + miss;
-    }
-
-    /**
-     * Incrementally fold new requests into the durable global month shard from every
-     * workspace's Copilot debug log. IMPORTANT: each `llm_request` line is a DISTINCT billed
-     * model call — an agent turn's iterations share one `responseId` but are separate charges
-     * (verified: a 7-line responseId had nano 50, 6.6, 5.8, 4.4, 5.1, 4.5, 4.4). So we SUM every
-     * line's `copilotUsageNanoAiu` with NO dedup; deduping by responseId undercounted ~5×.
-     * Per-file persisted byte cursors count each line exactly once (even across restarts); the
-     * shard is additive + persisted, so counts survive after debug logs rotate away.
-     */
-    private async _ingestGlobalDebugLogs(): Promise<MonthShard> {
-        await this._loadGlobalOffsets();
-        let shard = await this._loadMonthShard('_global');
-        // One-time clean rebuild when the fold logic changes (here: removed the wrong
-        // responseId dedup). Reset buckets + cursors and re-fold every line from offset 0.
-        if (shard.foldVersion !== GLOBAL_FOLD_VERSION) {
-            shard = { version: 1, workspaceKey: '_global', months: {}, rawOffset: 0, foldVersion: GLOBAL_FOLD_VERSION, updatedAt: 0 };
-            this._globalLogOffsets.clear();
-        }
-        const MAX_PASS = 24 * 1024 * 1024;
-        let dirty = false;
-
-        for (const file of await this._findAllCopilotDebugLogFiles()) {
-            const known = this._globalLogOffsets.get(file);
-            const from = known?.byteOffset ?? 0;
-            let size = 0;
-            try { size = (await fs.promises.stat(file)).size; } catch { continue; }
-            if (size <= from) { continue; }
-            const fd = await fs.promises.open(file, 'r');
-            try {
-                const readLen = Math.min(size - from, MAX_PASS);
-                const buf = Buffer.allocUnsafe(readLen);
-                await fd.read(buf, 0, buf.length, from);
-                const lastNl = buf.lastIndexOf(0x0a);
-                if (lastNl < 0) { continue; }
-                const text = buf.toString('utf8', 0, lastNl + 1);
-                for (const line of text.split('\n')) {
-                    if (!line || line.indexOf('llm_request') === -1) { continue; }
-                    let parsed: Record<string, unknown>;
-                    try { parsed = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
-                    const attrs = parsed.attrs as Record<string, unknown> | undefined;
-                    if (!attrs) { continue; }
-                    // No summarize filter: compaction/retry calls ARE billed, so include every
-                    // request with a copilotUsageNanoAiu to match Copilot's own credit figure.
-                    this._foldReqIntoShard(
-                        shard,
-                        typeof parsed.ts === 'number' ? parsed.ts : 0,
-                        typeof attrs.model === 'string' ? attrs.model : 'unknown',
-                        typeof attrs.inputTokens === 'number' ? attrs.inputTokens : 0,
-                        typeof attrs.outputTokens === 'number' ? attrs.outputTokens : 0,
-                        typeof attrs.cachedTokens === 'number' ? attrs.cachedTokens : 0,
-                        typeof attrs.copilotUsageNanoAiu === 'number' ? attrs.copilotUsageNanoAiu : 0,
-                        typeof attrs.debugName === 'string' ? attrs.debugName : '',
-                    );
-                }
-                const consumedLines = text.split('\n').length - 1;
-                this._globalLogOffsets.set(file, { byteOffset: from + lastNl + 1, lineCount: (known?.lineCount ?? 0) + consumedLines });
-                dirty = true;
-            } finally {
-                await fd.close();
-            }
-        }
-
-        if (dirty) {
-            shard.updatedAt = Date.now();
-            await this._saveMonthShard(shard);
-            await this._saveGlobalOffsets();
-        }
-        return shard;
     }
 
     private _getMonthShardPath(workspaceKey: string): string {
@@ -4002,7 +3652,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             const config = vscode.workspace.getConfiguration('askaway.cloud');
             if (!root || !config.get<boolean>('enabled', false)) { return; }
             try {
-                await this._cloudDigest.tick(root, config.get<string>('digestTime', '08:00'), remoteDigestPoster(() => this._telegramService));
+                await this._cloudDigest.tick(root, config.get<string>('digestTime', '08:00'), cloudDigestPoster(root, () => this._webexService, () => this._telegramService));
             } catch { console.warn('Cloud digest delivery failed'); }
         };
         void tick();
@@ -4583,27 +4233,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             }
         }
 
-        // Post question to Webex if configured
-        if (this._webexService && typeof this._webexService.postAdaptiveCard === 'function' && this._webexService.isConfigured()) {
-            this._webexService.postAdaptiveCard(toolCallId, question, choices.length > 0 ? choices : undefined)
-                .catch((err: any) => console.error('[AskAway] Webex postAdaptiveCard error:', err));
-        }
-
-        // Post question to Telegram if configured
-        if (this._telegramService && typeof this._telegramService.postQuestion === 'function') {
-            if (this._telegramService.isConfigured()) {
-                this._telegramService.postQuestion(toolCallId, question, choices.length > 0 ? choices : undefined)
-                    .catch((err: any) => {
-                        // Error already logged inside TelegramService via _err()
-                        console.error('[AskAway] Telegram postQuestion error:', err);
-                    });
-            } else {
-                // TelegramService logs the "not configured" detail in its own output channel
-                console.warn('[AskAway] Telegram: SKIPPED — not configured');
-            }
-        } else {
-            console.warn('[AskAway] Telegram: SKIPPED — service unavailable (check deferred init in AskAway output)');
-        }
+        void postRemoteQuestion(this._webexService, this._telegramService, toolCallId, question, choices.length > 0 ? choices.map(choice => choice.label) : undefined)
+            .catch(() => console.error('[AskAway] Remote question delivery failed'));
 
         this._updateCurrentSessionUI();
 
@@ -7114,7 +6745,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         <!-- Commentary Panel (goal box + live orchestrator feed) -->
         <div class="tab-panel" id="panel-commentary">
             <div class="cm-shell">
-                <div class="cm-avail" id="cm-avail"></div>
                 <textarea class="cm-goal-input" id="cm-goal-input" rows="6" aria-label="Main goal" placeholder="Main goal: what should the orchestrator focus on? Saved as you type. Empty = the active spec cycle."></textarea>
                 <div class="cm-toolbar">
                     <button class="cm-icon-btn" id="cm-copy" title="Copy goal + feed as the next conversation's opener" aria-label="Copy opener"><span class="codicon codicon-copy"></span></button>

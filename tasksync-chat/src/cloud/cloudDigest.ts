@@ -1,6 +1,27 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { CloudRun, defaultIO, serial } from './cloudQueue';
+import { availabilityPolicy } from '../services/availabilityGate';
+import type { RemoteChannel } from '../services/remoteChannel';
+import { remoteDigestPoster } from '../commentary/telegramLive';
+
+export function cloudDigestPoster(root: string,
+    webex: () => Pick<RemoteChannel, 'isConfigured' | 'sendText'> | undefined,
+    telegram: () => Pick<RemoteChannel, 'isConfigured' | 'sendText'> | undefined) {
+    return remoteDigestPoster(() => {
+        if (!availabilityPolicy(root).liveStatus) { return undefined; }
+        const preferred = webex();
+        const useWebex = preferred?.isConfigured() === true;
+        const channel = useWebex ? preferred : telegram();
+        if (!channel?.isConfigured()) { return undefined; }
+        return { isConfigured: () => channel.isConfigured(), sendLive: async (html: string) => {
+            if (!availabilityPolicy(root).liveStatus) { return undefined; }
+            const text = useWebex ? html.replace(/<b>(.*?)<\/b>/g, '**$1**')
+                .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&') : html;
+            return await channel.sendText(text, text, undefined, { notify: false }) as number | undefined;
+        } };
+    });
+}
 
 export interface DigestState { day?: string; fingerprints: Record<string, string> }
 const identity = (run: CloudRun) => `${run.slug}:${run.taskId}:${run.attempt}`;

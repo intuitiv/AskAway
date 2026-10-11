@@ -9,11 +9,15 @@ async function main() {
     fs.mkdirSync(path.join(root, '.askaway'), { recursive: true });
     fs.writeFileSync(path.join(root, '.askaway/webex-spaces.json'), JSON.stringify({ self: { workspaceRoomId: 'workspace', generalRoomId: 'general' }, teams: [{ rooms: [{ id: 'built-in', title: 'self' }, { id: 'workspace', title: 'Fixture Space' }, { id: 'general', title: 'AskAway General' }] }] }));
     const secrets = new Map([['askaway.webex.accessToken', 'fixture-token']]);
+    const tokenFile = path.join(root, 'legacy-token.json');
+    fs.writeFileSync(tokenFile, JSON.stringify({ access_token: 'legacy-file-token', refresh_token: 'legacy-file-refresh' }));
+    const legacySettings = { 'webex.tokenFilePath': tokenFile, 'webex.accessToken': 'legacy-setting-token',
+        'webex.refreshToken': 'legacy-setting-refresh', 'webex.clientId': 'legacy-client', 'webex.clientSecret': 'legacy-client-secret' };
     const notices = [], clipboard = [], opened = [], security = [], requests = [], timers = new Map(), replies = [];
     let selected = 0, input = 'https://webexapis.com/v1/webhooks/incoming/fixture-canary', action = 'Configure', enabled = true;
     const storage = { get: async key => secrets.get(key), store: async (key, value) => secrets.set(key, value) };
     const state = new Map(); const memento = { get: (key, fallback) => state.get(key) ?? fallback, update: async (key, value) => state.set(key, value) };
-    const vscode = { Uri: { parse: value => value }, workspace: { workspaceFolders: [{ uri: { fsPath: root } }], getConfiguration: () => ({ get: (key, fallback) => ({ enabled, 'webex.enabled': enabled, 'webex.roomId': 'workspace' })[key] ?? fallback }) },
+    const vscode = { Uri: { parse: value => value }, workspace: { workspaceFolders: [{ uri: { fsPath: root } }], getConfiguration: () => ({ get: (key, fallback) => ({ ...legacySettings, enabled, 'webex.enabled': enabled, 'webex.roomId': 'workspace' })[key] ?? fallback }) },
         env: { clipboard: { writeText: async text => clipboard.push(text) }, openExternal: async url => { opened.push(url); return true; } },
         window: { showInformationMessage: async message => { notices.push(message); return action; }, showErrorMessage: async message => notices.push(message),
             showQuickPick: async choices => { assert.ok(choices.every(choice => /configured/.test(choice.description))); return choices[selected]; },
@@ -35,6 +39,15 @@ async function main() {
     const hook = new loaded.exports.WebexIncomingWebhook(storage, async (file, args) => security.push({ file, args }), 'darwin', base + '/incoming');
     let service;
     try {
+        const unconfigured = new loaded.exports.WebexService(undefined, { tokens: async () => ({}) }, path.join(root, 'absent'), { baseUrl: base + '/v1' }, hook);
+        await unconfigured.reloadConfig();
+        const beforeLegacy = requests.length;
+        assert.equal(unconfigured.isConfigured(), false);
+        assert.equal(unconfigured.hasOAuthCredentials(), false);
+        assert.equal(await unconfigured.sendText('Ignore legacy credentials', 'Ignore legacy credentials'), undefined);
+        assert.equal(requests.length, beforeLegacy);
+        assert.equal(JSON.parse(fs.readFileSync(tokenFile, 'utf8')).access_token, 'legacy-file-token');
+        unconfigured.dispose();
         action = 'Later'; await hook.prompt(root, memento);
         assert.match(notices[0], /Fixture Space/);
         assert.ok(notices.some(message => message.includes('Configure Webex notifications for AskAway General')));
@@ -70,6 +83,6 @@ async function main() {
         assert.ok(require('./package.json').contributes.commands.some(command => command.command === 'askaway.configureWebexNotifications'));
     } finally { service?.dispose(); await new Promise(resolve => server.close(resolve)); }
     console.log('PASS Webex webhook setup: named startup prompt, clipboard/apphub, masked validation, SecretStorage and General Keychain');
-    console.log('PASS Webex webhook routing: notifying text via incoming, token files/fallback, sender excluded and threaded handoff reply');
+    console.log('PASS Webex webhook routing: SecretStorage tokens only; settings/token file ignored; webhook-to-token delivery fallback preserved; threaded reply');
 }
 main().catch(error => { console.error('FAIL Webex incoming acceptance:', error.message); process.exitCode = 1; });

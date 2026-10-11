@@ -15,3 +15,9 @@ export interface RemoteChannel {
     beginTurn?(workspace: string, prompt: string, status: string): Promise<RemoteMessageId | undefined>;
     finishTurn?(markdown: string, taskId: string, filePath: string): Promise<boolean>;
 }
+
+export async function postRemoteQuestion(webex: RemoteChannel | undefined, telegram: RemoteChannel | undefined,
+    taskId: string, question: string, choices?: string[]): Promise<void> {
+    const channel = webex?.isConfigured() ? webex : telegram;
+    if (channel?.isConfigured()) { await channel.postQuestion(taskId, question, choices); }
+}

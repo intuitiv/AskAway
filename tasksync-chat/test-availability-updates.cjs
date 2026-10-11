@@ -30,7 +30,7 @@ async function main() {
         assert.deepEqual(sends, [], `${stateRead} state must send nothing`);
         relay.dispose();
     }
-    assert.ok(require('./package.json').scripts['test:workers'].endsWith('node test-availability-updates.cjs'));
+    assert.ok(require('./package.json').scripts['test:workers'].includes('node test-availability-updates.cjs'));
     console.log('PASS EV-AVAILABILITY-UPDATES missing-state=Here unreadable-state=Here malformed-state=Here sends=0');
     for (const initial of ['here', 'away', 'awayValidator', 'offline']) {
         let mode = initial;

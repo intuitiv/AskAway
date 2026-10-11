@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
-import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
+import { AskAwayWebviewProvider, readAvailability, writeAvailability } from './webview/webviewProvider';
 import { wireWebex } from './services/webexWiring';
 import { createWebexToolsHost } from './services/webexToolsHost';
 import { webexTool } from './workers/workerTools';
@@ -1157,6 +1157,25 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             })
         );
+
+        const presence = [
+            { mode: 'here', label: '$(circle-filled) Here', description: 'Available', },
+            { mode: 'away', label: '$(clock) Away', description: 'Reachable remotely', },
+            { mode: 'awayValidator', label: '$(sparkle) Away + Validator answering', description: 'Requires Validator live setting', },
+            { mode: 'offline', label: '$(circle-outline) Offline', description: 'Not reachable', },
+        ] as const;
+        const pickAvailability = async () => {
+            const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!root) { return; }
+            const current = readAvailability(root)?.mode || 'here';
+            const picked = await vscode.window.showQuickPick(presence.map(item => ({ ...item,
+                description: item.description + (item.mode === current ? ' · Current' : '') })), { title: 'Availability' });
+            if (picked) { writeAvailability(root, { mode: picked.mode }); provider._pushAvailability(); }
+        };
+        for (const item of presence) {
+            context.subscriptions.push(vscode.commands.registerCommand('askaway.availability.' + item.mode, pickAvailability));
+        }
+        provider._pushAvailability();
 
         // Session commands
         context.subscriptions.push(

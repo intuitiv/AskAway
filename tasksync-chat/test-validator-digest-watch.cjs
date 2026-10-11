@@ -36,7 +36,7 @@ async function checkLiveWatch() {
         run: validatorWorkerRun(async () => runtime, fixture, () => 'validator-watch-live-check') });
     const triggers = new ValidatorTriggers(fixture, async () => observer, () => '', () => {});
     const replies = [];
-    const watch = new CommentaryWatch(fixture, store, () => true, () => ({ mode: 'away' }), async text => {
+    const watch = new CommentaryWatch(fixture, store, () => true, () => ({ mode: 'awayValidator' }), async text => {
         const reply = await triggers.validatorCall(text);
         replies.push(reply);
         assert.ok(reply && !reply.error && !reply.skipped, 'Real validator must complete; failure is not quiet');
@@ -64,7 +64,7 @@ async function checkLiveWatch() {
 (async () => {
     if (live) { await checkLiveWatch(); return; }
     let now = 1000000, enabled = true;
-    let state = { mode: 'away', setAt: new Date(now).toISOString() };
+    let state = { mode: 'awayValidator', setAt: new Date(now).toISOString() };
     const store = new CommentaryStore({ dir: path.join(fixture, 'commentary'), now: () => now });
     const mirrors = [];
     const relay = relayCommentaryToTelegram({ update: async view => { mirrors.push(view); }, dispose() {} }, store, fixture);
@@ -83,12 +83,12 @@ async function checkLiveWatch() {
         assert.equal(items[0].detail.summary.uncertain[0].question, 'UNCERTAIN_QUESTION');
         assert.equal(items[0].detail.summary.held.length, 2);
         assert.ok(!JSON.stringify(items).includes('OLD_DECISION'));
-        now += 100; state = { mode: 'away', setAt: new Date(now).toISOString() }; digest.check();
+        now += 100; state = { mode: 'awayValidator', setAt: new Date(now).toISOString() }; digest.check();
         state = { mode: 'here' }; digest.check(); assert.equal(store.read(fixture).validatorItems.length, 1);
-        state = { mode: 'away', setAt: new Date(now).toISOString(), until: new Date(now + 10).toISOString() }; digest.check();
+        state = { mode: 'awayValidator', setAt: new Date(now).toISOString(), until: new Date(now + 10).toISOString() }; digest.check();
         decision('TIMED_RETURN', false, 1); now += 11; digest.check(); digest.check();
         assert.equal(store.read(fixture).validatorItems.length, 2);
-        enabled = false; state = { mode: 'away' }; digest.check(); decision('OFF_DECISION', false, 1);
+        enabled = false; state = { mode: 'awayValidator' }; digest.check(); decision('OFF_DECISION', false, 1);
         state = { mode: 'here' }; digest.check(); assert.equal(store.read(fixture).validatorItems.length, 2);
 
         fs.writeFileSync(path.join(fixture, 'GOALS.md'), 'Do not drift from the agreed goal.');
@@ -96,7 +96,7 @@ async function checkLiveWatch() {
         const observer = new ValidatorObserver({ workspaceRoot: fixture, commentary: store,
             run: async input => { calls.push(input); return { text: JSON.stringify({ answer: 'DRIFT_WARNING', sources: ['GOALS.md'], risk: 'high' }) }; } });
         const triggers = new ValidatorTriggers(fixture, async () => observer, () => '', () => {});
-        enabled = true; state = { mode: 'away' };
+        enabled = true; state = { mode: 'awayValidator' };
         const watch = new CommentaryWatch(fixture, store, () => enabled, () => state, text => triggers.validatorCall(text), () => now);
         store.post(fixture, { kind: 'update', text: 'Evidence line one changes direction' }); await watch.check();
         assert.equal(calls.length, 1);

@@ -19,7 +19,7 @@ const { CommentaryStore } = load('commentary/commentary.ts');
 const live = process.env.ASKAWAY_VALIDATOR_LIVE === '1';
 (async () => {
     const commentary = new CommentaryStore({ dir: path.join(fixture, 'commentary') });
-    let enabled = false, mode = 'away', until, confidence = 0.95, risk = 'low', reversible = true, sources = ['GOALS.md'];
+    let enabled = false, mode = 'awayValidator', until, confidence = 0.95, risk = 'low', reversible = true, sources = ['GOALS.md'];
     let run = async () => ({ text: 'Surrounding object {"unrelated":true}\n```json\n' + JSON.stringify({ answer: 'At most 4 keep-alive pings {maximum}.', sources, risk, reversible, confidence }) + '\n```\nResult: PASS\n{"footer":true}' });
     if (live) {
         const { OpenCodeWorkerRuntime } = load('workers/openCodeRuntime.ts');
@@ -44,12 +44,13 @@ const live = process.env.ASKAWAY_VALIDATOR_LIVE === '1';
         assert.equal(JSON.stringify(await call()), ack);
         enabled = true; mode = 'here';
         assert.equal(JSON.stringify(await call()), ack);
-        mode = 'away'; until = new Date(Date.now() - 1000).toISOString();
+        mode = 'away'; assert.equal(JSON.stringify(await call()), ack, 'plain Away does not enable live');
+        mode = 'awayValidator'; until = new Date(Date.now() - 1000).toISOString();
         assert.equal(JSON.stringify(await call()), ack);
         mode = 'offline'; until = undefined;
         assert.equal(JSON.stringify(await call()), ack);
     }
-    enabled = true; mode = 'away'; until = undefined;
+    enabled = true; mode = 'awayValidator'; until = undefined;
     const safe = await call();
     const { redactOrDrop } = load('validator/redact.ts');
     assert.equal(typeof safe.answer, 'string', 'Full tool result: ' + JSON.stringify(safe) + '; Commentary: ' + JSON.stringify(commentary.read(fixture).validatorItems) + '; Worker reply: ' + (redactOrDrop(workerReply) ?? '[credential omitted]'));
@@ -77,7 +78,7 @@ const live = process.env.ASKAWAY_VALIDATOR_LIVE === '1';
         await assert.rejects(secretRun({ prompt: 'Question?', profile: {}, observedId: 'secret-check' }), error =>
             error.message === 'Validator worker FAILED');
         const timed = validatorTool(() => new Promise(() => {}), { workspace: fixture, enabled: () => true,
-            availability: () => ({ mode: 'away' }), timeoutMs: 5 });
+            availability: () => ({ mode: 'awayValidator' }), timeoutMs: 5 });
         assert.equal((await timed.run({ message: 'A stalled question?' })).held, true);
         const lines = fs.readFileSync(path.join(fixture, '.askaway/validator/live-decisions.jsonl'), 'utf8').trim().split('\n');
         assert.equal(lines.length, 6); assert.equal(JSON.parse(lines.at(-1)).held, true);

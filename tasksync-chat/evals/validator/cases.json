@@ -1,0 +1,76 @@
+{
+  "answer": [
+    {
+      "id": "covered-rule",
+      "input": { "response": "Should the tests need network?", "sources": { "Rules.md": "Tests must run offline.", "ADR.md": "No network in the test gate." } },
+      "expected": { "answer": "Run tests offline.", "sources": ["Rules.md"] },
+      "recorded": { "answer": "Run tests offline.", "sources": ["Rules.md"], "agentInputs": [] }
+    },
+    {
+      "id": "no-source",
+      "input": { "response": "Which database does the reviewer prefer?", "sources": {} },
+      "expected": { "answer": null, "sources": [] },
+      "recorded": { "answer": null, "sources": [], "agentInputs": [] }
+    },
+    {
+      "id": "cheap-check-skip",
+      "kind": "skip",
+      "input": { "response": "Build passed. Moving on." },
+      "expected": { "skipped": true, "modelCalls": 0 },
+      "recorded": { "skipped": true, "modelCalls": 0, "usage": { "cost": 0 }, "agentInputs": [] }
+    },
+    {
+      "id": "secret-leak",
+      "kind": "secret",
+      "input": { "seededSecret": "SYNTHETIC_SECRET_CANARY", "response": "A credential-bearing request must be dropped." },
+      "expected": { "modelCalls": 0 },
+      "recorded": { "modelCalls": 0, "error": "Credential omitted.", "sinks": { "modelInput": "", "storage": "", "commentary": "", "costRecords": "" }, "agentInputs": [] }
+    }
+  ],
+  "enhance": [
+    {
+      "id": "relevant-context",
+      "input": { "prompt": "Check the build.\r\n", "stored": [{ "id": "offline", "text": "Run tests offline." }, { "id": "tone", "text": "Use plain words." }] },
+      "expected": { "refs": ["offline"] },
+      "recorded": { "prompt": "Check the build.\r\n", "proposals": [{ "ref": "offline", "reason": "Run tests offline." }], "agentInputs": [] }
+    },
+    {
+      "id": "nothing-relevant",
+      "input": { "prompt": "Show the current date.", "stored": [{ "id": "offline", "text": "Run tests offline." }] },
+      "expected": { "refs": [] },
+      "recorded": { "prompt": "Show the current date.", "proposals": [], "agentInputs": [] }
+    },
+    {
+      "id": "already-named",
+      "input": { "prompt": "Read offline before checking.", "stored": [{ "id": "offline", "text": "Run tests offline." }] },
+      "expected": { "refs": [] },
+      "recorded": { "prompt": "Read offline before checking.", "proposals": [], "agentInputs": [] }
+    }
+  ],
+  "store": [
+    {
+      "id": "concise-rule-once",
+      "input": { "reply": "Keep tests offline. For example, use a fake Webex server.", "previous": [] },
+      "expected": { "current": [{ "text": "Keep tests offline.", "example": "Use a fake Webex server." }], "historyIds": [] },
+      "recorded": { "current": [{ "id": "offline", "text": "Keep tests offline.", "example": "Use a fake Webex server." }], "history": [], "agentInputs": [] }
+    },
+    {
+      "id": "ack-stores-nothing",
+      "input": { "reply": "ok", "previous": [] },
+      "expected": { "current": [], "historyIds": [] },
+      "recorded": { "current": [], "history": [], "agentInputs": [] }
+    },
+    {
+      "id": "restatement-dedup",
+      "input": { "reply": "Always keep tests offline.", "previous": [{ "id": "offline", "text": "Keep tests offline." }] },
+      "expected": { "current": [{ "text": "Keep tests offline." }], "historyIds": [] },
+      "recorded": { "current": [{ "id": "offline", "text": "Keep tests offline." }], "history": [], "agentInputs": [] }
+    },
+    {
+      "id": "reversal-supersedes",
+      "input": { "reply": "Use Webex, not Telegram.", "previous": [{ "id": "old", "text": "Use Telegram." }] },
+      "expected": { "current": [{ "text": "Use Webex.", "supersedesId": "old" }], "historyIds": ["old"] },
+      "recorded": { "current": [{ "id": "new", "text": "Use Webex.", "supersedesId": "old" }], "history": [{ "id": "old", "text": "Use Telegram." }], "agentInputs": [] }
+    }
+  ]
+}

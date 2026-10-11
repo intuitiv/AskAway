@@ -39,18 +39,19 @@ function readCommentary(cwd) {
 function availabilityContext(cwd) {
     try {
         const state = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.askaway', 'availability', `${commentaryKey(cwd)}.json`), 'utf8'));
-        if (!['away', 'offline'].includes(state.mode)) { return ''; }
+        if (!['away', 'awayValidator', 'offline'].includes(state.mode)) { return ''; }
         if (state.until && !(Date.parse(state.until) >= Date.now())) { return ''; }
+        const away = String(state.mode).startsWith('away');
         const lines = [
             '## Availability',
-            `Reviewer: ${state.mode === 'away' ? 'Away (reachable on Telegram)' : 'Offline (not reachable)'}.`,
+            `Reviewer: ${state.mode === 'awayValidator' ? 'Away, Validator answering (reachable on Telegram)' : away ? 'Away (reachable on Telegram)' : 'Offline (not reachable)'}.`,
         ];
         if (state.until) { lines.push(`Until: ${state.until}`); }
         if (state.note) { lines.push(`Reviewer note: ${String(state.note).replace(/\s+/g, ' ').trim()}`); }
         lines.push(
             'Do not stop for small choices: decide and record each decision in a decisions list.',
             'Keep every lane busy.',
-            state.mode === 'away'
+            away
                 ? 'Send questions to Telegram; work continues on other lanes.'
                 : 'Never ask questions; park open questions for the final report.',
             'End the session with a handoff and a report of decisions, open questions, and cost.',

@@ -1,3 +1,5 @@
+process.env.ASKAWAY_TEST_NO_KEYCHAIN = '1';
+process.env.ASKAWAY_AVAILABILITY_MODE = 'away';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), http = require('node:http'), esbuild = require('esbuild');
 const root = path.join(__dirname, 'build', 'turn-thread-' + process.pid);
 fs.mkdirSync(path.join(root, '.askaway'), { recursive: true });

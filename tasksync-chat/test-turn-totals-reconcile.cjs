@@ -155,19 +155,6 @@ vm.runInNewContext(ts.transpileModule(tools.slice(begin, end) + registration, { 
     await relay.finish('done', 'fixture');
     assert.match(finalHeader, /6 requests · 2 workers · <b>\$0\.60<\/b>/);
     assert.match(finalHeader, /80 turn out/);
-    // January 1970 fixture: month includes the earlier $9 checkpoint, unlike the turn.
-    Object.assign(provider, { _overallLastComputedAt: 0, _OVERALL_RECOMPUTE_MS: 10000,
-        _monthFileCache: new Map([['fixture', { months: new Map([['1970-01', { ...main, cacheMisses: 0, compactionCount: 0, compactionNanoAiu: 0, perModel: new Map([['main-model', main]]) }]]) }]]) });
-    provider._loadMonthFileCache = async () => {};
-    provider._findAllCopilotDebugLogFiles = async () => [];
-    provider._saveMonthFileCache = async () => {};
-    const month = await provider._computeOverallMonth('1970-01');
-    assert.equal(month.totals.requestCount, 7);
-    assert.equal(month.totals.nanoAiu, 960e9);
-    assert.equal(month.totals.inputTokens, 1150);
-    assert.equal(month.totals.outputTokens, 90);
-    assert.equal(month.totals.cachedTokens, 250);
-    assert.equal(month.perModel.find(row => row.model === 'worker-model').nanoAiu, 940e9);
     const tool = { tool: 'build', calls: 1, outputTokens: 20, avgMs: 200, minMs: 200, maxMs: 200, errors: 0, cacheRisk: false };
     const toolMain = { totalCalls: 1, totalOutputTokens: 20, byTool: [tool], turn: { totalCalls: 1, totalOutputTokens: 20, byTool: [tool] } };
     const tools = provider._withWorkerTools(toolMain);
@@ -178,7 +165,7 @@ vm.runInNewContext(ts.transpileModule(tools.slice(begin, end) + registration, { 
     const currentTools = provider._withWorkerTools(toolMain);
     assert.equal(currentTools.totalOutputTokens, 50);
     files.set(`/ledger/${key}.jsonl`, ledger.map(JSON.stringify).join('\n'));
-    console.log('PASS EV-TURN-MONTH-CACHE-TOOLS turn=6/60AIU/1000in/80out/20%cache month=7/960AIU/1150in/90out/22%cache tools=50out');
+    console.log('PASS EV-TURN-MONTH-CACHE-TOOLS turn=6/60AIU/1000in/80out/20%cache tools=50out');
     console.log('PASS EV-TURN-TOTALS-SNAPSHOT-SPEC-FINAL requests=6 AIU=60 input=1000 output=80');
     for (const consumer of ['banner', 'Observability', 'turn_budget', 'Telegram', 'Workers filter']) console.log(`${consumer}: requests=6 dollars=0.60 AIU=60 workers=2 ids=w1,w2 input=1000 output=80`);
     console.log('PASS EV-TURN-TOTALS-RECONCILE');

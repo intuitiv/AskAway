@@ -33,6 +33,33 @@ export default {
     },
 };
 
+export const FullWidthPolish = {
+    render: () => {
+        const now = Date.now();
+        const root = mount({ items: [
+            { id: 'polish-plan', ts: now - 90000, kind: 'update', text: '🏏 Plan: **finish the existing story**, keeping one clear next action and every upstream warning in plain words.' },
+            { id: 'polish-check', ts: now - 60000, kind: 'update', text: '✅ The shared render blocks pass their caller-view checks; the reviewer can inspect the full-width commentary here.' },
+            { id: 'polish-look', ts: now, kind: 'heads-up', text: '👀 **Reviewer look pending**: confirm the spacing and second-line metadata work at your sidebar width.' },
+        ] });
+        root.style.width = '320px';
+        root.querySelector('#cm-feed').innerHTML = kit.renderCommentaryHtml({ items: root.__commentary.state.items, turnStarts: [now - 120000, now - 30000] });
+        return root;
+    },
+};
+
+export const AvailabilityFrames = {
+    render: () => {
+        const root = document.createElement('div');
+        root.innerHTML = `<style>${cssText}\n${VSCODE_DARK_THEME}\n.availability-frame { position:relative; width:300px; height:180px; padding:12px; margin:12px; } .availability-frame::before { position:absolute; }</style>`;
+        for (const [mode, label] of [['here', 'Here'], ['away', 'Away'], ['awayValidator', 'Away + Validator answering'], ['offline', 'Offline']]) {
+            const frame = mount({ goal: label });
+            frame.classList.add('availability-frame', 'avail-' + mode);
+            root.appendChild(frame);
+        }
+        return root;
+    },
+};
+
 /** The real feed from an AA.Orchestrator run, replayed line by line with the typewriter the webview uses. */
 export const LiveSimulation = {
     args: { secondsBetweenLines: 2.5, msPerChar: 18 },

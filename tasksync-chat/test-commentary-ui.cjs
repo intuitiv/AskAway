@@ -88,6 +88,9 @@ const headCss = feedCss.match(/\.cm-turn-head \{[^}]*\}/)[0] + feedCss.match(/\.
 assert.doesNotMatch(feedCss.match(/\.cm-turn-title \{[^}]*\}/)[0], /text-overflow|nowrap/, 'the commentary text is no longer cut');
 assert.match(feedCss.match(/\.cm-turn-meta \{[^}]*\}/)[0], /justify-content: flex-end[^}]*font-size: 10px[^}]*font-weight: 700/, 'time and count: right-aligned, smaller bold');
 assert.match(feedCss.match(/\.cm-meta \{[^}]*\}/)[0], /justify-content: flex-end[^}]*font-weight: 700/, 'single items use the same right-aligned meta line');
+assert.match(feedCss.match(/\.cm-text \{[^}]*\}/)[0], /width: 100%;[^}]*overflow-wrap: anywhere/, 'long commentary gets the full width and wraps instead of clipping');
+assert.ok(byTurn[0].body.indexOf('</summary>') < byTurn[0].body.indexOf('class="cm-turn-meta"'), 'time and count are a second line, never beside the title');
+assert.match(feedCss.match(/\.cm-body \{[^}]*\}/)[0], /flex: 1; min-width: 0/, 'the text and second meta line use all available feed width');
 const justStarted = ui.render({ ...turnView, turnStarts: [turn1, turn2, today + 900_000] });
 assert.deepEqual([panes(justStarted).map((p) => [p.ids.length, p.open]), flat(justStarted)], [[[3, false], [2, false]], []], 'the moment a prompt is sent, everything so far is folded');
 assert.deepEqual(panes(ui.render({ ...turnView, turnStarts: [turn1, turn2] }, { [byTurn[0].key]: true })).map((p) => p.open), [true], 'the reviewer can reopen a pane');

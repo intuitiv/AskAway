@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { availabilityPolicy } from './availabilityGate';
 import { CONFIG_NAMESPACE } from '../constants/branding';
 import { WebexAuth, readWebexCredentials, isWebexToken } from './webexAuth';
@@ -42,7 +41,6 @@ export class WebexService implements RemoteChannel {
     private _enabled: boolean = false;
     private _accessToken: string | undefined;
     private _roomId: string | undefined;
-    private _tokenFilePath: string | undefined;
     private _pollingTimer: NodeJS.Timeout | undefined;
     private _activeTasks: Map<string, TrackedTask> = new Map();
     private _processedMsgIds: Set<string> = new Set();
@@ -113,22 +111,15 @@ export class WebexService implements RemoteChannel {
                 }
             } catch { /* A new workspace has no message ledger yet. */ }
         }
-        this._tokenFilePath = config.get<string>('webex.tokenFilePath', '');
-        const directToken = config.get<string>('webex.accessToken', '');
-
         this.logger?.appendLine(`[WebexService] Reloading config. Enabled: ${this._enabled}`);
 
         // OAuth credentials for auto-refresh
-        this._clientId = config.get<string>('webex.clientId', '') || undefined;
-        this._clientSecret = config.get<string>('webex.clientSecret', '') || undefined;
-        if (!this._clientId || !this._clientSecret) {
-            const credentials = readWebexCredentials(this.credentialsFile);
-            this._clientId ||= credentials.clientId;
-            this._clientSecret ||= credentials.clientSecret;
-        }
-        this._refreshToken = config.get<string>('webex.refreshToken', '') || undefined;
+        const credentials = readWebexCredentials(this.credentialsFile);
+        this._clientId = credentials.clientId;
+        this._clientSecret = credentials.clientSecret;
+        this._refreshToken = undefined;
 
-        // Resolve token: file takes precedence over direct token
+        // Access and refresh tokens come only from the command-backed authentication boundary.
         this._accessToken = undefined;
         this._myPersonId = undefined; // clear cache on reload
 
@@ -136,14 +127,8 @@ export class WebexService implements RemoteChannel {
             try {
                 const tokens = await this.auth.tokens();
                 this._accessToken = tokens.accessToken;
-                this._refreshToken = tokens.refreshToken || this._refreshToken;
+                this._refreshToken = tokens.refreshToken;
             } catch { console.warn('AskAway/Webex: Could not read stored credentials.'); }
-        }
-        if (!this._accessToken && this._tokenFilePath) {
-            this._accessToken = this._loadTokenFromFile(this._tokenFilePath);
-        }
-        if (!this._accessToken && directToken) {
-            this._accessToken = directToken;
         }
 
         // If no token but OAuth credentials exist, try to get one
@@ -163,31 +148,6 @@ export class WebexService implements RemoteChannel {
             this.startPolling();
         } else if (!this._enabled || !this._accessToken) {
             this.stopPolling();
-        }
-    }
-
-    /**
-     * Load access_token (and optionally refresh_token) from a JSON file on disk.
-     * Supports paths with ~ (home directory).
-     */
-    private _loadTokenFromFile(filePath: string): string | undefined {
-        try {
-            const resolved = filePath.startsWith('~')
-                ? path.join(os.homedir(), filePath.slice(1))
-                : filePath;
-            
-            const content = fs.readFileSync(resolved, 'utf8');
-            const json = JSON.parse(content);
-
-            // Also load refresh_token from file if present (and not already set from settings)
-            if (json.refresh_token && !this._refreshToken) {
-                this._refreshToken = json.refresh_token;
-            }
-
-            return json.access_token || undefined;
-        } catch (e) {
-            console.warn('AskAway/Webex: Could not load token file.');
-            return undefined;
         }
     }
 
@@ -369,10 +329,19 @@ export class WebexService implements RemoteChannel {
         } catch { return false; }
     }
     public async postQuestion(taskId: string, question: string, choices?: string[]): Promise<void> {
-        const id = await this.sendText([question, ...(choices ?? [])].join('\n'), question, undefined, { notify: true });
+        await this._ready;
+        if (!this.isConfigured() || !this.turnPolicy().liveStatus) { return; }
+        const allowRoomReply = !this.turnRoot;
+        if (!this.turnRoot) { await this.beginTurn(this.turnWorkspace || path.basename(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || 'workspace'), question, question); }
+        if (!this.turnRoot || !this.turnPolicy().liveStatus) { return; }
+        const response = await this.remoteRequest('POST', 'messages', { roomId: this._roomId, parentId: this.turnRoot,
+            text: [question, ...(choices ?? [])].join('\n') });
+        if (!response.ok) { return; }
+        const { id } = await response.json() as { id: string };
         if (!id) { return; }
+        this._recordPost(id);
         this._activeTasks.clear();
-        this._activeTasks.set(taskId, { taskId, messageId: String(id), question, choices, timestamp: Date.now() });
+        this._activeTasks.set(taskId, { taskId, messageId: String(id), question, choices, timestamp: Date.now(), turnRoot: this.turnRoot, allowRoomReply } as TrackedTask & { turnRoot: string; allowRoomReply: boolean });
         this._persistMessages();
         this._resetBackoff();
         this.startPolling();
@@ -475,20 +444,6 @@ export class WebexService implements RemoteChannel {
                 this._refreshToken = data.refresh_token;
             }
 
-            // Also save to token file if configured
-            if (!this.auth && this._tokenFilePath) {
-                try {
-                    const resolved = this._tokenFilePath.startsWith('~')
-                        ? path.join(os.homedir(), this._tokenFilePath.slice(1))
-                        : this._tokenFilePath;
-                    const json = JSON.stringify({ access_token: data.access_token }, null, 2);
-                    fs.writeFileSync(resolved, json, 'utf8');
-                    console.log('AskAway/Webex: Access token saved to file');
-                } catch (e) {
-                    console.warn('AskAway/Webex: Could not save token to file.');
-                }
-            }
-
             this._tokenExpiredNotified = false;
             console.log('AskAway/Webex: Token refreshed successfully.');
             return data.access_token;
@@ -504,7 +459,7 @@ export class WebexService implements RemoteChannel {
     private _tokenExpiredNotified: boolean = false;
 
     /**
-     * Handle 401 Unauthorized: try OAuth refresh first, then file reload, then notify user.
+     * Handle 401 Unauthorized: try OAuth refresh, then offer command-backed sign-in.
      * Returns true if the token was successfully refreshed.
      */
     private async _handleTokenExpiry(): Promise<boolean> {
@@ -516,28 +471,16 @@ export class WebexService implements RemoteChannel {
             }
         }
 
-        // 2. Try to reload token from file (file may have been updated externally)
-        if (this._tokenFilePath) {
-            const newToken = this._loadTokenFromFile(this._tokenFilePath);
-            if (newToken && newToken !== this._accessToken) {
-                this._accessToken = newToken;
-                this._myPersonId = undefined;
-                this._tokenExpiredNotified = false;
-                console.log('AskAway/Webex: Token refreshed from file');
-                return true;
-            }
-        }
-
         // 3. Token still invalid — notify user once
         if (!this._tokenExpiredNotified) {
             this._tokenExpiredNotified = true;
             const action = await vscode.window.showWarningMessage(
-                'AskAway: Webex token expired (401). Please update your token or configure OAuth credentials.',
-                'Open Settings',
+                'AskAway: Webex token expired (401). Sign in again with AskAway: Set Webex Token.',
+                'Sign In',
                 'Dismiss'
             );
-            if (action === 'Open Settings') {
-                vscode.commands.executeCommand('workbench.action.openSettings', 'askaway.webex');
+            if (action === 'Sign In') {
+                vscode.commands.executeCommand('askaway.setWebexToken');
             }
         }
         return false;
@@ -930,7 +873,7 @@ export class WebexService implements RemoteChannel {
                 const data = await resp.json() as { items: any[] };
                 const latestHandoff = [...this._activeTasks.values()].filter(item => item.handoff).sort((a, b) => b.timestamp - a.timestamp)[0];
                 const webhookParents = new Set(roomReplies.filter(isIncomingWebhookSender).map(reply => reply.id));
-                const replies = [...(data.items || []), ...roomReplies.filter(reply => !reply.parentId || reply.parentId === task.messageId || reply.parentId === turnRoot ||
+                const replies = [...(data.items || []), ...roomReplies.filter(reply => (!reply.parentId && (!turnRoot || task.handoff || (task as TrackedTask & { allowRoomReply?: boolean }).allowRoomReply)) || reply.parentId === task.messageId || reply.parentId === turnRoot ||
                     (latestHandoff?.taskId === taskId && webhookParents.has(reply.parentId)))]
                     .sort((a, b) => String(a.created || '').localeCompare(String(b.created || '')));
                 console.log(`AskAway/Webex: Found ${replies.length} replies for task ${taskId}`);
@@ -982,6 +925,7 @@ export class WebexService implements RemoteChannel {
     // ── Update Card Status ────────────────────────────────────
 
     private async _updateCardStatus(task: TrackedTask, status: string, answer?: string, user?: string) {
+        if (!task.handoff && (task as TrackedTask & { turnRoot?: string }).turnRoot) { return; }
         if (!this._accessToken || !this._roomId) { return; }
 
         const body: any[] = [
@@ -1109,16 +1053,7 @@ export class WebexService implements RemoteChannel {
                 hint: 'Reauthorize with the registered spark:rooms_write scope.' };
         }
 
-        let tokenSource: 'oauth' | 'file' | 'setting' | 'none' = 'none';
-        if (hasToken) {
-            if (this._tokenFilePath && this._loadTokenFromFile(this._tokenFilePath)) {
-                tokenSource = 'file';
-            } else if (hasOAuth) {
-                tokenSource = 'oauth';
-            } else {
-                tokenSource = 'setting';
-            }
-        }
+        const tokenSource = hasToken ? 'oauth' : 'none';
 
         if (this._tokenExpiredNotified) {
             return {
@@ -1132,7 +1067,7 @@ export class WebexService implements RemoteChannel {
                 message: 'Access token has expired.',
                 hint: hasOAuth
                     ? 'OAuth auto-refresh is configured — run "AskAway: Authorize Webex" to re-authorize.'
-                    : 'Update your token in Settings → askaway.webex.accessToken or set up OAuth credentials.'
+                    : 'Run "AskAway: Set Webex Token" to sign in again.'
             };
         }
 
@@ -1146,7 +1081,7 @@ export class WebexService implements RemoteChannel {
                 isPolling,
                 activeTasks: this._activeTasks.size,
                 message: 'No access token configured.',
-                hint: 'Set a token in Settings → askaway.webex.accessToken, or configure OAuth (clientId + clientSecret + refreshToken).'
+                hint: 'Run "AskAway: Set Webex Token" to sign in.'
             };
         }
 

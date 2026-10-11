@@ -212,7 +212,7 @@ console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=tr
     const bar = (fields) => hierarchyContext.renderStageBar({ slug: 's', ...fields });
     const continuing = bar({ specKitStage: 'implement', nextStep: '/sk.implement', stageButton: 'Implement' });
     assert.equal((continuing.match(/data-cmd="\/sk\.implement"/g) || []).length, 1, 'one button for the next step');
-    assert.match(continuing, />\/sk\.implement<\/button>/, 'the stage button is the plain stage command');
+    assert.match(continuing, /data-cmd="\/sk\.implement"[^>]*>\/sk\.implement<\/button>/, 'R-SPECS-15: same-stage next action keeps the plain /sk.implement label, no Continue');
     assert.doesNotMatch(continuing, /Continue/);
     assert.doesNotMatch(continuing, /Next <code/);
     const advancing = bar({ specKitStage: 'analyze', nextStep: '/sk.implement', stageButton: 'Implement' });
@@ -221,6 +221,14 @@ console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=tr
     const stale = (artifacts, reason) => bar({ specKitStage: 'tasks', nextStep: 'done', stageButton: '', stale: artifacts.map((artifact) => ({ artifact, upstream: 'plan.md', reason })) });
     assert.match(stale(['tasks.md', 'a.md', 'b.md', 'c.md', 'd.md', 'e.md'], 'upstream-newer'), /6 files were written before the last plan\.md change; re-check them with \/sk\.check<\/div>/);
     assert.match(stale(['tasks.md'], 'upstream-newer'), /1 file was written before the last plan\.md change; re-check it with \/sk\.check/);
+    const mixed = bar({ specKitStage: 'tasks', stale: [
+        { artifact: 'tasks.md', upstream: 'plan.md', reason: 'upstream-dirty' },
+        { artifact: 'tasks.md', upstream: 'plan.md', reason: 'upstream-newer' },
+        { artifact: 'checklist.md', upstream: 'plan.md', reason: 'upstream-newer' },
+        { artifact: 'plan.md', upstream: 'spec.md', reason: 'upstream-newer' },
+    ] });
+    assert.equal((mixed.match(/class="spec-stale"/g) || []).length, 2, 'exactly one plain stale line for each upstream, even with mixed reasons');
+    assert.match(mixed, /plan\.md has uncommitted edits; 2 files/);
 
     // Pastel stage colours: one CSS variable per Spec Kit stage, applied to the card badge and the stage bar, with a dark-theme set.
     for (const stage of ['specify', 'clarify', 'plan', 'checklist', 'tasks', 'analyze', 'implement', 'converge', 'done']) {
@@ -263,7 +271,7 @@ console.log('EV-SPECS-ACTIVE-VISIBLE: PASS activeDoneShown=true othersNeedAll=tr
     vm.runInContext('renderSpecs()', cardContext);
     const html = listEl.innerHTML;
     const buttons = [...html.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
-    assert.deepEqual(buttons, ['/sk.implement', '/sk.check'], 'each command button appears once per card, all in the stage bar');
+    assert.deepEqual(buttons, ['/sk.implement', '/sk.check'], 'one next-step button plus the standing Check action, all in the stage bar');
     assert.doesNotMatch(html, /\/start|\/continue|\/implement T081|spec-actions/, 'no bottom action row remains');
     const barHtml = html.slice(html.indexOf('<div class="spec-stage-bar">'));
     assert.match(barHtml, /\/sk\.check<\/button><a href="#" class="spec-file-link" data-act="open-spec">spec\.md<\/a><a href="#" class="spec-file-link" data-act="open-plan">plan\.md<\/a><a href="#" class="spec-file-link" data-act="open-tasks">tasks\.md<\/a>/, 'spec.md, plan.md and tasks.md are links after /sk.check');

@@ -113,6 +113,41 @@ export class ValidatorObserver {
 
     predictions(specSlug: string | null): Prediction[] { return this.records(specSlug).predictions(); }
 
+    /** Advisory context is posted only to the validator lane; the caller receives no additions to inject. */
+    async proposeContext(prompt: { text: string; specSlug?: string }): Promise<void> {
+        const store = this.ports.knowledgeStore;
+        const scope = this.ports.knowledgeScope;
+        if (!store || !scope || !prompt.text.trim() || redactOrDrop(prompt.text) === null) { return; }
+        const spec = prompt.specSlug ?? scope.spec;
+        const canonical = (text: string) => text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+        try {
+            const items = await store.recall(prompt.text, { ...scope, spec }, 10);
+            // Keep dismissed additions in the audit history so polling or reopening does not re-propose them.
+            const seen = new Set<string>();
+            for (const entry of this.ports.commentary.read(this.ports.workspaceRoot).validatorItems ?? []) {
+                if (entry.detail?.contextSpec !== (spec ?? null)) { continue; }
+                for (const addition of (entry.detail.contextSuggestions as Array<{ ref: string; reason: string }> | undefined) ?? []) {
+                    seen.add(addition.ref); seen.add(canonical(addition.reason));
+                }
+            }
+            const named = canonical(prompt.text);
+            for (const item of items.slice(0, 10)) {
+                const reason = item.fact.text.trim().slice(0, 280);
+                const key = canonical(reason);
+                if (!key || item.scope.project !== scope.project || item.scope.agentId !== scope.agentId || item.scope.spec !== spec
+                    || redactOrDrop(JSON.stringify({ ref: item.id, reason })) === null
+                    || seen.has(item.id) || seen.has(key) || prompt.text.includes(item.id) || named.includes(key)) { continue; }
+                const posted = this.ports.commentary.postValidator(this.ports.workspaceRoot, {
+                    text: `Proposed context: ${reason}`,
+                    detail: { contextSpec: spec ?? null, contextSuggestions: [{ id: item.id, ref: item.id, reason, dismissed: false }] },
+                });
+                if (posted.status === 'POSTED') { seen.add(item.id); seen.add(key); }
+            }
+        } catch {
+            try { this.ports.commentary.postValidator(this.ports.workspaceRoot, { text: 'Validator context recall failed; prompt unchanged.' }); } catch { /* caller flow continues */ }
+        }
+    }
+
     /** Start alongside delivery; completion contains no validator output for an agent tool result. */
     closeLoop(prev: { id: string; text: string; specSlug?: string; storyId?: string; taskId?: string },
         reply: { id: string; text: string }): Promise<void> {

@@ -12,7 +12,7 @@ export interface LiveValidatorOptions {
 export function validatorTool(observe: (text: string) => Promise<unknown>, live?: LiveValidatorOptions): ToolDefinition {
     const active = () => {
         const state = live?.availability();
-        return live?.enabled() === true && state?.mode === 'away' &&
+        return live?.enabled() === true && state?.mode === 'awayValidator' &&
             (!state.until || (Number.isFinite(Date.parse(state.until)) && Date.parse(state.until) > Date.now()));
     };
     const inputSchema = z.object({ message: z.string().min(1), context: z.string().optional() });

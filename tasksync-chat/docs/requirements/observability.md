@@ -2,6 +2,7 @@
 
 | ID | Requirement (one plain sentence) | Reviewer's words (date) | Guarded by |
 |---|---|---|---|
+| R-OBS-13 | Metrics starts with one current-local-month workspace credit line, summed from all readable main.jsonl files with malformed lines skipped; workspace worker dollars are separate and neither goes in the shared banner. | "this month credits tracking for this month for this workspace (not all, only current workspace)"; "i dont want to bloat shared banner" (2026-10-10) | test-month-credits-workspace.cjs EV-MONTH-CREDITS-WORKSPACE |
 | R-OBS-01 | Observability is per workspace and never aggregates unrelated workspaces. | "Observability is per workspace — never aggregate logs across unrelated VS Code workspaceStorage folders." (copilot-instructions.md, 2026-09-30) | test-worker-observability.cjs EV-011 |
 | R-OBS-02 | Credit totals come from all readable current-workspace Copilot logs, skipping malformed lines. | "Skip malformed/corrupt JSONL lines; continue counting valid lines." (copilot-instructions.md, 2026-09-30) | test-log-cursor.cjs EV-LOG-CURSOR |
 | R-OBS-03 | Credits are `copilotUsageNanoAiu` divided by 1,000,000,000. | "Credit display = local aggregation of Copilot log copilotUsageNanoAiu ÷ 1_000_000_000 (AIU)." (copilot-instructions.md, 2026-09-30) | gap |

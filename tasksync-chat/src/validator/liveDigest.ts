@@ -3,7 +3,7 @@ import { readLiveDecisions } from './liveDecisions';
 
 export interface LiveAvailability { mode: string; until?: string; setAt?: string }
 export function isLiveAway(state: LiveAvailability | null, now: number): boolean {
-    return state?.mode === 'away' && (!state.until || Date.parse(state.until) > now);
+    return state?.mode === 'awayValidator' && (!state.until || Date.parse(state.until) > now);
 }
 export class LiveDigest {
     private awaySince: number | undefined;
@@ -20,7 +20,7 @@ export class LiveDigest {
         if (this.awaySince === undefined) return;
         const since = this.awaySince;
         this.awaySince = undefined;
-        if (state?.mode !== 'here' && !(state?.mode === 'away' && state.until && Date.parse(state.until) <= now)) return;
+        if (state?.mode !== 'here' && !(state?.mode === 'awayValidator' && state.until && Date.parse(state.until) <= now)) return;
         const decisions = readLiveDecisions(this.workspace, since, now);
         if (!decisions.length) return;
         const answered = decisions.filter(row => !row.held);
