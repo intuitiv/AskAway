@@ -797,12 +797,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     // Context manager for #terminal, #problems references
     private readonly _contextManager: ContextManager;
 
-    // Remote broadcast callback (set by RemoteUiServer)
-    private _remoteBroadcastCallback: ((message: ToWebviewMessage) => void) | null = null;
-
-    // Current pending request info for remote server
-    private _currentPendingRequest: { id: string; prompt: string; isApprovalQuestion: boolean; choices?: ParsedChoice[] } | null = null;
-
     // ── Plan Mode state ──
     private _planEnabled: boolean = false;
     private _currentPlan: Plan | null = null;
@@ -858,12 +852,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         );
     }
 
-    // ================== Remote Server Integration ==================
-
-    /**
-     * Set broadcast callback for remote UI server
-     * This enables the extension to push updates to connected web/mobile clients
-     */
     public setWebexService(service: any): void {
         this._webexService = service;
         this._updateSettingsUI();
@@ -1400,8 +1388,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             pendingEntry.timestamp = Date.now();
         }
 
-        // Clear pending request for remote clients
-        this._currentPendingRequest = null;
 
         // Broadcast completion
         if (pendingEntry) {
@@ -1433,10 +1419,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         if (!root) { return; }
         this._validatorTurnStart?.(text, toolCallId || String(this._lastSubmitTs));
         try { sharedCommentaryStore().markTurnStart(root, text); } catch (error) { console.warn('[AskAway] Could not record the turn start:', error); }
-    }
-
-    public setRemoteBroadcastCallback(callback: ((message: ToWebviewMessage) => void) | null): void {
-        this._remoteBroadcastCallback = callback;
     }
 
     private _workersStateSource: ((workspacePath: string) => WorkersState) | undefined;
@@ -1574,57 +1556,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         terminal.sendText(command);
     }
 
-    /**
-     * Get current state for remote clients (used when a new client connects)
-     */
-    public getStateForRemote(): {
-        queue: QueuedPrompt[];
-        queueEnabled: boolean;
-        currentSession: ToolCallEntry[];
-        persistedHistory: ToolCallEntry[];
-        pendingRequest: { id: string; prompt: string; isApprovalQuestion: boolean; choices?: ParsedChoice[] } | null;
-        settings: { soundEnabled: boolean; interactiveApprovalEnabled: boolean; webexEnabled: boolean; telegramEnabled: boolean; reusablePrompts: ReusablePrompt[] };
-    } {
-        const webexEnabled = this._getWebexEnabled();
-        const telegramEnabled = this._getTelegramEnabled();
-        return {
-            queue: this._promptQueue,
-            queueEnabled: this._queueEnabled,
-            currentSession: this._currentSessionCalls,
-            persistedHistory: this._persistedHistory,
-            pendingRequest: this._currentPendingRequest,
-            settings: {
-                soundEnabled: this._soundEnabled,
-                interactiveApprovalEnabled: this._interactiveApprovalEnabled,
-                webexEnabled,
-                telegramEnabled,
-                reusablePrompts: this._reusablePrompts
-            }
-        };
-    }
-
-    /**
-     * Handle message from remote client (web/mobile)
-     * Routes messages to the same handlers as the VS Code webview
-     */
-    public handleRemoteMessage(message: FromWebviewMessage): void {
-        this._handleWebviewMessage(message);
-    }
-
-    /**
-     * Broadcast message to both VS Code webview and remote clients
-     */
     private _broadcast(message: ToWebviewMessage): void {
-        // Send to VS Code webview if available
         this._view?.webview.postMessage(message);
-        
-        // Send to remote clients if callback is set
-        if (this._remoteBroadcastCallback) {
-            this._remoteBroadcastCallback(message);
-        }
     }
-
-    // ================== End Remote Server Integration ==================
 
     /**
      * Save current tool call history to persisted history (called on deactivate)
@@ -1647,22 +1581,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         // Force sync save on deactivation (async operations can't complete in deactivate)
         this._savePersistedHistoryToDiskSync();
-    }
-
-    /**
-     * Open history modal (called from view title bar button)
-     */
-    public openHistoryModal(): void {
-        this._view?.webview.postMessage({ type: 'openHistoryModal' });
-        this._updatePersistedHistoryUI();
-    }
-
-    /**
-     * Open settings modal (called from view title bar button)
-     */
-    public openSettingsModal(): void {
-        this._view?.webview.postMessage({ type: 'openSettingsModal' } as ToWebviewMessage);
-        this._updateSettingsUI();
     }
 
     /**
@@ -4203,15 +4121,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             }
         }
 
-        // Store pending request for remote clients
-        this._currentPendingRequest = {
-            id: toolCallId,
-            prompt: displayQuestion,
-            isApprovalQuestion: isApproval,
-            choices: choices.length > 0 ? choices : undefined
-        };
-
-        // Broadcast pending tool call to VS Code webview and remote clients
+        // Broadcast pending tool call to VS Code webview
         const pendingMessage: ToWebviewMessage = {
             type: 'toolCallPending',
             id: toolCallId,
@@ -4227,10 +4137,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         } else {
             // Fallback: queue the message (should rarely happen now)
             this._pendingToolCallMessage = { id: toolCallId, prompt: displayQuestion };
-            // Still broadcast to remote clients even if VS Code webview isn't ready
-            if (this._remoteBroadcastCallback) {
-                this._remoteBroadcastCallback(pendingMessage);
-            }
         }
 
         void postRemoteQuestion(this._webexService, this._telegramService, toolCallId, question, choices.length > 0 ? choices.map(choice => choice.label) : undefined)
@@ -5071,8 +4977,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     this._currentSessionCallsMap.set(completedEntry.id, completedEntry);
                 }
 
-                // Clear pending request for remote clients
-                this._currentPendingRequest = null;
 
                 // Broadcast toolCallCompleted to trigger "Working...." state
                 this._broadcast({

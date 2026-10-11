@@ -6536,11 +6536,6 @@
 
     // ══════════════════════════════════════════════════════════
 
-    // Expose message handler for remote server (Socket.io bridge)
-    window.dispatchVSCodeMessage = function(message) {
-        handleExtensionMessage({ data: message });
-    };
-
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {

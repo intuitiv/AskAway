@@ -11,7 +11,8 @@ const elements = {
 let now = 1_800_000_000_000;
 const timers = new Map();
 let timerId = 0;
-const window = {};
+const listeners = {};
+const window = { addEventListener: (type, listener) => { listeners[type] = listener; } };
 const context = {
     window, console: { log() {}, warn() {}, error: console.error },
     acquireVsCodeApi: () => ({ getState: () => ({}), setState() {}, postMessage() {} }),
@@ -24,10 +25,12 @@ const context = {
     clearInterval: id => timers.delete(id),
     setTimeout: () => 0, clearTimeout() {}
 };
-vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'media/webview.js'), 'utf8'), context);
+const webview = fs.readFileSync(path.join(__dirname, 'media/webview.js'), 'utf8');
+const registration = webview.match(/window\.addEventListener\('message', handleExtensionMessage\);/)[0];
+vm.runInNewContext(webview.replace('}());', registration + '\n}());'), context);
 const status = { status: 'connected', message: 'Ready', hint: 'Reply tracking', isPolling: true, activeTasks: 1, lastPollAt: now - 3000, nextPollAt: now + 12000 };
 function send(webexEnabled, telegramEnabled, webexStatus = status, telegramStatus = status) {
-    window.dispatchVSCodeMessage({ type: 'remotePollingStatus', webexEnabled, telegramEnabled, webexStatus, telegramStatus });
+    listeners.message({ data: { type: 'remotePollingStatus', webexEnabled, telegramEnabled, webexStatus, telegramStatus } });
 }
 send(true, false);
 assert.match(elements['webex-status'].innerHTML, /Webex:.*Polling for replies.*1 tracked replies.*Next poll in 12s.*Last poll 3s ago/);

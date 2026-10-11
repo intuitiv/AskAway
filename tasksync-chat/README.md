@@ -38,7 +38,6 @@ AskAway bridges your AI coding agent (Copilot, Cursor, etc.) and your phone via 
 | Reusable Prompts (/slash commands) | ✅ | ✅ |
 | Interactive Approvals | ✅ | ✅ |
 | MCP Server Integration | ✅ | ✅ |
-| Remote Mobile & Web Access (QR code) | ❌ | ✅ |
 | Webex Messaging Integration | ❌ | ✅ |
 | **Telegram Bot Integration** | ❌ | ✅ |
 | **Telegram Forum Topics per Workspace** | ❌ | ✅ |
@@ -92,19 +91,6 @@ AskAway automatically creates one Telegram topic per VS Code workspace — no ex
 ### Backward Compatibility
 
 DM bot setup (no group/topics) works exactly as before — messages go directly to the DM chat.
-
----
-
-## 📱 Remote Mobile & Web Access
-
-Control AskAway from your phone, tablet, or any browser on your network:
-
-1. Click the **broadcast icon** (📡) in the AskAway panel
-2. Scan the QR code or visit the URL on your device
-3. Enter the 4-digit PIN
-4. Full control from your device — works even when your computer screen is locked
-
-[See full Remote Documentation](docs/REMOTE_ACCESS.md)
 
 ---
 
@@ -201,4 +187,3 @@ AskAway auto-registers with Kiro and Cursor. For other clients:
 ## License
 
 MIT
-

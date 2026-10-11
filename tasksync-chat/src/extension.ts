@@ -36,16 +36,12 @@ import { sharedCommentaryStore, sharedWorkerRuntimeReady } from './workers/worke
 // Heavy modules loaded lazily to avoid blocking activation
 // RemoteUiServer imports express + socket.io (expensive)
 // WebexService, TelegramService do network/config I/O
-type RemoteUiServerType = import('./server/remoteUiServer').RemoteUiServer;
-type RemoteMessageType = import('./server/remoteUiServer').RemoteMessage;
 type WebexServiceType = import('./services/webexService').WebexService;
 type TelegramServiceType = import('./services/telegramService').TelegramService;
 
 let mcpServer: McpServerManager | undefined;
 let webviewProvider: AskAwayWebviewProvider | undefined;
 let contextManager: ContextManager | undefined;
-let remoteServer: RemoteUiServerType | undefined;
-let remoteOutputChannel: vscode.OutputChannel | undefined;
 let planEditor: PlanEditorProvider | undefined;
 let telegramServiceInstance: TelegramServiceType | undefined;
 let activationOutputChannel: vscode.OutputChannel | undefined;
@@ -1179,8 +1175,6 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Session commands
         context.subscriptions.push(
-            vscode.commands.registerCommand('askaway.openHistory', () => provider.openHistoryModal()),
-            vscode.commands.registerCommand('askaway.newSession', () => provider.startNewSession()),
             vscode.commands.registerCommand('askaway.clearCurrentSession', async () => {
                 const result = await vscode.window.showWarningMessage(
                     'Clear all tool calls from current session?',
@@ -1188,80 +1182,6 @@ export function activate(context: vscode.ExtensionContext) {
                     'Clear'
                 );
                 if (result === 'Clear') { provider.clearCurrentSession(); }
-            }),
-            vscode.commands.registerCommand('askaway.openSettings', () => provider.openSettingsModal())
-        );
-
-        // Remote server commands (lazy — actual server loaded in deferred block)
-        const remotePort = vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<number>('remotePort', 3000);
-        context.subscriptions.push(
-            vscode.commands.registerCommand('askaway.startRemote', async () => {
-                try {
-                    await ensureRemoteServer(context, provider);
-                    await startRemoteServer(remotePort);
-                } catch (err: any) {
-                    const msg = err?.message ?? String(err);
-                    vscode.window.showErrorMessage(`AskAway Remote Server failed to start: ${msg}`);
-                    outputChannel.appendLine(`[AskAway] Remote server start error: ${msg}\n${err?.stack ?? ''}`);
-                }
-            }),
-            vscode.commands.registerCommand('askaway.stopRemote', () => {
-                if (remoteServer) {
-                    remoteServer.stop();
-                    vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', false);
-                    vscode.window.showInformationMessage('AskAway Remote Server stopped');
-                }
-            }),
-            vscode.commands.registerCommand('askaway.showRemoteUrl', () => {
-                if (remoteServer) {
-                    const info = remoteServer.getConnectionInfo();
-                    if (info.port > 0) { showRemoteConnectionInfo(info); }
-                    else { vscode.window.showWarningMessage('AskAway Remote Server is not running.'); }
-                }
-            }),
-            vscode.commands.registerCommand('askaway.toggleRemoteStart', async () => {
-                try {
-                    await ensureRemoteServer(context, provider);
-                    await startRemoteServer(remotePort);
-                } catch (err: any) {
-                    const msg = err?.message ?? String(err);
-                    vscode.window.showErrorMessage(`AskAway Remote Server failed to start: ${msg}`);
-                    outputChannel.appendLine(`[AskAway] Remote server start error: ${msg}\n${err?.stack ?? ''}`);
-                }
-            }),
-            vscode.commands.registerCommand('askaway.toggleRemoteStop', async () => {
-                if (!remoteServer) return;
-                const info = remoteServer.getConnectionInfo();
-                if (info.port <= 0) return;
-                const action = await vscode.window.showQuickPick([
-                    { label: '$(copy) Copy URL with PIN', description: 'Copy ready-to-use URL for mobile', action: 'copy' },
-                    { label: '$(key) Show PIN', description: info.pin, action: 'pin' },
-                    { label: '$(link-external) Show All URLs', description: 'View all connection options', action: 'urls' },
-                    { label: '$(debug-disconnect) Stop Server', description: 'Stop the remote server', action: 'stop' }
-                ], { placeHolder: `Remote Server running on port ${info.port}` });
-                if (action?.action === 'copy') {
-                    const networkUrl = info.urls.find(u => !u.includes('localhost')) || info.urls[0];
-                    await vscode.env.clipboard.writeText(`${networkUrl}?pin=${info.pin}`);
-                    vscode.window.showInformationMessage('URL with PIN copied to clipboard');
-                } else if (action?.action === 'pin') {
-                    await vscode.env.clipboard.writeText(info.pin);
-                    vscode.window.showInformationMessage(`PIN ${info.pin} copied to clipboard`);
-                } else if (action?.action === 'urls') {
-                    showRemoteConnectionInfo(info);
-                } else if (action?.action === 'stop') {
-                    remoteServer.stop();
-                    vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', false);
-                    vscode.window.showInformationMessage('AskAway Remote Server stopped');
-                }
-            }),
-            vscode.commands.registerCommand('askaway.toggleRemote', async () => {
-                if (remoteServer) {
-                    const info = remoteServer.getConnectionInfo();
-                    if (info.port > 0) { await vscode.commands.executeCommand('askaway.toggleRemoteStop'); }
-                    else { await vscode.commands.executeCommand('askaway.toggleRemoteStart'); }
-                } else {
-                    await vscode.commands.executeCommand('askaway.toggleRemoteStart');
-                }
             })
         );
 
@@ -1274,9 +1194,6 @@ export function activate(context: vscode.ExtensionContext) {
                 else { vscode.window.showWarningMessage('Telegram service not initialized yet.'); }
             })
         );
-
-        // Initialize remote server context
-        vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', false);
 
         // ── Deferred initialization — heavy services loaded AFTER sidebar is ready ──
         setImmediate(async () => {
@@ -1387,16 +1304,9 @@ export function activate(context: vscode.ExtensionContext) {
                     }).catch(() => {});
                 }
 
-                // Auto-start Remote Server if configured
-                const remoteEnabled = config.get<boolean>('remoteEnabled', false);
-                if (remoteEnabled) {
-                    logRuntime('Remote auto-start requested', { remotePort: config.get<number>('remotePort', 3000) });
-                    await ensureRemoteServer(context, provider);
-                    await startRemoteServer(config.get<number>('remotePort', 3000));
-                }
             } catch (err) {
-                logRuntime('MCP/Remote deferred init failed', formatError(err));
-                console.error('[AskAway] MCP/Remote deferred init error:', err);
+                logRuntime('MCP deferred init failed', formatError(err));
+                console.error('[AskAway] MCP deferred init error:', err);
             }
         });
 
@@ -1408,136 +1318,11 @@ export function activate(context: vscode.ExtensionContext) {
     }
 }
 
-/**
- * Lazily load and initialize the Remote UI Server (imports express + socket.io)
- */
-async function ensureRemoteServer(context: vscode.ExtensionContext, provider: AskAwayWebviewProvider): Promise<void> {
-    if (remoteServer) return;
-
-    const remoteModule = await import('./server/remoteUiServer');
-    const { RemoteUiServer } = remoteModule;
-    type RemoteMessage = import('./server/remoteUiServer').RemoteMessage;
-
-    logRuntime('Remote server module loaded', {
-        moduleKeys: Object.keys(remoteModule),
-        remoteCtorType: typeof RemoteUiServer
-    });
-
-    if (typeof RemoteUiServer !== 'function') {
-        throw new Error('RemoteUiServer import is not a constructor function');
-    }
-
-    remoteServer = new RemoteUiServer(context.extensionUri, context);
-    context.subscriptions.push(remoteServer);
-
-    // Create output channel for remote server info
-    if (!remoteOutputChannel) {
-        remoteOutputChannel = vscode.window.createOutputChannel('AskAway Remote');
-        context.subscriptions.push(remoteOutputChannel);
-    }
-
-    // Wire up remote server with webview provider
-    remoteServer.onGetState(() => provider.getStateForRemote());
-    remoteServer.onMessage((message: RemoteMessage, _respond) => {
-        provider.handleRemoteMessage(message as any);
-    });
-    provider.setRemoteBroadcastCallback((message) => {
-        remoteServer?.broadcast(message as RemoteMessage);
-    });
-}
-
-/**
- * Start the remote UI server
- */
-async function startRemoteServer(preferredPort: number): Promise<void> {
-    if (!remoteServer) return;
-    
-    try {
-        logRuntime('Starting remote server', { preferredPort });
-        const port = await remoteServer.start(preferredPort);
-        const info = remoteServer.getConnectionInfo();
-        
-        // Update context for icon toggle
-        vscode.commands.executeCommand('setContext', 'askaway.remoteServerRunning', true);
-        
-        // Show in output channel
-        remoteOutputChannel?.clear();
-        remoteOutputChannel?.appendLine('='.repeat(50));
-        remoteOutputChannel?.appendLine('  AskAway Remote Server Started');
-        remoteOutputChannel?.appendLine('='.repeat(50));
-        remoteOutputChannel?.appendLine('');
-        remoteOutputChannel?.appendLine(`📱 Access from your phone or browser:`);
-        remoteOutputChannel?.appendLine('');
-        info.urls.forEach(url => {
-            remoteOutputChannel?.appendLine(`   ${url}`);
-        });
-        remoteOutputChannel?.appendLine('');
-        remoteOutputChannel?.appendLine(`🔐 PIN: ${info.pin}`);
-        remoteOutputChannel?.appendLine('');
-        remoteOutputChannel?.appendLine('Tip: Use the network URL (192.168.x.x) to access from mobile');
-        remoteOutputChannel?.appendLine('='.repeat(50));
-        remoteOutputChannel?.show(true);
-        
-        // Show notification with quick action
-        const action = await vscode.window.showInformationMessage(
-            `AskAway Remote running on port ${port}. PIN: ${info.pin}`,
-            'Copy URL',
-            'Show Details'
-        );
-        
-        if (action === 'Copy URL') {
-            const networkUrl = info.urls.find(u => !u.includes('localhost')) || info.urls[0];
-            await vscode.env.clipboard.writeText(`${networkUrl}?pin=${info.pin}`);
-            vscode.window.showInformationMessage('URL copied to clipboard');
-        } else if (action === 'Show Details') {
-            showRemoteConnectionInfo(info);
-        }
-    } catch (err) {
-        logRuntime('Remote server start failed', formatError(err));
-        vscode.window.showErrorMessage(`Failed to start Remote Server: ${err}`);
-    }
-}
-
-/**
- * Show remote connection info in a QuickPick
- */
-async function showRemoteConnectionInfo(info: { urls: string[]; pin: string; port: number }): Promise<void> {
-    const items = [
-        { label: '$(key) PIN', description: info.pin, detail: 'Enter this PIN on your phone' },
-        ...info.urls.map(url => ({
-            label: url.includes('localhost') ? '$(globe) Local URL' : '$(broadcast) Network URL',
-            description: url,
-            detail: url.includes('localhost') ? 'Access from this computer' : 'Access from phone/tablet on same WiFi'
-        })),
-        { label: '$(copy) Copy Network URL with PIN', description: '', detail: 'Copy ready-to-use URL for mobile' }
-    ];
-    
-    const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'AskAway Remote Connection Info'
-    });
-    
-    if (selected) {
-        if (selected.label.includes('Copy')) {
-            const networkUrl = info.urls.find(u => !u.includes('localhost')) || info.urls[0];
-            await vscode.env.clipboard.writeText(`${networkUrl}?pin=${info.pin}`);
-            vscode.window.showInformationMessage('URL with PIN copied to clipboard');
-        } else if (selected.description) {
-            await vscode.env.clipboard.writeText(selected.description);
-            vscode.window.showInformationMessage('Copied to clipboard');
-        }
-    }
-}
-
 export async function deactivate() {
     // Save current tool call history to persisted history before deactivating
     if (webviewProvider) {
         webviewProvider.saveCurrentSessionToHistory();
         webviewProvider = undefined;
-    }
-
-    if (remoteServer) {
-        remoteServer.dispose();
-        remoteServer = undefined;
     }
 
     if (mcpServer) {
