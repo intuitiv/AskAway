@@ -420,3 +420,32 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > 7. Sure. But thumbs down, dont need any box, user can reply to agent directly for that querion, by quoting or reply to it. I mean thumbs up will add anew messge quotintg sgant message and
 > 8.
 > **Still reviewining. DOnt start yet.**
+
+### 2026-10-11, answers (AITalk 4, 7–11)
+
+> 4. progress lines are also chat lines sent by agent. Dont grey them out There are 3+ participants, when a new worker joins i shoud, get a notification that a new worker joined the group or something, like we get in whatsapp. And i want to see every send and monitor this traffic and correct things and communicate with that person directly. When i
+> 7. thumbs down is for learning validator and user will send a new message by quoting agent or reply to that question. so, our framework will send that reply to agent in next tool call or something. Once sent bluetick.
+> 8. Sure. But dont try hard for this feature yet.
+> 9. Yes. And even agent and valdiator can get their own mentions, and whoever are present, @ should get their prompts.
+> 10. USe 003 for it. No new spec.
+> 11. I dont care either.
+>
+> I haven't looked at storybook yet. I'll review it.
+> **Still reviewining. DOnt start yet.**
+
+### 2026-10-11, answer 4 (continued)
+
+> 4. When I send a message to validator, i check the facts and test knowledge of validator agent and correct it. When i correct it, corresponding memory should be updated. I mean, when agent is not active, basicaly, agent will leave that conversation, when the user sends message, it will join back. Its like registration to this chat and all. Even when agent is not on, i should be able to talk with validator agent. User is primary and Validator is his proxy, SO validator **can** read all messages, but reading all can be of some cost, so we can decide.
+>
+> i still haevnt reviewed storybook.
+
+### 2026-10-11, Validator reading rules; Storybook not WhatsApp
+
+> Model call in batch, i like it. And when agent asks a question, currently validator tries to answer it, that validator can do. Actually for learning doing a batch call is a great idea.
+> Validator interaction is,
+> - Batch at the end.
+> - every agents questions or when agent needs inputs.
+> - agent direct memory question or something
+> - When user is away and user asks valdiator as proxy, i mean after beta, valdiator will read all mesages when user is away.
+>
+> Storybook seems old. If thats new, i am very disapppointed, i asked for whatsapp style chat. but i dont see one.
