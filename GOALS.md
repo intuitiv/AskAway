@@ -507,3 +507,20 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 
 > Make sure that aiTalk tab is very generic, and it should be easily extensible. Rules are simple and common for every one. User trumps Validator trumps Main agent trumps worker.
 > Rules i mentioned are generic and do not hard code things in the chat tab. In future i can add more agents like Validator, i dont know.
+
+### 2026-10-12, answers (availability, ticks, Webex, GitHub cost) and notifications, traces, validator calls
+
+> 1. avatar thing sounds good.
+> 2. Yes
+> 3. lets use aitalk.
+> 4. sure. 200 messages around actiev spaces. Generate a script and ask it to do that work. reduce cost for this fetching and all.
+> 5. Yes.
+> 6. Sure. Try it once. do a dry run on some throw away PR and see if you can read cost.
+>
+> Can we also send some notitification in vscode when user needs some attention.
+> If validator is long living, will that reduce cost? Can we also have traces of all workers, main agent trace and validator trace in Trace tab?
+> Can we avoid llm calls for validators in certain cases, like genric message/comentary from agent? I think one long running validator per turn would help i guess.
+>
+> We can use it for questions and tags from user and questions from agent/worker and at end of the turn we feed the whole conversation to validator and it can store or learn and do stuff.
+
+(Context for 1–6: 1 = Teams-style avatar flyout inside the panel; 2 = ticks sent grey single, handed over grey double, first response blue double; 3 = Webex drafts posted in AITalk, 👍 sends; 4 = style card from ~200 own messages across active spaces; 5 = separate Webex tools for the Webex worker; 6 = tag cloud runs per workspace and read GitHub billing, else "est.".)
