@@ -11,7 +11,7 @@ function loadDefinitions() {
     // Built inside the package so `zod` resolves from node_modules; layout mirrors src/.
     const buildDir = path.join(root, '.lm-manifest-build');
     fs.rmSync(buildDir, { recursive: true, force: true });
-    const files = ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary', 'services/webexTools'];
+    const files = ['agents/sharedVoice', 'workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary', 'aitalk/store', 'services/webexTools'];
     for (const name of files) {
         const out = path.join(buildDir, `${name}.js`);
         fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -44,7 +44,7 @@ function entryFor(definition) {
 
 // The eight per-operation tools became one `worker` tool; their old entries must not linger.
 // askaway_webex moved to the Webex worker's MCP suite (reviewer 2026-10-12).
-const retired = (tool) => /^worker_/.test(tool.name) || tool.name === 'askaway_webex';
+const retired = (tool) => /^worker_/.test(tool.name) || tool.name === 'askaway_webex' || tool.name === 'ask_user';
 
 function merged(pkg, entries) {
     const byName = new Map(entries.map((entry) => [entry.name, entry]));

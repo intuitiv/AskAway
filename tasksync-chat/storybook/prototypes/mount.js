@@ -2,10 +2,10 @@ import webviewSrc from '../../media/webview.js?raw';
 import providerSrc from '../../src/webview/webviewProvider.ts?raw';
 import cssText from '../../media/main.css?raw';
 import prototypeCss from '../../media/aitalk/talk.css?raw';
-import { buildCommentaryKit, VSCODE_DARK_THEME } from '../kit.js';
+import { buildTraceKit, VSCODE_DARK_THEME } from '../kit.js';
 import { talkHtml, traceHtml, traceSessions, defaultMembers } from './talk.js';
 import { displayName, owner, postMessage, presenceChange, reactionRoute, reactMessage, selectReply, replyMessage, deliveryEvent, nextToolCall } from './talkRules.js';
-const { traceRowsHtml } = buildCommentaryKit({ webviewSrc, providerSrc });
+const { traceRowsHtml } = buildTraceKit({ webviewSrc });
 
 const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 const clock = () => new Date().toTimeString().slice(0, 5);

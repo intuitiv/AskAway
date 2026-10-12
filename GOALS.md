@@ -538,3 +538,23 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > Its simple, i want to know how much cost extension spent. if you spent something show them here.
 >
 > And for validator, we can use the same validator session, if the cache isn't expired and the total input token is within 100K.
+
+### 2026-10-12, AITalk bugs, Trace layout, Copilot prompts for style
+
+> Use user prompts in github copilot conversations also.
+>
+> So many bugs
+> - still see old availability green dot.
+> - I see hard coded You, Agent, Validator and build-1. It is reactive. Why is it hardcoded.
+> - Dark theme just in the middle.
+> - Text i type is not visbile in the input etxt box.
+> - emojies and attachment icons are not working.
+> - "You moderates" ? seriously? Isnt it You moderate?
+> - When press enter, message should be sent. But when press enter, i am seeing new line. shift+enter should add new line. SImple enter should send the message.
+>
+> In Trace, only show main agent trace and Validator trace. worker trace is shown in workers tab.
+> And teh below section went down. Bring it up. (requests · AIU · in/out · cache hit; Prompt cache age; Ping)
+>
+> We have trace as tab name, so remove trace text inside the tab.
+>
+> Cloud estimates can be shown per month, as they are run asynchronously.

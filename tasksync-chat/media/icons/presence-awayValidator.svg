@@ -1,1 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><circle cx="9" cy="9" r="8" fill="#a795d6"/><circle cx="9" cy="6" r="3" fill="#30234f"/><path d="M3 15a6 6 0 0 1 12 0" fill="#30234f"/><circle cx="15" cy="15" r="5" fill="#8b5cf6" stroke="#202c33"/><path d="m15 11 1 3 3 1-3 1-1 3-1-3-3-1 3-1Z" fill="white"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <g id="person-avatar" fill="currentColor">
+    <circle id="avatar-head" cx="6" cy="4" r="3"/>
+    <path id="avatar-shoulders" d="M0 14v-1a6 6 0 0 1 12 0v1Z"/>
+  </g>
+  <g id="status-badge">
+    <circle cx="12" cy="12" r="4" fill="#7751c9"/>
+    <path id="status-shield" d="m12 9.5 2 1v1.7c0 1.2-1.2 2-2 2.5-.8-.5-2-1.3-2-2.5v-1.7Z" fill="none" stroke="white" stroke-width="1.2" stroke-linejoin="round"/>
+  </g>
+</svg>

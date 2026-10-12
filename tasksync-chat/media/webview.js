@@ -251,38 +251,6 @@
     }
 
     function cacheDOMElements() {
-        chatInput = document.getElementById('chat-input');
-        inputHighlighter = document.getElementById('input-highlighter');
-        sendBtn = document.getElementById('send-btn');
-        attachBtn = document.getElementById('attach-btn');
-        modeBtn = document.getElementById('mode-btn');
-        modeDropdown = document.getElementById('mode-dropdown');
-        modeLabel = document.getElementById('mode-label');
-
-        queueSection = document.getElementById('queue-section');
-        queueHeader = document.getElementById('queue-header');
-        queueList = document.getElementById('queue-list');
-        queueCount = document.getElementById('queue-count');
-        chatContainer = document.getElementById('chat-container');
-        chipsContainer = document.getElementById('chips-container');
-        autocompleteDropdown = document.getElementById('autocomplete-dropdown');
-        autocompleteList = document.getElementById('autocomplete-list');
-        autocompleteEmpty = document.getElementById('autocomplete-empty');
-        inputContainer = document.getElementById('input-container');
-        inputAreaContainer = document.getElementById('input-area-container');
-        welcomeSection = document.getElementById('welcome-section');
-        cardVibe = document.getElementById('card-vibe');
-        cardSpec = document.getElementById('card-spec');
-        autopilotToggle = document.getElementById('autopilot-toggle');
-        toolHistoryArea = document.getElementById('tool-history-area');
-        pendingMessage = document.getElementById('pending-message');
-        // Slash command dropdown
-        slashDropdown = document.getElementById('slash-dropdown');
-        slashList = document.getElementById('slash-list');
-        slashEmpty = document.getElementById('slash-empty');
-        // Get actions bar elements for edit mode
-        actionsBar = document.querySelector('.actions-bar');
-        actionsLeft = document.querySelector('.actions-left');
     }
 
     function createHistoryModal() {
@@ -794,33 +762,19 @@
         var container = document.createElement('div');
         container.className = 'settings-tab-content';
 
-        var header = document.createElement('div');
-        header.className = 'settings-modal-header';
-        var title = document.createElement('span');
-        title.className = 'settings-modal-title';
-        title.textContent = 'Trace';
-        header.appendChild(title);
-        container.appendChild(header);
-
         var content = document.createElement('div');
         content.className = 'settings-modal-content';
 
         var observabilitySection = document.createElement('div');
         observabilitySection.className = 'settings-section';
-        observabilitySection.innerHTML = '<div class="observability-rtk-line" id="obs-workspace-month"></div>' + '<div class="settings-section-header">' +
-            '<div class="settings-section-title"><span class="codicon codicon-pulse"></span> Trace</div>' +
-            '</div>' +
-            '<div class="obs-optimizations">' +
-            '<div class="observability-rtk-line" id="observability-rtk-line">RTK: 0 calls \u00b7 0 saved \u00b7 0%</div>' +
-            '<div class="observability-rtk-line" id="observability-gradle-line">Gradle: 0 runs \u00b7 0 optimized \u00b7 ~0 tokens saved</div>' +
-            '</div>' +
+        observabilitySection.innerHTML = '<div class="observability-rtk-line" id="obs-workspace-month"></div>' +
             '<div id="obs-turn-view">' +
-            '<div id="obs-trace-groups"></div>' +
             '<div class="obs-turn-summary" id="obs-turn-summary">No requests yet this turn</div>' +
             '<div class="obs-cache-row">' +
             '<div class="obs-cache-age" id="obs-cache-age" title="Time since the last model request. The prompt prefix cache stays warm for ~5 min; past that a new message likely incurs a cache MISS (more expensive). A long-running tool ages this clock too.">Prompt cache age: \u2013</div>' +
             '<button type="button" class="obs-cache-ping-btn" id="obs-cache-ping-btn" title="Keep-warm ping: fills the CURRENT chat input and submits it in the SAME agent/mode (identical system prompt \u2192 cache HIT at the cheap cached rate), refreshing the ~5-min TTL. Use it while the agent is idle and this chat is the active one. For automatic keep-warm, enable the native settings below (Keep cache warm + Extended prompt cache).">\u26a1 Ping</button>' +
             '</div>' +
+            '<div id="obs-trace-groups"></div>' +
             '<div class="observability-model-note">Timeline this turn \u2014 LLM requests in columns \u00b7 expand a tool row for input/output \u00b7 ask me to investigate any <b>ID</b></div>' +
             '<table class="observability-table observability-model-table obs-timeline-table">' +
             '<thead><tr><th>ID</th><th>Model / Tool</th><th>Credits</th><th>Input</th><th>Output</th><th>Cached</th><th title="cached / input">Hit%</th></tr></thead>' +
@@ -837,27 +791,6 @@
     }
 
     function bindEventListeners() {
-        if (chatInput) {
-            chatInput.addEventListener('input', handleTextareaInput);
-            chatInput.addEventListener('keydown', handleTextareaKeydown);
-            chatInput.addEventListener('paste', handlePaste);
-            // Sync scroll between textarea and highlighter
-            chatInput.addEventListener('scroll', function () {
-                if (inputHighlighter) {
-                    inputHighlighter.scrollTop = chatInput.scrollTop;
-                }
-            });
-        }
-        if (sendBtn) sendBtn.addEventListener('click', handleSend);
-        if (attachBtn) attachBtn.addEventListener('click', handleAttach);
-        if (modeBtn) modeBtn.addEventListener('click', toggleModeDropdown);
-
-        document.querySelectorAll('.mode-option[data-mode]').forEach(function (option) {
-            option.addEventListener('click', function () {
-                setMode(option.getAttribute('data-mode'), true);
-                closeModeDropdown();
-            });
-        });
 
         document.addEventListener('click', function (e) {
             if (dropdownOpen && !e.target.closest('.mode-selector') && !e.target.closest('.mode-dropdown')) closeModeDropdown();
@@ -3017,7 +2950,7 @@
         });
     }
     function traceGroupsHtml(main, groups, openGroups) {
-        return [{ id: 'main', label: 'Main agent', events: main || [] }].concat(groups || []).map(function (group) {
+        return [{ id: 'main', label: 'Main agent', events: main || [] }].concat((groups || []).filter(function (group) { return /^Validator(?: ·|$)/.test(group.label); })).map(function (group) {
             var events = (group.events || []).slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
             var cost = events.reduce(function (sum, event) { return sum + (event.kind === 'request' ? Number(event.dollars != null ? event.dollars : (event.nanoAiu || 0) / 1e11) : 0); }, 0);
             return '<details class="trace-group" data-trace-group="' + escapeHtml(group.id) + '"' + (openGroups && openGroups.has(group.id) ? ' open' : '') + '><summary>' + escapeHtml(group.label) + ' · $' + cost.toFixed(2) + '</summary><table class="observability-table obs-timeline-table">' + TRACE_HEAD + '<tbody>' + traceRowsHtml(events, {}) + '</tbody></table></details>';
@@ -3249,7 +3182,7 @@
         var monthLine = document.getElementById('obs-workspace-month');
         var month = observabilityMetrics.monthCredits;
         if (monthLine && month) {
-            monthLine.textContent = month.label + ' · this workspace: $' + Number(month.totalDollars).toFixed(2) + ' ($' + Number(month.workerDollars).toFixed(2) + ' workers)';
+            monthLine.textContent = month.label + ' · this workspace: $' + Number(month.totalDollars).toFixed(2) + ' ($' + Number(month.workerDollars).toFixed(2) + ' workers' + (Number(month.cloudDollars) > 0 ? ' · $' + Number(month.cloudDollars).toFixed(2) + ' cloud est.' : '') + ')';
             monthLine.style.color = 'var(--vscode-errorForeground)';
             monthLine.title = 'All-time this workspace: $' + Number(month.allTimeDollars).toFixed(2);
         }
@@ -5182,170 +5115,12 @@
         'done': 'Done'
     };
 
-    // ── Commentary tab: pure render (tested in test-commentary-ui.cjs, used by Storybook) ──
-    function commentaryEsc(value) {
-        return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-        });
-    }
-    function commentaryClock(ts) {
-        var d = new Date(ts);
-        var pad = function (n) { return (n < 10 ? '0' : '') + n; };
-        return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-    }
-    function commentaryDay(ts) {
-        var d = new Date(ts);
-        return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()] + ' ' + d.getDate() + ' ' +
-            ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
-    }
-    // Lines that need the reviewer; older feeds used 'question' and 'blocked' for the same thing.
-    function commentaryIsHeadsUp(item) {
-        return item.kind === 'heads-up' || item.kind === 'question' || item.kind === 'blocked';
-    }
-    function commentaryOpenCount(view) {
-        return view && view.items ? view.items.filter(commentaryIsHeadsUp).length : 0;
-    }
-    // Escape first, then add only our own tags: **bold**, _italic_, ++underline++, ==highlight==, `code`.
-    function commentaryMarkup(text) {
-        return commentaryEsc(text)
-            .replace(/`([^`]+)`/g, '<code>$1</code>')
-            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-            .replace(/==([^=]+)==/g, '<mark>$1</mark>')
-            .replace(/\+\+([^+]+)\+\+/g, '<u>$1</u>')
-            .replace(/(^|[\s(])_([^_]+)_(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
-    }
-    // Lines before each chat-turn start (recorded by the prompt hook) form one earlier turn; the current turn stays flat.
-    function commentaryTurns(items, turnStarts) {
-        var starts = (turnStarts || []).slice().sort(function (a, b) { return a - b; });
-        var boundary = starts.length ? starts[starts.length - 1] : -Infinity;
-        var earlier = [];
-        var current = [];
-        items.forEach(function (item) {
-            if (item.ts >= boundary) { current.push(item); return; }
-            var segment = 0;
-            while (segment < starts.length && item.ts >= starts[segment]) segment++;
-            var last = earlier[earlier.length - 1];
-            if (last && last.segment === segment) { last.items.push(item); } else { earlier.push({ segment: segment, key: 'turn:' + item.id, items: [item] }); }
-        });
-        return { earlier: earlier, current: current };
-    }
-    function validatorTraceRows(item) {
-        var detail = item.detail || {};
-        var rows = [];
-        ['answer', 'sources', 'observations', 'summary', 'impact', 'match', 'contextSuggestions', 'error'].forEach(function (field) {
-            var value = detail[field];
-            if (field === 'answer' && !value && !detail.error) value = 'no source answers this question';
-            if (value == null || value === '' || (Array.isArray(value) && !value.length)) return;
-            rows.push({ kind: 'tool', id: item.id + ':' + field, tool: field,
-                status: field === 'error' ? 'error' : 'ok', inputPreview: detail.observedId || 'validator',
-                outputPreview: typeof value === 'string' ? value : JSON.stringify(value, null, 2) });
-        });
-        var usage = detail.usage;
-        if (usage) rows.push({ kind: 'request', id: item.id + ':usage', model: 'validator', dollars: usage.cost,
-            inputTokens: usage.input, outputTokens: usage.output, cachedTokens: usage.cacheRead });
-        return rows;
-    }
-    function commentaryItemHtml(item, openIds) {
-        var flagged = commentaryIsHeadsUp(item);
-        return '<div class="cm-item' + (flagged ? ' cm-heads-up' : '') + '" data-id="' + commentaryEsc(item.id) + '">' +
-            '<div class="cm-body">' +
-            '<div class="cm-text">' + commentaryMarkup(item.text) + '</div>' +
-            (item.kind === 'validator' || (item.kind === 'heads-up' && item.detail) ? '<table class="observability-table obs-timeline-table">' + TRACE_HEAD +
-                '<tbody>' + traceRowsHtml(validatorTraceRows(item), { openIds: openIds }) + '</tbody></table>' : '') +
-            '<div class="cm-meta">' + (flagged ? '<span class="cm-heads-up-tag">HEADS-UP</span>' : '') + '<span class="cm-time">' + commentaryClock(item.ts) + '</span></div>' +
-            '</div></div>';
-    }
-    // `openTurns[key]` records the reviewer's own clicks; otherwise earlier turns are collapsed.
-    function renderCommentaryHtml(view, openTurns, openIds) {
-        if (!view) return '<div class="cm-empty">Commentary is not available for this workspace.</div>';
-        var all = view.items || [];
-        var headsUp = commentaryOpenCount(view);
-        var html = '<div class="cm-summary">' + all.length + ' line' + (all.length === 1 ? '' : 's') +
-            (headsUp ? ' · ' + headsUp + ' heads-up' : '') +
-            (view.archivedCount ? ' · ' + view.archivedCount + ' archived' : '') + '</div>';
-        if (!all.length) {
-            return html + '<div class="cm-empty">Waiting for the orchestrator\'s first update.</div>';
-        }
-        // Oldest first, newest at the bottom, like the chat and every other feed here.
-        // A clock without a day made yesterday's 20:52 look newer than today's 17:45, so each new day gets a divider.
-        var multiDay = commentaryDay(all[0].ts) !== commentaryDay(all[all.length - 1].ts);
-        var lastDay = '';
-        var dayDivider = function (ts) {
-            var day = commentaryDay(ts);
-            var out = multiDay && day !== lastDay ? '<div class="cm-day">' + day + '</div>' : '';
-            lastDay = day;
-            return out;
-        };
-        var turns = commentaryTurns(all, view.turnStarts);
-        turns.earlier.forEach(function (turn) {
-            var first = turn.items[0];
-            var last = turn.items[turn.items.length - 1];
-            var open = Boolean(openTurns && openTurns[turn.key]);
-            var flagged = turn.items.filter(commentaryIsHeadsUp).length;
-            var clock = commentaryClock(first.ts).slice(0, 5) + (turn.items.length > 1 ? '–' + commentaryClock(last.ts).slice(0, 5) : '');
-            html += dayDivider(first.ts) + '<details class="cm-turn" data-turn="' + commentaryEsc(turn.key) + '"' + (open ? ' open' : '') + '>' +
-                '<summary class="cm-turn-head">' +
-                '<span class="cm-turn-title">' + commentaryMarkup(first.text) + '</span></summary>' +
-                '<div class="cm-turn-meta"><span class="cm-turn-time">' + clock + '</span>' +
-                '<span class="cm-turn-count">' + turn.items.length + (flagged ? ' · ' + flagged + ' heads-up' : '') + '</span></div>' +
-                turn.items.map(function (item) { return commentaryItemHtml(item, openIds); }).join('') + '</details>';
-        });
-        turns.current.forEach(function (item) { html += dayDivider(item.ts) + commentaryItemHtml(item, openIds); });
-        return html;
-    }
-    // ── end Commentary pure render ──
-
-    // ── Commentary typewriter (shared with Storybook) ──
-    function commentaryTypewrite(el, text, msPerChar) {
-        var finalHtml = el.innerHTML;
-        var i = 0;
-        el.textContent = '';
-        el.classList.add('cm-typing');
-        var tick = function () {
-            i += 1;
-            el.textContent = text.slice(0, i);
-            // Type the plain words, then swap in the formatted line.
-            if (i < text.length) { setTimeout(tick, msPerChar); } else { el.innerHTML = finalHtml; el.classList.remove('cm-typing'); }
-        };
-        tick();
-    }
-    function commentaryAnimateNew(container, seenIds, msPerChar) {
-        container.querySelectorAll('.cm-item').forEach(function (node) {
-            var id = node.getAttribute('data-id');
-            if (seenIds[id]) return;
-            seenIds[id] = true;
-            node.classList.add('cm-new');
-            var textEl = node.querySelector('.cm-text');
-            if (textEl) commentaryTypewrite(textEl, textEl.textContent, msPerChar);
-        });
-    }
-    // ── end Commentary typewriter ──
-
-    var commentarySeen = null;
     var commentaryView = null;
-    var commentaryOpenTurns = {};
 
     function applyCommentaryState(data) {
         commentaryView = data;
-        var feed = document.getElementById('cm-feed');
-        if (feed) {
-            var pinned = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
-            feed.innerHTML = renderCommentaryHtml(commentaryView, commentaryOpenTurns, traceOpenIds(feed));
-            // Lines already on screen at first load appear at once; only new arrivals type in.
-            if (commentarySeen) { commentaryAnimateNew(feed, commentarySeen, 18); } else {
-                commentarySeen = {};
-                ((data && data.items) || []).forEach(function (i) { commentarySeen[i.id] = true; });
-            }
-            if (pinned) feed.scrollTop = feed.scrollHeight;
-        }
         var goal = document.getElementById('cm-goal-input');
         if (goal && document.activeElement !== goal) goal.value = (data && data.goal) || '';
-        var badge = document.getElementById('tab-badge-commentary');
-        if (badge) {
-            var open = commentaryOpenCount(commentaryView);
-            badge.textContent = String(open);
-            badge.classList.toggle('hidden', open === 0);
-        }
     }
 
     var presenceStates = [];
@@ -5415,16 +5190,7 @@
             });
             goal.addEventListener('blur', function () { if (goalTimer) saveGoal(); });
         }
-        on('cm-clear', function () { vscode.postMessage({ type: 'clearCommentary', what: 'feed' }); });
         on('cm-copy', function () { if (commentaryView) vscode.postMessage({ type: 'copyToClipboard', text: commentaryView.opener }); });
-        // Record only the reviewer's clicks: `toggle` also fires when a re-render sets `open`.
-        var feed = document.getElementById('cm-feed');
-        if (feed) {
-            feed.addEventListener('click', function (event) {
-                var head = event.target && event.target.closest ? event.target.closest('.cm-turn-head') : null;
-                if (head && head.parentElement) commentaryOpenTurns[head.parentElement.getAttribute('data-turn')] = !head.parentElement.open;
-            });
-        }
         // Subscribes the provider to live pushes even while another tab is open.
         vscode.postMessage({ type: 'requestCommentary' });
     }
@@ -5762,7 +5528,7 @@
         specsState = data || { enabled: false, activeSlug: '', specs: [] };
         var tabBtn = document.getElementById('tab-specs');
         if (tabBtn) tabBtn.classList.toggle('hidden', !specsState.enabled);
-        if (!specsState.enabled && currentTab === 'specs') switchTab('chat');
+        if (!specsState.enabled && currentTab === 'specs') switchTab('aitalk');
         renderSpecs();
         renderConversationHealth();
     }
@@ -6024,8 +5790,8 @@
     }
 
     function prefillChat(text) {
-        switchTab('chat');
-        var input = document.getElementById('chat-input');
+        switchTab('aitalk');
+        var input = document.querySelector('#aitalk-root textarea');
         if (!input) return;
         input.value = text + ' ';
         input.focus();

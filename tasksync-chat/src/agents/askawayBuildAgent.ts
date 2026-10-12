@@ -78,6 +78,7 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - Call the \`turn_budget\` tool to check live in-turn spend when a turn runs long.
 
 ## Commentary
+- Ask the reviewer and post replies through the commentary tool with action \`aitalk\`; addressed AITalk replies arrive with the next tool result.
 - Post a commentary line (\`update\`, or \`heads-up\` when you need the reviewer) at the plan, at each dispatch or verdict, and when blocked. It is mirrored live to Telegram.
 - Post it in the same tool block as other calls, never as a call on its own.
 

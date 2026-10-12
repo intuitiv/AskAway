@@ -151,3 +151,7 @@ GAP means a missing spec contract, not necessarily missing implementation. Exist
 | N12-20 | Commentary and AITalk both visible | DONE turn 5: Commentary tab removed; commentary posts are agent bubbles in AITalk; goal in Settings |
 | N12-21 | Extension spend incl. GitHub cloud runs in the month total | DONE turn 5 (EV-CLOUD-COST-ESTIMATE: run timing × official rates + $0.04/agent session, est.) |
 | N12-22 | Validator reuses one session while cache < 30 min and input ≤ 100K | DONE fdaf18d |
+| N12-23 | Style sample also from GitHub Copilot CLI prompts | DONE turn 6 (--copilot-root, 200 messages; voice.md refreshed) |
+| N12-24 | AITalk bugs: hard-coded members, "You moderates", dark middle, invisible input text, emoji/attach dead, Enter newline, old green dot | DONE turn 6 (EV-AITALK-EXTENSION, EV-THEME-LIGHT, avatar SVGs) |
+| N12-25 | Trace: only main + Validator; summary above groups; no inner "Trace" text; cloud est. per month | DONE turn 6 (EV-TRACE-TAB-UNIFICATION) |
+| N12-26 | Chat tab + ask_user LM tool removed (AITalk replaces) | DONE turn 6; MCP ask_user + legacy Chat CSS cleanup OPEN |

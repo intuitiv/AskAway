@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { talkHtml, traceHtml, scenarios, traceSessions, liveStart, liveScript, ticksHtml, whoClass, reactionNote, splitBody, bodyHtml } from './talk.js';
-import { buildCommentaryKit } from '../kit.js';
+import { buildTraceKit } from '../kit.js';
 import { defaultMembers, postMessage, presenceChange, primaryReply, reactionRoute, reactMessage, selectReply, replyMessage, deliveryEvent, nextToolCall } from './talkRules.js';
 const read = path => readFileSync(new URL(path === './talk.css' ? '../../media/aitalk/talk.css' : path, import.meta.url), 'utf8');
 const count = (html, pattern) => (html.match(pattern) || []).length;
@@ -11,11 +11,11 @@ test('full conversation has tails only on first bubble of a run, sender names an
     const html = talkHtml(scenarios.Full.messages, scenarios.Full);
     assert.match(html, /aria-label="Group chat"/);
     assert.match(html, /<h2>AITalk<\/h2>/);
-    assert.match(html.replace(/<[^>]+>/g, ""), /YouAgent|You, Agent, Validator, build-1/);
+    assert.match(html.replace(/<[^>]+>/g, ""), /You, Agent, Validator/);
     // e11 and e12 are consecutive "You" bubbles: one tail, one follow.
-    assert.match(html, /id="talk-e11"[^>]*>.*?talk-bubble tail/s);
+    assert.match(html, /id="talk-e11"[^>]*>.*?talk-bubble\s+tail/s);
     assert.match(html, /<div class="talk-row out follow" id="talk-e12"><div class="talk-bubble\s+"/);
-    assert.equal(count(html, /talk-bubble tail/g), count(html, /talk-row [a-z]+ first/g));
+    assert.equal(count(html, /talk-bubble\s+tail/g), count(html, /talk-row [a-z]+ first/g));
     for (const text of ['Today', 'build-1 joined', 'build-1 left', 'Agent left — joins again when you message it']) assert.match(html, new RegExp(`talk-pill[^>]*>${text}`));
     assert.match(html, /<b class="talk-mention">@Agent<\/b>/);
     assert.match(html, /View trace ↗/);
@@ -48,7 +48,7 @@ test('ticks: grey check = posted, blue double check = delivered with tool in too
 });
 
 test('quote block, quiz votes and reactions render inside the bubble', () => {
-    const html = talkHtml(scenarios.Full.messages);
+    const html = talkHtml(scenarios.Full.messages, { members: [...defaultMembers, { id: 'build-1', displayName: 'build-1', colour: 'who-worker', rank: 100 }] });
     assert.match(html, /<div class="talk-quote who-agent"><b class="talk-quote-who">Agent<\/b><span class="talk-quote-text">Keep the name AITalk\?/);
     assert.doesNotMatch(html, /talk-questions|data-vote|talk-votes/);
     // Validator reply with replyTo quotes the worker message.
@@ -80,7 +80,7 @@ test('user text is escaped', () => {
 });
 
 test('Trace contains the exact shared production trace output for each session', () => {
-    const kit = buildCommentaryKit({ webviewSrc: read('../../media/webview.js'), providerSrc: read('../../src/webview/webviewProvider.ts') });
+    const kit = buildTraceKit({ webviewSrc: read('../../media/webview.js') });
     const html = traceHtml(traceSessions, kit.traceRowsHtml);
     for (const session of traceSessions) assert.ok(html.includes(kit.traceRowsHtml(session.events, { now: 1791716400000 })));
     assert.doesNotMatch(html, /Observability|RTK|Gradle/);
@@ -198,7 +198,7 @@ test('ticks: Full shows both states; Live goes single grey to double blue after 
     assert.match(css, /\.talk-ticks\.posted \{ color: var\(--tk-tick-grey\)/);
     assert.match(css, /\.talk-ticks\.delivered \{ color: var\(--tk-tick-grey\)/);
     assert.match(css, /\.talk-ticks\.read \{ color: var\(--tk-tick-blue\)/);
-    assert.match(css, /--tk-tick-blue: #53bdeb/);
+    assert.match(css, /--tk-tick-blue: var\(--vscode-textLink-foreground\)/);
 });
 
 test('Read more: details hide behind a button; expanded shows them with Show less', () => {

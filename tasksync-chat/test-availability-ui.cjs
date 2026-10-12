@@ -28,6 +28,7 @@ const browser = { out: ui, Date, escapeHtml: s => s, vscode: { postMessage: mess
 } };
 vm.runInNewContext(`${slice(webview, '    var presenceStates =', '    function initCommentaryTab')}\npresenceStates = out.states; out.apply = applyAvailabilityState; out.open = openPresence; out.choose = choosePresence;`, { ...browser, out: Object.assign(ui, { states: config.exports.presenceStates }) });
 const manifest = require('./package.json');
+const statusIcons = { here: ['check', '#16833b'], away: ['clock', '#f5c244'], awayValidator: ['shield', '#7751c9'], offline: ['x', '#6b7280'] };
 for (const mode of ['here', 'away', 'awayValidator', 'offline']) {
     ui.apply({ mode });
     assert.deepEqual([...classes], ['avail-' + mode]);
@@ -35,10 +36,16 @@ for (const mode of ['here', 'away', 'awayValidator', 'offline']) {
     assert.ok(command);
     for (const theme of ['light', 'dark']) {
         const icon = fs.readFileSync(path.join(__dirname, command.icon[theme]), 'utf8');
-        assert.match(icon, /<svg/); assert.match(icon, /cx="15" cy="15"/, 'avatar has a presence badge');
+        assert.match(icon, /width="16" height="16" viewBox="0 0 16 16"/);
+        assert.match(icon, /<g id="person-avatar" fill="currentColor">\s*<circle id="avatar-head" cx="6" cy="4" r="3"\/>\s*<path id="avatar-shoulders" d="M0 14v-1a6 6 0 0 1 12 0v1Z"\/>/,
+            'title-bar icon is a neutral head and shoulders silhouette, not a status dot');
+        assert.match(icon, /<g id="status-badge">\s*<circle cx="12" cy="12" r="4"/, 'status badge is bottom-right and smaller than the avatar');
+        assert.ok(icon.includes(`id="status-${statusIcons[mode][0]}"`));
+        assert.ok(icon.includes(`fill="${statusIcons[mode][1]}"`));
     }
     assert.ok(manifest.contributes.menus['view/title'].some(row => row.command === command.command && row.group === 'navigation@0' && row.when === `view == askAwayView && askaway.availability == '${mode}'`));
 }
+console.log('PASS test-presence-icons: four 16x16 currentColor person avatars; bottom-right green check/yellow clock/violet shield/grey x badges');
 assert.doesNotMatch(webview, /cm-avail|availabilityControlHtml/);
 assert.match(webview, /case 'openPresence':\s*openPresence\(\)/);
 const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');

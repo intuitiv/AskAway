@@ -38,11 +38,14 @@ async function collect(roots, max = 200) {
             if (entry.isDirectory()) { await walk(file); continue; }
             if (!entry.isFile()) continue;
             const parts = file.split(path.sep);
-            if (entry.name === 'main.jsonl' && parts.includes('debug-logs') && parts.includes('GitHub.copilot-chat')) {
+            const copilot = entry.name === 'events.jsonl' && path.basename(path.dirname(absolute)) === 'session-state';
+            if (copilot || (entry.name === 'main.jsonl' && parts.includes('debug-logs') && parts.includes('GitHub.copilot-chat'))) {
                 try {
                     for await (const line of readline.createInterface({ input: createReadStream(file), crlfDelay: Infinity })) {
                         let event; try { event = JSON.parse(line); } catch { continue; }
-                        if (event?.type === 'user_message') add(event.ts, event.attrs?.text);
+                        if (copilot) {
+                            if (event?.type === 'user.message') add(event.timestamp, event.data?.content);
+                        } else if (event?.type === 'user_message') add(event.ts, event.attrs?.text);
                     }
                 } catch { /* Unreadable logs do not hide other sessions. */ }
             } else if (entry.name.endsWith('.json') && path.basename(absolute) === 'chatSessions') {
@@ -62,18 +65,20 @@ async function collect(roots, max = 200) {
     return rows.filter(row => { if (seen.has(row.text)) return false; seen.add(row.text); return true; }).slice(0, Math.min(max, 200));
 }
 async function main(args) {
-    const roots = []; let out, max = 200;
+    const roots = [], copilotRoots = []; let out, max = 200;
     for (let i = 0; i < args.length; i++) {
         const flag = args[i], value = args[++i];
         if (!value) throw Error('Missing option value');
         if (flag === '--root') roots.push(value);
+        else if (flag === '--copilot-root') copilotRoots.push(value);
         else if (flag === '--out') out = value;
         else if (flag === '--max' && /^\d+$/.test(value) && Number(value) > 0) max = Number(value);
         else throw Error('Invalid option');
     }
     if (!out) throw Error('--out is required');
     if (!roots.length) roots.push(path.join(os.homedir(), 'Library/Application Support/Code/User/workspaceStorage'));
-    const data = { source: 'vscode', collectedAt: new Date().toISOString(), messages: await collect(roots, max) };
+    if (!copilotRoots.length) copilotRoots.push(path.join(os.homedir(), '.copilot/session-state'));
+    const data = { source: 'vscode', collectedAt: new Date().toISOString(), messages: await collect([...roots, ...copilotRoots], max) };
     await fs.mkdir(path.dirname(path.resolve(out)), { recursive: true });
     await fs.writeFile(out, JSON.stringify(data, null, 2), { mode: 0o600 });
     console.log(`Saved ${data.messages.length} style messages.`);
@@ -81,6 +86,6 @@ async function main(args) {
 module.exports = { clean, collect, main };
 if (require.main === module) main(process.argv.slice(2)).catch((error) => {
     console.error(`Style sampling failed: ${error?.message ?? error}`);
-    console.error('Usage: node tools/style-sample-vscode.cjs --root <dir> [--root <dir>...] --out <file> [--max 200]');
+    console.error('Usage: node tools/style-sample-vscode.cjs --root <dir> [--root <dir>...] [--copilot-root <session-state>] --out <file> [--max 200]');
     process.exitCode = 1;
 });

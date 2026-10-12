@@ -11,7 +11,7 @@ export const MAX_COMMENTARY_WORDS = 20;
 export const MIN_COMMENTARY_WORDS = 3;
 const MAX_GOAL_CHARS = 2000;
 const OPENER_ITEMS = 30;
-type TalkPost = (workspace: string, input: { text: string; replyTo?: string; details?: string; kind?: string }) => unknown;
+type TalkPost = (workspace: string, input: { text: string; replyTo?: string; details?: string; kind?: string; authorKind?: string; detail?: Record<string, unknown> }) => unknown;
 let talkPost: TalkPost | undefined;
 export function setCommentaryAITalkMirror(callback: TalkPost): void { talkPost = callback; }
 
@@ -181,6 +181,7 @@ export class CommentaryStore {
             ...(input.detail ? { detail: input.detail } : {}) };
         state.validatorItems = [...validatorItems, item];
         this.write(state);
+        talkPost?.(workspacePath, { text, kind: input.headsUp ? 'heads-up' : 'validator', authorKind: 'validator', detail: input.detail });
         return { status: 'POSTED', id: item.id };
     }
 

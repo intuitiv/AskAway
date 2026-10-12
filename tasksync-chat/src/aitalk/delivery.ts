@@ -5,7 +5,22 @@ export function configureAITalkDelivery(root: string): void {
     workspace = root;
     setCommentaryAITalkMirror((target, input) => {
         const talk = new AITalkStore(target);
-        return talk.post(input.text, input.replyTo, talk.agentId(), input.details, input.kind);
+        const state = talk.snapshot(true);
+        const author = state.members.find(member => member.kind === (input.authorKind ?? 'agent'));
+        if (!author) throw new Error('AITalk participant is not registered');
+        if (input.authorKind !== 'validator') return talk.post(input.text, input.replyTo, author.id, input.details, input.kind);
+        const detail = input.detail ?? {};
+        const crisp = detail.error ? `Could not check this: ${String(detail.error).slice(0, 240)}`
+            : typeof detail.answer === 'string' && detail.answer.trim() ? detail.answer
+                : typeof detail.summary === 'string' && detail.summary.trim() ? detail.summary : input.text;
+        const details = [
+            Array.isArray(detail.sources) && detail.sources.length ? `Sources: ${detail.sources.join(', ')}` : '',
+            typeof detail.observations === 'string' && detail.observations ? `Observations: ${detail.observations}` : '',
+            typeof detail.impact === 'string' && detail.impact ? `Impact: ${detail.impact}` : '',
+        ].filter(Boolean).join('\n');
+        const questionId = input.replyTo ?? (typeof detail.observedId === 'string' ? detail.observedId : undefined);
+        const replyTo = state.messages.some(message => message.id === questionId) ? questionId : undefined;
+        return talk.post(crisp, replyTo, author.id, details || input.details, input.kind);
     });
 }
 export interface AITalkCaller { recipient: string; workspace?: string }

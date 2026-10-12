@@ -17,7 +17,7 @@ import { defaultIO } from '../cloud/cloudQueue';
 import { PacketTask } from '../cloud/packet';
 import { projectWorkersState, sessionOpenCommand, traceEvents, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
 import { ValidatorRecords } from '../validator/records';
-import { AITalkStore } from '../aitalk/store';
+import { AITalkStore, setAITalkPresence, isAITalkTurnActive } from '../aitalk/store';
 import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
 import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
@@ -131,7 +131,7 @@ interface ModelBreakdown extends ScopeMetrics {
 
 interface ObservabilityMetrics {
     traceGroups?: Array<{ id: string; label: string; events: TraceEvent[] }>;
-    monthCredits?: { label: string; aiu: number; workerDollars: number; totalDollars: number; validatorDollars: number; evalDollars: number; allTimeDollars: number; allTimeAiu: number; months: Record<string, number> };
+    monthCredits?: { label: string; aiu: number; workerDollars: number; cloudDollars: number; totalDollars: number; validatorDollars: number; evalDollars: number; allTimeDollars: number; allTimeAiu: number; months: Record<string, number> };
     // Flat fields mirror the workspace cumulative scope (kept for backward compatibility).
     requestCount: number;
     inputTokens: number;
@@ -426,6 +426,7 @@ export function writeAvailability(workspace: string, input: { mode?: unknown; un
 // Message types
 type ToWebviewMessage =
     | { type: 'aitalkState'; data: ReturnType<AITalkStore['snapshot']> }
+    | { type: 'aitalkAttachments'; files: Array<{ name: string; path: string }> }
     | { type: 'specsData'; data: SpecScanResult }
     | { type: 'workersState'; data: (WorkersState & { cloudWorkers?: Awaited<ReturnType<CloudSpecsController['workers']>> }) | null }
     | { type: 'workerTrace'; data: WorkerTrace }
@@ -492,7 +493,8 @@ type ToWebviewMessage =
 
 type FromWebviewMessage =
     | { type: 'requestAITalk' }
-    | { type: 'aitalkPost' | 'aitalkReply'; text: string; replyTo?: string }
+    | { type: 'aitalkPost' | 'aitalkReply'; text: string; replyTo?: string; attachments?: Array<{ name: string; path: string }> }
+    | { type: 'aitalkAttach' }
     | { type: 'aitalkReact'; replyTo: string; emoji: string }
     | { type: 'requestSpecs' }
     | { type: 'openSpecFile'; dir: string; file: string }
@@ -2672,6 +2674,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         for (const workerId of new Set(facts.map(fact => fact.workerId))) {
             const owned = facts.filter(fact => fact.workerId === workerId);
             const track = owned.find(fact => fact.track)?.track || '';
+            if (track !== 'validator') continue;
             groups.push({ id: workerId, label: `${track === 'validator' ? 'Validator' : track || 'Worker'} · ${workerId}`, events: traceEvents(owned) });
         }
         let slugs: string[] = [];
@@ -2729,7 +2732,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             }
         }
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const local = { workerDollars: 0, validatorDollars: 0, evalDollars: 0 };
+        const local = { workerDollars: 0, validatorDollars: 0, evalDollars: 0, cloudDollars: 0 };
         for (const row of root ? await workspaceCostRequests(root) : []) {
             history.requests[row.id] ??= row;
         }
@@ -2741,6 +2744,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             if (row.source === 'copilot') nanoAiu += row.dollars * 1e11;
             else if (row.source === 'worker') local.workerDollars += row.dollars;
             else if (row.source === 'validator') local.validatorDollars += row.dollars;
+            else if (row.source === 'cloud') local.cloudDollars += row.dollars;
             else local.evalDollars += row.dollars;
         }
         return { label: now.toLocaleString('en', { month: 'long', timeZone: 'UTC' }), aiu: nanoAiu / 1e9, ...local,
@@ -4502,6 +4506,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      */
     private _handleWebviewMessage(message: FromWebviewMessage): void {
         switch (message.type) {
+            case 'aitalkAttach': {
+                void vscode.window.showOpenDialog({ canSelectMany: true, canSelectFiles: true, canSelectFolders: false }).then(files => {
+                    if (files) this._broadcast({ type: 'aitalkAttachments', files: files.map(file => ({ name: path.basename(file.fsPath), path: file.fsPath })) });
+                });
+                break;
+            }
             case 'requestAITalk':
             case 'aitalkPost':
             case 'aitalkReply':
@@ -4509,8 +4519,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                 if (!root) break;
                 const store = new AITalkStore(root);
+                const workers = projectWorkersState(sharedWorkerRuntime(), root).workers;
+                setAITalkPresence(root, isAITalkTurnActive(root), workers.map(worker => ({ id: worker.workerId, displayName: worker.profile, running: worker.state === 'RUNNING' })));
                 try {
-                    if (message.type === 'aitalkPost' || message.type === 'aitalkReply') store.post(message.text, message.replyTo);
+                    if (message.type === 'aitalkPost' || message.type === 'aitalkReply') store.post(message.text, message.replyTo, undefined, undefined, undefined, message.attachments);
                     if (message.type === 'aitalkReact') store.react(message.replyTo, message.emoji);
                     this._broadcast({ type: 'aitalkState', data: store.snapshot() });
                 } catch (error) { console.warn('[AskAway] AITalk post failed:', error); }
@@ -4549,9 +4561,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             }
             case 'setCommentaryGoal':
                 this._handleCommentary('goal', message.goal);
-                break;
-            case 'clearCommentary':
-                this._handleCommentary('clear', message.what);
                 break;
             case 'openSpecFile':
                 this._openSpecFile(message.dir, message.file);
@@ -6426,10 +6435,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         <div class="widget-tabs" id="widget-tabs">
             <button class="widget-tab active" data-tab="aitalk" title="Workspace group chat">AITalk</button>
             <button class="widget-tab hidden" data-tab="specs" id="tab-specs" title="Spec Kit features: progress, next task, active feature">Specs</button>
-            <button class="widget-tab" data-tab="observability" title="Main agent, workers and validator traces">Trace</button>
+            <button class="widget-tab" data-tab="observability" title="Main agent and Validator">Trace</button>
             <button class="widget-tab" data-tab="workers" title="OpenCode workers in this workspace: state, cost, session links">Workers <span class="tab-badge hidden" id="tab-badge-workers"></span></button>
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
-            <button class="widget-tab" data-tab="chat" title="Main chat">Chat</button>
         </div>
         <div class="conversation-health" title="Conversation cost and cache health">
             <button type="button" class="health-metrics" title="Open Metrics"><span id="common-turn-summary">0 req &middot; <strong class="health-cost">$0.00</strong> &middot; 0 last in / 0 turn out &middot; &ndash; cache</span><strong id="common-cache-age" class="health-cache">Age: -</strong></button>
@@ -6438,146 +6446,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         <!-- Chat Panel -->
         <div class="tab-panel active" id="panel-aitalk"><div id="aitalk-root" class="talk-prototype"><div class="talk-thread">Loading AITalk…</div></div></div>
-        <div class="tab-panel" id="panel-chat">
-        <!-- Chat Container -->
-        <div class="chat-container" id="chat-container">
-            <!-- Welcome Section - Let's build -->
-            <div class="welcome-section" id="welcome-section">
-                <div class="welcome-icon">
-                    <img src="${logoUri}" alt="AskAway Logo" width="48" height="48" class="welcome-logo">
-                </div>
-                <h1 class="welcome-title">Let's build</h1>
-                <p class="welcome-subtitle">Sync your tasks, automate your workflow</p>
-                
-                <div class="welcome-cards">
-                    <div class="welcome-card welcome-card-vibe" id="card-vibe">
-                        <div class="welcome-card-header">
-                            <span class="codicon codicon-comment-discussion"></span>
-                            <span class="welcome-card-title">Normal</span>
-                        </div>
-                        <p class="welcome-card-desc">Respond to each AI request directly. Full control over every interaction.</p>
-                    </div>
-                    <div class="welcome-card welcome-card-spec" id="card-spec">
-                        <div class="welcome-card-header">
-                            <span class="codicon codicon-layers"></span>
-                            <span class="welcome-card-title">Queue</span>
-                        </div>
-                        <p class="welcome-card-desc">Batch your responses. AI consumes from queue automatically, one by one.</p>
-                    </div>
-                    <div class="welcome-card welcome-card-plan" id="card-plan">
-                        <div class="welcome-card-header">
-                            <span class="codicon codicon-project"></span>
-                            <span class="welcome-card-title">Plan</span>
-                        </div>
-                        <p class="welcome-card-desc">Orchestrate tasks like a Trello board. AI picks tasks, reports progress, auto-advances.</p>
-                    </div>
-                </div>
-
-                <p class="welcome-autopilot-info"> Tip: Enable <strong>Autopilot</strong> to automatically respond to ask_user prompts without waiting for your input, using a customizable prompt you can configure in Settings.<br>Queued prompts always take priority over Autopilot responses.</p>
-            </div>
-
-            <!-- Tool Call History Area -->
-            <div class="tool-history-area" id="tool-history-area"></div>
-
-            <!-- Pending Tool Call Message -->
-            <div class="pending-message hidden" id="pending-message"></div>
-        </div>
-
-        <!-- Combined Input Wrapper (Queue + Input) -->
-        <div class="input-area-container" id="input-area-container">
-            <!-- File Autocomplete Dropdown - positioned outside input-wrapper to avoid clipping -->
-            <div class="autocomplete-dropdown hidden" id="autocomplete-dropdown">
-                <div class="autocomplete-list" id="autocomplete-list"></div>
-                <div class="autocomplete-empty hidden" id="autocomplete-empty">No files found</div>
-            </div>
-            <!-- Slash Command Autocomplete Dropdown -->
-            <div class="slash-dropdown hidden" id="slash-dropdown">
-                <div class="slash-list" id="slash-list"></div>
-                <div class="slash-empty hidden" id="slash-empty">No prompts found. Add prompts in Settings.</div>
-            </div>
-            <div class="input-wrapper" id="input-wrapper">
-            <!-- Prompt Queue Section - Integrated above input -->
-            <div class="queue-section" id="queue-section" role="region" aria-label="Prompt queue">
-                <div class="queue-header" id="queue-header" role="button" tabindex="0" aria-expanded="true" aria-controls="queue-list">
-                    <div class="accordion-icon" aria-hidden="true">
-                        <span class="codicon codicon-chevron-down"></span>
-                    </div>
-                    <span class="queue-header-title">Prompt Queue</span>
-                    <span class="queue-count" id="queue-count" aria-live="polite">0</span>
-                </div>
-                <div class="queue-list" id="queue-list" role="list" aria-label="Queued prompts">
-                    <div class="queue-empty" role="status">No prompts in queue</div>
-                </div>
-            </div>
-
-            <!-- Input Area -->
-            <div class="input-container" id="input-container">
-            <!-- Attachment Chips INSIDE input container -->
-            <div class="chips-container hidden" id="chips-container"></div>
-            <div class="input-row">
-                <div class="input-highlighter-wrapper">
-                    <div class="input-highlighter" id="input-highlighter" aria-hidden="true"></div>
-                    <textarea id="chat-input" placeholder="Reply to tool call. (use # for files, / for prompts)" rows="1" aria-label="Message input. Use # for file references, / for saved prompts"></textarea>
-                </div>
-            </div>
-            <div class="actions-bar">
-                <div class="actions-left">
-                    <button id="attach-btn" class="icon-btn" title="Add attachment (+)" aria-label="Add attachment">
-                        <span class="codicon codicon-add"></span>
-                    </button>
-                    <div class="mode-selector" id="mode-selector">
-                        <button id="mode-btn" class="mode-btn" title="Select mode" aria-label="Select mode">
-                            <span id="mode-label">Queue</span>
-                            <span class="codicon codicon-chevron-down"></span>
-                        </button>
-                    </div>
-                </div>
-                <div class="actions-right">
-                    <span class="autopilot-label">Autopilot</span>
-                    <div class="toggle-switch" id="autopilot-toggle" role="switch" aria-checked="false" aria-label="Enable Autopilot mode" tabindex="0"></div>
-                    <button id="mic-btn" class="icon-btn" title="Voice mode (talk to Copilot)" aria-label="Voice mode">
-                        <span class="codicon codicon-mic"></span>
-                    </button>
-                    <button id="send-btn" title="Send message" aria-label="Send message">
-                        <span class="codicon codicon-arrow-up"></span>
-                    </button>
-                </div>
-            </div>
-        </div>
-        <!-- Mode Dropdown - positioned outside input-container to avoid clipping -->
-        <div class="mode-dropdown hidden" id="mode-dropdown">
-            <div class="mode-option" data-mode="normal">
-                <span class="codicon codicon-comment-discussion"></span>
-                <span>Normal</span>
-            </div>
-            <div class="mode-option" data-mode="queue">
-                <span class="codicon codicon-layers"></span>
-                <span>Queue</span>
-            </div>
-            <div class="mode-option" data-mode="plan">
-                <span class="codicon codicon-project"></span>
-                <span>Plan (Experimental)</span>
-            </div>
-        </div>
-        </div><!-- End input-wrapper -->
-        </div><!-- End input-area-container -->
-
-        <!-- Plan Board — Opens in editor tab -->
-        <div class="plan-board hidden" id="plan-board">
-            <div class="plan-board-header">
-                <div class="plan-board-title-area">
-                    <span class="codicon codicon-project"></span>
-                    <span class="plan-board-title">Plan Mode Active (Experimental)</span>
-                </div>
-            </div>
-            <div class="plan-board-open-area">
-                <p class="plan-board-desc">Orchestrate tasks on the full-screen planning board. Add tasks, let Copilot execute them, and track progress visually.</p>
-                <button class="plan-btn plan-btn-start" id="plan-open-board-btn" title="Open full Plan Board in editor tab">
-                    <span class="codicon codicon-project"></span> Open Plan Board
-                </button>
-            </div>
-        </div>
-        </div><!-- End panel-chat -->
 
         <!-- Commands Panel -->
         <div class="tab-panel" id="panel-commands">
@@ -6754,7 +6622,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         <!-- Settings Panel -->
         <div class="tab-panel" id="panel-settings">
             <label>Main goal<textarea class="cm-goal-input" id="cm-goal-input" rows="6" aria-label="Main goal"></textarea></label>
-            <button id="cm-copy" title="Copy goal and feed">Copy opener</button><button id="cm-clear" title="Clear feed history boundary">Clear feed</button>
+            <button id="cm-copy" title="Copy goal and feed">Copy opener</button>
             <div class="settings-tab-shell" id="settings-tab-shell"></div>
         </div><!-- End panel-settings -->
 

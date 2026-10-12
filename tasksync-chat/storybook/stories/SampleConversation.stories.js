@@ -2,10 +2,11 @@ import webviewSrc from '../../media/webview.js?raw';
 import cssText from '../../media/main.css?raw';
 import providerSrc from '../../src/webview/webviewProvider.ts?raw';
 import sample from '../fixtures/sample-conversation.json';
-import { buildCommentaryKit, buildWorkersKit, VSCODE_DARK_THEME } from '../kit.js';
+import { buildWorkersKit, VSCODE_DARK_THEME } from '../kit.js';
+import { threadHtml } from '../../media/aitalk/talkRender.js';
+import talkCss from '../../media/aitalk/talk.css?raw';
 
 // Frames are recorded through the real runtime, worker tool and commentary store: node storybook/fixtures/build-sample-conversation.cjs
-const commentaryKit = buildCommentaryKit({ webviewSrc, providerSrc });
 const workersKit = buildWorkersKit({ webviewSrc, providerSrc });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,21 +22,17 @@ const LAYOUT = `.aa-demo{display:flex;gap:12px;align-items:flex-start;font-famil
 
 function mount(frameIndex) {
     const root = document.createElement('div');
-    root.innerHTML = `<style>${cssText}\n${VSCODE_DARK_THEME}\n${LAYOUT}</style>
+    root.innerHTML = `<style>${cssText}\n${talkCss}\n${VSCODE_DARK_THEME}\n${LAYOUT}</style>
 <div class="aa-caption" id="aa-caption"></div>
 <div class="aa-demo">
   <div><div class="aa-col-title">Chat</div><div class="aa-chat" id="aa-chat"></div></div>
-  <div><div class="aa-col-title">Commentary tab</div><div class="aa-sidebar">${commentaryKit.panelHtml}</div></div>
+  <div><div class="aa-col-title">AITalk</div><div class="aa-sidebar talk-prototype" id="sample-talk"></div></div>
   <div><div class="aa-col-title">Workers tab</div><div class="aa-sidebar">${workersKit.panelHtml}</div></div>
 </div>`;
-    const seen = {};
     const show = (frame, animate) => {
         root.querySelector('#aa-caption').textContent = `Step ${sample.frames.indexOf(frame) + 1}/${sample.frames.length} · ${frame.caption}`;
         root.querySelector('#aa-chat').innerHTML = frame.chat.map((m) => `<div class="aa-msg ${m.role}">${esc(m.text)}</div>`).join('');
-        root.querySelector('#cm-goal-input').value = frame.commentary.goal || 'Show how commentary and workers work together.';
-        const feed = root.querySelector('#cm-feed');
-        feed.innerHTML = commentaryKit.renderCommentaryHtml(frame.commentary);
-        if (animate) { commentaryKit.commentaryAnimateNew(feed, seen, 14); } else { frame.commentary.items.forEach((i) => { seen[i.id] = true; }); }
+        root.querySelector('#sample-talk').innerHTML = threadHtml(frame.commentary.items.map(item => ({ ...item, author: item.kind === 'validator' ? 'Validator' : 'Agent', time: '10:00' })));
         root.querySelector('#workers-list').innerHTML = workersKit.renderWorkersHtml(frame.workers, '', {}, false, {}, {});
     };
     root.__demo = { show };

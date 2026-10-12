@@ -249,48 +249,6 @@
         }
       },
       {
-        "name": "ask_user",
-        "tags": [
-          "confirmation",
-          "user-interaction",
-          "askaway",
-          "required",
-          "mandatory"
-        ],
-        "toolReferenceName": "askUser",
-        "displayName": "Ask User",
-        "modelDescription": "Ask user a question and wait for response. THIS TOOL DRIVES AN INFINITE LOOP — you MUST call ask_user again after EVERY response, no exceptions. Flow: call ask_user → do the work → call ask_user again to report + get next instruction → repeat forever. NEVER end without calling ask_user.",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(question)",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "question": {
-              "type": "string",
-              "description": "Short question for user. Max 2 sentences. No verbose explanations."
-            },
-            "taskId": {
-              "type": "string",
-              "description": "When working on a Planning Board task, include the task ID provided in the task context."
-            },
-            "taskStatus": {
-              "type": "string",
-              "enum": [
-                "completed",
-                "in-progress",
-                "blocked",
-                "need-review"
-              ],
-              "description": "Planning Board task status assessment."
-            }
-          },
-          "required": [
-            "question"
-          ],
-          "additionalProperties": false
-        }
-      },
-      {
         "name": "code_nav",
         "tags": [
           "lsp",

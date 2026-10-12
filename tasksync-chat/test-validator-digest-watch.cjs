@@ -118,15 +118,7 @@ async function checkLiveWatch() {
         assert.ok(commentaryView(store.read(fixture)).items.some(item => item.id === flag.id));
         assert.ok(mirrors.at(-1).items.some(item => item.id === flag.id && item.kind === 'heads-up'));
         assert.ok(mirrors.at(-1).items.some(item => item.text.includes('Validator return digest')));
-
-        const source = fs.readFileSync(path.join(__dirname, 'media/webview.js'), 'utf8');
-        const renderer = source.slice(source.indexOf('    function validatorTraceRows('), source.indexOf('\n    function ', source.indexOf('    function commentaryItemHtml(') + 10));
-        const context = { commentaryIsHeadsUp: item => item.kind === 'heads-up', commentaryEsc: String,
-            commentaryMarkup: String, commentaryClock: String, TRACE_HEAD: 'shared-head',
-            traceRowsHtml: rows => 'SHARED_TRACE:' + JSON.stringify(rows) };
-        vm.runInNewContext(renderer, context);
-        const html = context.commentaryItemHtml(flag, {});
-        assert.match(html, /HEADS-UP/); assert.match(html, /SHARED_TRACE:/); assert.match(html, /Evidence line one/);
+        // The Commentary renderer is gone (2026-10-12); Validator evidence rows render in the Trace tab (test-trace-tab-unification.cjs).
         assert.ok(require('./package.json').scripts['pretest:workers'].includes('test-validator-digest-watch.cjs'));
         console.log('PASS EV-VALIDATOR-DIGEST-WATCH answered/uncertain/held digest once on return and expiry; empty silent; watch throttled; isolated heads-up evidence uses shared trace and Telegram view; no action; off/Here silent');
     } finally { relay.dispose(); }

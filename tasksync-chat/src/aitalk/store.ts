@@ -3,11 +3,19 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 // esbuild bundles the same browser rules; no second participant or routing configuration.
 const rules = require('../../media/aitalk/talkRules.js');
+const live = new Map<string, { active: boolean; workers: Array<{ id: string; displayName: string; running: boolean }> }>();
+export function setAITalkPresence(workspace: string, active: boolean, workers: Array<{ id: string; displayName: string; running: boolean }>): void {
+    live.set(workspace, { active, workers: workers.map(worker => ({ ...worker, displayName: `${worker.displayName} · ${worker.id}` })) });
+}
+export function setAITalkTurnActive(workspace: string, active: boolean): void { const previous = live.get(workspace); live.set(workspace, { active, workers: previous?.workers ?? [] }); }
+export function isAITalkTurnActive(workspace: string): boolean { return live.get(workspace)?.active ?? false; }
 export class AITalkStore {
     readonly file: string;
-    constructor(workspace: string, private registry = rules.defaultMembers) { this.file = path.join(workspace, '.askaway', 'aitalk', 'messages.jsonl'); }
+    constructor(private workspace: string, private registry = rules.defaultMembers) { this.file = path.join(workspace, '.askaway', 'aitalk', 'messages.jsonl'); }
     snapshot(full = false): { messages: any[]; members: any[] } {
         let members = this.registry.map((member: any) => ({ ...member }));
+        const presence = live.get(this.workspace);
+        for (const worker of presence?.workers ?? []) members.push({ ...worker, kind: 'worker', rank: 100, presencePolicy: 'joinsPerTurn', presence: worker.running ? 'online' : 'left' });
         let messages: any[] = [];
         let text = '';
         try { text = fs.readFileSync(this.file, 'utf8'); } catch { /* New workspace. */ }
@@ -25,9 +33,12 @@ export class AITalkStore {
                 members = next.registry; messages = next.messages;
             } catch { /* Torn or invalid event does not hide subsequent messages. */ }
         }
+        members = members.map((member: any) => ({ ...member, presence: member.presencePolicy === 'alwaysPresent' ? 'online'
+            : member.kind === 'agent' ? presence?.active ? 'online' : 'left'
+            : member.kind === 'worker' ? presence?.workers.find(worker => worker.id === member.id)?.running ? 'online' : 'left' : member.presence }));
         return { messages: full ? messages : messages.slice(-500), members };
     }
-    post(text: string, replyTo?: string, author?: string, details?: string, kind?: string) {
+    post(text: string, replyTo?: string, author?: string, details?: string, kind?: string, attachments?: Array<{ name: string; path: string }>) {
         const state = this.snapshot(true);
         const user = state.members.find((member: any) => member.kind === 'user');
         const actor = author || user.id;
@@ -35,7 +46,7 @@ export class AITalkStore {
         this.markRead(actor);
         const message = rules.replyMessage(String(text).slice(0, 8000), actor, rules.selectReply(state.messages, replyTo), randomUUID());
         rules.postMessage(message, state.messages, state.members);
-        this.append({ ...message, ...(kind ? { kind } : {}), ...(details ? { details: String(details).slice(0, 8000) } : {}), time: new Date().toTimeString().slice(0, 5), ts: Date.now() });
+        this.append({ ...message, ...(attachments?.length ? { attachments } : {}), ...(kind ? { kind } : {}), ...(details ? { details: String(details).slice(0, 8000) } : {}), time: new Date().toTimeString().slice(0, 5), ts: Date.now() });
         return this.snapshot();
     }
     reply(text: string, replyTo: string) { return this.post(text, replyTo); }
@@ -50,7 +61,7 @@ export class AITalkStore {
         const received = state.messages.filter((message: any) => message.recipients?.includes(recipient) && !message.receivedBy?.includes(recipient))
             .sort((a: any, b: any) => (rules.participant(state.members, b.author)?.rank ?? 0) - (rules.participant(state.members, a.author)?.rank ?? 0));
         if (received.length) this.append({ deliveryEvent: 'delivered', recipient, ids: received.map((message: any) => message.id) });
-        return received.map((message: any) => ({ id: message.id, author: message.author, text: message.text, ...(message.details ? { details: message.details } : {}), ...(message.replyTo ? { replyTo: message.replyTo } : {}) }));
+        return received.map((message: any) => ({ id: message.id, author: message.author, text: message.text, ...(message.attachments ? { attachments: message.attachments } : {}), ...(message.details ? { details: message.details } : {}), ...(message.replyTo ? { replyTo: message.replyTo } : {}) }));
     }
     react(replyTo: string, emoji: string) {
         const state = this.snapshot();

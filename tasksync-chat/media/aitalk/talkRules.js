@@ -2,7 +2,6 @@ export const defaultMembers = [
     { id: 'you', kind: 'user', displayName: 'You', colour: 'who-you', rank: 400, presencePolicy: 'alwaysPresent', canProxyWhenAway: false },
     { id: 'agent', kind: 'agent', displayName: 'Agent', colour: 'who-agent', rank: 200, presencePolicy: 'joinsPerTurn', canProxyWhenAway: false },
     { id: 'validator', kind: 'validator', displayName: 'Validator', colour: 'who-validator', rank: 300, presencePolicy: 'alwaysPresent', canProxyWhenAway: true },
-    { id: 'build-1', kind: 'worker', displayName: 'build-1', colour: 'who-worker', rank: 100, presencePolicy: 'joinsPerTurn', canProxyWhenAway: false },
 ].map(member => ({ ...member, name: member.displayName, presence: 'online' }));
 
 export const deliveryEvents = { sent: 'posted', delivered: 'delivered', sessionStart: 'delivered', read: 'read', firstResponse: 'read', firstToolCall: 'read' };
@@ -14,7 +13,7 @@ export const owner = registry => [...registry].sort((a, b) => b.rank - a.rank)[0
 export const primaryReply = (messages, registry) => [...messages].sort((a, b) => (participant(registry, b.author)?.rank || 0) - (participant(registry, a.author)?.rank || 0))[0];
 export function routeMessage(message, messages, registry) {
     const targets = registry.filter(p => {
-        const names = [p.id, displayName(p)].filter(Boolean).map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        const names = (p.kind === 'worker' ? [p.id] : [p.id, displayName(p)]).filter(Boolean).map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         return names.some(name => new RegExp(`@${name}(?![\\w-])`, 'i').test(message.text));
     }).map(p => p.id);
     const parent = messages.find(m => m.id === message.replyTo);

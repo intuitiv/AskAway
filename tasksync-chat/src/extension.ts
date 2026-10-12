@@ -6,6 +6,7 @@ import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './consta
 import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
 import { presenceStates } from './availability/presence';
 import { wireWebex } from './services/webexWiring';
+import { setAITalkTurnActive } from './aitalk/store';
 import { notifyAttention, registerAttentionNotify } from './services/attentionNotify';
 import { createWebexSuiteHost } from './services/webexToolsHost';
 import { registerTools } from './tools';
@@ -1063,7 +1064,7 @@ export function activate(context: vscode.ExtensionContext) {
             }, memoryProject, () => String(sharedCommentaryStore().turnStarts(memoryProject).at(-1) || Date.now())),
         })).catch(error => { observerReady = undefined; throw error; }), () => readActiveSpecSlug(memoryProject),
         () => { sharedCommentaryStore().postValidator(memoryProject, { text: 'Validator trigger failed; agent flow continued.' }); });
-        provider.setValidatorTurnStart((text, id) => { void triggers.turnStart(triggers.previousFinal(), text, id); });
+        provider.setValidatorTurnStart((text, id) => { setAITalkTurnActive(memoryProject, true); void triggers.turnStart(triggers.previousFinal(), text, id); });
         const memory = memoryTool(getMemory, memoryProject, (query, agentId) => triggers.memoryCall(query, agentId));
         context.subscriptions.push(...registerLmToolDefinitions([asksTool(memoryProject)]));
         registerTools(context, provider, memory, validatorTool(text => triggers.validatorCall(text), {
@@ -1280,7 +1281,7 @@ export function activate(context: vscode.ExtensionContext) {
                     debugLogsDir,
                     logRuntime,
                     () => provider.getTurnMetricsSnapshot(),
-                    (text, id) => triggers.turnEnd(text, id)
+                    (text, id) => { setAITalkTurnActive(memoryProject, false); return triggers.turnEnd(text, id); }
                 );
                 notifier.start();
                 context.subscriptions.push(notifier);

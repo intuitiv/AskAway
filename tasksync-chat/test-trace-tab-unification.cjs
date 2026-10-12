@@ -18,15 +18,34 @@ const groups = [
     { id: 'validator', label: 'Validator', events: [request('VALIDATOR', 50, 5)] }
 ];
 browser.ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics: { turnEvents: main, traceGroups: groups } } });
-for (const group of [{ id: 'main', label: 'Main agent', events: main }, ...groups]) {
+for (const group of [{ id: 'main', label: 'Main agent', events: main }, groups[2]]) {
     assert.ok(host.innerHTML.includes(group.label));
     assert.ok(host.innerHTML.includes(browser.ui.traceRowsHtml(group.events.slice().sort((a, b) => a.ts - b.ts), {})), 'exact shared component output');
     assert.ok(host.innerHTML.includes('data-trace-group="' + group.id + '"'));
 }
 assert.ok(host.innerHTML.indexOf('MAIN-OLD') < host.innerHTML.indexOf('MAIN-NEW'), 'newest at bottom');
-for (const cost of ['$3.00', '$4.00', '$5.00']) assert.ok(host.innerHTML.includes(cost));
+assert.doesNotMatch(host.innerHTML, /worker-a|worker-b|WORKER-A|WORKER-B/);
+assert.ok(host.innerHTML.includes('$5.00'));
 assert.match(host.innerHTML, /<details class="trace-group"/);
-assert.match(browser.ui.traceGroupsHtml(main, groups, new Set(['worker-a'])), /data-trace-group="worker-a" open/);
+assert.match(browser.ui.traceGroupsHtml(main, groups, new Set(['validator'])), /data-trace-group="validator" open/);
+const created = [];
+browser.document.createElement = () => { const e = { innerHTML: '', appendChild() {} }; created.push(e); return e; };
+const monthElement = { style: {} };
+browser.document.getElementById = id => id === 'observability-tab-shell' ? { appendChild() {} } : id === 'obs-workspace-month' ? monthElement : id === 'obs-trace-groups' ? host : null;
+vm.runInNewContext(source.replace(/\}\(\)\);\s*$/, 'globalThis.ui = { createObservabilityTab, handleExtensionMessage }; }());'), browser);
+browser.ui.createObservabilityTab();
+const markup = created.find(e => e.innerHTML.includes('obs-workspace-month')).innerHTML;
+const ordered = ['obs-workspace-month', 'obs-turn-summary', 'obs-cache-age', 'obs-cache-ping-btn', 'obs-trace-groups'];
+for (let i = 0; i < ordered.length; i++) {
+    assert.ok(markup.includes(ordered[i]), ordered[i] + ' must render');
+    if (i) assert.ok(markup.indexOf(ordered[i - 1]) < markup.indexOf(ordered[i]), 'month → summary → cache → Ping → groups');
+}
+assert.doesNotMatch(markup, />\s*Trace\s*</);
+assert.doesNotMatch(markup, /RTK:|Gradle:|observability-rtk-line" id="observability-rtk/);
+browser.ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics: { monthCredits: { label: 'October', totalDollars: 102.03, workerDollars: 73.32, cloudDollars: 1.20 } } } });
+assert.equal(monthElement.textContent, 'October · this workspace: $102.03 ($73.32 workers · $1.20 cloud est.)');
+browser.ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics: { monthCredits: { label: 'October', totalDollars: 100, workerDollars: 70, cloudDollars: 0 } } } });
+assert.equal(monthElement.textContent, 'October · this workspace: $100.00 ($70.00 workers)');
 const provider = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
 assert.match(provider, /data-tab="observability"[^>]*>Trace<\/button>/);
 assert.equal(provider.replace(/\r\n/g, '').includes('\n'), false);
@@ -46,8 +65,8 @@ vm.runInNewContext(ts.transpileModule(provider, { compilerOptions: { module: ts.
 (async () => {
     const instance = Object.create(mod.exports.AskAwayWebviewProvider.prototype); instance._lastSubmitTs = 10;
     const projected = await instance._turnTraceGroups('/fixture');
-    assert.equal(projected.length, 2); assert.equal(projected[0].id, 'a'); assert.equal(projected[1].label, 'Validator');
-    assert.equal(projected[0].events[0].dollars, 3); assert.equal(projected[1].events[0].dollars, 5);
+    assert.equal(projected.length, 1); assert.equal(projected[0].label, 'Validator');
+    assert.equal(projected[0].events[0].dollars, 5);
     assert.ok(require('./package.json').scripts['pretest:workers'].includes('test-trace-tab-unification.cjs'));
-    console.log('PASS EV-TRACE-TAB-UNIFICATION main/workers/validator shared rows; grouped costs and collapse; newest bottom; current-turn boundary; Trace label; CRLF');
+    console.log('PASS EV-TRACE-TAB-UNIFICATION Main agent/Validator only; summary/cache/Ping above groups; no inner Trace/RTK/Gradle headings; monthly cloud estimate; CRLF');
 })().catch(error => { console.error(error); process.exitCode = 1; });

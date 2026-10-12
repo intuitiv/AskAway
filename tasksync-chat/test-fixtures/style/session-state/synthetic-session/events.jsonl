@@ -1,0 +1,8 @@
+{"type":"user.message","data":{"content":"why this PR failed?","transformedContent":"<current_datetime>2026-10-12</current_datetime> injected system instructions never collect these"},"timestamp":"1970-01-01T00:00:00.800Z"}
+{"type":"user.message","data":{"content":"i want teh simple wording","transformedContent":"injected duplicate context must never appear"},"timestamp":600}
+{"type":"user.message","data":{"content":"please keep CLI original spelling\n```js\nconst ignored = true;\n```\nhttps://example.test/attachment\nTool output: ignored pasted result","transformedContent":"injected transformed prompt must never appear"},"timestamp":450}
+{"type":"assistant.message","data":{"content":"assistant CLI output never keep this"},"timestamp":9999}
+{"type":"tool.result","data":{"content":"tool CLI output never keep this"},"timestamp":9998}
+{"type":"user.message","data":{"transformedContent":"transformed only prompt must never appear"},"timestamp":9997}
+{"type":"user.message","data":{"content":"only three words","transformedContent":"long transformed prompt must never appear"},"timestamp":9996}
+malformed synthetic record

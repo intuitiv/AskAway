@@ -13,7 +13,7 @@
     --tk-in: var(--tk-surface);
     --tk-in-fg: var(--tk-fg);
     --tk-wallpaper: var(--tk-bg);
-    --tk-doodle: color-mix(in srgb, var(--tk-fg) 4%, transparent);
+    --tk-doodle: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
     --tk-pill: var(--tk-surface);
     --tk-pill-fg: var(--tk-muted);
     --tk-green: var(--vscode-button-background);
@@ -154,21 +154,21 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
     place-items: center;
     align-self: flex-start;
     border-radius: 50%;
-    background: currentColor;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    box-shadow: 0 0 0 2px var(--avatar-accent, var(--who-agent));
     font-size: 11px;
     font-weight: 600;
 }
-.talk-avatar { color: var(--who-agent); }
 .talk-avatar.small { width: 32px; height: 32px; }
-.talk-avatar.who-you { color: var(--who-you); }
-.talk-avatar.who-agent { color: var(--who-agent); }
-.talk-avatar.who-validator { color: var(--who-validator); }
-.talk-avatar.who-worker { color: var(--who-worker); }
-.talk-avatar.who-p0 { color: var(--who-p0); }
-.talk-avatar.who-p1 { color: var(--who-p1); }
-.talk-avatar.who-p2 { color: var(--who-p2); }
-.talk-avatar.who-p3 { color: var(--who-p3); }
-.talk-avatar { -webkit-text-fill-color: var(--vscode-button-foreground); }
+.talk-avatar.who-you { --avatar-accent: var(--who-you); }
+.talk-avatar.who-agent { --avatar-accent: var(--who-agent); }
+.talk-avatar.who-validator { --avatar-accent: var(--who-validator); }
+.talk-avatar.who-worker { --avatar-accent: var(--who-worker); }
+.talk-avatar.who-p0 { --avatar-accent: var(--who-p0); }
+.talk-avatar.who-p1 { --avatar-accent: var(--who-p1); }
+.talk-avatar.who-p2 { --avatar-accent: var(--who-p2); }
+.talk-avatar.who-p3 { --avatar-accent: var(--who-p3); }
 
 .talk-bubble {
     position: relative;
@@ -327,11 +327,15 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
     border: 0;
     outline: 0;
     background: transparent;
-    color: var(--tk-fg);
+    color: var(--vscode-input-foreground);
+    caret-color: var(--vscode-input-foreground);
     font: inherit;
     resize: none;
 }
 .talk-input-wrap textarea::placeholder { color: var(--tk-muted); }
+.talk-emoji-picker { display: flex; gap: 4px; padding: 6px; background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-panel-border); }
+.talk-emoji-picker button { background: transparent; border: 0; font-size: 20px; }
+.talk-attachment { display: inline-block; padding: 2px 6px; border-radius: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
 .talk-icon { padding: 4px; border: 0; background: none; font-size: 18px; opacity: .75; }
 .talk-send {
     display: grid;

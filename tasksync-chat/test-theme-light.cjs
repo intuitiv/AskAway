@@ -8,7 +8,19 @@ const esbuild = require('esbuild');
     const css = fs.readFileSync(path.join(__dirname, 'media/aitalk/talk.css'), 'utf8');
     assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b|rgba?\(/i);
     const main = fs.readFileSync(path.join(__dirname, 'media/main.css'), 'utf8');
-    assert.doesNotMatch(main.slice(main.indexOf('body.avail-here'), main.indexOf('.cm-icon-btn', main.indexOf('body.avail-here'))), /#[0-9a-f]{3,8}\b|rgba?\(/i);
+    assert.doesNotMatch(main.slice(main.indexOf('body.avail-here'), main.indexOf('/* ===== Workers tab')), /#[0-9a-f]{3,8}\b|rgba?\(/i);
+    const goalCss = main.match(/\.cm-goal-input \{[^}]*\}/)[0];
+    assert.match(goalCss, /border: 1px solid var\(--vscode-input-border, var\(--vscode-contrastBorder, transparent\)\)/);
+    assert.match(main, /\.cm-goal-input:focus \{ outline: 1px solid var\(--vscode-focusBorder\)/);
+    assert.doesNotMatch(goalCss, /#[0-9a-f]{3,8}\b/i);
+    const avatarCss = css.match(/\.talk-avatar \{[^}]*\}/)[0];
+    assert.match(avatarCss, /background: var\(--vscode-badge-background\)/);
+    assert.match(avatarCss, /color: var\(--vscode-badge-foreground\)/);
+    assert.match(avatarCss, /box-shadow: 0 0 0 2px var\(--avatar-accent/);
+    assert.doesNotMatch(css, /-webkit-text-fill-color|background: currentColor/);
+    for (const who of ['you', 'agent', 'validator', 'worker', 'p0', 'p1', 'p2', 'p3']) {
+        assert.match(css, new RegExp(`\\.talk-avatar\\.who-${who} \\{ --avatar-accent: var\\(--who-${who}\\); \\}`));
+    }
     const provider = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
     assert.doesNotMatch(provider, /data-tab="commentary"|id="panel-commentary"/);
     assert.equal(provider.replace(/\r\n/g, '').includes('\n'), false);
