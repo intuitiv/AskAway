@@ -119,6 +119,7 @@ export type Spawner = (args: string[]) => ChildLike;
 export type ForkSession = (sessionId: string) => Promise<{ sessionId: string }>;
 
 export interface RuntimeOptions {
+    onPresence?: (workspace: string, worker: { id: string; displayName: string }, present: boolean) => void;
     ledgerDir?: string;
     now?: () => number;
     spawner?: Spawner;
@@ -264,12 +265,14 @@ export class OpenCodeWorkerRuntime {
     private readonly ledgerDir: string;
     readonly now: () => number;
     private readonly spawner: Spawner;
+    private readonly onPresence?: RuntimeOptions['onPresence'];
     private attachUrl?: string;
     private readonly forkSession?: ForkSession;
     private readonly setTimer: (fire: () => void, ms: number) => () => void;
 
     constructor(profiles: WorkerProfile[], options: RuntimeOptions = {}) {
         this.now = options.now ?? Date.now;
+        this.onPresence = options.onPresence;
         this.router = new WorkerRouter(profiles, { now: this.now });
         this.ledgerDir = options.ledgerDir ?? path.join(os.homedir(), '.askaway', 'worker-ledger');
         this.spawner = options.spawner ?? defaultSpawner;
@@ -887,6 +890,7 @@ export class OpenCodeWorkerRuntime {
     }
 
     private finish(run: RunRecord, state: RunState, reason?: string): void {
+        if (run.track !== 'validator') this.onPresence?.(run.workspace, { id: run.workerId, displayName: run.profile }, false);
         run.state = state;
         run.reason = reason;
         run.endedAt = this.now();
@@ -905,6 +909,7 @@ export class OpenCodeWorkerRuntime {
     }
 
     private record(run: RunRecord, fact: Pick<LifecycleRecord, 'type'> & Partial<LifecycleRecord>): void {
+        if (fact.type === 'start' && run.track !== 'validator') this.onPresence?.(run.workspace, { id: run.workerId, displayName: run.profile }, true);
         const record: LifecycleRecord = {
             ts: this.now(), workspace: run.workspace, ...(run.cwd && run.cwd !== run.workspace ? { cwd: run.cwd } : {}), workerId: run.workerId, runId: run.runId, sessionId: run.sessionId,
             dispatchTurnId: run.dispatchTurnId, source: run.model.split('/')[0] || 'unknown', ...(run.track ? { track: run.track } : {}),

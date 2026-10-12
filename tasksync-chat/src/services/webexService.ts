@@ -205,6 +205,10 @@ export class WebexService implements RemoteChannel {
                 authRetried = true;
                 if (await this._refreshAccessToken()) { continue; }
             }
+            if (method === 'PUT' && response.status >= 500 && retry < 3) {
+                await (this.remoteOptions.wait ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(1000);
+                continue;
+            }
             if (response.status !== 429 || retry >= 3) { return response; }
             const value = response.headers.get('Retry-After') ?? '1';
             const seconds = Number(value);
@@ -215,6 +219,8 @@ export class WebexService implements RemoteChannel {
     public async sendText(formatted: string, fallback: string, destination?: RemoteDestination, options?: { notify?: boolean }): Promise<RemoteMessageId | undefined> {
         await this._ready;
         if (!this.isConfigured()) { return undefined; }
+        formatted = formatted.slice(0, 7000);
+        fallback = fallback.slice(0, 7000);
         try {
             const roomId = String(destination?.id ?? this._roomId);
             // Webhook posts notify but cannot be edited, so only notifying messages use it.
@@ -234,6 +240,7 @@ export class WebexService implements RemoteChannel {
     public async editLive(messageId: RemoteMessageId, formatted: string): Promise<boolean> {
         if (!this.turnPolicy().liveStatus) { return true; }
         if (!this.isConfigured()) { return false; }
+        formatted = formatted.slice(0, 7000);
         try {
             let response = await this.remoteRequest('PUT', `messages/${encodeURIComponent(String(messageId))}`, { roomId: this._roomId, markdown: formatted, text: formatted });
             if (response.status === 400) { response = await this.remoteRequest('PUT', `messages/${encodeURIComponent(String(messageId))}`, { roomId: this._roomId, text: formatted }); }

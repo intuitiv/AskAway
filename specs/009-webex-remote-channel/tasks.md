@@ -29,8 +29,8 @@ Extension code: `tasksync-chat/src/`; caller-view tests: `tasksync-chat/test-*.c
 
 **Purpose**: Record the implementation contract without guessing Webex capabilities or secret values.
 
-- [ ] T003 Plan the migration in `specs/009-webex-remote-channel/plan.md` and `research.md`, recording existing callers and the personal-token notification limit, outbound polling and explicit US5 question; caller-view test `tasksync-chat/test-spec-planning-contract.cjs` must pass before further implementation.
-- [ ] T004 [P] Record FR-to-row/story/test coverage in `specs/009-webex-remote-channel/checklists/requirements.md`; caller-view test `tasksync-chat/test-goals-docs.cjs` plus an explicit artifact check confirms all 23 R-TELE rows map to spec FRs (no new requirement wording).
+- [x] T003 Plan the migration in `specs/009-webex-remote-channel/plan.md` and `research.md`; `test-spec-planning-contract.cjs` PASS EV-WEBEX-MIGRATION-PLAN callers=6 rules=5 (2026-10-12). US5 design is confirmed; live verification deferred.
+- [x] T004 [P] Record all R-TELE coverage in `checklists/requirements.md`; `test-goals-docs.cjs` PASS EV-WEBEX-REQUIREMENTS-COVERAGE rows=44 and PASS EV-GOALS-DOCS (2026-10-12); original wording preserved.
 
 ---
 
@@ -110,7 +110,7 @@ T029 subsequent retry (2026-10-08): `invalid_scope` persists with KMS included. 
 
 ### Tests for User Story 3
 
-- [ ] T014 [P] [US3] Build caller-view fake API replay in `tasksync-chat/test-webex-remote-adapter.cjs`, with fixtures under `tasksync-chat/build/`, asserting space routing, file upload, formatting/edit retries, Retry-After and no webhook/listener (FR-010/FR-013/FR-021/FR-022/FR-025/FR-026; depends on T006; can run alongside T008 on disjoint tests).
+- [x] T014 [P] [US3] Fake API replay `test-webex-remote-adapter.cjs` PASS EV-WEBEX-REMOTE-ADAPTER matched=6 (2026-10-12): routing/create/reuse/ambiguity, reload IDs, PDF bytes/error, bounded text, formatting fallback, automatic transient edit retry, POST/PUT/upload/poll Retry-After, fake credentials and forbidden listener. T006 same-basename identity remains separate.
 
 ### Implementation for User Story 3
 
@@ -272,6 +272,22 @@ Test-only work is parallel; integration edits to webexAuth.ts/webexService.ts ar
 ---
 
 ## Notes
+
+### Scoped test packet — 2026-10-12
+
+Latest follow-up supersedes the first packet's dispositions; actual source paths are outside its allowed globs.
+- T003 done: test-spec-planning-contract.cjs PASS EV-WEBEX-MIGRATION-PLAN callers=6 rules=5; migration plan/research authored.
+- T004 done: test-goals-docs.cjs PASS EV-WEBEX-REQUIREMENTS-COVERAGE rows=44; unique FR/story/test-or-gap mappings.
+- T006 blocker: distinct workspace paths with the same basename still resolve the same titled room; identity migration needs a compatibility decision before changing existing mappings.
+- T008 blocker: formatter/adapters now preserve supplied worker metrics, but src/webview/webviewProvider.ts:2111–2122 drops them before handoff and is outside scope; full lifecycle replay remains incomplete.
+- T014 done: expanded fake-backed adapter test PASS matched=6; red transient-edit assertion preceded owning retry/content-bound fixes.
+- T018 blocker: live opt-in absent; FR-036 also requires safe credential injection before external script arrival verification.
+- T022 blocker: live opt-in absent; worker gate now fails outside scope at test-trace-tab-unification.cjs:71:29, `browser.ui.traceRowsHtml is not a function`.
+- T023 blocker: passing expanded adapter/formatter guards cited without wording changes; full P1 parity awaits the out-of-scope metrics provider fix.
+- US5 live verification deferred per packet; confirmed webhook design and no-bots rule unchanged.
+- Compiler evidence (latest): repository `tasksync-chat/node_modules/.bin/tsc -p tasksync-chat --noEmit` TSC_EXIT=0; both new suites and all five Telegram regressions exit 0.
+
+Failure sensitivity: routing fails on wrong room; retry fails on wrong delay/plain body; upload fails on altered bytes/false success; reload fails on duplicate/missing same-person reply; secrecy fails on seeded credential leakage; parity fails on dropped fields or banner ordering. No mutation of src was used to manufacture a red/green result.
 
 - Completion evidence supplied for this docs update: T016 — `tasksync-chat/test-remote-channel-contract.cjs` and `tasksync-chat/test-webex-one-item.cjs`; T019 — live share-with-me runs 2026-10-09 delivered a notifying message plus spec.pdf to AskAway General. Existing task row text is preserved except those two ticks.
 - US6 supersedes earlier split-final/bot proposals: incoming webhooks accept only text/markdown, ignore parentId and return no id; token markdown + files share ONE message. US5 is confirmed, not an optional bot decision. T031 delivers T010; T032 guards all Webex tests; US7 follows the shared boundary. No inbound webhook/public laptop endpoint.

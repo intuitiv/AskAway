@@ -4,6 +4,7 @@
 export const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 import { defaultMembers, participant, displayName, owner, primaryReply } from './talkRules.js';
+import { presenceHtml } from './presence.js';
 export { defaultMembers } from './talkRules.js';
 const initialsOf = name => (name.match(/[A-Za-z0-9]+/g) || ['?']).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
@@ -29,9 +30,10 @@ export function tickSvg(delivered) {
 
 export function ticksHtml(message) {
     if (!message.delivery) return '';
-    const delivered = message.delivery !== 'posted';
+    const delivery = message.delivery === 'sent' ? 'posted' : message.delivery === 'handedOver' ? 'delivered' : message.delivery;
+    const delivered = delivery !== 'posted';
     const title = delivered ? `${message.delivery === 'read' ? 'Read' : 'Delivered'} · ${message.tool || 'recipient event'}` : 'Posted · waiting for a tool response';
-    return `<span class="talk-ticks ${message.delivery}" role="img" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}">${tickSvg(delivered)}</span>`;
+    return `<span class="talk-ticks ${delivery}" role="img" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}">${tickSvg(delivered)}</span>`;
 }
 
 export function quoteHtml(quote, members) {
@@ -152,17 +154,19 @@ export function threadHtml(messages, members = defaultMembers) {
 }
 
 export function mentionsHtml(members = defaultMembers) {
-    return `<div class="talk-mentions" role="listbox" aria-label="Mention a participant">${members.filter(m => m.id !== owner(members)?.id).map(m => `<button type="button" role="option" class="${m.presence === 'left' ? 'left' : ''}" data-mention="${escapeHtml(displayName(m))}"><span class="talk-avatar small ${whoClass(m.id, members)}" aria-hidden="true">${escapeHtml(initialsOf(displayName(m)))}</span><span class="talk-mention-name"><b>${escapeHtml(displayName(m))}</b><small>${m.presence === 'left' ? 'left · mention to bring back' : escapeHtml(m.kind || 'online')}</small></span><i class="talk-presence ${m.presence}" aria-hidden="true"></i></button>`).join('')}</div>`;
+    return `<div class="talk-mentions" role="listbox" aria-label="Mention a participant">${members.filter(m => m.presence !== 'left' && m.id !== owner(members)?.id).map(m => `<button type="button" role="option" data-mention="${escapeHtml(displayName(m))}"><span class="talk-avatar small ${whoClass(m.id, members)}" aria-hidden="true">${escapeHtml(initialsOf(displayName(m)))}</span><span class="talk-mention-name"><b>${escapeHtml(displayName(m))}</b><small>${escapeHtml(m.kind || 'online')}</small></span></button>`).join('')}</div>`;
 }
 
-export function headerHtml({ name = 'AITalk', members = defaultMembers, typing = '' }) {
+export const mentioning = draft => /(?:^|\s)@[^\s@]*$/.test(draft);
+
+export function headerHtml({ name = 'AITalk', members = defaultMembers, typing = '', presence }) {
     const present = members.filter(member => member.presence !== 'left');
     const moderator = owner(present);
     const subtitle = typing
         ? `<span class="talk-typing-line">${escapeHtml(typing)}</span>`
         : present.map(m => `<span>${escapeHtml(displayName(m))}</span>`).join(', ');
     const label = moderator ? displayName(moderator) : '';
-    return `<header class="talk-header"><span class="talk-group-avatar" aria-hidden="true">✦</span><div class="talk-title"><h2>${escapeHtml(name)}</h2><div class="talk-subtitle">${subtitle}</div></div><span class="talk-moderator">${escapeHtml(label)} ${label === 'You' ? 'moderate' : 'moderates'}</span></header>`;
+    return `<header class="talk-header"><span class="talk-group-avatar" aria-hidden="true">✦</span><div class="talk-title"><h2>${escapeHtml(name)}</h2><div class="talk-subtitle">${subtitle}</div></div><span class="talk-moderator">${escapeHtml(label)} ${label === 'You' ? 'moderate' : 'moderates'}</span>${presenceHtml({ mode: 'here', reset: 'never', open: false, focusIndex: 0, expiresAt: null, name: displayName(members.find(member => member.kind === 'user') || { id: '' }), ...presence, embedded: true })}</header>`;
 }
 
 export function composerHtml({ draft = '', reply, members = defaultMembers, popover = false, emoji = false, attachments = [] } = {}) {
@@ -175,9 +179,9 @@ export function traceHtml(sessions, traceRowsHtml) {
 }
 
 export function talkHtml(messages, options = {}) {
-    const { theme = 'dark', members = defaultMembers, moderator = displayName(owner(members)), typing = '', unread = 0, draft = '', reply, popover = draft.endsWith('@') } = options;
+    const { theme = 'dark', members = defaultMembers, moderator = owner(members) ? displayName(owner(members)) : '', typing = '', unread = 0, draft = '', reply, popover = mentioning(draft) } = options;
     const empty = '<div class="talk-empty"><span class="talk-empty-icon">✦</span><h3>No messages yet</h3><p>Say hi, or use @ to talk to a participant.</p></div>';
     const tabs = ['AITalk', 'Specs', 'Trace', 'Workers', 'Settings'].map((tab, i) => `<button type="button" data-tab="${i === 0 ? 'Talk' : tab}" aria-pressed="${i === 0}">${tab}</button>`).join('');
     const typingRow = typing ? `<div class="talk-row in first"><span class="talk-avatar ${whoClass(typing.split(' ')[0])}" aria-hidden="true">${escapeHtml(initialsOf(typing.split(' ')[0]))}</span><div class="talk-bubble tail talk-typing" aria-label="${escapeHtml(typing)}"><i></i><i></i><i></i></div></div>` : '';
-    return `<div class="talk-prototype theme-${theme} moderator-${moderator.toLowerCase()}"><nav class="talk-tabs" aria-label="Panel tabs">${tabs}</nav><div class="talk-panel" data-panel="Talk">${headerHtml({ ...options, members, typing, moderator })}<div class="talk-thread" role="log" aria-label="Group chat">${messages.length ? threadHtml(messages, members) : empty}${typingRow}<div id="talk-bottom"></div></div>${unread ? `<button type="button" class="talk-unread" data-bottom>${unread} new messages ↓</button>` : ''}${composerHtml({ draft, reply, members, popover })}</div><div data-panel="Trace" hidden>${options.trace || ''}</div></div>`;
+    return `<div class="talk-prototype theme-${theme} moderator-${escapeHtml(moderator.toLowerCase())}">${options.embedded ? '' : `<nav class="talk-tabs" aria-label="Panel tabs">${tabs}</nav>`}<div class="talk-panel" data-panel="Talk">${headerHtml({ ...options, members, typing, moderator })}<div class="talk-thread" role="log" aria-label="Group chat">${messages.length ? threadHtml(messages, members) : empty}${typingRow}<div id="talk-bottom"></div></div>${unread ? `<button type="button" class="talk-unread" data-bottom>${unread} new messages ↓</button>` : ''}${composerHtml({ ...options, draft, reply, members, popover })}</div><div data-panel="Trace" hidden>${options.trace || ''}</div></div>`;
 }

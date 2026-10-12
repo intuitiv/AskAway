@@ -18,6 +18,7 @@ import { PacketTask } from '../cloud/packet';
 import { projectWorkersState, sessionOpenCommand, traceEvents, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
 import { ValidatorRecords } from '../validator/records';
 import { AITalkStore, setAITalkPresence, isAITalkTurnActive } from '../aitalk/store';
+import { approveDraft } from '../services/webexDrafts';
 import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
 import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
@@ -425,7 +426,7 @@ export function writeAvailability(workspace: string, input: { mode?: unknown; un
 /** Bump to force a one-time clean rebuild of the global month shard when fold logic changes. */
 // Message types
 type ToWebviewMessage =
-    | { type: 'aitalkState'; data: ReturnType<AITalkStore['snapshot']> }
+    | { type: 'aitalkState'; data: ReturnType<AITalkStore['snapshot']> & { userName?: string; userPhoto?: string } }
     | { type: 'aitalkAttachments'; files: Array<{ name: string; path: string }> }
     | { type: 'specsData'; data: SpecScanResult }
     | { type: 'workersState'; data: (WorkersState & { cloudWorkers?: Awaited<ReturnType<CloudSpecsController['workers']>> }) | null }
@@ -495,6 +496,7 @@ type FromWebviewMessage =
     | { type: 'requestAITalk' }
     | { type: 'aitalkPost' | 'aitalkReply'; text: string; replyTo?: string; attachments?: Array<{ name: string; path: string }> }
     | { type: 'aitalkAttach' }
+    | { type: 'aitalkApproveDraft'; draftId: string }
     | { type: 'aitalkReact'; replyTo: string; emoji: string }
     | { type: 'requestSpecs' }
     | { type: 'openSpecFile'; dir: string; file: string }
@@ -4506,6 +4508,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      */
     private _handleWebviewMessage(message: FromWebviewMessage): void {
         switch (message.type) {
+            case 'aitalkApproveDraft': {
+                void approveDraft(message.draftId);
+                break;
+            }
             case 'aitalkAttach': {
                 void vscode.window.showOpenDialog({ canSelectMany: true, canSelectFiles: true, canSelectFolders: false }).then(files => {
                     if (files) this._broadcast({ type: 'aitalkAttachments', files: files.map(file => ({ name: path.basename(file.fsPath), path: file.fsPath })) });
@@ -4524,7 +4530,16 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 try {
                     if (message.type === 'aitalkPost' || message.type === 'aitalkReply') store.post(message.text, message.replyTo, undefined, undefined, undefined, message.attachments);
                     if (message.type === 'aitalkReact') store.react(message.replyTo, message.emoji);
-                    this._broadcast({ type: 'aitalkState', data: store.snapshot() });
+                    const snapshot = store.snapshot();
+                    const config = vscode.workspace.getConfiguration('askaway.aitalk');
+                    const configuredPhoto = config.get<string>('userPhoto', '');
+                    const photo = configuredPhoto && !/^https?:\/\//i.test(configuredPhoto)
+                        ? 'data:image/' + (path.extname(configuredPhoto).slice(1) === 'svg' ? 'svg+xml' : path.extname(configuredPhoto).slice(1)) + ';base64,' + fs.readFileSync(path.resolve(root, configuredPhoto)).toString('base64') : configuredPhoto;
+                    const git = vscode.extensions.getExtension('vscode.git')?.exports?.getAPI(1);
+                    const repository = git?.repositories?.find((item: any) => item.rootUri.fsPath === root);
+                    void Promise.resolve(repository?.getConfig('user.name')).then(name => {
+                        this._broadcast({ type: 'aitalkState', data: { ...snapshot, userName: name || os.userInfo().username, userPhoto: photo } });
+                    });
                 } catch (error) { console.warn('[AskAway] AITalk post failed:', error); }
                 break;
             }
@@ -6422,7 +6437,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource}; script-src ${webview.cspSource} 'nonce-${nonce}' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src ${webview.cspSource} data: mediastream:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: http: data:; script-src ${webview.cspSource} 'nonce-${nonce}' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src ${webview.cspSource} data: mediastream:;">
     <link href="${codiconsUri}" rel="stylesheet">
     <link href="${styleUriWithVersion}" rel="stylesheet">
     <link href="${talkStyleUri}" rel="stylesheet">

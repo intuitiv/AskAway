@@ -21,6 +21,7 @@ Why this exists: the reviewer asked to "capture what I told as requirements for 
 | [availability-and-validator.md](availability-and-validator.md) | Planned: overnight and away modes, auto-handoff near 300K, validator agent (all gaps) |
 | [side-channel.md](side-channel.md) | Seeing inside running work, nudging it, side questions that do not derail the main agent |
 | [aitalk.md](aitalk.md) | Shared production/Storybook AITalk component, registry, workspace message persistence and composer bridge |
+| [trace.md](trace.md) | Trace tab: main agent and Validator traces, monthly cost line, row expansion |
 | [efficiency-score.md](efficiency-score.md) | The per-turn efficiency score, where it is shown, and how the benchmark uses it |
 | [tools-and-evals.md](tools-and-evals.md) | Why AskAway's own tools exist, and evals for agent and worker prompts and tools |
 

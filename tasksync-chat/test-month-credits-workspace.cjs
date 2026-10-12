@@ -66,7 +66,22 @@ vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.Mo
     assert.ok(created.some(e => e.innerHTML.startsWith('<div class="observability-rtk-line" id="obs-workspace-month">')), 'month line is first in Metrics');
     browser.ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics: { monthCredits: credits } } });
     assert.equal(elements['obs-workspace-month'].textContent, credits.label + ' · this workspace: $65.00 ($20.00 workers)');
-    assert.equal(elements['obs-workspace-month'].style.color, 'var(--vscode-errorForeground)');
+    assert.equal(elements['obs-workspace-month'].style.color, '');
+    assert.match(elements['obs-workspace-month'].innerHTML, /class="obs-month-amount">\$65\.00<\/span>/);
+    const cloudFile = path.join(workspace, '.askaway/specs/cloud-cost/cloud/runs.json');
+    fs.mkdirSync(path.dirname(cloudFile), { recursive: true });
+    fs.writeFileSync(cloudFile, JSON.stringify([{ request: { root: workspace }, workflowRuns: [
+        { id: 321, workspace, status: 'completed', ts: new Date(start).toISOString(), timing: [{ os: 'Linux', billableMs: 12000000 }] },
+        { id: 322, workspace, status: 'completed', ts: new Date(start - 60000).toISOString(), timing: [{ os: 'Linux', billableMs: 600000 }] }
+    ] }]));
+    const cloudMonth = await provider._computeWorkspaceMonth();
+    assert.equal(cloudMonth.cloudDollars, 1.2);
+    assert.equal(cloudMonth.totalDollars, 66.2);
+    assert.deepEqual(await provider._computeWorkspaceMonth(), cloudMonth, 'cloud repeat poll does not double count');
+    fs.writeFileSync(cloudFile, '[]');
+    // Isolate subsequent legacy accounting assertions from this cloud scenario.
+    delete provider._workspaceCostHistory.requests['cloud:321'];
+    delete provider._workspaceCostHistory.requests['cloud:322'];
     assert.doesNotMatch(elements['common-turn-summary'].innerHTML, /this workspace|65\.00|20\.00/);
     writeRows(path.join(home, '.askaway/evals/results.jsonl'), [
         { workspacePath: workspace, ts: new Date(start).toISOString(), usage: { cost: 2 } },

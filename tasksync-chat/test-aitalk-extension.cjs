@@ -8,6 +8,8 @@ const { pathToFileURL } = require('node:url');
 (async () => {
     const rules = await import(pathToFileURL(path.join(__dirname, 'media/aitalk/talkRules.js')));
     const render = await import(pathToFileURL(path.join(__dirname, 'media/aitalk/talkRender.js')));
+    const presence = await import('./media/aitalk/presence.js');
+    const { createTalkController } = await import('./media/aitalk/talkController.js');
     const mod = { exports: {} };
     vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src/aitalk/store.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
         module: mod, exports: mod.exports, require: id => id.includes('talkRules') ? rules : require(id)
@@ -22,7 +24,8 @@ const { pathToFileURL } = require('node:url');
     store.reply('quoted answer', posted.messages[0].id); store.react(posted.messages[0].id, '👍');
     assert.equal(store.snapshot().messages[1].quote.text, '@Agent hello');
     assert.equal(store.snapshot().messages[2].text, '👍');
-    assert.deepEqual(store.snapshot().members.map(m => [m.id, m.rank, m.presencePolicy, m.canProxyWhenAway]), rules.defaultMembers.map(m => [m.id, m.rank, m.presencePolicy, m.canProxyWhenAway]));
+    const registryContract = members => members.map(m => [m.id, m.rank, m.presencePolicy, m.canProxyWhenAway]).sort((a, b) => a[0].localeCompare(b[0]));
+    assert.deepEqual(registryContract(store.snapshot().members), registryContract(rules.defaultMembers));
     const provider = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
     const tabs = provider.slice(provider.indexOf('<div class="widget-tabs"'), provider.indexOf('<div class="conversation-health"'));
     // Commentary stays until agent progress lines move into AITalk (A5); Chat goes in A3.
@@ -43,7 +46,7 @@ const { pathToFileURL } = require('node:url');
     const ui = fs.readFileSync(path.join(__dirname, 'media/aitalk/extension.js'), 'utf8').replace(/^import .*;$/gm, '').replace('export function', 'function');
     const messages = [];
     const clickHandlers = [], keyHandlers = [], compositionHandlers = {};
-    vm.runInNewContext(ui, { ...render, ...rules, setInterval: () => {}, window: { addEventListener: (name, fn) => { listeners[name] = fn; }, askawayPostMessage: m => messages.push(m) }, document: { getElementById: () => host, addEventListener: (name, fn) => { if (name === 'click') clickHandlers.push(fn); if (name === 'keydown') keyHandlers.push(fn); if (name.startsWith('composition')) compositionHandlers[name] = fn; } } });
+    vm.runInNewContext(ui, { ...render, ...rules, ...presence, createTalkController, setInterval: () => {}, window: { addEventListener: (name, fn) => { listeners[name] = fn; }, askawayPostMessage: m => messages.push(m) }, document: { getElementById: () => host, addEventListener: (name, fn) => { if (name === 'click') clickHandlers.push(fn); if (name === 'keydown') keyHandlers.push(fn); if (name.startsWith('composition')) compositionHandlers[name] = fn; } } });
     listeners.message({ data: { type: 'aitalkState', data: store.snapshot() } });
     assert.ok(host.innerHTML.includes(render.threadHtml(store.snapshot().messages, store.snapshot().members)), 'real browser renders exact shared renderer output');
     assert.equal(messages[0].type, 'requestAITalk');

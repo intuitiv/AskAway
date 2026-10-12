@@ -6,7 +6,8 @@ import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './consta
 import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
 import { presenceStates } from './availability/presence';
 import { wireWebex } from './services/webexWiring';
-import { setAITalkTurnActive } from './aitalk/store';
+import { AITalkStore, activateAITalk, setAITalkTurnActive, setAITalkWorkerPresence } from './aitalk/store';
+import { registerAITalkValidator } from './aitalk/validatorDelivery';
 import { notifyAttention, registerAttentionNotify } from './services/attentionNotify';
 import { createWebexSuiteHost } from './services/webexToolsHost';
 import { registerTools } from './tools';
@@ -33,7 +34,7 @@ import { killAllGradleRuns } from './gradle/gradleEngine';
 import { ContextManager } from './context';
 import { PlanEditorProvider } from './plan/planEditorProvider';
 import { COWORK_BUNDLE_B64, COWORK_APPLY_B64, COWORK_PROMPT_B64 } from './cowork/coworkAssets';
-import { sharedCommentaryStore, sharedWorkerRuntimeReady } from './workers/workerHost';
+import { sharedCommentaryStore, sharedWorkerRuntimeReady, setWorkerPresenceLifecycle } from './workers/workerHost';
 
 // Heavy modules loaded lazily to avoid blocking activation
 // RemoteUiServer imports express + socket.io (expensive)
@@ -1028,6 +1029,8 @@ export function activate(context: vscode.ExtensionContext) {
         // Register VS Code LM Tools (critical for Copilot — must be early)
         logRuntime('Registering language model tools');
         const memoryProject = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || context.globalStorageUri.fsPath;
+        activateAITalk(memoryProject);
+        setWorkerPresenceLifecycle(setAITalkWorkerPresence);
         let memoryReady: Promise<KnowledgeStore> | undefined;
         const getMemory = () => {
             memoryReady ??= (async () => {
@@ -1063,8 +1066,10 @@ export function activate(context: vscode.ExtensionContext) {
                 return validatorRuntime;
             }, memoryProject, () => String(sharedCommentaryStore().turnStarts(memoryProject).at(-1) || Date.now())),
         })).catch(error => { observerReady = undefined; throw error; }), () => readActiveSpecSlug(memoryProject),
-        () => { sharedCommentaryStore().postValidator(memoryProject, { text: 'Validator trigger failed; agent flow continued.' }); });
+        () => { sharedCommentaryStore().postValidator(memoryProject, { text: 'Validator trigger failed; agent flow continued.' }); },
+        () => new AITalkStore(memoryProject).snapshot(true).messages);
         provider.setValidatorTurnStart((text, id) => { setAITalkTurnActive(memoryProject, true); void triggers.turnStart(triggers.previousFinal(), text, id); });
+        context.subscriptions.push(registerAITalkValidator(memoryProject, (text, id) => triggers.validatorCall(text, id)));
         const memory = memoryTool(getMemory, memoryProject, (query, agentId) => triggers.memoryCall(query, agentId));
         context.subscriptions.push(...registerLmToolDefinitions([asksTool(memoryProject)]));
         registerTools(context, provider, memory, validatorTool(text => triggers.validatorCall(text), {

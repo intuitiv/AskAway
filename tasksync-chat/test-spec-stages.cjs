@@ -20,6 +20,14 @@ const { appendRunRecord } = require(path.join(buildDir, 'runRecords.js'));
 const repo = makeSampleRepo();
 const bySlug = () => Object.fromEntries(scanSpecs(repo.root).specs.map(spec => [spec.slug, spec]));
 
+// R-SPECS-21: a folder with only tasks.md/plan.md (worker note, other workspace's leftover) is not a spec.
+const strayDir = path.join(repo.root, 'specs', '195-ping');
+fs.mkdirSync(strayDir, { recursive: true });
+fs.writeFileSync(path.join(strayDir, 'tasks.md'), '- [ ] T001 ping\n');
+fs.writeFileSync(path.join(strayDir, 'plan.md'), '# plan\n');
+assert.equal(bySlug()['195-ping'], undefined, 'folder without spec.md is not listed');
+fs.rmSync(strayDir, { recursive: true });
+
 let specs = bySlug();
 const expected = {
     '001-specified': ['specify', '/sk.check (clarify)', 'Plan'],

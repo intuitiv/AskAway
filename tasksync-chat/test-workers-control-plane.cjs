@@ -246,8 +246,8 @@ const packet = (overrides = {}) => ({
     assert.match(ui.chatBanner({ requests: 34, dollars: 1.95, lastIn: 100, lastCached: 50, turnOut: 7, workers: { workers: 3, runs: 4, dollars: 0.42 } }), /^<span title="[^"]+">Score –<\/span> &middot; 34 reqs &middot; <strong class="health-cost">\$1\.95<\/strong> <span class="health-workers"[^>]*>\(3 workers &middot; \$0\.42\)<\/span> &middot;/);
     assert.doesNotMatch(all, /\d workers? &middot;/, 'worker cards keep the plain banner without a worker part');
     assert.match(downView, /<span class="obs-req-id">STEP1<\/span><\/td><td class="obs-scope">gpt-5\.6-terra<\/td><td>0\.21<\/td><td>1\.25K<\/td><td>340<\/td><td>50<\/td><td class="obs-cache-risk">4%<\/td>/);
-    const kept = ui.render(state, '', { [run1.workerId]: true }, false, { 't:EDIT1:1': true }, { [run1.workerId]: down });
-    assert.match(kept, /data-eid="t:EDIT1:1" open>/, 'an expanded row stays open across the 1s re-render');
+    const kept = ui.render(state, '', { [run1.workerId]: true }, false, { 't:EDIT1': true }, { [run1.workerId]: down });
+    assert.match(kept, /data-eid="t:EDIT1" open>/, 'an expanded row stays open across the 1s re-render');
     const other = JSON.parse(JSON.stringify(await loadWorkerTrace(runtime, wsB, run1.workerId, async () => session)));
     assert.deepEqual([other.source, other.runs], ['ledger', {}], 'another workspace cannot load this worker');
     assert.match(webview, /type: 'requestWorkerTrace', workerId: id/, 'expanding a trace requests it');

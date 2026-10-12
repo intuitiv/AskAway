@@ -64,8 +64,26 @@ for (const rel of linked) {
     }
 }
 
+const webexChecklistPath = 'specs/009-webex-remote-channel/checklists/requirements.md';
+const webexChecklist = read(webexChecklistPath);
+const webexSpec = read('specs/009-webex-remote-channel/spec.md');
+const telegramRows = [...new Set([...read('tasksync-chat/docs/requirements/telegram.md').matchAll(/R-TELE-\d+/g)].map(m => m[0]))];
+for (const id of telegramRows) {
+    const lines = webexChecklist.split('\n').filter(line => line.startsWith(`| ${id} |`));
+    if (lines.length !== 1) { problems.push(`${webexChecklistPath}: expected one mapping for ${id}`); continue; }
+    const [, , fr, story, guard] = lines[0].split('|').map(cell => cell.trim());
+    const match = /^FR-(\d{3}(?:\/\d{3})*)$/.exec(fr);
+    if (!match || match[1].split('/').some(number => !webexSpec.includes(`**FR-${number}**`))) problems.push(`${id}: unknown or missing FR`);
+    if (!/^US[1-7](?:\/[1-7])*$/.test(story)) problems.push(`${id}: missing story`);
+    const tests = [...guard.matchAll(/test-[a-z0-9-]+\.cjs/g)].map(m => m[0]);
+    if (!tests.length && !guard.includes('gap')) problems.push(`${id}: no test or explicit gap`);
+    for (const test of tests) if (!fs.existsSync(path.join(__dirname, test))) problems.push(`${id}: missing test ${test}`);
+}
+for (const target of webexChecklist.matchAll(/\]\(([^)]+)\)/g)) if (!fs.existsSync(path.resolve(repo, path.dirname(webexChecklistPath), target[1]))) problems.push(`${webexChecklistPath}: broken link ${target[1]}`);
+
 if (problems.length) {
     console.error(`FAIL EV-GOALS-DOCS\n${problems.map((p) => `- ${p}`).join('\n')}`);
     process.exit(1);
 }
 console.log(`PASS EV-GOALS-DOCS goals=${goalIds.length} adrs=${adrFiles.length} quotes=${quotes} links=${links}`);
+console.log(`PASS EV-WEBEX-REQUIREMENTS-COVERAGE rows=${telegramRows.length} unique FR/story/test-or-gap mappings`);

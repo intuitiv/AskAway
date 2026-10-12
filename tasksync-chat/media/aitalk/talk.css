@@ -1,3 +1,4 @@
+@import './presence.css';
 /* Shared AITalk: WhatsApp Desktop style group chat in a 420 x 760 column.
    Colours come from VS Code theme variables with WhatsApp-like fallbacks. */
 
@@ -332,7 +333,7 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
     font: inherit;
     resize: none;
 }
-.talk-input-wrap textarea::placeholder { color: var(--tk-muted); }
+.talk-input-wrap textarea::placeholder { color: var(--vscode-input-placeholderForeground, var(--tk-muted)); }
 .talk-emoji-picker { display: flex; gap: 4px; padding: 6px; background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-panel-border); }
 .talk-emoji-picker button { background: transparent; border: 0; font-size: 20px; }
 .talk-attachment { display: inline-block; padding: 2px 6px; border-radius: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }

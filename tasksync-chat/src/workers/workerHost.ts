@@ -3,12 +3,16 @@ import * as path from 'path';
 import { CommentaryStore } from '../commentary/commentary';
 import { cacheSafeWaitMs } from '../observability/cacheClock';
 import { startKeepWarmTimer } from './keepWarm';
-import { OpenCodeWorkerRuntime } from './openCodeRuntime';
+import { OpenCodeWorkerRuntime, RuntimeOptions } from './openCodeRuntime';
 import { defaultRestartDeps, defaultServerDeps, DEFAULT_OPENCODE_SERVER_URL, ensureSharedOpenCodeServer, restartSharedOpenCodeServer, RestartDeps, ServerStatus } from './sharedServer';
 import { loadWorkerProfiles } from './workerProfiles';
 import { SessionMessage } from './workersState';
 
 let runtime: OpenCodeWorkerRuntime | undefined;
+let presenceLifecycle: RuntimeOptions['onPresence'];
+export function setWorkerPresenceLifecycle(callback: RuntimeOptions['onPresence']): void {
+    presenceLifecycle = callback;
+}
 let ready: Promise<OpenCodeWorkerRuntime> | undefined;
 let commentary: CommentaryStore | undefined;
 let serverStatus: ServerStatus | undefined;
@@ -42,7 +46,9 @@ function ensureKeepWarm(workspacePath: string): void {
 
 /** One runtime per extension host, shared by the MCP surface, the VS Code LM tools, and the Workers tab. */
 export function sharedWorkerRuntime(): OpenCodeWorkerRuntime {
-    runtime ??= new OpenCodeWorkerRuntime(loadWorkerProfiles(path.join(os.homedir(), '.askaway', 'worker-profiles')));
+    runtime ??= new OpenCodeWorkerRuntime(loadWorkerProfiles(path.join(os.homedir(), '.askaway', 'worker-profiles')), {
+        onPresence: (workspace, worker, present) => presenceLifecycle?.(workspace, worker, present),
+    });
     return runtime;
 }
 

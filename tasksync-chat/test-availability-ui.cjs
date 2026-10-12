@@ -26,7 +26,12 @@ const browser = { out: ui, Date, escapeHtml: s => s, vscode: { postMessage: mess
     createElement: () => ({ innerHTML: '', handlers: {}, setAttribute() {}, addEventListener(type, fn) { this.handlers[type] = fn; }, querySelector() { return { focus() {} }; }, remove() { flyout = null; } }),
     body: { appendChild(el) { flyout = el; }, style: { setProperty() {} }, classList: { toggle(name, on) { if (on) classes.add(name); else classes.delete(name); } } }
 } };
-vm.runInNewContext(`${slice(webview, '    var presenceStates =', '    function initCommentaryTab')}\npresenceStates = out.states; out.apply = applyAvailabilityState; out.open = openPresence; out.choose = choosePresence;`, { ...browser, out: Object.assign(ui, { states: config.exports.presenceStates }) });
+const presenceModule = { exports: {} };
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, 'media/aitalk/presence.js'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, allowJs: true, target: ts.ScriptTarget.ES2022 } }).outputText, { module: presenceModule, exports: presenceModule.exports, require: () => ({ escapeHtml: s => s }), Date });
+let control = presenceModule.exports.createPresence({ name: 'Sam Morgan' });
+ui.apply = state => { for (const value of config.exports.presenceStates) browser.document.body.classList.toggle('avail-' + value.id, value.id === state.mode); control = presenceModule.exports.createPresence({ mode: state.mode, name: 'Sam Morgan' }); };
+ui.choose = mode => { control.choose(mode); const state = control.snapshot(); posted = { type: 'setAvailability', mode, until: state.expiresAt ? new Date(state.expiresAt).toISOString() : '', note: '' }; flyout = null; };
+ui.open = () => { control.toggle(); flyout = { innerHTML: control.html(), handlers: { keydown: event => { control.key(event.key); if (!control.snapshot().open) flyout = null; }, change: event => control.setReset(event.target.value) } }; };
 const manifest = require('./package.json');
 const statusIcons = { here: ['check', '#16833b'], away: ['clock', '#f5c244'], awayValidator: ['shield', '#7751c9'], offline: ['x', '#6b7280'] };
 for (const mode of ['here', 'away', 'awayValidator', 'offline']) {

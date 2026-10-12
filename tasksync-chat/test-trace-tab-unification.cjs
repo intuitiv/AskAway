@@ -67,6 +67,9 @@ vm.runInNewContext(ts.transpileModule(provider, { compilerOptions: { module: ts.
     const projected = await instance._turnTraceGroups('/fixture');
     assert.equal(projected.length, 1); assert.equal(projected[0].label, 'Validator');
     assert.equal(projected[0].events[0].dollars, 5);
+    assert.equal(projected[0].events.find(event => event.kind === 'tool').tool, 'answer');
+    browser.ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics: { traceGroups: projected } } });
+    assert.match(host.innerHTML, /class="obs-tool-name">answer<\/span>/);
     assert.ok(require('./package.json').scripts['pretest:workers'].includes('test-trace-tab-unification.cjs'));
     console.log('PASS EV-TRACE-TAB-UNIFICATION Main agent/Validator only; summary/cache/Ping above groups; no inner Trace/RTK/Gradle headings; monthly cloud estimate; CRLF');
 })().catch(error => { console.error(error); process.exitCode = 1; });

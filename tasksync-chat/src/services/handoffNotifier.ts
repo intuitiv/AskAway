@@ -30,6 +30,12 @@ export interface TurnMetricsSnapshot {
     latestInputTokens: number;
     turnOutputTokens: number;
     turnNanoAiu: number;
+    requests?: number;
+    workers?: number;
+    workerDollars?: number;
+    workerIds?: string[];
+    cacheHitPct?: number;
+    efficiencyScore?: number;
 }
 
 export type HandoffPoster = Pick<RemoteChannel, 'isConfigured' | 'postText'> & Partial<Pick<RemoteChannel, 'sendDocument' | 'finishTurn'>>;
@@ -230,10 +236,18 @@ export function telegramHandoffUpdate(parts: HandoffParts, metrics?: TurnMetrics
     const banner = metrics
         ? `**${compactTokens(metrics.latestInputTokens)} last in · ${compactTokens(metrics.turnOutputTokens)} turn out · $${(metrics.turnNanoAiu / 1_000_000_000 / 100).toFixed(2)} turn**`
         : '**Turn metrics unavailable**';
+    const workerMetrics = metrics ? [
+        metrics.requests !== undefined ? `${metrics.requests} requests` : '',
+        metrics.workers !== undefined ? `${metrics.workers} workers` : '',
+        metrics.workerDollars !== undefined ? `$${metrics.workerDollars.toFixed(2)} workers` : '',
+        metrics.workerIds?.join(', ') || '',
+        metrics.cacheHitPct !== undefined ? `${metrics.cacheHitPct}% cache` : '',
+        metrics.efficiencyScore !== undefined ? `efficiency ${metrics.efficiencyScore}` : ''
+    ].filter(Boolean).join(' · ') : '';
     const handoff = parts.handoff.trim() || 'No Response Handoff provided.';
     // Only the handoff travels as text; the full response goes along as a PDF document (see responsePdf.ts).
     // Telegram HTML can outgrow raw markdown, and TelegramService bounds it before converting, so no details here.
-    return `**AskAway**\n\n${banner}\n\n**Handoff**\n${handoff}`;
+    return `**AskAway**\n\n${banner}${workerMetrics ? `\n${workerMetrics}` : ''}\n\n**Handoff**\n${handoff}`;
 }
 
 /** The whole response, as the markdown that becomes the PDF. */

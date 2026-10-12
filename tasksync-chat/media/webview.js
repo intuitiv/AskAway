@@ -2949,11 +2949,11 @@
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
         });
     }
-    function traceGroupsHtml(main, groups, openGroups) {
+    function traceGroupsHtml(main, groups, openGroups, ctx) {
         return [{ id: 'main', label: 'Main agent', events: main || [] }].concat((groups || []).filter(function (group) { return /^Validator(?: ·|$)/.test(group.label); })).map(function (group) {
             var events = (group.events || []).slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
             var cost = events.reduce(function (sum, event) { return sum + (event.kind === 'request' ? Number(event.dollars != null ? event.dollars : (event.nanoAiu || 0) / 1e11) : 0); }, 0);
-            return '<details class="trace-group" data-trace-group="' + escapeHtml(group.id) + '"' + (openGroups && openGroups.has(group.id) ? ' open' : '') + '><summary>' + escapeHtml(group.label) + ' · $' + cost.toFixed(2) + '</summary><table class="observability-table obs-timeline-table">' + TRACE_HEAD + '<tbody>' + traceRowsHtml(events, {}) + '</tbody></table></details>';
+            return '<details class="trace-group" data-trace-group="' + escapeHtml(group.id) + '"' + (openGroups && openGroups.has(group.id) ? ' open' : '') + '><summary>' + escapeHtml(group.label) + ' · $' + cost.toFixed(2) + '</summary><table class="observability-table obs-timeline-table">' + TRACE_HEAD + '<tbody>' + traceRowsHtml(events, ctx) + '</tbody></table></details>';
         }).join('');
     }
 
@@ -2967,8 +2967,10 @@
         var nanoCredits = function (nano) { return (Number(nano) || 0) / 1000000000; };
         var sec = function (ms) { return ((Number(ms) || 0) / 1000).toFixed(2); };
         var credits = function (ev) { return fmtCredits(ev.dollars != null ? ev.dollars * 100 : nanoCredits(ev.nanoAiu)); };
+        var eventId = function (kind, ev, k) { return (ctx.idPrefix || '') + kind + ':' + String(ev.id || ('at-' + (ev.ts || k))); };
+        var toolLabel = function (ev) { var name = String(ev.tool || '').replace(/^mcp__[^_]+__/, ''); return !name || name === ev.id || /^(?:call_|toolu_|[a-f0-9]{24,}|[a-f0-9-]{36}$)/i.test(name) ? String(ev.toolName || ev.action || 'Tool') : name; };
         var buildToolRow = function (ev, k) {
-            var eid = 't:' + String(ev.id || '') + ':' + k;
+            var eid = eventId('t', ev, k);
             var openAttr = openIds[eid] ? ' open' : '';
             var statusOk = !(ev.status && ev.status !== 'ok' && ev.status !== 'success');
             var timeCls = statusOk ? 'obs-tl-time' : 'obs-tl-time obs-cache-risk';
@@ -2982,7 +2984,7 @@
                 '<details class="obs-tl-item obs-tl-tool" data-eid="' + traceEsc(eid) + '"' + openAttr + '>' +
                 '<summary class="obs-tl-head">' +
                 '<span class="obs-tl-kind">tool</span>' +
-                '<span class="obs-tl-name">' + subagentBadge + workerRefBadge(workerRefsFromPreview(ev.outputPreview)) + '<span class="obs-req-id">' + traceEsc(String(ev.id || '?')) + '</span> ' + traceEsc(String(ev.tool || 'unknown')) + '</span>' +
+                '<span class="obs-tl-name" title="' + traceEsc(String(ev.id || '?')) + '">' + subagentBadge + workerRefBadge(workerRefsFromPreview(ev.outputPreview)) + '<span class="obs-tool-name">' + traceEsc(toolLabel(ev)) + '</span></span>' +
                 '<span class="obs-tl-metric" title="input tokens">\u2193' + tok(ev.inputTokens) + '</span>' +
                 '<span class="obs-tl-metric' + (outHeavy ? ' obs-cache-risk' : '') + '" title="output tokens \u2014 large tool output is re-billed in history until compaction">\u2191' + tok(ev.outputTokens) + '</span>' +
                 '<span class="' + timeCls + '" title="duration">' + sec(ev.durMs) + 's</span>' +
@@ -2995,7 +2997,7 @@
                 '</td></tr>';
         };
         var buildRequestRow = function (ev, k) {
-            var reid = 'r:' + String(ev.id || '') + ':' + k;
+            var reid = eventId('r', ev, k);
             var isOpen = !!openIds[reid];
             var inp = Number(ev.inputTokens) || 0;
             var pct = inp > 0 ? Math.round((Number(ev.cachedTokens) || 0) / inp * 100) : 100;
@@ -3120,6 +3122,10 @@
         root.querySelectorAll('tr.obs-detail-row.obs-open').forEach(function (n) { ids[n.getAttribute('data-for')] = true; });
         return ids;
     }
+    function workspaceMonthHtml(month) {
+        var amount = function (value) { return '<span class="obs-month-amount">$' + Number(value).toFixed(2) + '</span>'; };
+        return escapeHtml(month.label) + ' · this workspace: ' + amount(month.totalDollars) + ' (' + amount(month.workerDollars) + ' workers' + (Number(month.cloudDollars) > 0 ? ' · ' + amount(month.cloudDollars) + ' cloud est.' : '') + ')';
+    }
     // ── end Turn trace rows ──
 
     function renderConversationHealth() {
@@ -3183,7 +3189,8 @@
         var month = observabilityMetrics.monthCredits;
         if (monthLine && month) {
             monthLine.textContent = month.label + ' · this workspace: $' + Number(month.totalDollars).toFixed(2) + ' ($' + Number(month.workerDollars).toFixed(2) + ' workers' + (Number(month.cloudDollars) > 0 ? ' · $' + Number(month.cloudDollars).toFixed(2) + ' cloud est.' : '') + ')';
-            monthLine.style.color = 'var(--vscode-errorForeground)';
+            monthLine.innerHTML = workspaceMonthHtml(month);
+            monthLine.style.color = '';
             monthLine.title = 'All-time this workspace: $' + Number(month.allTimeDollars).toFixed(2);
         }
         var aiu = function (nano) { return formatObservabilityCompact((Number(nano) || 0) / 1000000000); };
@@ -3312,15 +3319,15 @@
         // ── This turn: chronological timeline — LLM rows in columns, tool rows expandable ──
         var groupHost = document.getElementById('obs-trace-groups');
         if (groupHost) {
-            var openGroups = new Set(Array.from(groupHost.querySelectorAll('details[open]')).map(function (el) { return el.getAttribute('data-trace-group'); }));
-            groupHost.innerHTML = traceGroupsHtml(observabilityMetrics.turnEvents, observabilityMetrics.traceGroups, openGroups);
+            var openGroups = new Set(Array.from(groupHost.querySelectorAll('details[open][data-trace-group]')).map(function (el) { return el.getAttribute('data-trace-group'); }));
+            groupHost.innerHTML = traceGroupsHtml(observabilityMetrics.turnEvents, observabilityMetrics.traceGroups, openGroups, { openIds: traceOpenIds(groupHost), splitHtml: renderSplitDetail });
             if (!groupHost._traceClickBound) {
                 groupHost._traceClickBound = true;
                 groupHost.addEventListener('click', function (event) {
                     var row = event.target.closest('tr.obs-clickable');
                     if (!row) return;
                     var detail = row.parentNode.querySelector('tr.obs-detail-row[data-for="' + row.getAttribute('data-eid') + '"]');
-                    if (detail) { detail.style.display = detail.style.display === 'none' ? '' : 'none'; row.classList.toggle('obs-expanded', detail.style.display !== 'none'); }
+                    if (detail) { detail.style.display = detail.style.display === 'none' ? '' : 'none'; detail.classList.toggle('obs-open', detail.style.display !== 'none'); row.classList.toggle('obs-expanded', detail.style.display !== 'none'); }
                 });
             }
         }
@@ -5125,8 +5132,6 @@
 
     var presenceStates = [];
     var presenceState = { mode: 'here' };
-    var presenceReset = 'never';
-    var presenceResetOptions = [{ id: '30m', label: '30 min', minutes: 30 }, { id: '1h', label: '1 h', minutes: 60 }, { id: '2h', label: '2 h', minutes: 120 }, { id: 'today', label: 'Today' }, { id: 'never', label: 'Never' }];
     function applyAvailabilityState(state) {
         presenceState = state || { mode: 'here' };
         presenceStates.forEach(function (value) {
@@ -5137,42 +5142,8 @@
             }
         });
     }
-    function presenceBadge(state) {
-        return '<span class="presence-badge avail-' + state.id + '" style="--badge:var(--presence)" role="img" aria-label="' + escapeHtml(state.label) + '">' + state.icon + '</span>';
-    }
-    function closePresence() { var el = document.getElementById('presence-flyout'); if (el) el.remove(); }
-    function choosePresence(mode) {
-        var option = presenceResetOptions.find(function (item) { return item.id === presenceReset; });
-        var until = '';
-        if (option.minutes) until = new Date(Date.now() + option.minutes * 60000).toISOString();
-        if (option.id === 'today') { var end = new Date(); end.setHours(24, 0, 0, 0); until = end.toISOString(); }
-        vscode.postMessage({ type: 'setAvailability', mode: mode, until: until, note: '' });
-        closePresence();
-    }
     function openPresence() {
-        closePresence();
-        var el = document.createElement('section');
-        el.id = 'presence-flyout'; el.className = 'presence-flyout'; el.setAttribute('aria-label', 'Your availability');
-        el.innerHTML = '<div class="presence-profile"><span class="presence-avatar" aria-hidden="true">You</span><strong>Personal availability</strong></div>' +
-            '<div class="presence-menu" role="menu" aria-label="Choose availability">' + presenceStates.map(function (state) {
-                return '<button type="button" role="menuitemradio" aria-checked="' + (state.id === presenceState.mode) + '" data-presence="' + state.id + '">' + presenceBadge(state) + '<span><strong>' + escapeHtml(state.label) + '</strong><small>' + escapeHtml(state.meaning) + '</small></span></button>';
-            }).join('') + '</div><label class="presence-reset">Reset status after<select aria-label="Reset status after">' + presenceResetOptions.map(function (option) {
-                return '<option value="' + option.id + '"' + (presenceReset === option.id ? ' selected' : '') + '>' + option.label + '</option>';
-            }).join('') + '</select></label>';
-        el.addEventListener('click', function (event) { var button = event.target.closest('[data-presence]'); if (button) choosePresence(button.dataset.presence); });
-        el.addEventListener('change', function (event) { presenceReset = event.target.value; });
-        el.addEventListener('keydown', function (event) {
-            if (event.key === 'Escape') { closePresence(); event.preventDefault(); return; }
-            if (!event.target.matches('[data-presence]')) return;
-            var buttons = Array.from(el.querySelectorAll('[data-presence]')); var index = buttons.indexOf(event.target);
-            if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
-                index = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
-                buttons[index].focus(); event.preventDefault();
-            }
-        });
-        el.addEventListener('focusout', function (event) { if (!el.contains(event.relatedTarget)) closePresence(); });
-        document.body.appendChild(el);
-        var current = el.querySelector('[aria-checked="true"]'); if (current) current.focus();
+        document.querySelector('#aitalk-root .presence-trigger')?.click();
     }
 
     function initCommentaryTab() {

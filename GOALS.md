@@ -558,3 +558,32 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > We have trace as tab name, so remove trace text inside the tab.
 >
 > Cloud estimates can be shown per month, as they are run asynchronously.
+
+### 2026-10-12, AITalk presence, Storybook parity, Trace and Specs bugs
+
+Recorded from the 2026-10-12 handoff; the original message was not captured verbatim.
+
+1. @mentioning the Validator doesn't work, even though the reviewer and the Validator are in the room.
+2. @ lists every worker, including inactive ones; the list appears and disappears while typing @.
+3. A worker joins only when it asks a question through a tool, then leaves. Wanted: the Validator is present all the time; the main agent for its whole turn; each worker while it runs; the reviewer and the Validator register when VS Code starts.
+4. Sending a message shows only one tick.
+5. The text box isn't good; the "Message" placeholder should be grey.
+6. The green dot is bad: show the reviewer's photo or "SM" initials, drop labels like "Personal availability". "This is nothing like Storybook" — Storybook is the reference.
+7. In Trace, only the dollar amounts in the monthly line are red, not the whole line.
+8. In the Validator trace the tool name shows as a long random ID, and an expanded row collapses by itself.
+9. Specs shows "008 forge package validation", which belongs to another workspace.
+10. Many specs were created without permission, most with only 2–3 tasks.
+
+### 2026-10-12, implement everything; AITalk is the approved Storybook
+
+> Fix everything and implement everything. Once everything is implemented, i'll test and report bugs.
+> Fix all bugs you know off. Finish all the tasks. Let me know if you have any questions upforont.
+>
+> aitalk is supposed to be a perfect chat interface, where it displays stuff from whats going on in the back and on user interaction, corresponding action has to be performed.
+> Simulate the agent behavior with some hard coded prompt and all and write tests for the UI code.
+>
+> we have storybook, aitalk, which is approved. Why are you not implementign it. Implement it.
+>
+> I talked a lot. Now its your turn to imeplement everything i asked for.
+>
+> User workers efficiently and effectively.

@@ -29,3 +29,22 @@ Evidence supplied by the main orchestrator for this documentation closure (not r
 These gates support T024/T025 and exact redirect/browser/paste-flow tasks T026–T028 only. They do not close T007's residual migration or unrelated stories.
 
 Docs check: `rtk node tasksync-chat/test-goals-docs.cjs`.
+
+## Scoped adapter/parity checks — 2026-10-12
+
+### Follow-up evidence (supersedes earlier gate failure)
+
+Latest source packet: WebexService bounds text/edit to 7000 characters and retries transient PUT 5xx up to three times with awaited 1000ms delay. Shared final formatter preserves supplied request/worker share/IDs/cache/efficiency fields. Red assertions failed before these fixes; expanded adapter matched=6 and parity matched=2 now exit 0. All five Telegram suites exit 0. Repository `.bin/tsc -p tasksync-chat --noEmit` TSC_EXIT=0. Latest worker gate WORKER_GATE_EXIT=1: `Cannot read properties of undefined (reading 'tab')` at `media/aitalk/talkController.js:53:24` / `test-aitalk-extension.cjs:53:21`; outside this packet. T014 closed; T006 same-basename routing and T008/T023 production-provider/full lifecycle remain blocked. commentary.ts untouched. Sonar quality diagnostics remain in WebexService (complexity/await-in-loop); no unrelated refactoring performed.
+
+- `rtk node tasksync-chat/test-spec-planning-contract.cjs`: `PASS EV-WEBEX-MIGRATION-PLAN callers=6 rules=5 explicit base/scope, decisions and story scenarios`.
+- `rtk node tasksync-chat/test-goals-docs.cjs`: `PASS EV-WEBEX-REQUIREMENTS-COVERAGE rows=44 unique FR/story/test-or-gap mappings` and `PASS EV-GOALS-DOCS goals=17 adrs=20 quotes=58 links=231`.
+- Adapter matched=5 and parity matched=2 still pass individually; source fixes blocked because actual code lives in src/services/** and src/commentary/**, not allowed source globs.
+- Latest `rtk npm --prefix tasksync-chat run test:workers`: `TypeError: browser.ui.traceRowsHtml is not a function` at `test-trace-tab-unification.cjs:71:29`; gate stops in pretest before packet tests.
+- Real requested `npx tsc -p tasksync-chat --noEmit` exit **1**: root resolves a non-TypeScript tsc package (`This is not the tsc command you are looking for`). RTK's `TypeScript: No errors found` was not reliable evidence. Checked via a synchronous subprocess, then repository binary `node tasksync-chat/node_modules/typescript/bin/tsc -p tasksync-chat --noEmit` exit **0** (`LOCAL_TSC_EXIT=0`). No package install or tooling changes made.
+- T003/T004 close; T006/T008/T014/T023 await source-scope correction. T018/T022 live remain open, US5 live verification deferred. No live calls or deployment.
+
+- `rtk node tasksync-chat/test-webex-remote-adapter.cjs`: `PASS EV-WEBEX-REMOTE-ADAPTER matched=5 routing; Retry-After/plain fallback; upload/error/edit recovery; reload IDs; secrecy/disabled`.
+- `rtk node tasksync-chat/test-remote-channel-parity.cjs`: `PASS EV-REMOTE-CHANNEL-PARITY matched=2 Webex/Telegram preserve status fields and shared final cost/token banner`.
+- Default share-with-me test: `SKIP EV-SHARE-WITH-ME-WEBEX matched=0 live arrival requires ASKAWAY_WEBEX_LIVE=1; no network or credentials read`. Zero matched live cases is not a pass. FR-036 blocks executing the credential-reading external script without a fake boundary.
+- Acceptance `rtk npm --prefix tasksync-chat run test:workers` reached both new PASS lines and live SKIP, then failed outside this packet at `tasksync-chat/test-workers-control-plane.cjs:250:12`: `an expanded row stays open across the 1s re-render`. Later Telegram/docs/planning tests did not run.
+- Coverage: partial FR-006/007/013/016/022/025/026, SC-002/004/005/006; not comprehensive closure. See tasks.md's eight explicit dispositions and checklists/requirements.md. No deployment, live upload or phone notification claimed.

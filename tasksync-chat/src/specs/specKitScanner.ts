@@ -413,7 +413,8 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
         const planText = readTextFile(path.join(dir, 'plan.md'));
         const tasksText = readTextFile(path.join(dir, 'tasks.md'));
         const implementationText = readTextFile(path.join(dir, 'implementation-log.md'));
-        if (!specText && !planText && !tasksText) { continue; }
+        // A folder without spec.md is a worker note or another workspace's leftover, not a spec.
+        if (!specText) { continue; }
 
         const parsed = parseTasks(tasksText);
         tasksBySlug.set(entry.name, parsed.tasks);

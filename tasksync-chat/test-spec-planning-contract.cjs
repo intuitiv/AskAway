@@ -113,4 +113,12 @@ assert.match(webviewSource, /Agent throughput/, 'UI labels attributed delivery a
 assert.match(webviewSource, /Excludes human waiting, manual work, and untracked user activity/, 'UI excludes user productivity from throughput');
 assert.doesNotMatch(webviewSource, />Workspace velocity</, 'UI no longer calls agent throughput workspace velocity');
 
+const webexPlan = fs.readFileSync(path.join(__dirname, '../specs/009-webex-remote-channel/plan.md'), 'utf8');
+const webexResearch = fs.readFileSync(path.join(__dirname, '../specs/009-webex-remote-channel/research.md'), 'utf8');
+for (const section of ['Summary', 'Technical Context', 'Constitution Check', 'Decision Register', 'Cloud Worker Packet', 'Verification']) assert.ok(webexPlan.includes(`## ${section}`), `Webex plan misses ${section}`);
+for (const caller of ['remoteChannel.ts', 'telegramLive.ts', 'handoffNotifier.ts', 'cloudDigest.ts', 'webviewProvider.ts', 'share-with-me']) assert.ok(webexPlan.includes(caller), `Webex migration omits caller ${caller}`);
+for (const rule of ['Personal-token self-posts never notify', 'Webex has no long-poll API', 'posted/processed IDs', 'ASKAWAY_WEBEX_LIVE=1', 'US5']) assert.ok(webexResearch.includes(rule), `Webex research omits ${rule}`);
+assert.match(webexPlan, /Given[\s\S]*When[\s\S]*Then/);
+assert.ok(webexPlan.includes('4068059') && webexPlan.includes('src/services/**'), 'explicit base and actual source scope required');
+console.log('PASS EV-WEBEX-MIGRATION-PLAN callers=6 rules=5 explicit base/scope, decisions and story scenarios');
 console.log('PASS story-structured no-CY/PAC/CAC planning contract for Copilot and Claude');

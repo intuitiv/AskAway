@@ -116,5 +116,35 @@ function load(file, extra = {}) {
     assert.match(banner.html({ lastRequest: {}, workers: spend }, 11000), /\$0\.02/);
     console.log('PASS EV-VALIDATOR-WORKER-SPEND: turn=turn-billed requests=1 dollars=0.02 input=190 output=20 cached=80 banner=0.02');
     assert.match(require('./package.json').scripts['pretest:workers'], /test-validator-triggers\.cjs/);
+    const talkRoot = 'batch-conversation-workspace';
+    files.set(path.join(talkRoot, '.askaway/aitalk/messages.jsonl'), [
+        { id: 'old', author: 'you', text: 'earlier turn must not leak', ts: 99 },
+        { id: 'user', author: 'you', text: 'Use green for this turn', ts: Date.now() + 1000 },
+        { id: 'agent', author: 'agent', text: 'Routine progress', details: 'Work is underway', ts: Date.now() + 1001 },
+        { id: 'validator', author: 'validator', text: 'Noted the current choice', ts: Date.now() + 1002 },
+    ].map(item => JSON.stringify(item)).join('\n'));
+    const prompts = [];
+    const batchObserver = new ValidatorObserver({ workspaceRoot: talkRoot,
+        commentary: { turnStarts: () => [100], read: () => ({ items: [] }), postValidator() {} },
+        run: async input => { prompts.push(input.prompt); return { text: '{"answer":null,"sources":[],"summary":"done"}' }; } });
+    const { AITalkStore } = load('aitalk/store');
+    let conversationReads = 0;
+    const batchTrigger = new ValidatorTriggers(talkRoot, async () => batchObserver, () => '', () => assert.fail('batch failed'), () => {
+        conversationReads++; return new AITalkStore(talkRoot).snapshot(true).messages;
+    });
+    await batchTrigger.turnStart('previous', 'current request', 'conversation-turn');
+    batchTrigger.storeMessage('Routine unaddressed commentary');
+    assert.equal(prompts.length, 0, 'turn start and routine storage do not invoke the model');
+    assert.equal(conversationReads, 0, 'conversation reader is deferred until the end batch');
+    await batchTrigger.turnEnd('Complete final message', 'conversation-end');
+    assert.equal(prompts.length, 1);
+    assert.match(prompts[0], /you: Use green for this turn/);
+    assert.match(prompts[0], /agent: Routine progress\nWork is underway/);
+    assert.match(prompts[0], /validator: Noted the current choice/);
+    assert.doesNotMatch(prompts[0], /earlier turn must not leak/);
+    await batchTrigger.turnEnd('Complete final message', 'conversation-end'); assert.equal(prompts.length, 1);
+    assert.equal(conversationReads, 1, 'duplicate end does not read the conversation again');
+    assert.match(extension, /\(\) => new AITalkStore\(memoryProject\)\.snapshot\(true\)\.messages/);
+    console.log('PASS EV-VALIDATOR-AITALK-BATCH: current user/agent/Validator conversation and details; routine storage zero calls; one end batch; previous turn excluded');
     console.log('PASS EV-VALIDATOR-TRIGGERS: whole-final, previous-pair, caller-only memory, cross-window dedupe, nonblocking failure');
 })().catch(error => { console.error(error); process.exitCode = 1; });
