@@ -157,7 +157,7 @@ export class McpServerManager {
     constructor(
         private provider: AskAwayWebviewProvider,
         private memory?: ToolDefinition,
-        private webex?: ToolDefinition
+        private webex?: ToolDefinition[]
     ) {
         let republishing = false;
         const republish = () => {
@@ -306,7 +306,7 @@ export class McpServerManager {
             );
 
             registerWorkerTools((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), () => sharedWorkerRuntimeReady(gradleWorkspaceRoot), gradleWorkspaceRoot);
-            if (this.webex) registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), [this.webex]);
+            if (this.webex) registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), this.webex);
             registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), commentaryToolDefinitions(sharedCommentaryStore, ''));
             if (this.memory) registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), [this.memory]);
             registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), [asksTool(gradleWorkspaceRoot)]);

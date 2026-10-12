@@ -233,6 +233,8 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 - **FR-036**: Every Webex test MUST fake SecretStorage and Keychain reads/writes, never touch the real Keychain; guard the 2026-10-09 `askaway-general` contamination (US6; T032).
 - **FR-037**: One `askaway_webex` LM + AskAway MCP tool MUST support `spaces` (teams/spaces), `read` (recent space messages), `thread` (message-id thread), `search` (text within a space) and `send` (person/space), with bounded output and explicit truncation/pagination; arguments/results/errors MUST contain no secrets (R-TELE-41; US7; T033).
 - **FR-038**: Sends MUST use the token for other people/spaces and webhook only for own-space alerts; AskAway Build and worker profiles MUST teach when to use the shared tool and its secret/policy boundary (R-TELE-38/41; US7; T033/T034).
+- **FR-040**: Reviewer 2026-10-12 supersedes FR-037's single LM tool: eight separate Webex worker MCP tools, no main-agent LM registration; pending AITalk drafts send once on approval, with modal fallback (R-TELE-43).
+- **FR-041**: Plain Node fetches up to 200 own messages across active spaces; weekly style card condenses tone, casing, openers, length, emoji habits and six verbatim examples into at most 40 lines (R-TELE-44).
 
 ### Key Entities *(include if feature involves data)*
 - **FR-039**: Availability is evaluated at each turn send: Here sends nothing; away-prefixed modes send the full flow; Offline sends only the silent reply-tracked final; entering Away mid-turn opens the thread. Reply polling remains available (2026-10-10; test-availability-updates.cjs).

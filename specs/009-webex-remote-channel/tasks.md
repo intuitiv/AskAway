@@ -280,3 +280,4 @@ Test-only work is parallel; integration edits to webexAuth.ts/webexService.ts ar
 - [P] denotes real disjoint work, not concurrent edits to the same adapter.
 - Keep tokens, private OAuth values and credential files out of agent context and evidence.
 - No webhook, public laptop endpoint, implicit Telegram fallback or unsolicited bot creation.
+- [x] T035 [request] Implement scoped Webex act-like-me tool suite, pending approval hook, local attachment cache, own-message style sampling, profile/docs and caller-view tests; verify test-webex-tools-suite.cjs and tsc. Evidence: rtk node tasksync-chat/test-webex-tools-suite.cjs: PASS EV-WEBEX-TOOLS-SUITE; rtk npx tsc -p tasksync-chat --noEmit: TypeScript: No errors found. Eight worker MCP tools, approval hook, attachments, sampler/profile shipped. AITalk wiring and full worker gate not run.

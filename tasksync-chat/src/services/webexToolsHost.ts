@@ -2,6 +2,35 @@ import * as vscode from 'vscode';
 import { WebexAuth } from './webexAuth';
 import { runWebexTool, WebexToolDeps } from './webexTools';
 import { readAvailability } from '../webview/webviewProvider';
+import * as path from 'path';
+import { execFile } from 'child_process';
+import { webexSuiteTools } from './webexSuite';
+
+export function createWebexSuiteHost(secrets: vscode.SecretStorage, workspace: string) {
+    const auth = new WebexAuth(secrets);
+    const request = async (url: string, options: RequestInit = {}) => {
+        if (!vscode.workspace.getConfiguration('askaway.webex').get<boolean>('enabled', false)) { throw new Error('Disabled.'); }
+        const { accessToken } = await auth.tokens();
+        if (!accessToken) { throw new Error('Not configured.'); }
+        return fetch(url, { ...options, redirect: 'error', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } });
+    };
+    return webexSuiteTools({
+        cacheDir: path.join(workspace, path.basename(workspace) === 'tasksync-chat' ? '.webex-cache' : 'tasksync-chat/.webex-cache'),
+        approve: draft => approveWebexSend(workspace, draft),
+        request: (method, endpoint, body) => request(`https://webexapis.com/v1${endpoint}`, { method, ...(body ? { body: JSON.stringify(body) } : {}) }),
+        download: async url => {
+            const response = await request(url);
+            if (!response.ok) { throw new Error('Download failed.'); }
+            const disposition = response.headers.get('content-disposition') ?? '';
+            const name = /filename="?([^";]+)/i.exec(disposition)?.[1] ?? 'attachment';
+            return { name, bytes: Buffer.from(await response.arrayBuffer()) };
+        },
+        extract: file => new Promise((resolve, reject) => {
+            const pdf = file.endsWith('.pdf');
+            execFile(pdf ? 'pdftotext' : 'textutil', pdf ? [file, '-'] : ['-convert', 'txt', '-stdout', file], { maxBuffer: 1024 * 1024 }, (error, stdout) => error ? reject(error) : resolve(stdout));
+        }),
+    });
+}
 
 /** Interim permission boundary; replace this function when the final permission mechanism is agreed. */
 export async function approveWebexSend(workspace: string, draft: Parameters<WebexToolDeps['approve']>[0]): ReturnType<WebexToolDeps['approve']> {
