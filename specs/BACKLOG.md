@@ -139,9 +139,11 @@ GAP means a missing spec contract, not necessarily missing implementation. Exist
 | N12-8 | AITalk tick states for agent and validator recipients | NEEDS-DECISION (Q2) |
 | N12-9 | AITalk: user cannot reply to a message (bug) | DONE in prototype f317d78 (Reply + quote bar) |
 | N12-10 | AITalk generic: registry + rank user > validator > agent > worker, no hard-coded participants | DONE in prototype f317d78 (config-only new agent story); production build waits for approval |
-| N12-11 | VS Code notification when the user needs attention (heads-up, question, AITalk @mention) — when Here and window/panel not in focus | NEXT after Webex lane (extension.ts commentary listener ~1073) |
-| N12-12 | Trace tab shows main agent, every worker and Validator traces with the shared trace rows | IN PROGRESS (worker W-trace) |
+| N12-11 | VS Code notification when the user needs attention (heads-up, question, AITalk @mention) — when Here and window/panel not in focus | DONE (EV-ATTENTION-NOTIFY; AITalk @mention hook `notifyAttention` ready) |
+| N12-12 | Trace tab shows main agent, every worker and Validator traces with the shared trace rows | DONE 083e6eb (EV-TRACE-TAB-UNIFICATION) |
 | N12-13 | GitHub cost dry run on PR 1608 runs | DONE read-only: run timing readable (duration, billable ms); user billing + premium requests need `user` scope (reviewer runs `gh auth refresh -h github.com -s user`); org billing needs admin:org |
-| N12-14 | Stray `specs/<n>-<slug>/tasks.md` folders created by ask capture for unknown slugs | OPEN: route unknown slugs to BACKLOG.md |
-| N12-15 | AITalk production build (spec 003) A1 mount+tabs, A2 store+registry, A3 composer/reply/next-tool delivery, A4 Validator triggers (user mention/reply, agent/worker questions, end-of-turn batch of whole conversation), A5 join/leave + ticks, A6 Webex draft 👍 approval | NEXT on the webview lane after Trace |
+| N12-14 | Stray `specs/<n>-<slug>/tasks.md` folders created by ask capture for unknown slugs | DONE (missing spec.md → BACKLOG.md; workers can no longer capture asks over MCP, EV worker-ask-capture-refused). Existing stray folders untracked, not deleted |
+| N12-17 | Workers' auto-captured packets (incl. another repo's Gradle tasks) landed in specs/005 tasks.md and broke the task budget | DONE: rows saved to .askaway/005-tasks-with-worker-captures-2026-10-12.md, file restored, capture removed from worker MCP |
+| N12-18 | askaway_webex removed from main agent LM tools; Webex worker uses the MCP suite | DONE 5c3b3b2 + manifest regenerated |
+| N12-15 | AITalk production build (spec 003) A1 mount+tabs, A2 store+registry, A3 composer/reply/next-tool delivery, A4 Validator triggers (user mention/reply, agent/worker questions, end-of-turn batch of whole conversation), A5 join/leave + ticks, A6 Webex draft 👍 approval | A1/A2 DONE 8c65c61 (EV-AITALK-EXTENSION; Commentary tab kept until A5); A3–A6 NEXT |
 | N12-16 | Validator: no model call for generic agent messages/commentary; one long-lived session per turn | DONE cedda0d (stores; calls only on questions + end batch) |

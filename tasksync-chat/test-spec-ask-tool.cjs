@@ -15,6 +15,10 @@ const toolRoot = path.join(fixture, 'tool');
 const directRoot = path.join(fixture, 'direct');
 fs.mkdirSync(toolRoot);
 fs.mkdirSync(directRoot);
+for (const root of [toolRoot, directRoot]) {
+    fs.mkdirSync(path.join(root, 'specs/005-tool'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'specs/005-tool/spec.md'), '# Tool spec\n');
+}
 const file = 'specs/005-tool/tasks.md';
 const read = root => fs.readFileSync(path.join(root, file), 'utf8');
 const docs = root => ({ [file]: read(root) });
@@ -60,7 +64,7 @@ const question = { text: 'Which scope?', options: ['Local', 'All'], recommendati
     assert.equal(manifest.toolReferenceName, 'asks');
     assert.deepEqual(manifest.inputSchema.properties.action.enum, ['capture', 'close', 'wait', 'report', 'questions']);
     assert.match(fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8'), /registerLmToolDefinitions\(\[asksTool\(memoryProject\)\]\)/);
-    assert.match(fs.readFileSync(path.join(__dirname, 'src/mcp/mcpServer.ts'), 'utf8'), /\[asksTool\(gradleWorkspaceRoot\)\]/);
+    assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'src/mcp/mcpServer.ts'), 'utf8'), /asksTool/);
     const agentBuild = path.join(fixture, 'build-agent.cjs');
     esbuild.buildSync({ entryPoints: [path.join(__dirname, 'src/agents/askawayBuildAgent.ts')],
         outfile: agentBuild, bundle: true, platform: 'node', format: 'cjs' });
@@ -88,7 +92,8 @@ const question = { text: 'Which scope?', options: ['Local', 'All'], recommendati
     assert.equal((await tool.run({ action: 'report' })).rows.some(row => row.text === 'What'), false);
     console.log('PASS ask-tool review: ambiguous IDs return candidates and preserve bytes; backlog headers excluded');
     const suffixRoot = path.join(fixture, 'suffix-tool');
-    fs.mkdirSync(path.join(suffixRoot, 'specs/005-suffix'), { recursive: true });
+fs.mkdirSync(path.join(suffixRoot, 'specs/005-suffix'), { recursive: true });
+    fs.writeFileSync(path.join(suffixRoot, 'specs/005-suffix/spec.md'), '# Suffix spec\n');
     const suffixFile = path.join(suffixRoot, 'specs/005-suffix/tasks.md');
     const suffixBytes = '* [ ] T004a Alpha\n- [ ] T009b Beta\n';
     fs.writeFileSync(suffixFile, suffixBytes);
@@ -138,5 +143,5 @@ const question = { text: 'Which scope?', options: ['Local', 'All'], recommendati
     assert.equal(fs.readFileSync(outsideFile, 'utf8'), outsideBytes);
     assert.equal(fs.existsSync(path.join(outside, 'BACKLOG.md')), false);
     console.log('PASS ask-tool containment: file symlinks and workspace specs symlink refuse without outside writes');
-    console.log('PASS ask-tool: evidence-free close refused; secrets rejected; bounded paginated report; LM and MCP registrations present');
+    console.log('PASS ask-tool: evidence-free close refused; secrets rejected; bounded paginated report; main LM registration present, worker MCP capture absent');
 })().catch(error => { console.error(error); process.exitCode = 1; });

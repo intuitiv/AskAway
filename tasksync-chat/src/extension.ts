@@ -6,6 +6,7 @@ import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './consta
 import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
 import { presenceStates } from './availability/presence';
 import { wireWebex } from './services/webexWiring';
+import { notifyAttention, registerAttentionNotify } from './services/attentionNotify';
 import { createWebexSuiteHost } from './services/webexToolsHost';
 import { registerTools } from './tools';
 import { ASKWAY_BUILD_AGENT_FILE, ASKWAY_BUILD_AGENT_CONTENT } from './agents/askawayBuildAgent';
@@ -1011,8 +1012,15 @@ export function activate(context: vscode.ExtensionContext) {
         webviewProvider = provider;
 
         // Register the provider EARLY so sidebar loads fast
+        let attentionView: vscode.WebviewView | undefined;
         context.subscriptions.push(
-            vscode.window.registerWebviewViewProvider(AskAwayWebviewProvider.viewType, provider),
+            vscode.window.registerWebviewViewProvider(AskAwayWebviewProvider.viewType, {
+                resolveWebviewView: (view, resolveContext, token) => {
+                    attentionView = view;
+                    view.onDidDispose(() => { if (attentionView === view) attentionView = undefined; });
+                    return provider.resolveWebviewView(view, resolveContext, token);
+                },
+            }),
             provider
         );
 
@@ -1065,6 +1073,13 @@ export function activate(context: vscode.ExtensionContext) {
         }));
         const liveEnabled = () => vscode.workspace.getConfiguration('askaway').get<boolean>('validator.live', false);
         const availability = () => readAvailability(memoryProject);
+        context.subscriptions.push(registerAttentionNotify({ availability: () => availability() ?? undefined, view: () => attentionView }));
+        const waitForUserResponse = provider.waitForUserResponse.bind(provider);
+        let attentionQuestion = 0;
+        provider.waitForUserResponse = question => {
+            void notifyAttention({ id: `question-${++attentionQuestion}`, kind: 'question', pending: true, to: 'user', text: question }).catch(() => undefined);
+            return waitForUserResponse(question);
+        };
         const digest = new LiveDigest(memoryProject, sharedCommentaryStore(), liveEnabled, availability);
         const watch = new CommentaryWatch(memoryProject, sharedCommentaryStore(), liveEnabled, availability,
             text => triggers.validatorCall(text));
@@ -1074,7 +1089,17 @@ export function activate(context: vscode.ExtensionContext) {
             try { digest.check(); } catch { /* retry on the next availability poll */ }
             void watch.check().catch(() => undefined);
         };
-        sharedCommentaryStore().onChange(state => { if (state.workspacePath === memoryProject) checkLive(); });
+        const attentionInitial = sharedCommentaryStore().read(memoryProject);
+        const attentionSeen = new Set([...attentionInitial.items, ...(attentionInitial.validatorItems ?? [])].map(item => item.id));
+        sharedCommentaryStore().onChange(state => {
+            if (liveDisposed || state.workspacePath !== memoryProject) return;
+            checkLive();
+            for (const item of [...state.items, ...(state.validatorItems ?? [])]) {
+                if (attentionSeen.has(item.id)) continue;
+                attentionSeen.add(item.id);
+                if (item.ts > state.clearedAt) void notifyAttention(item).catch(() => undefined);
+            }
+        });
         checkLive();
         const livePoll = setInterval(checkLive, 1000);
         context.subscriptions.push({ dispose: () => { liveDisposed = true; clearInterval(livePoll); } });

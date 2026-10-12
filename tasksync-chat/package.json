@@ -830,82 +830,6 @@
           ],
           "additionalProperties": false
         }
-      },
-      {
-        "name": "askaway_webex",
-        "tags": [
-          "askaway",
-          "workers",
-          "opencode",
-          "orchestrator"
-        ],
-        "toolReferenceName": "askawayWebex",
-        "displayName": "Askaway Webex",
-        "modelDescription": "Webex actions: spaces lists recent spaces; read reads a room (mine:true learns your writing style); thread reads roomId+parentId; search filters recent room messages by query; people finds email/displayName; send posts to roomId or toPersonEmail with optional parentId. Output is bounded to 50 messages and 1000 characters each, with truncation/pagination flags. Sends require approval showing recipient and full text; when not Here they return a draft. Disabled unless Webex is configured. Never supply tokens or secrets.",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(server-process)",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "enum": [
-                "spaces",
-                "read",
-                "thread",
-                "search",
-                "people",
-                "send"
-              ]
-            },
-            "max": {
-              "type": "integer",
-              "exclusiveMinimum": 0
-            },
-            "roomId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1000
-            },
-            "parentId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1000
-            },
-            "mine": {
-              "type": "boolean"
-            },
-            "query": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1000
-            },
-            "email": {
-              "type": "string",
-              "format": "email",
-              "maxLength": 1000
-            },
-            "displayName": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1000
-            },
-            "toPersonEmail": {
-              "type": "string",
-              "format": "email",
-              "maxLength": 1000
-            },
-            "text": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1000
-            }
-          },
-          "required": [
-            "action"
-          ],
-          "additionalProperties": false
-        }
       }
     ],
     "viewsContainers": {
@@ -1249,10 +1173,38 @@
       }
     },
     "commands": [
-      { "command": "askaway.availability.here", "title": "Availability: Here", "icon": { "light": "media/icons/presence-here.svg", "dark": "media/icons/presence-here.svg" } },
-      { "command": "askaway.availability.away", "title": "Availability: Away", "icon": { "light": "media/icons/presence-away.svg", "dark": "media/icons/presence-away.svg" } },
-      { "command": "askaway.availability.awayValidator", "title": "Availability: Away + Validator answering", "icon": { "light": "media/icons/presence-awayValidator.svg", "dark": "media/icons/presence-awayValidator.svg" } },
-      { "command": "askaway.availability.offline", "title": "Availability: Offline", "icon": { "light": "media/icons/presence-offline.svg", "dark": "media/icons/presence-offline.svg" } },
+      {
+        "command": "askaway.availability.here",
+        "title": "Availability: Here",
+        "icon": {
+          "light": "media/icons/presence-here.svg",
+          "dark": "media/icons/presence-here.svg"
+        }
+      },
+      {
+        "command": "askaway.availability.away",
+        "title": "Availability: Away",
+        "icon": {
+          "light": "media/icons/presence-away.svg",
+          "dark": "media/icons/presence-away.svg"
+        }
+      },
+      {
+        "command": "askaway.availability.awayValidator",
+        "title": "Availability: Away + Validator answering",
+        "icon": {
+          "light": "media/icons/presence-awayValidator.svg",
+          "dark": "media/icons/presence-awayValidator.svg"
+        }
+      },
+      {
+        "command": "askaway.availability.offline",
+        "title": "Availability: Offline",
+        "icon": {
+          "light": "media/icons/presence-offline.svg",
+          "dark": "media/icons/presence-offline.svg"
+        }
+      },
       {
         "command": "askaway.configureWebexNotifications",
         "title": "AskAway: Configure Webex Notifications"
@@ -1306,15 +1258,31 @@
     ],
     "menus": {
       "view/title": [
-        { "command": "askaway.availability.here", "when": "view == askAwayView && askaway.availability == 'here'", "group": "navigation@0" },
-        { "command": "askaway.availability.away", "when": "view == askAwayView && askaway.availability == 'away'", "group": "navigation@0" },
-        { "command": "askaway.availability.awayValidator", "when": "view == askAwayView && askaway.availability == 'awayValidator'", "group": "navigation@0" },
-        { "command": "askaway.availability.offline", "when": "view == askAwayView && askaway.availability == 'offline'", "group": "navigation@0" }
+        {
+          "command": "askaway.availability.here",
+          "when": "view == askAwayView && askaway.availability == 'here'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "askaway.availability.away",
+          "when": "view == askAwayView && askaway.availability == 'away'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "askaway.availability.awayValidator",
+          "when": "view == askAwayView && askaway.availability == 'awayValidator'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "askaway.availability.offline",
+          "when": "view == askAwayView && askaway.availability == 'offline'",
+          "group": "navigation@0"
+        }
       ]
     }
   },
   "scripts": {
-    "pretest:workers": "node test-webex-tools-suite.cjs && node test-trace-tab-unification.cjs && node test-validator-session-per-turn.cjs && node test-validator-digest-watch.cjs && node test-validator-live.cjs && node test-validator-triggers.cjs && node test-efficiency-score.cjs && node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs && node test-import-vscode-memories.cjs",
+    "pretest:workers": "node test-worker-ask-capture-refused.cjs && node test-attention-notify.cjs && node test-aitalk-extension.cjs && node test-webex-tools-suite.cjs && node test-trace-tab-unification.cjs && node test-validator-session-per-turn.cjs && node test-validator-digest-watch.cjs && node test-validator-live.cjs && node test-validator-triggers.cjs && node test-efficiency-score.cjs && node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs && node test-import-vscode-memories.cjs",
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.js",
     "compile": "tsc -p ./",

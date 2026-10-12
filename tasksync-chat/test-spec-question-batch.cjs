@@ -11,6 +11,8 @@ fs.writeFileSync(path.join(root, 'askCapture.js'), ts.transpileModule(
 ).outputText);
 const { captureAsks, updateAskOutcome, updateAskQuestions, batchAskQuestions } = require(path.join(root, 'askCapture.js'));
 const slug = '005-questions';
+fs.mkdirSync(path.join(root, 'specs', slug), { recursive: true });
+fs.writeFileSync(path.join(root, 'specs', slug, 'spec.md'), '# Questions spec\n');
 const taskFile = `specs/${slug}/tasks.md`;
 const backlogFile = 'specs/BACKLOG.md';
 const q = (text, options, recommendation) => ({ text, options, recommendation });

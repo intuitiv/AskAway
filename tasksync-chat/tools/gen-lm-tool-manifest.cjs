@@ -18,10 +18,10 @@ function loadDefinitions() {
         fs.writeFileSync(out, ts.transpileModule(fs.readFileSync(path.join(root, 'src', `${name}.ts`), 'utf8'),
             { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
     }
-    const { workerTool, webexTool } = require(path.join(buildDir, 'workers', 'workerTools.js'));
+    const { workerTool } = require(path.join(buildDir, 'workers', 'workerTools.js'));
     const { commentaryToolDefinitions } = require(path.join(buildDir, 'commentary', 'commentary.js'));
     const unused = () => { throw new Error('manifest generation never runs tools'); };
-    const definitions = [workerTool(unused, ''), ...commentaryToolDefinitions(unused, ''), webexTool(unused)];
+    const definitions = [workerTool(unused, ''), ...commentaryToolDefinitions(unused, '')];
     fs.rmSync(buildDir, { recursive: true, force: true });
     return definitions;
 }
@@ -43,7 +43,8 @@ function entryFor(definition) {
 }
 
 // The eight per-operation tools became one `worker` tool; their old entries must not linger.
-const retired = (tool) => /^worker_/.test(tool.name);
+// askaway_webex moved to the Webex worker's MCP suite (reviewer 2026-10-12).
+const retired = (tool) => /^worker_/.test(tool.name) || tool.name === 'askaway_webex';
 
 function merged(pkg, entries) {
     const byName = new Map(entries.map((entry) => [entry.name, entry]));

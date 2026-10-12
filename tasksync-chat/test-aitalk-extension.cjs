@@ -25,7 +25,8 @@ const { pathToFileURL } = require('node:url');
     assert.deepEqual(store.snapshot().members.map(m => [m.id, m.rank, m.presencePolicy, m.canProxyWhenAway]), rules.defaultMembers.map(m => [m.id, m.rank, m.presencePolicy, m.canProxyWhenAway]));
     const provider = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
     const tabs = provider.slice(provider.indexOf('<div class="widget-tabs"'), provider.indexOf('<div class="conversation-health"'));
-    assert.deepEqual([...tabs.matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['aitalk', 'specs', 'observability', 'workers', 'settings', 'chat']);
+    // Commentary stays until agent progress lines move into AITalk (A5); Chat goes in A3.
+    assert.deepEqual([...tabs.matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['aitalk', 'specs', 'observability', 'workers', 'commentary', 'settings', 'chat']);
     assert.match(provider, /type="module" nonce="\$\{nonce\}" src="\$\{talkScriptUri\}"/);
     assert.match(provider, /case 'aitalkPost'/); assert.match(provider, /store\.post\(message\.text, message\.replyTo\)/);
     assert.equal(provider.replace(/\r\n/g, '').includes('\n'), false);

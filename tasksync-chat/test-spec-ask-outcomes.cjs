@@ -12,6 +12,8 @@ fs.writeFileSync(path.join(root, 'askCapture.js'), ts.transpileModule(
 ).outputText);
 const { captureAsks, updateAskOutcome, askProgressReport } = require(path.join(root, 'askCapture.js'));
 const slug = '005-outcomes';
+fs.mkdirSync(path.join(root, 'specs', slug), { recursive: true });
+fs.writeFileSync(path.join(root, 'specs', slug, 'spec.md'), '# Outcomes spec\n');
 const taskFile = `specs/${slug}/tasks.md`;
 const backlogFile = 'specs/BACKLOG.md';
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');

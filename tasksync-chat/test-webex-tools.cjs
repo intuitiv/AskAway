@@ -143,10 +143,11 @@ async function main() {
     assert.equal(JSON.parse((await mcp.get('askaway_webex')(sendInput)).content[0].text).status, 'draft');
     assert.equal(modals.length, modalCount);
     const fs = require('node:fs');
-    assert.match(fs.readFileSync(path.join(__dirname, 'src/tools.ts'), 'utf8'), /webexTool\(createWebexToolsHost\(context.secrets/);
-    assert.match(fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8'), /new McpServerManager\(provider, memory, webexTool/);
-    assert.match(fs.readFileSync(path.join(__dirname, 'src/mcp/mcpServer.ts'), 'utf8'), /\[this.webex\]/);
-    assert.ok(require('./package.json').contributes.languageModelTools.some(tool => tool.name === 'askaway_webex'));
-    console.log('PASS EV-WEBEX-TOOLS-ADAPTERS shared LM and MCP askaway_webex; host wired with SecretStorage; disabled results identical');
+    // Reviewer 2026-10-12: Webex tools belong to the Webex worker (MCP suite), not the main agent.
+    assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'src/tools.ts'), 'utf8'), /webexTool\(/);
+    assert.match(fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8'), /new McpServerManager\(provider, memory, createWebexSuiteHost\(/);
+    assert.match(fs.readFileSync(path.join(__dirname, 'src/mcp/mcpServer.ts'), 'utf8'), /this\.webex\)/);
+    assert.ok(!require('./package.json').contributes.languageModelTools.some(tool => tool.name === 'askaway_webex'));
+    console.log('PASS EV-WEBEX-TOOLS-ADAPTERS askaway_webex adapters; Webex worker MCP suite wired with SecretStorage; not in main LM tools');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

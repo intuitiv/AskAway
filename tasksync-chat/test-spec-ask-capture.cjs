@@ -14,6 +14,7 @@ const { captureAsks, captureAskRows } = require(path.join(fixture, 'askCapture.j
 const slug = '005-sample';
 const tasksFile = `specs/${slug}/tasks.md`;
 fs.mkdirSync(path.join(fixture, 'specs', slug), { recursive: true });
+fs.writeFileSync(path.join(fixture, 'specs', slug, 'spec.md'), '# Sample spec\n');
 fs.writeFileSync(path.join(fixture, tasksFile), '# Tasks\n- [ ] T009 [US8] Keep unfinished work\n- [x] T010 [US8] Completed fix Evidence: test-fix.cjs PASS\n');
 const mixed = [
     { kind: 'request', text: 'Add progress display' },
@@ -55,8 +56,19 @@ assert.equal(fresh[0].id, 'ASK-002');
 assert.equal(captureAsks(fixture, undefined, [{ kind: 'repeated ask', text: '  ADD progress   display ' }])[0].file, tasksFile);
 assert.deepEqual(captureAskRows({}, 'specs/BACKLOG.md', []).rows, []);
 console.log('PASS backlog: persisted rows, cross-file repeats, normalized repeats and completed evidence accounted for without /sk');
+const missingSlug = '195-ping';
+const [missingSpecAsk] = captureAsks(fixture, missingSlug, [{ kind: 'request', text: 'Capture an ad-hoc slug without creating a spec' }]);
+assert.equal(missingSpecAsk.file, 'specs/BACKLOG.md');
+assert.ok(fs.readFileSync(backlogFile, 'utf8').includes(missingSpecAsk.text));
+assert.equal(fs.existsSync(path.join(fixture, 'specs', missingSlug)), false);
+const emptySlug = '011-empty';
+fs.mkdirSync(path.join(fixture, 'specs', emptySlug));
+assert.equal(captureAsks(fixture, emptySlug, [{ kind: 'request', text: 'Existing folder without a spec also uses backlog' }])[0].file, 'specs/BACKLOG.md');
+assert.equal(fs.existsSync(path.join(fixture, 'specs', emptySlug, 'tasks.md')), false);
+console.log('PASS missing spec: asks persist in BACKLOG.md without creating a slug folder or tasks.md');
 const suffixRoot = path.join(fixture, 'suffix');
 fs.mkdirSync(path.join(suffixRoot, 'specs', slug), { recursive: true });
+fs.writeFileSync(path.join(suffixRoot, 'specs', slug, 'spec.md'), '# Suffix spec\n');
 const suffixFile = path.join(suffixRoot, tasksFile);
 const suffixBytes = '* [ ] T004a Fix alpha\n- [ ] T009b Fix beta\n';
 fs.writeFileSync(suffixFile, suffixBytes);

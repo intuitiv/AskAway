@@ -181,7 +181,9 @@ export function captureAskRows(documents: Record<string, string>, target: string
 
 export function captureAsks(root: string, activeSpec: string | undefined, asks: CapturedAsk[]): AskRow[] {
     if (activeSpec && !/^\d+-[a-z0-9-]+$/.test(activeSpec)) { throw new Error('Invalid spec slug'); }
-    const target = activeSpec ? `specs/${activeSpec}/tasks.md` : 'specs/BACKLOG.md';
+    const specTasks = activeSpec ? containedAskPath(root, `specs/${activeSpec}/tasks.md`) : undefined;
+    const target = specTasks && fs.existsSync(path.join(path.dirname(specTasks), 'spec.md'))
+        ? `specs/${activeSpec}/tasks.md` : 'specs/BACKLOG.md';
     containedAskPath(root, target);
     const documents = readAskDocuments(root);
     const result = captureAskRows(documents, target, asks);
