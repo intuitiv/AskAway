@@ -129,12 +129,13 @@ GAP means a missing spec contract, not necessarily missing implementation. Exist
 
 | ID | Ask | State |
 |---|---|---|
-| N12-1 | Monthly workspace cost in $: "$Total ($W workers)", red, total includes workers, month resets 1st 05:30 IST (00:00 UTC) | IN PROGRESS (worker A-month) |
-| N12-2 | Every cent counted: evals, tests, validator in the workspace month; explain $636 total vs ~$550 sum of months | IN PROGRESS (worker A-month) |
+| N12-1 | Monthly workspace cost in $: "$Total ($W workers)", red, total includes workers, month resets 1st 05:30 IST (00:00 UTC) | DONE a8d6817 (EV-MONTH-CREDITS-WORKSPACE) |
+| N12-2 | Every cent counted: evals, tests, validator in the workspace month; explain $636 total vs ~$550 sum of months | DONE a8d6817: month excluded subagent logs + worktree worker ledgers; now sum(months)==all-time |
 | N12-3 | GitHub Actions (cloud task) cost attributed to the workspace | NEEDS-DECISION (Q7) |
 | N12-4 | Teams-style availability button + gradient frame; current dot + command list "not awesome" | NEEDS-DECISION (Q1), POC in Storybook |
-| N12-5 | Validator runs on every message (~0.60/request): one validator session per turn, no keep-alive (GPT-5.6+ cache TTL 30 min verified; Copilot TTL unpublished) | IN PROGRESS (worker B-validator) |
+| N12-5 | Validator runs on every message (~0.60/request): one validator session per turn, no keep-alive (GPT-5.6+ cache TTL 30 min verified; Copilot TTL unpublished) | DONE cedda0d (EV-VALIDATOR-SESSION-PER-TURN) |
 | N12-6 | Webex "act like me" worker: separate tools for send to person/space, read space/1:1, reply in thread, attachments, check reply later, find space, style from own messages; questions ≤20–30 words, simple English with an example | NEEDS-DECISION (Q4–Q6, Q8) |
 | N12-7 | AITalk room rules (always-in members, agent join/leave notices, crisp + Show more mandatory, one Validator reply per question, mention/reply routing, workers may join, emoji use, 👍 relays) | spec 003 build; prototype update pending |
 | N12-8 | AITalk tick states for agent and validator recipients | NEEDS-DECISION (Q2) |
-| N12-9 | AITalk: user cannot reply to a message (bug) | NEEDS-DECISION (Q3) for gesture; prototype fix next |
+| N12-9 | AITalk: user cannot reply to a message (bug) | DONE in prototype f317d78 (Reply + quote bar) |
+| N12-10 | AITalk generic: registry + rank user > validator > agent > worker, no hard-coded participants | DONE in prototype f317d78 (config-only new agent story); production build waits for approval |
