@@ -123,14 +123,24 @@ const tools = fs.readFileSync(path.join(__dirname, 'src/tools.ts'), 'utf8');
 const begin = tools.indexOf('async function currentTurnBudget');
 const end = tools.indexOf('export interface Input');
 const registration = tools.slice(tools.indexOf('let turnBudgetTool:'), tools.indexOf('if (turnBudgetTool)'));
+const deliveryRegistration = tools.slice(tools.indexOf('function registerAITalkTool('), tools.indexOf('export function registerTools('));
+assert.ok(deliveryRegistration.includes('vscode.lm.registerTool'), 'the harness includes the real delivery registration wrapper');
+let pendingDelivery = '';
 const budgetContext = { vscode, fs: fakeFs, path, context: { storageUri: { fsPath: `${workspace}/extension-storage` } },
+    appendAITalkDelivery: result => result + pendingDelivery,
     workerSpendSince: host.workerSpendSince, computeTurnBudget: load('workers/turnBudget').turnBudget, turnTotals: load('workers/turnBudget').turnTotals, logToolCall() {} };
-vm.runInNewContext(ts.transpileModule(tools.slice(begin, end) + registration, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, budgetContext);
+vm.runInNewContext(ts.transpileModule(tools.slice(begin, end) + deliveryRegistration + registration, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, budgetContext);
 (async () => {
     const reply = JSON.parse((await registered.turn_budget.invoke({}, {})).content[0].value);
     assert.equal(reply.requestCount, expected.requests);
     for (const field of ['dollars', 'workers', 'workerIds', 'inputTokens', 'outputTokens', 'workerRuns']) assert.deepEqual(plain(reply[field]), expected[field], `turn_budget ${field}`);
     assert.equal(reply.spentAiu, 60);
+    pendingDelivery = 'AITalk addressed fixture reply';
+    const withDelivery = await registered.turn_budget.invoke({}, {});
+    assert.deepEqual(JSON.parse(withDelivery.content[0].value), reply, 'delivery preserves the full budget result');
+    assert.equal(withDelivery.content[1].value, pendingDelivery, 'the production wrapper appends pending delivery');
+    pendingDelivery = '';
+    console.log('PASS EV-TURN-BUDGET-DELIVERY-HARNESS real registration wrapper preserves totals and appends pending replies');
     const telegram = load('commentary/telegramLive');
     const line = telegram.usageLine(activity);
     assert.match(line, /6 requests · 2 workers · <b>\$0\.60<\/b>/);

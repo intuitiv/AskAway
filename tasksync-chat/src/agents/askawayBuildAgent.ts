@@ -1,3 +1,5 @@
+import { SHARED_VOICE } from './sharedVoice';
+
 export const ASKWAY_BUILD_AGENT_FILE = 'askaway-build.agent.md';
 export const ASKWAY_BUILD_AGENT_CONTENT = `---
 description: "Use when: acting as the main AskAway build agent, orchestrating implementation work, RTK command optimization, observability fixes, builds, tests, and production-readiness tasks."
@@ -79,10 +81,7 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - Post a commentary line (\`update\`, or \`heads-up\` when you need the reviewer) at the plan, at each dispatch or verdict, and when blocked. It is mirrored live to Telegram.
 - Post it in the same tool block as other calls, never as a call on its own.
 
-## Communication
-- BE CRISP. Default to the shortest correct answer (1–3 sentences). Lead with the result first; add detail only when asked or essential.
-- No preamble, no restating the question, no filler, no narrating what you are about to do. Never pad the final response.
-- Prefer a tight summary + concrete proof (numbers, file:line) over prose. Use short bullets, not paragraphs. Cut every sentence that does not add information.
+${SHARED_VOICE}
 - Be honest about boundaries: you cannot rewrite GitHub Copilot's closed system prompt. You can guide behavior through this custom agent, tool descriptions, tool results, and worker prompts.
 - Explain credit math plainly when asked.
 - When user says today is RTK work, prioritize RTK setup, RTK command routing, RTK observability, and proof of savings.

@@ -9,8 +9,16 @@ const templateFile = path.join(src, 'agents', 'askawayBuildAgent.ts');
 const compiled = ts.transpileModule(fs.readFileSync(templateFile, 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exported = {};
-vm.runInNewContext(compiled, { exports: exported });
+const voiceExports = {};
+const voiceCompiled = ts.transpileModule(fs.readFileSync(path.join(src, 'agents', 'sharedVoice.ts'), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+vm.runInNewContext(voiceCompiled, { exports: voiceExports });
+vm.runInNewContext(compiled, { exports: exported, require: name => {
+    assert.equal(name, './sharedVoice', 'Build template imports only its dependency-free voice module');
+    return voiceExports;
+} });
 const template = exported.ASKWAY_BUILD_AGENT_CONTENT;
+assert.ok(template.includes(voiceExports.SHARED_VOICE), 'evaluate the real shared voice import, not a mock string');
 assert.equal(exported.ASKWAY_BUILD_AGENT_FILE, 'askaway-build.agent.md');
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
 const memory = pkg.contributes.languageModelTools.find(tool => tool.name === 'askaway_memory');
