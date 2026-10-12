@@ -1,0 +1,2 @@
+# Tasks
+- [x] T001 [request] Make Storybook AITalk generic: config registry/ranks, pure rules and render separation, routing/presence/ticks/reactions, Reply quotes, config-only agent story, tests and spec section within packet scope. Evidence: rtk npm --prefix tasksync-chat/storybook test → ℹ tests 23; ℹ pass 23; ℹ fail 0. Registry config, pure routing/rank/presence/events/reactions, Reply quoting, configured agent story and Generic rules spec section implemented.

@@ -251,7 +251,8 @@
 .talk-ticks { display: inline-flex; align-items: center; cursor: help; }
 .talk-tick-svg { display: block; width: 16px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .talk-ticks.posted { color: var(--tk-tick-grey); }
-.talk-ticks.delivered { color: var(--tk-tick-blue); }
+.talk-ticks.delivered { color: var(--tk-tick-grey); }
+.talk-ticks.read { color: var(--tk-tick-blue); }
 .talk-ticks.delivered .talk-tick-svg { transition: color .3s; }
 
 /* ---- Quote block ---- */

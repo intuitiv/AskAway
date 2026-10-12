@@ -1,0 +1,78 @@
+.presence-widget {
+    --surface: #202c33;
+    --background: #10191f;
+    --foreground: #edf2f5;
+    --muted: #a0adb7;
+    --line: rgba(160, 173, 183, .18);
+    width: 420px;
+    max-width: 100%;
+    min-height: 620px;
+    position: relative;
+    border-radius: 14px;
+    background: var(--background);
+    color: var(--foreground);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    isolation: isolate;
+}
+.presence-widget.theme-light {
+    --surface: #fff;
+    --background: #f6f7fa;
+    --foreground: #242832;
+    --muted: #626b79;
+    --line: rgba(50, 60, 75, .13);
+}
+.presence-widget::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+    padding: 2px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, var(--presence), var(--presence-accent), color-mix(in srgb, var(--presence) 20%, transparent), var(--presence));
+    background-size: 250% 250%;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    animation: presence-border 7s ease-in-out infinite;
+}
+@keyframes presence-border { 50% { background-position: 100% 100%; opacity: .7; } }
+.presence-widget * { box-sizing: border-box; }
+.presence-widget button, .presence-widget select { font: inherit; color: inherit; }
+.presence-widget button { cursor: pointer; }
+.presence-widget button:focus-visible, .presence-widget select:focus-visible { outline: 2px solid var(--presence); outline-offset: 2px; }
+.presence-titlebar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--surface); border-radius: 14px 14px 0 0; border-bottom: 1px solid var(--line); }
+.presence-titlebar > strong { font-size: 11px; font-weight: 600; letter-spacing: .1em; }
+.presence-actions { display: flex; gap: 5px; align-items: center; }
+.presence-icon { width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; font-size: 20px !important; color: var(--muted) !important; }
+.presence-icon:hover { background: var(--line); }
+.presence-anchor { position: relative; margin-left: 8px; }
+.presence-trigger { position: relative; display: block; padding: 0; border: 0; background: none; border-radius: 50%; }
+.presence-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #d6c6ee, #a795d6); color: #30234f; font-weight: 600; font-size: 12px; }
+.presence-badge { display: inline-grid; place-items: center; flex: none; width: 19px; height: 19px; border-radius: 50%; background: var(--badge); color: #fff; font-weight: 700; font-size: 14px; line-height: 1; }
+.presence-trigger > .presence-badge { position: absolute; right: -3px; bottom: -2px; border: 2px solid var(--surface); width: 17px; height: 17px; font-size: 12px; }
+.presence-flyout { position: absolute; z-index: 10; top: calc(100% + 12px); right: -2px; width: 330px; max-width: calc(100vw - 40px); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 16px 48px rgba(0, 0, 0, .28), 0 2px 8px rgba(0, 0, 0, .1); padding: 16px 0 10px; transform-origin: top right; animation: presence-open 160ms ease-out; }
+@keyframes presence-open { from { opacity: 0; transform: translateY(-5px) scale(.97); } to { opacity: 1; transform: none; } }
+.presence-profile { display: flex; align-items: center; gap: 12px; padding: 0 16px 14px; }
+.presence-profile .presence-avatar { width: 44px; height: 44px; font-size: 15px; }
+.presence-profile strong, .presence-profile span:not(.presence-avatar) { display: block; }
+.presence-profile div > span { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.presence-current { display: flex; align-items: center; gap: 9px; padding: 10px 16px; background: color-mix(in srgb, var(--presence) 8%, transparent); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 12px; }
+.presence-menu { padding: 6px; }
+.presence-menu button { display: flex; align-items: center; gap: 10px; text-align: left; width: 100%; border: 0; border-radius: 7px; padding: 9px 10px; background: transparent; }
+.presence-menu button:hover, .presence-menu button:focus-visible { background: var(--line); }
+.presence-menu button > span:nth-child(2) { flex: 1; }
+.presence-menu strong { display: block; font-size: 12px; font-weight: 500; }
+.presence-menu small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.presence-selected { color: var(--presence); }
+.presence-reset { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px 4px; border-top: 1px solid var(--line); font-size: 12px; }
+.presence-reset select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.presence-expiry { margin: 3px 16px 0; font-size: 11px; color: var(--muted); }
+.presence-preview { padding: 48px 28px 28px; }
+.presence-eyebrow { color: var(--muted); font-size: 10px; letter-spacing: .16em; }
+.presence-preview h2 { font-size: 27px; font-weight: 500; margin: 10px 0; }
+.presence-preview > p { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.presence-status { display: flex; align-items: center; gap: 9px; margin-top: 24px; font-size: 12px; }
+.presence-placeholder { padding: 20px; margin-top: 35px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.presence-placeholder > span { font-weight: 600; }
+.presence-placeholder p { font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .presence-widget::before, .presence-flyout { animation: none; } }

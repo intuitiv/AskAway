@@ -42,6 +42,21 @@ exchange findings or request help without copying context through the parent.
 
 ## Conversation model
 
+### Generic rules
+
+Reviewer (2026-10-12): "Make sure that aiTalk tab is very generic, and it should be easily extensible. Rules are simple and common for every one. User trumps Validator trumps Main agent trumps worker."
+
+AITalk registers participants through config: `id`, `kind`, `displayName`, `colour`, `rank`,
+`presencePolicy` (`alwaysPresent` or `joinsPerTurn`) and `canProxyWhenAway`. Higher rank wins
+primary replies (user > validator > agent > worker); new kinds require config, not renderer edits.
+Mentions and replies queue for the recipient's next tool call and bring absent members back;
+per-turn members produce join/leave notices. Every answer is a separate crisp message with
+details under Show more. Reply selection shows a cancellable composer quote and preserves it
+on send. Configured events advance single-grey sent → double-grey delivered → double-blue read.
+Confirmation thumbs-up relays to its author; higher-rank endorsement relays an answer to its
+asker; votes on an answer to the reactor's own question are feedback to the answerer.
+Caller-view guard: `storybook/prototypes/talk.test.js`, `npm --prefix tasksync-chat/storybook test`.
+
 A side-channel conversation has a stable `channelId` and is scoped to a workspace. Each message has:
 
 ```text

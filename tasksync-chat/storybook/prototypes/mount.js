@@ -4,6 +4,7 @@ import cssText from '../../media/main.css?raw';
 import prototypeCss from './talk.css?raw';
 import { buildCommentaryKit, VSCODE_DARK_THEME } from '../kit.js';
 import { talkHtml, traceHtml, traceSessions, defaultMembers } from './talk.js';
+import { displayName, owner, postMessage, presenceChange, reactionRoute, reactMessage, selectReply, replyMessage, deliveryEvent, nextToolCall } from './talkRules.js';
 const { traceRowsHtml } = buildCommentaryKit({ webviewSrc, providerSrc });
 
 const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -46,10 +47,12 @@ export function mountTalk(options = {}) {
     }
 
     const post = (message, delivered) => {
-        const id = `you-${sent++}`;
-        messages.push({ id, author: 'You', time: clock(), delivery: 'posted', ...message });
+        const id = `sent-${sent++}`;
+        const posted = postMessage({ author: displayName(owner(members)), time: clock(), ...message, id }, messages, members);
+        messages = posted.messages; members = posted.registry;
         paint({ stick: true });
-        later(() => { messages = messages.map(m => m.id === id ? { ...m, delivery: 'delivered', tool: 'read_file' } : m); paint(); }, delivered ?? 1600);
+        later(() => { messages = messages.map(m => m.id === id ? deliveryEvent(m, 'delivered', options.deliveryEvents) : m); paint(); }, delivered ?? 1600);
+        later(() => { for (const recipient of messages.find(m => m.id === id)?.recipients || []) messages = nextToolCall(messages, recipient, options.deliveryEvents).messages; paint(); }, (delivered ?? 1600) + 800);
     };
 
     // Toggle your reaction; a count shows when several people reacted.
@@ -66,21 +69,26 @@ export function mountTalk(options = {}) {
         paint();
         focusBubble(message.id);
         const added = list.find(r => r.emoji === emoji)?.mine;
-        if (added && message.author === 'Validator') {
-            const parent = messages.find(m => m.id === message.replyTo);
-            const quote = parent ? { author: parent.author, text: parent.text } : { author: message.author, text: message.text };
-            // 👍 = use this answer: post it as your reply quoting the question. 👎 only marks it for learning and opens a quoted reply.
-            if (emoji === '👍' && message.proposal) post({ quote, text: message.proposal });
-            if (emoji === '👎') { reply = quote; paint(); root.querySelector('.talk-composer textarea').focus(); }
+        if (added) {
+            const route = reactionRoute(message, emoji, owner(members).id, messages, members);
+            const reaction = list.find(r => r.emoji === emoji);
+            Object.assign(reaction, route);
+            const relayed = reactMessage(message, emoji, owner(members).id, messages, members, `reaction-${sent++}`);
+            messages = relayed.messages; members = relayed.registry;
+            paint();
         }
-        if (message.author !== 'Validator') later(() => { message.reactions = message.reactions.map(r => r.mine && r.emoji === emoji ? { ...r, delivery: 'delivered', tool: 'read_file' } : r); paint(); }, 1600);
+        later(() => {
+            const route = reactionRoute(message, emoji, owner(members).id, messages, members);
+            if (route.recipient) messages = nextToolCall(messages, route.recipient, options.deliveryEvents).messages;
+            message.reactions = message.reactions.map(r => r.mine && r.emoji === emoji ? deliveryEvent(r, 'firstToolCall', options.deliveryEvents) : r); paint();
+        }, 1600);
     };
     const focusBubble = id => root.querySelector(`.talk-bubble[data-msg="${CSS.escape(id)}"]`)?.focus();
 
     // The reaction bar never opens on hover (scrolling used to trigger it). It opens on right-click, long-press or keyboard.
     let openId = null;
     let pressTimer;
-    const barButtons = bubble => [...bubble.querySelectorAll('.talk-react-bar .talk-react-btn')].filter(b => !b.closest('[hidden]'));
+    const barButtons = bubble => [...bubble.querySelectorAll('.talk-react-bar [role="menuitem"]')].filter(b => !b.closest('[hidden]'));
     const applyOpen = () => root.querySelectorAll('.talk-bubble.reacting').forEach(b => { if (b.dataset.msg !== openId) b.classList.remove('reacting'); });
     const openBar = (bubble, { focus = false } = {}) => {
         openId = bubble.dataset.msg;
@@ -125,10 +133,11 @@ export function mountTalk(options = {}) {
         if (button.dataset.tab) { event.preventDefault(); openTab(button.dataset.tab); }
         if (button.hasAttribute('data-bottom')) { scrollToBottom(); button.remove(); }
         if (button.hasAttribute('data-cancel-reply')) { reply = undefined; paint(); }
+        if (button.dataset.reply) { reply = selectReply(messages, button.dataset.reply); closeBar(); paint(); root.querySelector('.talk-composer textarea').focus(); }
         if (button.dataset.mention) {
             const name = button.dataset.mention;
-            if (members.find(m => m.name === name)?.presence === 'left') messages.push({ kind: 'system', text: `${name} joined` });
-            members = members.map(m => m.name === name ? { ...m, presence: 'online' } : m);
+            const changed = presenceChange(members, name, true);
+            members = changed.registry; messages.push(...changed.notices);
             draft = `${draft.replace(/@$/, '')}@${name} `;
             paint({ stick: true });
             const area = root.querySelector('.talk-composer textarea'); area.focus(); area.setSelectionRange(draft.length, draft.length);
@@ -148,7 +157,7 @@ export function mountTalk(options = {}) {
             if (!text) return;
             const quote = reply;
             reply = undefined; draft = '';
-            post({ text, quote });
+            post(replyMessage(text, displayName(owner(members)), quote));
         }
     });
 
@@ -164,6 +173,8 @@ export function mountTalk(options = {}) {
             if (step.do === 'typing') typing = step.who;
             if (step.do === 'add') { typing = ''; messages.push(step.message); }
             if (step.do === 'deliver') messages = messages.map(m => m.id === step.id ? { ...m, delivery: 'delivered', tool: step.tool } : m);
+            if (step.do === 'event') messages = messages.map(m => m.id === step.id ? deliveryEvent(m, step.event, options.deliveryEvents) : m);
+            if (step.do === 'join' || step.do === 'leave') { const changed = presenceChange(members, step.who, step.do === 'join'); members = changed.registry; messages.push(...changed.notices); }
             if (step.do === 'react') messages = messages.map(m => m.id === step.id ? { ...m, reactions: [...(m.reactions || []), { emoji: step.emoji, count: 1, by: [step.by] }] } : m);
             paint({ stick: true });
             next();

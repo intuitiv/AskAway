@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { talkHtml, traceHtml, scenarios, traceSessions, liveStart, liveScript, ticksHtml, whoClass, reactionNote, splitBody, bodyHtml } from './talk.js';
 import { buildCommentaryKit } from '../kit.js';
+import { defaultMembers, postMessage, presenceChange, primaryReply, reactionRoute, reactMessage, selectReply, replyMessage, deliveryEvent, nextToolCall } from './talkRules.js';
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const count = (html, pattern) => (html.match(pattern) || []).length;
 
@@ -123,7 +124,7 @@ test('reaction tooltips say who receives it', () => {
     const html = talkHtml([{ id: 'a', author: 'Agent', text: 'x', reactions: [] }]);
     assert.match(html, /data-react="👍"[^>]*title="👍 · Delivered to Agent with its next tool call"/);
     const v = talkHtml([{ id: 'v', author: 'Validator', text: 'x' }]);
-    assert.match(v, /data-react="👎"[^>]*title="👎 · Marks this for Validator learning"/);
+    assert.match(v, /data-react="👎"[^>]*title="👎 · Feedback for Validator learning"/);
 });
 
 test('reaction pills show count, your own state and single → double check delivery', () => {
@@ -168,7 +169,7 @@ test('each Validator answer is its own message; no multi-item bubble code remain
     assert.ok(scenarios.Full.messages.every(m => !m.questions));
     assert.doesNotMatch(read('./talk.css'), /talk-question|talk-votes|has-quiz/);
     assert.doesNotMatch(read('./talk.js'), /questionsHtml/);
-    assert.match(read('./mount.js'), /emoji === '👍' && message\.proposal/);
+    assert.match(read('./mount.js'), /reactMessage\(message, emoji/);
 });
 
 test('Agent and Validator answer trivial messages with a reaction pill naming who reacted', () => {
@@ -195,7 +196,8 @@ test('ticks: Full shows both states; Live goes single grey to double blue after 
     assert.match(mount, /step\.after \?\? 1700/);
     const css = read('./talk.css');
     assert.match(css, /\.talk-ticks\.posted \{ color: var\(--tk-tick-grey\)/);
-    assert.match(css, /\.talk-ticks\.delivered \{ color: var\(--tk-tick-blue\)/);
+    assert.match(css, /\.talk-ticks\.delivered \{ color: var\(--tk-tick-grey\)/);
+    assert.match(css, /\.talk-ticks\.read \{ color: var\(--tk-tick-blue\)/);
     assert.match(css, /--tk-tick-blue: #53bdeb/);
 });
 
@@ -203,7 +205,7 @@ test('Read more: details hide behind a button; expanded shows them with Show les
     const message = { id: 'q', author: 'Agent', text: 'Ship it now or later?', details: 'Options:\n- A) now: fast\n- B) later: safe\nPick `B`.', time: '1' };
     const closed = bodyHtml(message);
     assert.match(closed, /Ship it now or later\?/);
-    assert.match(closed, /<button type="button" class="talk-more" data-more="q" aria-expanded="false">Read more<\/button>/);
+    assert.match(closed, /<button type="button" class="talk-more" data-more="q" aria-expanded="false">Show more<\/button>/);
     assert.doesNotMatch(closed, /class="talk-details"|A\) now/);
     const open = bodyHtml({ ...message, expanded: true });
     assert.match(open, /aria-expanded="true" aria-controls="talk-details-q">Show less</);
@@ -215,7 +217,7 @@ test('Read more: long text auto-collapses to a summary; short text has no link; 
     const long = 'First line that explains the answer. ' + 'More words here. '.repeat(20);
     for (const author of ['Agent', 'Validator', 'build-1', 'You']) {
         const html = bodyHtml({ id: 'x', author, text: long });
-        assert.match(html, /Read more/);
+        assert.match(html, /Show more/);
         assert.ok(html.length < long.length, `${author} body is shortened`);
         assert.match(html, /…<\/span>|\.<\/span>/);
     }
@@ -236,4 +238,53 @@ test('Full and Live stories include the short Agent question with details and a 
     assert.ok(liveScript.some(s => s.message?.id === 'l8' && s.message.details));
     assert.ok(liveScript.some(s => s.message?.id === 'l9' && splitBody(s.message).collapsible));
     assert.match(read('./mount.js'), /message\.expanded = !message\.expanded/);
+});
+
+const registry = [...defaultMembers, { id: 'sage', kind: 'navigator', displayName: 'Sage', colour: 'who-p2', rank: 250, presencePolicy: 'joinsPerTurn', canProxyWhenAway: true, presence: 'left' }];
+test('config-only participant renders, routes, ranks and rejoins without a renderer edit', () => {
+    const posted = postMessage({ id: 'new-q', author: 'you', text: '@Sage check this?' }, [], registry);
+    assert.deepEqual(posted.messages.at(-1).recipients, ['sage']);
+    assert.match(talkHtml(posted.messages, { members: posted.registry }), /Sage joined/);
+    const answers = [{ id: 'a', author: 'agent', text: 'A', replyTo: 'new-q' }, { id: 's', author: 'sage', text: 'S', replyTo: 'new-q' }];
+    assert.equal(primaryReply(answers, registry).id, 's');
+    assert.match(talkHtml(answers, { members: registry }), /talk-sender who-p2">Sage/);
+    assert.match(talkHtml(answers, { members: registry }), /data-primary="true" class="talk-row in first" id="talk-s"/);
+    assert.deepEqual(nextToolCall(posted.messages, 'sage').received.map(m => m.id), ['new-q']);
+    assert.equal(nextToolCall(posted.messages, 'sage').messages.at(-1).delivery, 'read');
+    const left = presenceChange(posted.registry, 'sage', false);
+    assert.match(talkHtml(left.notices, { members: left.registry }), /Sage left/);
+    assert.equal(presenceChange(registry, 'you', false).notices.length, 0);
+});
+test('Reply action selects a quote bar and sent message quotes and routes to the original author', () => {
+    const messages = [{ id: 'original', author: 'sage', text: 'Continue?', confirmation: true }];
+    const reply = selectReply(messages, 'original');
+    const html = talkHtml(messages, { members: registry, reply });
+    assert.match(html, /data-reply="original">Reply/);
+    assert.match(html, /talk-reply-bar/);
+    assert.match(html, /data-cancel-reply/);
+    const posted = postMessage(replyMessage('Yes', 'you', reply, 'reply'), messages, registry);
+    assert.deepEqual(posted.messages.at(-1).recipients, ['sage']);
+    assert.match(talkHtml(posted.messages, { members: registry }), /talk-quote who-p2/);
+    assert.match(read('./mount.js'), /button.dataset.reply.*selectReply/);
+});
+test('configured events give single grey, double grey and double blue, never regress', () => {
+    const map = { send: 'posted', handoff: 'delivered', response: 'read' };
+    let message = deliveryEvent({}, 'send', map);
+    assert.equal(count(ticksHtml(message), /<path /g), 1);
+    message = deliveryEvent(message, 'handoff', map);
+    assert.match(ticksHtml(message), /talk-ticks delivered/);
+    assert.equal(count(ticksHtml(message), /<path /g), 2);
+    message = deliveryEvent(message, 'response', map);
+    assert.match(ticksHtml(message), /talk-ticks read/);
+    assert.equal(deliveryEvent(message, 'send', map).delivery, 'read');
+});
+test('generic rank reactions relay confirmations and endorsements but own-question votes are feedback', () => {
+    const question = { id: 'q', author: 'agent', text: 'Proceed?', confirmation: true };
+    const answer = { id: 'a', author: 'sage', replyTo: 'q', text: 'Yes' };
+    assert.deepEqual(reactionRoute(question, '👍', 'sage', [], registry), { recipient: 'agent', feedback: false });
+    assert.deepEqual(reactionRoute(answer, '👍', 'you', [question], registry), { recipient: 'agent', feedback: false });
+    const relay = reactMessage(answer, '👍', 'you', [question, answer], registry, 'endorsement');
+    assert.equal(nextToolCall(relay.messages, 'agent').received.at(-1).id, 'endorsement');
+    for (const emoji of ['👍', '👎']) assert.deepEqual(reactionRoute(answer, emoji, 'agent', [question], registry), { recipient: 'sage', feedback: true });
+    assert.throws(() => postMessage({ text: '', details: 'Long answer' }, [], registry), /Crisp/);
 });

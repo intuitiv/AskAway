@@ -4,6 +4,7 @@
   "type": "module",
   "description": "Storybook for AskAway webview pieces, built from the real markup, render code, and CSS.",
   "scripts": {
+    "test": "node --test prototypes/talk.test.js prototypes/presence.test.js",
     "storybook": "storybook dev -p 6006 --no-open",
     "build-storybook": "storybook build -o storybook-static"
   },
