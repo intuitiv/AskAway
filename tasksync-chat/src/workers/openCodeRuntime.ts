@@ -301,6 +301,7 @@ export class OpenCodeWorkerRuntime {
         const capped = this.capRefusal(1);
         if (capped) { return capped; }
         const routed = this.router.route({ workspacePath: workspace, cwd: runDir(packet), profile: packet.profile, model: packet.model, thinking: packet.thinking,
+            sessionKey: packet.track === 'validator' ? packet.dispatchTurnId : undefined,
             packetId: packet.objective.slice(0, 40), estimatedSeconds: packet.estimatedSeconds ?? 60 });
         if (routed.status === 'SELECTION_UNAVAILABLE') { return routed; }
         return this.admit(routed, workspace, packet);
@@ -632,7 +633,7 @@ export class OpenCodeWorkerRuntime {
 
     /** The workspace's workers as keep-warm inputs (see keepWarm.ts); a worker with no recorded session cannot be pinged. */
     keepWarmWorkers(workspacePath: string): KeepWarmWorker[] {
-        return this.router.workers(canonical(workspacePath)).filter((worker) => this.sessionsByWorker.has(worker.workerId)).map((worker) => ({
+        return this.router.workers(canonical(workspacePath)).filter((worker) => !worker.sessionKey && this.sessionsByWorker.has(worker.workerId)).map((worker) => ({
             workerId: worker.workerId, state: worker.state, active: !!worker.active, queued: worker.queue.length,
             cacheExpiresAt: this.router.cacheExpiresAt(worker), nextInputTokens: worker.contextTokens,
             unusedPings: this.unusedPings.get(worker.workerId) ?? 0, pinging: this.pinging.has(worker.workerId),
@@ -648,6 +649,7 @@ export class OpenCodeWorkerRuntime {
         const worker = this.router.worker(workerId);
         const sessionId = this.sessionsByWorker.get(workerId) ?? '';
         const run = [...this.runs.values()].filter((candidate) => candidate.workerId === workerId).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        if (run?.track === 'validator') return { status: 'SKIPPED', reason: 'validator sessions have no keep-alive pings' };
         if (!worker || !run || !this.attachUrl || !/^[A-Za-z0-9_-]+$/.test(sessionId)) { return { status: 'SKIPPED', reason: 'no attached session' }; }
         const expires = this.router.cacheExpiresAt(worker);
         if (worker.state !== 'IDLE' || worker.active || worker.queue.length > 0 || expires <= this.now() || this.pinging.has(workerId)) {

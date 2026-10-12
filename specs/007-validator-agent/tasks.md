@@ -175,3 +175,4 @@ After T006: T007 (US3, `observer.ts`) and T008 (US4, `knowledgeStore.ts`) in par
 - Reused names: Commentary tab, `CommentaryStore`, `specCostLedger`, worker runtime/profiles, `evalScoreboard`.
 - Beta: nothing is sent to the agent (FR-018); advisory output only.
 - Never put secrets in records, store, Commentary or cost data (FR-016).
+- [x] T018 [request] Cut Validator spend: store messages without model calls, reuse one Validator session per turn, add caller-view session test and requirement row within packet scope. Evidence: rtk node tasksync-chat/test-validator-session-per-turn.cjs → PASS EV-VALIDATOR-SESSION-PER-TURN: 10 messages, 2 questions, 1 batch, 1 session; new turn new session; no pings; rtk npx tsc -p tasksync-chat --noEmit → TypeScript: No errors found

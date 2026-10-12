@@ -12,10 +12,10 @@ import { KnowledgeStore, KnowledgeScope, KnowledgeFact } from './knowledgeStore'
 
 export function validatorWorkerRun(runtime: () => Promise<OpenCodeWorkerRuntime>, workspaceRoot: string,
     turnId: () => string): ValidatorRunPort {
-    return async ({ prompt, profile, observedId }) => {
+    return async ({ prompt, profile, observedId, turnId: observedTurnId }) => {
         const worker = await runtime();
         const run = worker.start({ workspacePath: workspaceRoot, profile: profile.name, model: profile.model, thinking: profile.thinking,
-            dispatchTurnId: turnId(), baseRevision: 'HEAD', objective: prompt + '\nReturn the JSON on one line, then Result: PASS.',
+            dispatchTurnId: observedTurnId || turnId(), baseRevision: 'HEAD', objective: prompt + '\nReturn the JSON on one line, then Result: PASS.',
             allowedFiles: [], acceptance: 'Read-only cited validator JSON answer', expected: 'JSON answer and Result: PASS',
             command: 'No command: validate against the provided sources', track: 'validator' });
         if (!('runId' in run)) throw new Error(run.reason);
@@ -31,14 +31,14 @@ export function validatorWorkerRun(runtime: () => Promise<OpenCodeWorkerRuntime>
     };
 }
 
-export interface ObservedResponse { id: string; source: string; text: string; specSlug?: string; force?: boolean }
+export interface ObservedResponse { id: string; source: string; text: string; specSlug?: string; force?: boolean; turnId?: string; batch?: boolean }
 
 export interface ValidatorSource { id: string; text: string }
 
 export interface ValidatorRunResult { text: string; usage?: Partial<ValidatorUsage>; workerId?: string; sessionId?: string }
 
 /** The worker run port: the only way the validator runs a model. Today an OpenCode worker; later the backend (FR-014). Read-only profile, no send surface. */
-export type ValidatorRunPort = (input: { prompt: string; profile: WorkerProfile; observedId: string }) => Promise<ValidatorRunResult>;
+export type ValidatorRunPort = (input: { prompt: string; profile: WorkerProfile; observedId: string; turnId?: string }) => Promise<ValidatorRunResult>;
 
 export interface ValidatorEvent { type: 'start' | 'stop' | 'error'; observedId: string; workerId?: string; sessionId?: string; ts: number; error?: string }
 
@@ -237,7 +237,10 @@ export class ValidatorObserver {
 
     private async observeInner(response: ObservedResponse, base: ValidatorResponse, specSlug: string | null): Promise<ValidatorResponse & { risk?: 'low' | 'high'; reversible?: boolean; confidence?: number }> {
         if (!response.force && !needsObserving(String(response.text ?? ''))) { return this.finish({ ...base, skipped: true }, specSlug); }
-        const text = redactOrDrop(response.text);
+        const start = this.ports.commentary.turnStarts?.(this.ports.workspaceRoot).at(-1) ?? 0;
+        const messages = response.batch ? (this.ports.commentary.read?.(this.ports.workspaceRoot).items ?? [])
+            .filter(item => item.ts >= start && redactOrDrop(item.text) !== null).map(item => item.text).join('\n') : '';
+        const text = redactOrDrop(messages ? messages + '\n' + response.text : response.text);
         if (text === null) { return this.finish({ ...base, error: 'response holds a credential; not observed' }, specSlug); }
 
         const sources = await this.sources(response, specSlug);
@@ -255,7 +258,7 @@ export class ValidatorObserver {
         let result: ValidatorRunResult;
         try {
             const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('validator timed out')), this.ports.timeoutMs ?? 60000); });
-            result = await Promise.race([this.ports.run({ prompt, profile, observedId: response.id }), timeout]);
+            result = await Promise.race([this.ports.run({ prompt, profile, observedId: response.id, turnId: response.turnId }), timeout]);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.emit({ type: 'error', observedId: response.id, ts: this.now(), error: message });

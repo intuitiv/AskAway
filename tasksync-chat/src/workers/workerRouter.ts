@@ -47,11 +47,13 @@ export interface RoutedWorker {
     forkedFrom?: string;
     /** Another extension host is running it (seen in the shared ledger); not routable meanwhile. */
     busyElsewhere?: boolean;
+    sessionKey?: string;
     active?: QueueEntry;
     queue: QueueEntry[];
 }
 
 export interface RouteRequest {
+    sessionKey?: string;
     workspacePath: string;
     /** Run directory; defaults to the owner workspace. */
     cwd?: string;
@@ -119,8 +121,10 @@ export class WorkerRouter {
         // Thinking is not part of the key: a reused worker keeps its own, so its session config and cache stay unchanged.
         // An expired-cache worker under EXPIRED_REUSE_MAX_CONTEXT_TOKENS is still reusable; a warm one is preferred.
         const eligible = [...this.workersById.values()]
-            .filter((worker) => worker.registryKey === registryKey && worker.cwd === cwd && !worker.active)
+            .filter((worker) => worker.registryKey === registryKey && worker.cwd === cwd
+                && worker.sessionKey === request.sessionKey && (request.sessionKey || !worker.active))
             .filter((worker) => {
+                if (request.sessionKey) return worker.state !== 'RETIRED' && !worker.busyElsewhere;
                 const reason = this.ineligibility(worker, true, true);
                 if (reason) { rejections.push(`${worker.workerId}: ${reason}`); }
                 return !reason;
@@ -131,6 +135,7 @@ export class WorkerRouter {
         const reused = eligible[0];
         const reusedExpired = !!reused && this.isExpired(reused);
         const worker = reused ?? this.createWorker(registryKey, request.workspacePath, profile.name, selection.model, selection.thinking, cwd);
+        worker.sessionKey = request.sessionKey;
         const estimatedWaitSeconds = this.estimatedWaitSeconds(worker);
         const entry: QueueEntry = { runId: this.nextId('run'), packetId: request.packetId, estimatedSeconds: request.estimatedSeconds, enqueuedAt: this.now() };
         this.dispatches++;

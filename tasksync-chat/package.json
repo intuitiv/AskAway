@@ -1314,7 +1314,7 @@
     }
   },
   "scripts": {
-    "pretest:workers": "node test-validator-digest-watch.cjs && node test-validator-live.cjs && node test-validator-triggers.cjs && node test-efficiency-score.cjs && node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs && node test-import-vscode-memories.cjs",
+    "pretest:workers": "node test-validator-session-per-turn.cjs && node test-validator-digest-watch.cjs && node test-validator-live.cjs && node test-validator-triggers.cjs && node test-efficiency-score.cjs && node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs && node test-import-vscode-memories.cjs",
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.js",
     "compile": "tsc -p ./",

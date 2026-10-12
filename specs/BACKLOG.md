@@ -2,6 +2,12 @@
 
 Items gathered from unchecked task lines, unresolved analysis findings, open reviewer-brief questions, and qualifying reviewer messages. `READY` means actionable now; `NEEDS-DECISION` requires reviewer input; `BLOCKED` depends on another item or an external prerequisite.
 
+## Local tooling bugs — 2026-10-08
+
+| ID | What | State | Evidence / next check | Source |
+|---|---|---|---|---|
+| KOTLIN-1 | Diagnose and resolve JetBrains Kotlin server startup timeout for TaskSync | WAITING (live restart) | Daemon log 13:22:47-13:24:57: starts in under 1s, publishes port in macOS temp, idle-exits after 10s. Extension hosts use TMPDIR=/Users/machs/.uv-temp; client reads there instead. Workspace intellij.additionalJvmArgs now aligns java.io.tmpdir; actual bundled-JVM baseline/override check PASS. Next: IntelliJ: Restart Language Server and confirm connection | Reviewer error report, 2026-10-08 |
+
 ## 005 — Spec Kit Guided Flow
 
 | ID | What | State | Blocker or question | Source file |
@@ -118,3 +124,17 @@ GAP means a missing spec contract, not necessarily missing implementation. Exist
 | GC-G10 | G10: Live validator represents unavailable reviewer, retains memory tool and reports commentary problems | BLOCKED | Later 007 live-phase story after beta quality review; define authority and advisory boundaries | GOALS.md 2026-10-08 |
 | GC-G11 | G11: Availability decides when validator takes charge | BLOCKED | Later 007 live release; define timed/indefinite-away authority, return and expiry transitions separately from current away policy | GOALS.md 2026-10-08 |
 | GC-G14 | G14: Own tools such as gradle, read_doc and turn budget reduce cost and improve reliability, reuse and control | DONE (reviewer 2026-10-08: "I think we already have all tools.") | Extend 001 tooling scope with caller-visible contracts and evals; existing tool tests do not substitute for a complete spec story | GOALS.md 2026-10-08 |
+
+## New 2026-10-12 (GOALS.md section 4, "2026-10-12, monthly credits, availability, …")
+
+| ID | Ask | State |
+|---|---|---|
+| N12-1 | Monthly workspace cost in $: "$Total ($W workers)", red, total includes workers, month resets 1st 05:30 IST (00:00 UTC) | IN PROGRESS (worker A-month) |
+| N12-2 | Every cent counted: evals, tests, validator in the workspace month; explain $636 total vs ~$550 sum of months | IN PROGRESS (worker A-month) |
+| N12-3 | GitHub Actions (cloud task) cost attributed to the workspace | NEEDS-DECISION (Q7) |
+| N12-4 | Teams-style availability button + gradient frame; current dot + command list "not awesome" | NEEDS-DECISION (Q1), POC in Storybook |
+| N12-5 | Validator runs on every message (~0.60/request): one validator session per turn, no keep-alive (GPT-5.6+ cache TTL 30 min verified; Copilot TTL unpublished) | IN PROGRESS (worker B-validator) |
+| N12-6 | Webex "act like me" worker: separate tools for send to person/space, read space/1:1, reply in thread, attachments, check reply later, find space, style from own messages; questions ≤20–30 words, simple English with an example | NEEDS-DECISION (Q4–Q6, Q8) |
+| N12-7 | AITalk room rules (always-in members, agent join/leave notices, crisp + Show more mandatory, one Validator reply per question, mention/reply routing, workers may join, emoji use, 👍 relays) | spec 003 build; prototype update pending |
+| N12-8 | AITalk tick states for agent and validator recipients | NEEDS-DECISION (Q2) |
+| N12-9 | AITalk: user cannot reply to a message (bug) | NEEDS-DECISION (Q3) for gesture; prototype fix next |

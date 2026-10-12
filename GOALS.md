@@ -461,3 +461,49 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > Double tick is not in whatsapp style.
 
 > With this style of conversation, agent cannot ask some lengthy questions, may be a short question and and longer version can be under show more or soemthing? So that it doesnt distract the ux. For long conversations we have main vscode chat. this is for quickies.
+
+### 2026-10-12, monthly credits, availability, Webex worker, AITalk rules, Validator cost
+
+> - I want to track credits consumed by that workspace in that month. reset every month 5:30 AM.
+> - Availablity. It is in comentary. But it should be on top, beside settings icon, View History icon, New session icon and all, there should be availability button like we have in microsoft teams app. And add a border for the whole wdiget(use gradient wdiget) reflecting the availability. When Validator is active or user is online or user is offline and so on. Lets make this widget UI, awesome.
+> - And another idea, we can enhance webex tool to send message to a person or a space, read messages from space or a personal chat, and reply to a particular message. Sometimes i can ask, any updates on some space, or do somethign and update that person and all. I need a specific worker to send or read messages, where it has tools and we should tune that worker such that when we send any message to person, it should not be ai slop, if needed read my earlier responses in different webex spaces. so that agent should write like me, not as agent. Worker agent should be tuned like that. And it can be better but when asking something, it should be in simple english with some examples. It shouldnt exceed more than 20-30 words.
+> So a worker which can just work like me, like read something from webex space, attachments analysis, replying to some thread, asking something someone, checking what that person replied after sometime and so on. We need all these as tool, more tools for these indidivual things, and agent will call these tools as user requested.
+
+> Regarding aiTalk, here are what happens when and what should be done when:
+> - Validator and User are always in that room.
+> - When user is away, Validator can act as a proxy after beta phase
+> - When a turn starts Agent joins the room and when teh turn exits, agent will leave the room.
+> - After Agent joins the room, we should get notitifcation like whatsapp, same thing when agent leaves
+> - Agent start sending messages like status messages, question messages in the room.
+> - Questions by agent or validator should be crisp with details. Details should be under show more, crisp message should be shown in the chat.
+> - Validator can read all messages, but will try to reply in the room for questions as a sperate message.
+> - Agent/Human can ask mulitple questions, they should be formatter well, But Validator should reply to each question separately.
+> - When user is available, user' reply to agent is primary.
+> - After beta phase, Validator will reply to agents message
+> - Framework will send message to agent when the message has mention or reply to their message.
+> - Like agent, in future even workers can join the room. They also act like agent.
+> - When user/validator replies to agent/worker, we get a single tick. when the message is sent to the agent as a tool call, then its a bluetick, and when a first response gets from agent then it will be a bluetick.
+> - When user sends a messaeg to validator, single tick, new validator session starts doubel tick, first tool call then its a bluetick.
+> - Agent or Validator can use emojies effectively, for crisp communication. Thumbs up is good, agree, took teh feedback and so on, based on the message. Folding hands is thank you. different smilies, winking and so on.
+> - If agent asks for some confirmation, when agent or user says thumbs up, then corresponding message has to be notified to the agent in next tool call, as some aditional infomation or something.
+> - If Validator responds to something, when user thumbs up to that message, the same can be relayed to agent.
+> - When user asks something to validator (using mention), and validator will reply to it, in that case, when user thumbs to that message, its a positive feedback to the validator.
+> - Messages from Validator/Agent/worker can have longer message, but tehy should also have crisp message. Crisp message is mandatory. user simply types the mesage, directly, quoting someone, or reply to some message.
+>
+> And i dont see any option, where user can reply to a message. User can tag others but hpow to reply?
+
+> Availability UX: I see some green border around tehwidget and green dot. clicking it shows me some command and all. Thats not awesome. I dont want nothign less than awesome. I even gave microsoft availability as an example. I didnt see this kind of thing in microsoft.
+
+> Monthly tracking: Show dollars for month, not AIU. it can be $124 ($63.45 workers). AMount can be in red color.
+> And in other workspace i see $146 workspace and $216 workers. hows that possible. Workspace includes both workspace and workers.
+> So, it should be $Total ($worker workers)
+
+> Validator: I see Validator running on every every message and i see 0.60 average credits every request. Thats too much. May be validator can reuse the same session, per turn? And keep validator alive or one thing to confirm is, i heard cache expiry time for gpt models is 30 min, verify that, and if thats true, we can have 1 single validator session per turn. 30 min will too long to work on keep alive.
+
+> All evals and other tests which use cost should be considered in this workspace. Every cent should accountable. When i run a github action, that cost should be accounted to that workspace.
+> My total cost is shown as $636. But when i add the monthly cost, it adds upto ~$550.
+
+### 2026-10-12, AITalk generic
+
+> Make sure that aiTalk tab is very generic, and it should be easily extensible. Rules are simple and common for every one. User trumps Validator trumps Main agent trumps worker.
+> Rules i mentioned are generic and do not hard code things in the chat tab. In future i can add more agents like Validator, i dont know.
