@@ -214,16 +214,27 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
             + 'Lead with one emoji; **bold** the outcome, ==highlight== the one number that matters. '
             + 'kind `update` for everything that is just happening. kind `heads-up` when you will need something from the reviewer soon, or something is unclear to you, so they can prepare. '
             + 'You hold the context the reviewer lacks, so a heads-up names exactly what you need: the decision and its options, or the input. Never just "something is unclear". '
-            + '10-20 words. Batch it with the step\'s real tool call; do not repeat it in chat.',
+             + '10-20 words. Batch it with the step\'s real tool call; do not repeat it in chat. action aitalk posts a crisp question or reply; optional details appear under Read more.',
         inputSchema: z.object({
-            kind: z.enum(COMMENTARY_KINDS),
+            action: z.enum(['post', 'aitalk']).optional(),
+            details: z.string().max(8000).optional(),
+            replyTo: z.string().optional(),
+            kind: z.enum(COMMENTARY_KINDS).optional(),
             text: z.string().min(1).describe('10-20 plain words: what is happening and why.'),
             turnId: z.string().optional(),
             workspacePath: z.string().optional().describe('The workspace this line belongs to. Required over MCP; the VS Code tool defaults to its own window.'),
         }),
         // One MCP server serves every window, so a missing workspace must never fall back to the server owner's feed.
-        run: (args) => (args.workspacePath || defaultWorkspace)
-            ? store().post(args.workspacePath || defaultWorkspace, args)
-            : { status: 'REJECTED', reason: 'workspacePath is required: say which workspace this line belongs to' },
+        run: (args) => {
+            const workspace = args.workspacePath || defaultWorkspace;
+            if (!workspace) return { status: 'REJECTED', reason: 'workspacePath is required: say which workspace this line belongs to' };
+            if (args.action === 'aitalk') {
+                const { AITalkStore } = require('../aitalk/store') as typeof import('../aitalk/store');
+                const talk = new AITalkStore(workspace);
+                return talk.post(args.text, args.replyTo, talk.agentId(), args.details);
+            }
+            if (!args.kind) return { status: 'INVALID_INPUT', reason: 'kind is required for commentary' };
+            return store().post(workspace, args);
+        },
     }];
 }

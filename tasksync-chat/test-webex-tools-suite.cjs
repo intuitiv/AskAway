@@ -2,6 +2,7 @@ process.env.ASKAWAY_TEST_NO_KEYCHAIN = '1';
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const os = require('node:os');
 const esbuild = require('esbuild');
 async function main() {
     const build = await esbuild.build({ stdin: { contents: "export * from './src/services/webexSuite'; export * from './src/services/webexDrafts';", resolveDir: __dirname }, bundle: true, platform: 'node', format: 'cjs', write: false });
@@ -9,7 +10,11 @@ async function main() {
     const { webexSuiteTools, registerWebexDraftHook, approveDraft } = mod.exports;
     let n = 0; const calls = [], drafts = [];
     registerWebexDraftHook(async draft => { drafts.push(draft); return `draft-${++n}`; });
-    const cacheDir = path.join(__dirname, '.webex-cache'); let modal = 'approved';
+    const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), 'webex-suite-')); let modal = 'approved';
+    const realCache = path.join(__dirname, '.webex-cache');
+    const cacheBefore = await fs.readdir(realCache).catch(() => []);
+    const contentsBefore = await Promise.all(cacheBefore.map(async name => [name, (await fs.readFile(path.join(realCache, name))).toString('base64')]));
+    try {
     const tools = webexSuiteTools({ cacheDir, approve: async () => modal,
         request: async (method, endpoint, body) => {
             calls.push({ method, endpoint, body });
@@ -58,5 +63,9 @@ async function main() {
     assert.equal(calls.length, before);
     console.log('PASS webex_style_card; modal fallback approval and refusal');
     console.log('PASS EV-WEBEX-TOOLS-SUITE');
+    assert.deepEqual(await fs.readdir(realCache).catch(() => []), cacheBefore);
+    assert.deepEqual(await Promise.all(cacheBefore.map(async name => [name, (await fs.readFile(path.join(realCache, name))).toString('base64')])), contentsBefore);
+    console.log('PASS Webex test temp cache only; real cache names and bytes unchanged');
+    } finally { await fs.rm(cacheDir, { recursive: true, force: true }); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

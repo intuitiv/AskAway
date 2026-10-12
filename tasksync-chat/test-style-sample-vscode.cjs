@@ -1,0 +1,34 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const cp = require('node:child_process');
+const vm = require('node:vm');
+async function main() {
+    const root = path.join(__dirname, 'test-fixtures/style');
+    const script = path.join(__dirname, 'tools/style-sample-vscode.cjs');
+    const out = path.join(root, 'output.json');
+    const run = (...args) => { const result = cp.spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' }); assert.equal(result.status, 0, result.stderr); return result; };
+    run('--root', path.join(root, 'storage'), '--out', out);
+    const sample = JSON.parse(await fs.readFile(out, 'utf8'));
+    assert.equal(sample.source, 'vscode'); assert.ok(Number.isFinite(Date.parse(sample.collectedAt)));
+    assert.deepEqual(sample.messages, [{ ts: 500, text: 'please keep this session prose' }, { ts: 400, text: 'i want teh simple wording' }, { ts: 200, text: 'keep my original spelling here' }]);
+    console.log('PASS typed main-log and session messages only; spelling preserved; code/paths/logs/attachments/short/slash-only dropped; newest duplicate retained');
+    const bulk = path.join(root, 'bulk/workspace/GitHub.copilot-chat/debug-logs/session');
+    await fs.mkdir(bulk, { recursive: true });
+    await fs.writeFile(path.join(bulk, 'main.jsonl'), Array.from({ length: 230 }, (_, i) => JSON.stringify({ type: 'user_message', ts: 1000 + i, attrs: { text: `please keep synthetic message number ${i}` } })).join('\n'));
+    run('--root', path.join(root, 'storage'), '--root', path.join(root, 'bulk'), '--root', path.join(root, 'bulk'), '--out', out, '--max', '999');
+    const capped = JSON.parse(await fs.readFile(out, 'utf8')).messages;
+    assert.equal(capped.length, 200); assert.equal(capped[0].ts, 1229); assert.equal(capped.at(-1).ts, 1030);
+    assert.equal(new Set(capped.map(row => row.text)).size, 200);
+    run('--root', path.join(root, 'bulk'), '--out', out, '--max', '7');
+    assert.equal(JSON.parse(await fs.readFile(out, 'utf8')).messages.length, 7);
+    console.log('PASS repeated roots deduped; newest-first cap 200; smaller --max honored');
+    const allowed = new Set(['node:fs/promises', 'node:path', 'node:os', 'node:readline', 'node:fs']);
+    const mod = { exports: {} };
+    vm.runInNewContext(await fs.readFile(script, 'utf8'), { module: mod, require: name => { assert.ok(allowed.has(name), `no dependencies/network/model: ${name}`); return require(name); }, console, fetch: () => { throw Error('network forbidden'); } });
+    await mod.exports.main(['--root', path.join(root, 'storage'), '--out', out]);
+    assert.equal(JSON.parse(await fs.readFile(out, 'utf8')).messages.length, 3);
+    console.log('PASS zero network/model calls; built-in modules only');
+    console.log('PASS EV-STYLE-SAMPLE-VSCODE');
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -12,7 +12,8 @@ import { cacheSafeWaitMs } from './observability/cacheClock';
 import { commentaryToolDefinitions } from './commentary/commentary';
 import { registerLmToolDefinitions } from './workers/lmTools';
 import { sharedCommentaryStore, sharedWorkerRuntimeReady, workerSpendSince } from './workers/workerHost';
-import { workerTool, ToolDefinition } from './workers/workerTools';
+import { workerTool, ToolDefinition, setToolResultDelivery } from './workers/workerTools';
+import { configureAITalkDelivery, appendAITalkDelivery } from './aitalk/delivery';
 import { turnBudget as computeTurnBudget, turnTotals } from './workers/turnBudget';
 
 /**
@@ -803,12 +804,24 @@ function runReadDoc(input: ReadDocInput): string {
         + `Read any span with mode:"section" (startLine/endLine) or filter with mode:"search" query:"…".`;
 }
 
+function registerAITalkTool(name: string, tool: vscode.LanguageModelTool<any>): vscode.Disposable {
+    return vscode.lm.registerTool(name, {
+        ...tool,
+        invoke: async (options, token) => {
+            const result = await tool.invoke(options, token);
+            const pending = appendAITalkDelivery('');
+            return pending ? new vscode.LanguageModelToolResult([...(result?.content ?? []), new vscode.LanguageModelTextPart(pending)]) : result;
+        },
+    });
+}
 export function registerTools(context: vscode.ExtensionContext, provider: AskAwayWebviewProvider, memory?: ToolDefinition, validator?: ToolDefinition) {
+    configureAITalkDelivery(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd());
+    setToolResultDelivery(appendAITalkDelivery);
     if (memory) context.subscriptions.push(...registerLmToolDefinitions([memory]));
     if (validator) context.subscriptions.push(...registerLmToolDefinitions([validator]));
     let askUserTool: vscode.Disposable | undefined;
     try {
-        askUserTool = vscode.lm.registerTool('ask_user', {
+        askUserTool = registerAITalkTool('ask_user', {
         prepareInvocation(options: vscode.LanguageModelToolInvocationPrepareOptions<Input>) {
             const rawQuestion = typeof options?.input?.question === 'string' ? options.input.question : '';
             const questionPreview = rawQuestion.trim().replace(/\s+/g, ' ');
@@ -939,7 +952,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // ── Register bash_task tool ──
     let bashTaskTool: vscode.Disposable | undefined;
     if (WORKER_TOOLS_ENABLED) try {
-        bashTaskTool = vscode.lm.registerTool('bash_task', {
+        bashTaskTool = registerAITalkTool('bash_task', {
             prepareInvocation(options: vscode.LanguageModelToolInvocationPrepareOptions<{ explanation?: string; task: string; cwd?: string }>) {
                 const cmd = typeof options?.input?.task === 'string' ? options.input.task : '';
                 const preview = cmd.trim().replace(/\s+/g, ' ').slice(0, 40);
@@ -988,7 +1001,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // ── Register research_on tool ──
     let researchOnTool: vscode.Disposable | undefined;
     if (WORKER_TOOLS_ENABLED) try {
-        researchOnTool = vscode.lm.registerTool('research_on', {
+        researchOnTool = registerAITalkTool('research_on', {
             prepareInvocation(options: vscode.LanguageModelToolInvocationPrepareOptions<{ explanation?: string; topic: string; modelId?: string }>) {
                 const exp = typeof options?.input?.explanation === 'string' ? options.input.explanation : '';
                 const preview = exp.trim().replace(/\s+/g, ' ').slice(0, 40);
@@ -1039,7 +1052,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // ── Register code_nav tool (LSP navigation — avoids collision with Copilot built-in lsp_bridge) ──
     let codeNavTool: vscode.Disposable | undefined;
     try {
-        codeNavTool = vscode.lm.registerTool('code_nav', {
+        codeNavTool = registerAITalkTool('code_nav', {
             prepareInvocation(options: vscode.LanguageModelToolInvocationPrepareOptions<LspBridgeInput>) {
                 const op = options?.input?.operation ?? 'lsp';
                 const fp = options?.input?.filePath ? ` ${path.basename(options.input.filePath)}` : '';
@@ -1070,7 +1083,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // ── Register rg_search tool (ripgrep-backed fast text search) ──
     let rgSearchTool: vscode.Disposable | undefined;
     try {
-        rgSearchTool = vscode.lm.registerTool('rg_search', {
+        rgSearchTool = registerAITalkTool('rg_search', {
             prepareInvocation(options: vscode.LanguageModelToolInvocationPrepareOptions<RgSearchInput>) {
                 const p = options?.input?.pattern ?? '';
                 return { invocationMessage: `🔎 rg: ${p.slice(0, 50)}` };
@@ -1101,7 +1114,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // so the agent reads only the section it needs instead of the whole file.
     let readDocTool: vscode.Disposable | undefined;
     try {
-        readDocTool = vscode.lm.registerTool('read_doc', {
+        readDocTool = registerAITalkTool('read_doc', {
             prepareInvocation(options: vscode.LanguageModelToolInvocationPrepareOptions<ReadDocInput>) {
                 const mode = options?.input?.mode ?? 'outline';
                 const fp = options?.input?.filePath ? ` ${path.basename(options.input.filePath)}` : '';
@@ -1135,7 +1148,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // from external clients (Kiro/Antigravity/CLI). Same engine, no shortcut.
     let gradleTool: vscode.Disposable | undefined;
     try {
-        gradleTool = vscode.lm.registerTool('gradle', {
+        gradleTool = registerAITalkTool('gradle', {
             prepareInvocation(options: vscode.LanguageModelToolInvocationPrepareOptions<GradleInput>) {
                 const action = options?.input?.action ?? 'gradle';
                 const detail = options?.input?.tasks?.join(' ') ?? options?.input?.buildId ?? '';
@@ -1170,7 +1183,7 @@ export function registerTools(context: vscode.ExtensionContext, provider: AskAwa
     // can self-regulate (wrap up) before overspending. Worker start/submit are refused once the total (main + workers) reaches the limit.
     let turnBudgetTool: vscode.Disposable | undefined;
     try {
-        turnBudgetTool = vscode.lm.registerTool('turn_budget', {
+        turnBudgetTool = registerAITalkTool('turn_budget', {
             prepareInvocation() {
                 return { invocationMessage: '💰 checking turn budget' };
             },

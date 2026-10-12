@@ -1,0 +1,11 @@
+{"type":"user_message","ts":100,"attrs":{"text":"i want teh simple wording"}}
+{"type":"assistant_message","ts":999,"attrs":{"text":"assistant invented text never keep"}}
+{"type":"tool_result","ts":998,"attrs":{"text":"tool output never keep this"}}
+{"type":"llm_request","ts":997,"attrs":{"inputMessages":[{"role":"user","parts":[{"type":"text","content":"injected user context never keep"}]}]}}
+{"type":"user_message","ts":200,"attrs":{"text":"/sk.start keep my original spelling here\n```js\nconst fake = 'do not include code';\n```\n/Users/test/file.ts\nhttps://example.test/a\nError: failure from pasted stack\n    at worker (fake.js:1:2)\n2026-10-12 INFO pasted log line\n{\"key\":\"synthetic json content\"}\nAttachment: synthetic content\nTool output: synthetic content"}}
+{"type":"user_message","ts":300,"attrs":{"text":"only three words"}}
+{"type":"user_message","ts":301,"attrs":{"text":"/sk.start"}}
+{"type":"user_message","ts":302,"attrs":{"text":"/help"}}
+{"type":"user_message","ts":303,"attrs":{"text":"```\nplease never collect this code\n```"}}
+{"type":"user_message","ts":304,"attrs":{"text":"inline ```synthetic code should not be kept```"}}
+malformed synthetic record

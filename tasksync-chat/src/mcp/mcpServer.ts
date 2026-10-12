@@ -20,6 +20,7 @@ import { registerToolDefinitions, registerWorkerTools, ToolDefinition } from '..
 import { commentaryToolDefinitions } from '../commentary/commentary';
 import { registerVsCodeToolBridge, registerWindow } from '../workers/vscodeToolBridge';
 import { loadEvalScoreboard } from '../workers/evalScoreboard';
+import { withAITalkMcpDelivery } from '../aitalk/delivery';
 export { createWorkerOperationFacade, type WorkerOperationFacade } from './workerOperationFacade';
 
 export const WORKER_RUNTIME_OPERATIONS = [
@@ -220,6 +221,9 @@ export class McpServerManager {
                     name: "AskAway Sidebar Chat",
                     version: "2.0.0"
                 });
+                const register = (mcpServer as any).registerTool.bind(mcpServer);
+                (mcpServer as any).registerTool = (name: string, config: any, handler: any) => register(name, config,
+                    withAITalkMcpDelivery(handler, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd()));
 
             // Register ask_user tool
             const provider = this.provider;

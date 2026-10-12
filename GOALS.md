@@ -524,3 +524,8 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 > We can use it for questions and tags from user and questions from agent/worker and at end of the turn we feed the whole conversation to validator and it can store or learn and do stuff.
 
 (Context for 1–6: 1 = Teams-style avatar flyout inside the panel; 2 = ticks sent grey single, handed over grey double, first response blue double; 3 = Webex drafts posted in AITalk, 👍 sends; 4 = style card from ~200 own messages across active spaces; 5 = separate Webex tools for the Webex worker; 6 = tag cloud runs per workspace and read GitHub billing, else "est.".)
+
+### 2026-10-12, style doc for everyone
+
+> When you create a style doc, you can create from my messages in vscode conversations also. There can be some spelling mistakes, but you can correct them out.
+> And use that style doc for agent to communicate with me or valdiator. Everybody should talk like that. Simple and clear sentences. As a demo, show me what is teh text which agent or validator will return with current setup, how it would look like after applyig my style.

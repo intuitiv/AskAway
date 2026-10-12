@@ -3,10 +3,21 @@ import { selectReply } from './talkRules.js';
 let state = { messages: [], members: [] }, reply, draft = '';
 const root = () => document.getElementById('aitalk-root');
 export function renderAITalk(next = state) {
-    state = next;
+    const refresh = next !== state;
+    const expanded = new Set(state.messages.filter(message => message.expanded).map(message => message.id));
+    state = { ...next, messages: next.messages.map(message => expanded.has(message.id) ? { ...message, expanded: true } : message) };
     const host = root();
     if (!host || !state.members.length) return;
+    const oldComposer = host.querySelector('textarea');
+    const focused = oldComposer && document.activeElement === oldComposer;
+    const selection = focused ? [oldComposer.selectionStart, oldComposer.selectionEnd, oldComposer.selectionDirection] : undefined;
+    if (oldComposer && refresh) draft = oldComposer.value;
     host.innerHTML = headerHtml({ members: state.members }) + '<div class="talk-thread" role="log" aria-label="Group chat">' + threadHtml(state.messages, state.members) + '</div><div id="aitalk-composer">' + composerHtml({ members: state.members, reply, draft }) + '</div>';
+    if (focused) {
+        const composer = host.querySelector('textarea');
+        composer.focus();
+        composer.setSelectionRange(...selection);
+    }
 }
 window.addEventListener('message', event => { if (event.data.type === 'aitalkState') renderAITalk(event.data.data); });
 document.addEventListener('click', event => {
@@ -44,3 +55,6 @@ document.addEventListener('click', event => {
     if (link) { event.preventDefault(); document.querySelector('.widget-tab[data-tab="observability"]')?.click(); }
 });
 window.askawayPostMessage({ type: 'requestAITalk' });
+setInterval(() => {
+    if (!document.hidden && root()) window.askawayPostMessage({ type: 'requestAITalk' });
+}, 2000);

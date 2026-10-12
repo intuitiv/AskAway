@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { MAX_WAIT_SECONDS, OpenCodeWorkerRuntime, WorkerPacket } from './openCodeRuntime';
 import { projectWorkersState } from './workersState';
 import type { TurnBudget } from './turnBudget';
+type Caller = { recipient: string; workspace?: string };
+let delivery: ((result: string, caller?: Caller) => string) | undefined;
+export function setToolResultDelivery(handler: (result: string, caller?: Caller) => string): void { delivery = handler; }
 
 export const WORKER_TOOL_NAMES = ['worker_start', 'worker_submit', 'worker_list', 'worker_status', 'worker_wait', 'worker_cancel', 'worker_resume', 'worker_logs', 'worker_fanout'] as const;
 /** Hosts see ONE `worker` tool; `action` selects the operation, like the `gradle` tool (reviewer, 2026-09-25). */
@@ -61,18 +64,30 @@ export function workerBudgetRefusal(action: string, budget: Pick<TurnBudget, 'sp
 const reply = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
 
 /** Validates input against the contract, runs it, and returns the bounded JSON text every host sends back. */
-export async function invokeDefinition(definition: ToolDefinition, input: unknown): Promise<string> {
+export async function invokeDefinition(definition: ToolDefinition, input: unknown, deliver = true, caller?: Caller): Promise<string> {
     const parsed = definition.inputSchema.safeParse(input ?? {});
     if (!parsed.success) {
         return JSON.stringify({ status: 'INVALID_INPUT', reason: parsed.error.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; ') });
     }
-    return JSON.stringify(await definition.run(parsed.data));
+    if (deliver && delivery) {
+        const { beginAITalkTool } = require('../aitalk/delivery') as typeof import('../aitalk/delivery');
+        beginAITalkTool(caller);
+    }
+    const result = JSON.stringify(await definition.run(parsed.data));
+    return deliver && delivery ? delivery(result, caller) : result;
 }
 
 export function registerToolDefinitions(register: Register, definitions: ToolDefinition[]): void {
     for (const definition of definitions) {
         register(definition.name, { description: definition.description, inputSchema: definition.inputSchema },
-            async (args) => reply(await definition.run(args)));
+            async (args: any, extra?: any) => {
+                const meta = extra?._meta ?? args?._meta;
+                const recipient = meta?.recipient ?? meta?.workerId ?? meta?.agentId;
+                const caller = typeof recipient === 'string' ? { recipient, workspace: meta.workspacePath } : undefined;
+                const input = { ...args }; delete input._meta;
+                const result = await invokeDefinition(definition, input, !!caller, caller);
+                return { content: [{ type: 'text' as const, text: result }] };
+            });
     }
 }
 
@@ -112,7 +127,7 @@ export function workerTool(source: () => RuntimeSource, defaultWorkspace: string
                 const refusal = workerBudgetRefusal(action, await options.turnBudget());
                 if (refusal) { return refusal; }
             }
-            return operation ? JSON.parse(await invokeDefinition(operation, args)) : { status: 'INVALID_INPUT', reason: `action: one of ${WORKER_ACTIONS.join(', ')}` };
+            return operation ? JSON.parse(await invokeDefinition(operation, args, false)) : { status: 'INVALID_INPUT', reason: `action: one of ${WORKER_ACTIONS.join(', ')}` };
         },
     };
 }

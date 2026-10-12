@@ -38,7 +38,7 @@ const { pathToFileURL } = require('node:url');
     const ui = fs.readFileSync(path.join(__dirname, 'media/aitalk/extension.js'), 'utf8').replace(/^import .*;$/gm, '').replace('export function', 'function');
     const messages = [];
     const clickHandlers = [];
-    vm.runInNewContext(ui, { ...render, ...rules, window: { addEventListener: (name, fn) => { listeners[name] = fn; }, askawayPostMessage: m => messages.push(m) }, document: { getElementById: () => host, addEventListener: (name, fn) => { if (name === 'click') clickHandlers.push(fn); } } });
+    vm.runInNewContext(ui, { ...render, ...rules, setInterval: () => {}, window: { addEventListener: (name, fn) => { listeners[name] = fn; }, askawayPostMessage: m => messages.push(m) }, document: { getElementById: () => host, addEventListener: (name, fn) => { if (name === 'click') clickHandlers.push(fn); } } });
     listeners.message({ data: { type: 'aitalkState', data: store.snapshot() } });
     assert.ok(host.innerHTML.includes(render.threadHtml(store.snapshot().messages, store.snapshot().members)), 'real browser renders exact shared renderer output');
     assert.equal(messages[0].type, 'requestAITalk');
