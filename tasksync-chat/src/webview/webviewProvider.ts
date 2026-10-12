@@ -29,6 +29,7 @@ import { LongRunHandoff } from '../specs/handoffThreshold';
 import { HandoffNotifier } from '../services/handoffNotifier';
 import { observeWorkers, sharedCommentaryStore, sharedWorkerRuntime, workerSpendSince } from '../workers/workerHost';
 import { workspaceCostRequests } from '../services/workspaceCost';
+import { presenceStates } from '../availability/presence';
 import { turnTotals, mergeToolUsage, persistTurnTotals } from '../workers/turnBudget';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
@@ -399,7 +400,11 @@ export function availabilityFile(workspace: string, home: string = os.homedir())
     return path.join(home, '.askaway', 'availability', `${commentaryKey(workspace)}.json`);
 }
 export function readAvailability(workspace: string, home: string = os.homedir()): AvailabilityState | null {
-    try { return JSON.parse(fs.readFileSync(availabilityFile(workspace, home), 'utf8')); } catch { return null; }
+    try {
+        const state = JSON.parse(fs.readFileSync(availabilityFile(workspace, home), 'utf8'));
+        if (state?.until && Date.parse(state.until) <= Date.now()) return writeAvailability(workspace, { mode: 'here' }, home);
+        return state;
+    } catch { return null; }
 }
 export function writeAvailability(workspace: string, input: { mode?: unknown; until?: unknown; note?: unknown }, home: string = os.homedir()): AvailabilityState {
     const mode = input.mode === 'away' || input.mode === 'awayValidator' || input.mode === 'offline' ? input.mode : 'here';
@@ -421,7 +426,8 @@ type ToWebviewMessage =
     | { type: 'workersState'; data: (WorkersState & { cloudWorkers?: Awaited<ReturnType<CloudSpecsController['workers']>> }) | null }
     | { type: 'workerTrace'; data: WorkerTrace }
     | { type: 'commentaryState'; data: CommentaryView | null }
-    | { type: 'availabilityState'; data: AvailabilityState | null }
+    | { type: 'availabilityState'; data: AvailabilityState | null; states: typeof presenceStates }
+    | { type: 'openPresence' }
     | { type: 'updateQueue'; queue: QueuedPrompt[]; enabled: boolean }
     | { type: 'updateWorkerQueue'; tasks: Array<{ id: string; role: 'command' | 'subagent'; task: string; status: 'pending' | 'running' | 'done'; createdAt: number }> }
     | { type: 'availableModels'; models: Array<{ id: string; name: string; vendor: string; family: string; maxInputTokens: number }> }
@@ -1515,11 +1521,19 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private _commentarySubscribed = false;
 
+    public openPresence(): void {
+        this._pushAvailability();
+        this._broadcast({ type: 'openPresence' });
+    }
+
+    private _availabilityExpiry?: ReturnType<typeof setTimeout>;
     public _pushAvailability(): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const state = root ? readAvailability(root) : null;
         void vscode.commands.executeCommand('setContext', 'askaway.availability', state?.mode || 'here');
-        this._broadcast({ type: 'availabilityState', data: state });
+        this._broadcast({ type: 'availabilityState', data: state, states: presenceStates });
+        if (this._availabilityExpiry) clearTimeout(this._availabilityExpiry);
+        if (state?.until) this._availabilityExpiry = setTimeout(() => this._pushAvailability(), Math.max(0, Date.parse(state.until) - Date.now()));
     }
 
     private _handleCommentary(action: 'request' | 'goal' | 'clear', value?: string): void {

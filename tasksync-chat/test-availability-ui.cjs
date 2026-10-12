@@ -18,18 +18,29 @@ const slice = (text, a, b) => {
 const webview = fs.readFileSync(path.join(__dirname, 'media', 'webview.js'), 'utf8');
 const ui = {};
 const classes = new Set();
-vm.runInNewContext(`${slice(webview, '    function applyAvailabilityState', '    function initCommentaryTab')}\nout.apply = applyAvailabilityState;`, { out: ui, document: { body: { classList: { toggle(name, on) { if (on) classes.add(name); else classes.delete(name); } } } } });
+const config = { exports: {} };
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src/availability/presence.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: config.exports });
+let flyout, posted;
+const browser = { out: ui, Date, escapeHtml: s => s, vscode: { postMessage: message => { posted = message; } }, document: {
+    getElementById: () => flyout,
+    createElement: () => ({ innerHTML: '', handlers: {}, setAttribute() {}, addEventListener(type, fn) { this.handlers[type] = fn; }, querySelector() { return { focus() {} }; }, remove() { flyout = null; } }),
+    body: { appendChild(el) { flyout = el; }, style: { setProperty() {} }, classList: { toggle(name, on) { if (on) classes.add(name); else classes.delete(name); } } }
+} };
+vm.runInNewContext(`${slice(webview, '    var presenceStates =', '    function initCommentaryTab')}\npresenceStates = out.states; out.apply = applyAvailabilityState; out.open = openPresence; out.choose = choosePresence;`, { ...browser, out: Object.assign(ui, { states: config.exports.presenceStates }) });
 const manifest = require('./package.json');
 for (const mode of ['here', 'away', 'awayValidator', 'offline']) {
     ui.apply({ mode });
     assert.deepEqual([...classes], ['avail-' + mode]);
     const command = manifest.contributes.commands.find(row => row.command === 'askaway.availability.' + mode);
     assert.ok(command);
-    for (const theme of ['light', 'dark']) assert.match(fs.readFileSync(path.join(__dirname, command.icon[theme]), 'utf8'), /<svg/);
+    for (const theme of ['light', 'dark']) {
+        const icon = fs.readFileSync(path.join(__dirname, command.icon[theme]), 'utf8');
+        assert.match(icon, /<svg/); assert.match(icon, /cx="15" cy="15"/, 'avatar has a presence badge');
+    }
     assert.ok(manifest.contributes.menus['view/title'].some(row => row.command === command.command && row.group === 'navigation@0' && row.when === `view == askAwayView && askaway.availability == '${mode}'`));
 }
 assert.doesNotMatch(webview, /cm-avail|availabilityControlHtml/);
-assert.match(webview, /case 'availabilityState':\s*applyAvailabilityState\(message\.data\)/);
+assert.match(webview, /case 'openPresence':\s*openPresence\(\)/);
 const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
 assert.doesNotMatch(provider, /id="cm-avail"/);
 assert.match(provider, /case 'setAvailability'/);
@@ -44,12 +55,22 @@ vm.runInNewContext(code, { require, exports: mod.exports, module: mod, Date, fs,
 const { writeAvailability, readAvailability } = mod.exports;
 const extension = fs.readFileSync(path.join(__dirname, 'src', 'extension.ts'), 'utf8');
 const commands = {};
-let selected, contextMode;
-const pickerCode = slice(extension, '        const presence = [', '        // Session commands');
+let opened = 0;
+const pickerCode = slice(extension, '        for (const item of presenceStates)', '        // Session commands');
 vm.runInNewContext(ts.transpileModule(pickerCode, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, {
-    vscode: { workspace: { workspaceFolders: [{ uri: { fsPath: '/fixture' } }] }, window: { showQuickPick: async items => { assert.equal(items.length, 4); assert.match(items[0].description, /Current/); return items.find(row => row.mode === selected); } }, commands: { registerCommand: (name, fn) => { commands[name] = fn; return {}; } } },
-    context: { subscriptions: [] }, readAvailability: () => ({ mode: 'here' }), writeAvailability: (_root, state) => { contextMode = state.mode; }, provider: { _pushAvailability() {} }
+    presenceStates: config.exports.presenceStates,
+    vscode: { commands: { registerCommand: (name, fn) => { commands[name] = fn; return {}; } } },
+    context: { subscriptions: [] }, provider: { openPresence() { opened++; }, _pushAvailability() {} }
 });
+assert.doesNotMatch(pickerCode, /showQuickPick/);
+assert.match(provider, /_broadcast\(\{ type: 'openPresence' \}\)/);
+ui.open();
+for (const state of config.exports.presenceStates) {
+    assert.ok(flyout.innerHTML.includes(state.label)); assert.ok(flyout.innerHTML.includes(state.meaning));
+    assert.ok(flyout.innerHTML.includes('data-presence="' + state.id + '"'));
+}
+assert.match(flyout.innerHTML, /presence-badge/);
+flyout.handlers.keydown({ key: 'Escape', preventDefault() {} }); assert.equal(flyout, null);
 const css = fs.readFileSync(path.join(__dirname, 'media', 'main.css'), 'utf8');
 assert.match(css, /prefers-reduced-motion/);
 assert.match(css, /body\.avail-awayValidator::before[^}]+animation: presence-glow/);
@@ -80,7 +101,19 @@ try {
         writeAvailability(workspace, { mode }, home);
         assert.equal(readAvailability(workspace, home).mode, mode);
     }
-    (async () => { for (const mode of ['here', 'away', 'awayValidator', 'offline']) { selected = mode; await commands['askaway.availability.' + mode](); assert.equal(contextMode, mode); } console.log('PASS EV-AVAILABILITY-UI four title commands; picker writes four states; body frames; Commentary selector absent'); })().catch(error => { console.error(error); process.exitCode = 1; });
+    for (const mode of ['here', 'away', 'awayValidator', 'offline']) {
+        commands['askaway.availability.' + mode](); ui.open(); ui.choose(mode);
+        assert.equal(posted.mode, mode); writeAvailability(workspace, posted, home);
+        ui.apply(readAvailability(workspace, home)); assert.deepEqual([...classes], ['avail-' + mode]);
+    }
+    assert.equal(opened, 4);
+    ui.open(); flyout.handlers.change({ target: { value: '30m' } }); ui.choose('away');
+    assert.ok(Date.parse(posted.until) > Date.now() + 29 * 60000);
+    writeAvailability(workspace, { mode: 'away', until: new Date(Date.now() - 1000).toISOString() }, home);
+    assert.equal(readAvailability(workspace, home).mode, 'here');
+    assert.equal(JSON.parse(fs.readFileSync(mod.exports.availabilityFile(workspace, home), 'utf8')).mode, 'here');
+    assert.equal(provider.replace(/\r\n/g, '').includes('\n'), false, 'CRLF preserved');
+    console.log('PASS EV-AVAILABILITY-UI title openPresence; config four-state flyout badge/label/meaning; persisted selection/frame; reset expiry Here; Escape; quick pick removed; CRLF');
 } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(workspace, { recursive: true, force: true });

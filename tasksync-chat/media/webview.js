@@ -1426,7 +1426,11 @@
                 applyCommentaryState(message.data);
                 break;
             case 'availabilityState':
+                presenceStates = message.states || presenceStates;
                 applyAvailabilityState(message.data);
+                break;
+            case 'openPresence':
+                openPresence();
                 break;
             case 'updateQueue':
                 promptQueue = message.queue || [];
@@ -5317,12 +5321,56 @@
         }
     }
 
+    var presenceStates = [];
+    var presenceState = { mode: 'here' };
+    var presenceReset = 'never';
+    var presenceResetOptions = [{ id: '30m', label: '30 min', minutes: 30 }, { id: '1h', label: '1 h', minutes: 60 }, { id: '2h', label: '2 h', minutes: 120 }, { id: 'today', label: 'Today' }, { id: 'never', label: 'Never' }];
     function applyAvailabilityState(state) {
-        var modes = ['here', 'away', 'awayValidator', 'offline'];
-        var mode = state && modes.indexOf(state.mode) >= 0 ? state.mode : 'here';
-        modes.forEach(function (value) {
-            document.body.classList.toggle('avail-' + value, value === mode);
+        presenceState = state || { mode: 'here' };
+        presenceStates.forEach(function (value) {
+            document.body.classList.toggle('avail-' + value.id, value.id === presenceState.mode);
+            if (value.id === presenceState.mode) {
+                document.body.style.setProperty('--presence', value.colour);
+                document.body.style.setProperty('--presence-accent', value.accent);
+            }
         });
+    }
+    function presenceBadge(state) {
+        return '<span class="presence-badge" style="--badge:' + state.colour + '" role="img" aria-label="' + escapeHtml(state.label) + '">' + state.icon + '</span>';
+    }
+    function closePresence() { var el = document.getElementById('presence-flyout'); if (el) el.remove(); }
+    function choosePresence(mode) {
+        var option = presenceResetOptions.find(function (item) { return item.id === presenceReset; });
+        var until = '';
+        if (option.minutes) until = new Date(Date.now() + option.minutes * 60000).toISOString();
+        if (option.id === 'today') { var end = new Date(); end.setHours(24, 0, 0, 0); until = end.toISOString(); }
+        vscode.postMessage({ type: 'setAvailability', mode: mode, until: until, note: '' });
+        closePresence();
+    }
+    function openPresence() {
+        closePresence();
+        var el = document.createElement('section');
+        el.id = 'presence-flyout'; el.className = 'presence-flyout'; el.setAttribute('aria-label', 'Your availability');
+        el.innerHTML = '<div class="presence-profile"><span class="presence-avatar" aria-hidden="true">You</span><strong>Personal availability</strong></div>' +
+            '<div class="presence-menu" role="menu" aria-label="Choose availability">' + presenceStates.map(function (state) {
+                return '<button type="button" role="menuitemradio" aria-checked="' + (state.id === presenceState.mode) + '" data-presence="' + state.id + '">' + presenceBadge(state) + '<span><strong>' + escapeHtml(state.label) + '</strong><small>' + escapeHtml(state.meaning) + '</small></span></button>';
+            }).join('') + '</div><label class="presence-reset">Reset status after<select aria-label="Reset status after">' + presenceResetOptions.map(function (option) {
+                return '<option value="' + option.id + '"' + (presenceReset === option.id ? ' selected' : '') + '>' + option.label + '</option>';
+            }).join('') + '</select></label>';
+        el.addEventListener('click', function (event) { var button = event.target.closest('[data-presence]'); if (button) choosePresence(button.dataset.presence); });
+        el.addEventListener('change', function (event) { presenceReset = event.target.value; });
+        el.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') { closePresence(); event.preventDefault(); return; }
+            if (!event.target.matches('[data-presence]')) return;
+            var buttons = Array.from(el.querySelectorAll('[data-presence]')); var index = buttons.indexOf(event.target);
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+                index = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+                buttons[index].focus(); event.preventDefault();
+            }
+        });
+        el.addEventListener('focusout', function (event) { if (!el.contains(event.relatedTarget)) closePresence(); });
+        document.body.appendChild(el);
+        var current = el.querySelector('[aria-checked="true"]'); if (current) current.focus();
     }
 
     function initCommentaryTab() {
