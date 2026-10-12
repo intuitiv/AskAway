@@ -4,6 +4,7 @@
  */
 (function () {
     const vscode = acquireVsCodeApi();
+    window.askawayPostMessage = function (message) { vscode.postMessage(message); };
     const WEBVIEW_UI_VERSION = 'specs-health-telegram-v9';
 
     // Restore persisted state (survives sidebar switch)
@@ -161,7 +162,7 @@
     var availableModels = []; // [{id, name, vendor, family, maxInputTokens}]
     var availableTools = []; // [{name, description}]
     var activeWorkerTaskId = { command: null, subagent: null };
-    var currentTab = 'chat'; // 'chat' | 'commands' | 'subagents' | 'observability' | 'settings'
+    var currentTab = 'aitalk';
 
     // Mirror backend minimal worker tool allowlist to prevent oversized/stale payloads.
     var MINIMAL_WORKER_TOOL_NAMES = new Set([
@@ -6089,6 +6090,7 @@
     }
 
     function switchTab(tab) {
+        if (tab === 'aitalk') vscode.postMessage({ type: 'requestAITalk' });
         currentTab = tab;
         document.querySelectorAll('.widget-tab').forEach(function(btn) {
             btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);

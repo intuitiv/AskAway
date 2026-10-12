@@ -1,1 +1,1 @@
-export * from './talkRender.js';
+export * from '../../media/aitalk/talkRender.js';

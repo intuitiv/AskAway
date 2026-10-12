@@ -4837,6 +4837,8 @@ button#send-btn:disabled {
 }
 .cm-goal-input:focus { outline: 1px solid #8b5cf6; }
 .cm-toolbar { display: flex; justify-content: flex-end; gap: 2px; }
+#panel-aitalk { min-height: 0; }
+#aitalk-root { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
 .trace-group { margin: 8px 0; border: 1px solid var(--vscode-widget-border); border-radius: 6px; }
 .trace-group > summary { padding: 8px; cursor: pointer; font-weight: 600; }
 #obs-trace-groups ~ .observability-model-note, #obs-trace-groups ~ .obs-cache-row ~ .observability-model-note { display: none; }

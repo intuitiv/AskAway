@@ -1,4 +1,4 @@
-// AITalk prototype renderer: pure functions, messages array -> HTML string.
+// Shared AITalk renderer: pure functions, messages array -> HTML string.
 // Production can adopt these as-is; nothing here touches the DOM.
 
 export const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

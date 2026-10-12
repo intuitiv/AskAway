@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { talkHtml, traceHtml, scenarios, traceSessions, liveStart, liveScript, ticksHtml, whoClass, reactionNote, splitBody, bodyHtml } from './talk.js';
 import { buildCommentaryKit } from '../kit.js';
 import { defaultMembers, postMessage, presenceChange, primaryReply, reactionRoute, reactMessage, selectReply, replyMessage, deliveryEvent, nextToolCall } from './talkRules.js';
-const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+const read = path => readFileSync(new URL(path === './talk.css' ? '../../media/aitalk/talk.css' : path, import.meta.url), 'utf8');
 const count = (html, pattern) => (html.match(pattern) || []).length;
 
 test('full conversation has tails only on first bubble of a run, sender names and system pills', () => {

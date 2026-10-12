@@ -17,6 +17,7 @@ import { defaultIO } from '../cloud/cloudQueue';
 import { PacketTask } from '../cloud/packet';
 import { projectWorkersState, sessionOpenCommand, traceEvents, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
 import { ValidatorRecords } from '../validator/records';
+import { AITalkStore } from '../aitalk/store';
 import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
 import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
@@ -424,6 +425,7 @@ export function writeAvailability(workspace: string, input: { mode?: unknown; un
 /** Bump to force a one-time clean rebuild of the global month shard when fold logic changes. */
 // Message types
 type ToWebviewMessage =
+    | { type: 'aitalkState'; data: ReturnType<AITalkStore['snapshot']> }
     | { type: 'specsData'; data: SpecScanResult }
     | { type: 'workersState'; data: (WorkersState & { cloudWorkers?: Awaited<ReturnType<CloudSpecsController['workers']>> }) | null }
     | { type: 'workerTrace'; data: WorkerTrace }
@@ -489,6 +491,9 @@ type ToWebviewMessage =
     | { type: 'clear' };
 
 type FromWebviewMessage =
+    | { type: 'requestAITalk' }
+    | { type: 'aitalkPost' | 'aitalkReply'; text: string; replyTo?: string }
+    | { type: 'aitalkReact'; replyTo: string; emoji: string }
     | { type: 'requestSpecs' }
     | { type: 'openSpecFile'; dir: string; file: string }
     | { type: 'queueCloudTask'; slug: string; taskId: string }
@@ -4497,6 +4502,20 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      */
     private _handleWebviewMessage(message: FromWebviewMessage): void {
         switch (message.type) {
+            case 'requestAITalk':
+            case 'aitalkPost':
+            case 'aitalkReply':
+            case 'aitalkReact': {
+                const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (!root) break;
+                const store = new AITalkStore(root);
+                try {
+                    if (message.type === 'aitalkPost' || message.type === 'aitalkReply') store.post(message.text, message.replyTo);
+                    if (message.type === 'aitalkReact') store.react(message.replyTo, message.emoji);
+                    this._broadcast({ type: 'aitalkState', data: store.snapshot() });
+                } catch (error) { console.warn('[AskAway] AITalk post failed:', error); }
+                break;
+            }
             case 'requestSpecs':
                 this._refreshSpecs();
                 break;
@@ -6379,6 +6398,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _getHtmlContent(webview: vscode.Webview): string {
         const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'main.css'));
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'webview.js'));
+        const talkScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'aitalk', 'extension.js'));
+        const talkStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'aitalk', 'talk.css'));
         const cacheBust = String(Date.now());
         const styleUriWithVersion = `${styleUri}?v=${cacheBust}`;
         const scriptUriWithVersion = `${scriptUri}?v=${cacheBust}`;
@@ -6392,9 +6413,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource}; script-src 'nonce-${nonce}' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src ${webview.cspSource} data: mediastream:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource}; script-src ${webview.cspSource} 'nonce-${nonce}' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src ${webview.cspSource} data: mediastream:;">
     <link href="${codiconsUri}" rel="stylesheet">
     <link href="${styleUriWithVersion}" rel="stylesheet">
+    <link href="${talkStyleUri}" rel="stylesheet">
     <title>AskAway</title>
     <audio id="notification-sound" preload="auto" src="${notificationSoundUri}"></audio>
 </head>
@@ -6402,12 +6424,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     <div class="main-container">
         <!-- Tab Bar -->
         <div class="widget-tabs" id="widget-tabs">
-            <button class="widget-tab active" data-tab="chat" title="Main chat">Chat</button>
+            <button class="widget-tab active" data-tab="aitalk" title="Workspace group chat">AITalk</button>
             <button class="widget-tab hidden" data-tab="specs" id="tab-specs" title="Spec Kit features: progress, next task, active feature">Specs</button>
-            <button class="widget-tab" data-tab="workers" title="OpenCode workers in this workspace: state, cost, session links">Workers <span class="tab-badge hidden" id="tab-badge-workers"></span></button>
-            <button class="widget-tab" data-tab="commentary" title="Live orchestrator commentary and the main goal">Commentary <span class="tab-badge hidden" id="tab-badge-commentary"></span></button>
             <button class="widget-tab" data-tab="observability" title="Main agent, workers and validator traces">Trace</button>
+            <button class="widget-tab" data-tab="workers" title="OpenCode workers in this workspace: state, cost, session links">Workers <span class="tab-badge hidden" id="tab-badge-workers"></span></button>
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
+            <button class="widget-tab" data-tab="chat" title="Main chat">Chat</button>
         </div>
         <div class="conversation-health" title="Conversation cost and cache health">
             <button type="button" class="health-metrics" title="Open Metrics"><span id="common-turn-summary">0 req &middot; <strong class="health-cost">$0.00</strong> &middot; 0 last in / 0 turn out &middot; &ndash; cache</span><strong id="common-cache-age" class="health-cache">Age: -</strong></button>
@@ -6415,7 +6437,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         </div>
 
         <!-- Chat Panel -->
-        <div class="tab-panel active" id="panel-chat">
+        <div class="tab-panel active" id="panel-aitalk"><div id="aitalk-root" class="talk-prototype"><div class="talk-thread">Loading AITalk…</div></div></div>
+        <div class="tab-panel" id="panel-chat">
         <!-- Chat Container -->
         <div class="chat-container" id="chat-container">
             <!-- Welcome Section - Let's build -->
@@ -6775,6 +6798,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         </div>
     </div>
     <script nonce="${nonce}" src="${scriptUriWithVersion}"></script>
+    <script type="module" nonce="${nonce}" src="${talkScriptUri}"></script>
 </body>
 </html>`;
     }

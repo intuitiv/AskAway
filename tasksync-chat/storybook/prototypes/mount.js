@@ -1,7 +1,7 @@
 import webviewSrc from '../../media/webview.js?raw';
 import providerSrc from '../../src/webview/webviewProvider.ts?raw';
 import cssText from '../../media/main.css?raw';
-import prototypeCss from './talk.css?raw';
+import prototypeCss from '../../media/aitalk/talk.css?raw';
 import { buildCommentaryKit, VSCODE_DARK_THEME } from '../kit.js';
 import { talkHtml, traceHtml, traceSessions, defaultMembers } from './talk.js';
 import { displayName, owner, postMessage, presenceChange, reactionRoute, reactMessage, selectReply, replyMessage, deliveryEvent, nextToolCall } from './talkRules.js';
