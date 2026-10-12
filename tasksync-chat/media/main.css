@@ -4837,6 +4837,10 @@ button#send-btn:disabled {
 }
 .cm-goal-input:focus { outline: 1px solid #8b5cf6; }
 .cm-toolbar { display: flex; justify-content: flex-end; gap: 2px; }
+.trace-group { margin: 8px 0; border: 1px solid var(--vscode-widget-border); border-radius: 6px; }
+.trace-group > summary { padding: 8px; cursor: pointer; font-weight: 600; }
+#obs-trace-groups ~ .observability-model-note, #obs-trace-groups ~ .obs-cache-row ~ .observability-model-note { display: none; }
+#obs-turn-view > .obs-timeline-table { display: none; }
 body.avail-here, .availability-frame.avail-here { --presence: #22c55e; }
 body.avail-away, .availability-frame.avail-away { --presence: #f59e0b; }
 body.avail-awayValidator, .availability-frame.avail-awayValidator { --presence: #8b5cf6; }

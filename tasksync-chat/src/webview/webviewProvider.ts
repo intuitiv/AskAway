@@ -15,7 +15,8 @@ import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
 import { CloudSpecsController, shouldPollCloud } from '../cloud/cloudSpecs';
 import { defaultIO } from '../cloud/cloudQueue';
 import { PacketTask } from '../cloud/packet';
-import { projectWorkersState, sessionOpenCommand, WorkersState, WorkerTrace } from '../workers/workersState';
+import { projectWorkersState, sessionOpenCommand, traceEvents, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
+import { ValidatorRecords } from '../validator/records';
 import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
 import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
@@ -128,6 +129,7 @@ interface ModelBreakdown extends ScopeMetrics {
 }
 
 interface ObservabilityMetrics {
+    traceGroups?: Array<{ id: string; label: string; events: TraceEvent[] }>;
     monthCredits?: { label: string; aiu: number; workerDollars: number; totalDollars: number; validatorDollars: number; evalDollars: number; allTimeDollars: number; allTimeAiu: number; months: Record<string, number> };
     // Flat fields mirror the workspace cumulative scope (kept for backward compatibility).
     requestCount: number;
@@ -2054,6 +2056,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 this._observabilityCache = this._stabilizeObservabilityMetrics(nextMetrics);
                 this._observabilityLastReadAt = Date.now();
                 const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                this._observabilityCache.traceGroups = root ? await this._turnTraceGroups(root) : [];
                 if (root) {
                     try { persistTurnTotals(root, this._lastSubmitTs, turnTotals(this._observabilityCache.lastRequest, this._observabilityCache.workers)); }
                     catch (error) { console.warn('[AskAway] Could not persist turn totals:', error); }
@@ -2656,6 +2659,38 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private _deriveLastRequest(): ScopeMetrics {
         return { ...this._lastRequestMetrics };
+    }
+
+    private async _turnTraceGroups(root: string): Promise<NonNullable<ObservabilityMetrics['traceGroups']>> {
+        const facts = sharedWorkerRuntime().facts(root).filter(fact => fact.ts >= this._lastSubmitTs);
+        const groups: NonNullable<ObservabilityMetrics['traceGroups']> = [];
+        for (const workerId of new Set(facts.map(fact => fact.workerId))) {
+            const owned = facts.filter(fact => fact.workerId === workerId);
+            const track = owned.find(fact => fact.track)?.track || '';
+            groups.push({ id: workerId, label: `${track === 'validator' ? 'Validator' : track || 'Worker'} · ${workerId}`, events: traceEvents(owned) });
+        }
+        let slugs: string[] = [];
+        try { slugs = await fs.promises.readdir(path.join(root, '.askaway', 'specs')); } catch { /* No validator records yet. */ }
+        for (const slug of slugs) {
+            for (const record of new ValidatorRecords(root, slug === '_no-spec' ? null : slug).responses()) {
+                if (!record || record.ts < this._lastSubmitTs) continue;
+                const worker = record.workerId && groups.find(group => group.id === record.workerId);
+                const group = worker || { id: `validator:${record.id}`, label: 'Validator', events: [] as TraceEvent[] };
+                if (!worker) {
+                    const u = record.usage;
+                    if (u) group.events.push({ kind: 'request', id: record.id, ts: record.ts, model: 'validator', dollars: u.cost,
+                        inputTokens: u.input + u.cacheRead + u.cacheWrite, outputTokens: u.output, cachedTokens: u.cacheRead });
+                    groups.push(group);
+                }
+                for (const field of ['answer', 'observations', 'summary', 'impact', 'error'] as const) {
+                    if (!record[field]) continue;
+                    group.events.push({ kind: 'tool', id: `${record.id}:${field}`, ts: record.ts, tool: field, durMs: 0,
+                        status: field === 'error' ? 'error' : 'ok', inputTokens: 0, outputTokens: 0,
+                        inputPreview: record.observedId, outputPreview: String(record[field]) });
+                }
+            }
+        }
+        return groups;
     }
 
     private _workspaceCostHistory?: WorkspaceCostHistory;
@@ -6371,7 +6406,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <button class="widget-tab hidden" data-tab="specs" id="tab-specs" title="Spec Kit features: progress, next task, active feature">Specs</button>
             <button class="widget-tab" data-tab="workers" title="OpenCode workers in this workspace: state, cost, session links">Workers <span class="tab-badge hidden" id="tab-badge-workers"></span></button>
             <button class="widget-tab" data-tab="commentary" title="Live orchestrator commentary and the main goal">Commentary <span class="tab-badge hidden" id="tab-badge-commentary"></span></button>
-            <button class="widget-tab" data-tab="observability" title="Turn trace and RTK/Gradle savings">Metrics</button>
+            <button class="widget-tab" data-tab="observability" title="Main agent, workers and validator traces">Trace</button>
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
         </div>
         <div class="conversation-health" title="Conversation cost and cache health">

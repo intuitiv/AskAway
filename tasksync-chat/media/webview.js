@@ -797,7 +797,7 @@
         header.className = 'settings-modal-header';
         var title = document.createElement('span');
         title.className = 'settings-modal-title';
-        title.textContent = 'Observability';
+        title.textContent = 'Trace';
         header.appendChild(title);
         container.appendChild(header);
 
@@ -807,13 +807,14 @@
         var observabilitySection = document.createElement('div');
         observabilitySection.className = 'settings-section';
         observabilitySection.innerHTML = '<div class="observability-rtk-line" id="obs-workspace-month"></div>' + '<div class="settings-section-header">' +
-            '<div class="settings-section-title"><span class="codicon codicon-pulse"></span> Observability</div>' +
+            '<div class="settings-section-title"><span class="codicon codicon-pulse"></span> Trace</div>' +
             '</div>' +
             '<div class="obs-optimizations">' +
             '<div class="observability-rtk-line" id="observability-rtk-line">RTK: 0 calls \u00b7 0 saved \u00b7 0%</div>' +
             '<div class="observability-rtk-line" id="observability-gradle-line">Gradle: 0 runs \u00b7 0 optimized \u00b7 ~0 tokens saved</div>' +
             '</div>' +
             '<div id="obs-turn-view">' +
+            '<div id="obs-trace-groups"></div>' +
             '<div class="obs-turn-summary" id="obs-turn-summary">No requests yet this turn</div>' +
             '<div class="obs-cache-row">' +
             '<div class="obs-cache-age" id="obs-cache-age" title="Time since the last model request. The prompt prefix cache stays warm for ~5 min; past that a new message likely incurs a cache MISS (more expensive). A long-running tool ages this clock too.">Prompt cache age: \u2013</div>' +
@@ -1557,6 +1558,7 @@
                         cachedTokens: Number(message.metrics.cachedTokens) || 0,
                         nanoAiu: Number(message.metrics.nanoAiu) || 0,
                         monthCredits: message.metrics.monthCredits || null,
+                        traceGroups: message.metrics.traceGroups || [],
                         lastRequest: sanitizeScope(message.metrics.lastRequest),
                         workspace: sanitizeScope(message.metrics.workspace),
                         overall: sanitizeScope(message.metrics.overall),
@@ -1587,6 +1589,7 @@
                             if (event && event.kind === 'tool') {
                                 return {
                                     kind: 'tool',
+                                    ts: Number(event.ts) || 0,
                                     id: typeof event.id === 'string' ? event.id : '?????',
                                     tool: typeof event.tool === 'string' ? event.tool : 'unknown',
                                     status: typeof event.status === 'string' ? event.status : 'ok',
@@ -1602,6 +1605,7 @@
                             }
                             return {
                                 kind: 'request',
+                                ts: Number(event && event.ts) || 0,
                                 id: event && typeof event.id === 'string' ? event.id : '?????',
                                 model: event && typeof event.model === 'string' ? event.model : 'unknown',
                                 nanoAiu: Number(event && event.nanoAiu) || 0,
@@ -3011,6 +3015,14 @@
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
         });
     }
+    function traceGroupsHtml(main, groups, openGroups) {
+        return [{ id: 'main', label: 'Main agent', events: main || [] }].concat(groups || []).map(function (group) {
+            var events = (group.events || []).slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+            var cost = events.reduce(function (sum, event) { return sum + (event.kind === 'request' ? Number(event.dollars != null ? event.dollars : (event.nanoAiu || 0) / 1e11) : 0); }, 0);
+            return '<details class="trace-group" data-trace-group="' + escapeHtml(group.id) + '"' + (openGroups && openGroups.has(group.id) ? ' open' : '') + '><summary>' + escapeHtml(group.label) + ' · $' + cost.toFixed(2) + '</summary><table class="observability-table obs-timeline-table">' + TRACE_HEAD + '<tbody>' + traceRowsHtml(events, {}) + '</tbody></table></details>';
+        }).join('');
+    }
+
     function traceRowsHtml(events, ctx) {
         ctx = ctx || {};
         var openIds = ctx.openIds || {};
@@ -3364,6 +3376,20 @@
         }
 
         // ── This turn: chronological timeline — LLM rows in columns, tool rows expandable ──
+        var groupHost = document.getElementById('obs-trace-groups');
+        if (groupHost) {
+            var openGroups = new Set(Array.from(groupHost.querySelectorAll('details[open]')).map(function (el) { return el.getAttribute('data-trace-group'); }));
+            groupHost.innerHTML = traceGroupsHtml(observabilityMetrics.turnEvents, observabilityMetrics.traceGroups, openGroups);
+            if (!groupHost._traceClickBound) {
+                groupHost._traceClickBound = true;
+                groupHost.addEventListener('click', function (event) {
+                    var row = event.target.closest('tr.obs-clickable');
+                    if (!row) return;
+                    var detail = row.parentNode.querySelector('tr.obs-detail-row[data-for="' + row.getAttribute('data-eid') + '"]');
+                    if (detail) { detail.style.display = detail.style.display === 'none' ? '' : 'none'; row.classList.toggle('obs-expanded', detail.style.display !== 'none'); }
+                });
+            }
+        }
         var eventTbody = document.getElementById('obs-turn-event-tbody');
         if (eventTbody) {
             var events = observabilityMetrics.turnEvents || [];

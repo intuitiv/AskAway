@@ -113,7 +113,7 @@ function shortId(value: string, fallback: string): string {
     return tail || fallback;
 }
 
-function traceEvents(facts: LifecycleRecord[]): TraceEvent[] {
+export function traceEvents(facts: LifecycleRecord[]): TraceEvent[] {
     const events: TraceEvent[] = [];
     // A step's usage arrives after its tools ran; like the Metrics trace, the request row leads its tools.
     let stepTools: TraceEvent[] = [];

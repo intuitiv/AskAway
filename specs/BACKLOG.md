@@ -139,3 +139,9 @@ GAP means a missing spec contract, not necessarily missing implementation. Exist
 | N12-8 | AITalk tick states for agent and validator recipients | NEEDS-DECISION (Q2) |
 | N12-9 | AITalk: user cannot reply to a message (bug) | DONE in prototype f317d78 (Reply + quote bar) |
 | N12-10 | AITalk generic: registry + rank user > validator > agent > worker, no hard-coded participants | DONE in prototype f317d78 (config-only new agent story); production build waits for approval |
+| N12-11 | VS Code notification when the user needs attention (heads-up, question, AITalk @mention) — when Here and window/panel not in focus | NEXT after Webex lane (extension.ts commentary listener ~1073) |
+| N12-12 | Trace tab shows main agent, every worker and Validator traces with the shared trace rows | IN PROGRESS (worker W-trace) |
+| N12-13 | GitHub cost dry run on PR 1608 runs | DONE read-only: run timing readable (duration, billable ms); user billing + premium requests need `user` scope (reviewer runs `gh auth refresh -h github.com -s user`); org billing needs admin:org |
+| N12-14 | Stray `specs/<n>-<slug>/tasks.md` folders created by ask capture for unknown slugs | OPEN: route unknown slugs to BACKLOG.md |
+| N12-15 | AITalk production build (spec 003) A1 mount+tabs, A2 store+registry, A3 composer/reply/next-tool delivery, A4 Validator triggers (user mention/reply, agent/worker questions, end-of-turn batch of whole conversation), A5 join/leave + ticks, A6 Webex draft 👍 approval | NEXT on the webview lane after Trace |
+| N12-16 | Validator: no model call for generic agent messages/commentary; one long-lived session per turn | DONE cedda0d (stores; calls only on questions + end batch) |
