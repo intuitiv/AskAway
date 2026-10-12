@@ -3231,7 +3231,11 @@
         renderConversationHealth();
         var monthLine = document.getElementById('obs-workspace-month');
         var month = observabilityMetrics.monthCredits;
-        if (monthLine && month) monthLine.textContent = month.label + ' · this workspace: ' + Number(month.aiu).toLocaleString('en', { maximumFractionDigits: 2 }) + ' AIU chat · $' + Number(month.workerDollars).toFixed(2) + ' workers';
+        if (monthLine && month) {
+            monthLine.textContent = month.label + ' · this workspace: $' + Number(month.totalDollars).toFixed(2) + ' ($' + Number(month.workerDollars).toFixed(2) + ' workers)';
+            monthLine.style.color = 'var(--vscode-errorForeground)';
+            monthLine.title = 'All-time this workspace: $' + Number(month.allTimeDollars).toFixed(2);
+        }
         var aiu = function (nano) { return formatObservabilityCompact((Number(nano) || 0) / 1000000000); };
         var num = formatObservabilityNumber;
         var tok = formatObservabilityCompact;

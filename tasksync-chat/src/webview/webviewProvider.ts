@@ -21,12 +21,14 @@ import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
 import { noteRequestStart } from '../observability/cacheClock';
 import { LogCursor, readLogIncrement } from '../observability/logCursor';
+type WorkspaceCostHistory = { requests: Record<string, { ts: number; dollars: number; source: string }>; cursors: Record<string, LogCursor> };
 import type { TurnActivity } from '../commentary/telegramLive';
 import { CloudDigestScheduler, cloudDigestPoster } from '../cloud/cloudDigest';
 import { postRemoteQuestion } from '../services/remoteChannel';
 import { LongRunHandoff } from '../specs/handoffThreshold';
 import { HandoffNotifier } from '../services/handoffNotifier';
 import { observeWorkers, sharedCommentaryStore, sharedWorkerRuntime, workerSpendSince } from '../workers/workerHost';
+import { workspaceCostRequests } from '../services/workspaceCost';
 import { turnTotals, mergeToolUsage, persistTurnTotals } from '../workers/turnBudget';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
@@ -125,7 +127,7 @@ interface ModelBreakdown extends ScopeMetrics {
 }
 
 interface ObservabilityMetrics {
-    monthCredits?: { label: string; aiu: number; workerDollars: number };
+    monthCredits?: { label: string; aiu: number; workerDollars: number; totalDollars: number; validatorDollars: number; evalDollars: number; allTimeDollars: number; allTimeAiu: number; months: Record<string, number> };
     // Flat fields mirror the workspace cumulative scope (kept for backward compatibility).
     requestCount: number;
     inputTokens: number;
@@ -2199,7 +2201,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     inputTokens: ledger.inputTokens,
                     outputTokens: ledger.outputTokens,
                     cachedTokens: ledger.cachedTokens,
-                    nanoAiu: ledger.nanoAiu,
+                    nanoAiu: monthCredits.allTimeAiu * 1e9,
                     cacheMisses: ledger.cacheMisses || 0
                 };
                 const base = emptyMetrics();
@@ -2591,6 +2593,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 cacheMisses: ledger.cacheMisses || 0
             };
             const monthCredits = await this._computeWorkspaceMonth();
+            workspaceScope.nanoAiu = monthCredits.allTimeAiu * 1e9;
             const rtk = await this._collectRtkObservability();
             const gradleObs = await this._collectGradleObservability();
             const toolObs = await this._collectToolCallObservability();
@@ -2641,25 +2644,55 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         return { ...this._lastRequestMetrics };
     }
 
-    private async _computeWorkspaceMonth(): Promise<{ label: string; aiu: number; workerDollars: number }> {
+    private _workspaceCostHistory?: WorkspaceCostHistory;
+
+    private async _computeWorkspaceMonth(): Promise<NonNullable<ObservabilityMetrics['monthCredits']>> {
         const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-        const end = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+        const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+        const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
         let nanoAiu = 0;
-        for (const file of (await this._findWorkspaceCopilotDebugLogFiles()).filter(file => path.basename(file) === 'main.jsonl')) {
-            let raw: string;
-            try { raw = await fs.promises.readFile(file, 'utf8'); } catch { continue; }
-            for (const line of raw.split('\n')) {
+        let allTimeNanoAiu = 0;
+        const months: Record<string, number> = {};
+        const history = this._workspaceCostHistory ??= this._context.workspaceState.get<WorkspaceCostHistory>('workspace-cost-history-v1', { requests: {}, cursors: {} });
+        const add = (ts: number, dollars: number) => {
+            const key = new Date(ts).toISOString().slice(0, 7);
+            months[key] = (months[key] ?? 0) + dollars;
+        };
+        for (const file of await this._findWorkspaceCopilotDebugLogFiles()) {
+            let increment: Awaited<ReturnType<typeof readLogIncrement>>;
+            try { increment = await readLogIncrement(file, history.cursors[file]); } catch { continue; }
+            history.cursors[file] = increment.cursor;
+            let index = increment.lineIndexBase;
+            for (const line of increment.raw.split('\n')) {
+                const lineIndex = index++;
                 try {
                     const row = JSON.parse(line);
                     const nano = row?.attrs?.copilotUsageNanoAiu;
-                    if (typeof row?.ts === 'number' && row.ts >= start && row.ts < end && typeof nano === 'number' && Number.isFinite(nano)) { nanoAiu += nano; }
+                    if (row?.type !== 'llm_request' || !Number.isFinite(row.ts) || typeof nano !== 'number' || !Number.isFinite(nano)) continue;
+                    const id = 'copilot:' + (row.attrs?.responseId ?? row.attrs?.requestId ?? `${file}:${lineIndex}:${this._hashText(line)}`);
+                    history.requests[id] ??= { ts: row.ts, dollars: nano / 1e11, source: 'copilot' };
                 } catch { /* Malformed lines do not hide readable usage. */ }
             }
         }
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        return { label: now.toLocaleString('en', { month: 'long' }), aiu: nanoAiu / 1e9,
-            workerDollars: root ? workerSpendSince(root, start).dollars : 0 };
+        const local = { workerDollars: 0, validatorDollars: 0, evalDollars: 0 };
+        for (const row of root ? await workspaceCostRequests(root) : []) {
+            history.requests[row.id] ??= row;
+        }
+        await this._context.workspaceState.update('workspace-cost-history-v1', history);
+        for (const row of Object.values(history.requests)) {
+            add(row.ts, row.dollars);
+            if (row.source === 'copilot') allTimeNanoAiu += row.dollars * 1e11;
+            if (row.ts < start || row.ts >= end) continue;
+            if (row.source === 'copilot') nanoAiu += row.dollars * 1e11;
+            else if (row.source === 'worker') local.workerDollars += row.dollars;
+            else if (row.source === 'validator') local.validatorDollars += row.dollars;
+            else local.evalDollars += row.dollars;
+        }
+        return { label: now.toLocaleString('en', { month: 'long', timeZone: 'UTC' }), aiu: nanoAiu / 1e9, ...local,
+            totalDollars: months[now.toISOString().slice(0, 7)] ?? 0, months,
+            allTimeAiu: allTimeNanoAiu / 1e9,
+            allTimeDollars: Object.values(months).reduce((sum, dollars) => sum + dollars, 0) };
     }
 
     /** A request is a "cache miss" when its cached portion is < 50% of its input tokens. */
