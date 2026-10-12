@@ -147,3 +147,7 @@ GAP means a missing spec contract, not necessarily missing implementation. Exist
 | N12-18 | askaway_webex removed from main agent LM tools; Webex worker uses the MCP suite | DONE 5c3b3b2 + manifest regenerated |
 | N12-15 | AITalk production build (spec 003) A1 mount+tabs, A2 store+registry, A3 composer/reply/next-tool delivery, A4 Validator triggers (user mention/reply, agent/worker questions, end-of-turn batch of whole conversation), A5 join/leave + ticks, A6 Webex draft 👍 approval | A1/A2 DONE 8c65c61 (EV-AITALK-EXTENSION; Commentary tab kept until A5); A3–A6 NEXT |
 | N12-16 | Validator: no model call for generic agent messages/commentary; one long-lived session per turn | DONE cedda0d (stores; calls only on questions + end batch) |
+| N12-19 | Light mode showed dark UI (AITalk, presence, frame) | DONE turn 5 (EV-THEME-LIGHT, theme variables) |
+| N12-20 | Commentary and AITalk both visible | DONE turn 5: Commentary tab removed; commentary posts are agent bubbles in AITalk; goal in Settings |
+| N12-21 | Extension spend incl. GitHub cloud runs in the month total | DONE turn 5 (EV-CLOUD-COST-ESTIMATE: run timing × official rates + $0.04/agent session, est.) |
+| N12-22 | Validator reuses one session while cache < 30 min and input ≤ 100K | DONE fdaf18d |

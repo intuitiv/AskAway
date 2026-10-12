@@ -4,6 +4,8 @@ description: "Task list for 006 Cloud Tasks"
 
 # Tasks: Cloud Tasks
 
+- [ ] T-COST [US1] Record cloud workflow IDs and once-only completed timing per workspace, estimate standard runner costs at official 2026-10-12 rates and one premium request per observed agent session. Implementation guard: `rtk node tasksync-chat/test-cloud-cost-estimate.cjs` → `PASS EV-CLOUD-COST-ESTIMATE`. Existing cloud regressions pass; cloud-story retains six pre-existing pending cases. Final month-workspace regression fails `provider retains CRLF` in concurrently edited webviewProvider.ts outside this packet; earlier run passed. TypeScript local compiler exits 0. Billing estimates are not invoice amounts. Acceptance awaits the unrelated CRLF fix and month-test rerun.
+
 **Input**: `specs/006-cloud-tasks/` — Goal.md, Rules.md, spec.md, plan.md (Decision Register C-1…C-23), data-model.md, contracts/, research.md; reviewer questions in checklists/analyze.md §2026-10-07.
 
 **Branch provenance**: generated on `main` at `1fc06d1`; implementation lands on the 006 story PR (one active PR per story).

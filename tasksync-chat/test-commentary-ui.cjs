@@ -100,7 +100,8 @@ console.log('EV-030a CommentaryFeedRender: PASS newestAtBottom=true refs=none ki
 
 // Markup and wiring: the tab exists, its controls send the backend messages, pushes are rendered.
 const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
-for (const id of ['data-tab="commentary" title="Live orchestrator commentary and the main goal">Commentary', 'id="panel-commentary"', 'id="cm-goal-input" rows="6"', 'id="cm-copy"', 'id="cm-clear"', 'id="cm-feed"']) {
+assert.doesNotMatch(provider, /data-tab="commentary"|id="panel-commentary"/);
+for (const id of ['id="cm-goal-input" rows="6"', 'id="cm-copy"', 'id="cm-clear"']) {
     assert.ok(provider.includes(id), `panel has ${id}`);
 }
 assert.ok(!provider.includes('data-cm-filter') && !provider.includes('cm-goal-label'), 'no filters and no goal heading');
@@ -118,7 +119,7 @@ for (const selector of ['.cm-heads-up', '.cm-heads-up-tag', '.cm-goal-input', '.
     const { buildCommentaryKit } = await import(path.join(__dirname, 'storybook', 'kit.js'));
     const kit = buildCommentaryKit({ webviewSrc: webview, providerSrc: provider });
     assert.equal(kit.renderCommentaryHtml(view), html, 'Storybook renders byte-identical feed HTML');
-    assert.match(kit.panelHtml, /^<div class="tab-panel active" id="panel-commentary">[\s\S]*id="cm-feed"[\s\S]*<!-- End panel-commentary -->$/);
+    assert.ok(provider.includes('id="panel-settings"'), 'main goal remains reachable in Settings');
 
     // Typewriter: a new line types in character by character; lines already seen do not.
     const node = (id, text, html) => {

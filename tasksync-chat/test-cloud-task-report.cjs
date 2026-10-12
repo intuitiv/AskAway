@@ -92,7 +92,9 @@ function signals(index, taskIndex = 0) { const p = structuredClone(fixture.polls
     assert.equal(stored[1].state, 'Needs review'); assert.equal(stored[2].state, 'Held'); assert.equal(posted, 1);
     const history = stored[0].history.length; await pollFixture();
     assert.equal(stored[0].history.length, history); assert.equal(posted, 1);
-    assert.ok(calls.every(args => args.at(-1) === 'repos/' + fixture.repo || args.at(-1).startsWith('repos/' + fixture.repo + '/'))); passed++;
+    assert.ok(calls.every(args => args[0] === 'run'
+        ? args[args.indexOf('--repo') + 1] === fixture.repo
+        : args.at(-1) === 'repos/' + fixture.repo || args.at(-1).startsWith('repos/' + fixture.repo + '/'))); passed++;
     stored = []; const before = calls.length; await pollFixture(); assert.equal(calls.length, before); passed++;
     console.log(`test-cloud-task-report: ${passed} passed, 0 failed (PR #1608 fixture replay)`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

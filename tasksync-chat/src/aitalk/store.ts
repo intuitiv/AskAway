@@ -27,7 +27,7 @@ export class AITalkStore {
         }
         return { messages: full ? messages : messages.slice(-500), members };
     }
-    post(text: string, replyTo?: string, author?: string, details?: string) {
+    post(text: string, replyTo?: string, author?: string, details?: string, kind?: string) {
         const state = this.snapshot(true);
         const user = state.members.find((member: any) => member.kind === 'user');
         const actor = author || user.id;
@@ -35,7 +35,7 @@ export class AITalkStore {
         this.markRead(actor);
         const message = rules.replyMessage(String(text).slice(0, 8000), actor, rules.selectReply(state.messages, replyTo), randomUUID());
         rules.postMessage(message, state.messages, state.members);
-        this.append({ ...message, ...(details ? { details: String(details).slice(0, 8000) } : {}), time: new Date().toTimeString().slice(0, 5), ts: Date.now() });
+        this.append({ ...message, ...(kind ? { kind } : {}), ...(details ? { details: String(details).slice(0, 8000) } : {}), time: new Date().toTimeString().slice(0, 5), ts: Date.now() });
         return this.snapshot();
     }
     reply(text: string, replyTo: string) { return this.post(text, replyTo); }

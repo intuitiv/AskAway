@@ -21,6 +21,8 @@
     "queuedAt": { "type": "string", "format": "date-time" },
     "startedAt": { "type": "string" },
     "endedAt": { "type": "string" },
+    "workflowRuns": { "type": "array", "items": { "type": "object", "required": ["id", "workspace", "headSha", "status", "ts"], "properties": { "id": { "type": "integer" }, "workspace": { "type": "string" }, "headSha": { "type": "string" }, "status": { "type": "string" }, "ts": { "type": "string" }, "timing": { "type": "array", "items": { "type": "object", "required": ["os", "billableMs", "runDurationMs", "estimated"], "properties": { "os": { "enum": ["Linux", "Windows", "macOS"] }, "billableMs": { "type": "number", "minimum": 0 }, "runDurationMs": { "type": "number", "minimum": 0 }, "estimated": { "const": true } } } } } } },
+    "agentSessions": { "type": "array", "items": { "type": "object", "required": ["id", "ts"], "properties": { "id": { "type": "string" }, "ts": { "type": "string" } } } },
     "commits": { "type": "array", "items": { "type": "object", "properties": { "sha": { "type": "string" }, "author": { "type": "string" }, "at": { "type": "string" } } } },
     "checkRuns": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "conclusion": { "type": "string" }, "url": { "type": "string" } } } },
     "blocker": { "type": "string" },

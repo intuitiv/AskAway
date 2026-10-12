@@ -29,7 +29,8 @@ export function mountTalk(options = {}) {
         const previousTop = before?.scrollTop;
         const wasAtBottom = before ? before.scrollHeight - before.scrollTop - before.clientHeight < 40 : true;
         const tab = root.querySelector('.talk-tabs [aria-pressed="true"]')?.dataset.tab;
-        root.innerHTML = `<style>${cssText}\n${VSCODE_DARK_THEME}\n${prototypeCss}</style>${talkHtml(messages, { ...options, members, typing, draft, reply, popover: draft.endsWith('@'), trace: traceHtml(traceSessions, traceRowsHtml) })}`;
+        const lightTheme = '.talk-prototype { --vscode-editor-background: white; --vscode-editorWidget-background: whitesmoke; --vscode-sideBar-background: whitesmoke; --vscode-foreground: black; --vscode-descriptionForeground: dimgray; --vscode-input-background: white; --vscode-panel-border: silver; --vscode-button-background: teal; --vscode-button-foreground: white; --vscode-textLink-foreground: blue; --vscode-widget-shadow: transparent; }';
+        root.innerHTML = `<style>${cssText}\n${options.theme === 'light' ? lightTheme : VSCODE_DARK_THEME}\n${prototypeCss}</style>${talkHtml(messages, { ...options, members, typing, draft, reply, popover: draft.endsWith('@'), trace: traceHtml(traceSessions, traceRowsHtml) })}`;
         const next = thread();
         if (!next) return;
         if (openId) root.querySelector(`.talk-bubble[data-msg="${CSS.escape(openId)}"]`)?.classList.add('reacting');

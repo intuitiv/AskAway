@@ -4843,25 +4843,29 @@ button#send-btn:disabled {
 .trace-group > summary { padding: 8px; cursor: pointer; font-weight: 600; }
 #obs-trace-groups ~ .observability-model-note, #obs-trace-groups ~ .obs-cache-row ~ .observability-model-note { display: none; }
 #obs-turn-view > .obs-timeline-table { display: none; }
-body.avail-here, .availability-frame.avail-here { --presence: #22c55e; }
-body.avail-away, .availability-frame.avail-away { --presence: #f59e0b; }
-body.avail-awayValidator, .availability-frame.avail-awayValidator { --presence: #8b5cf6; }
-body.avail-offline, .availability-frame.avail-offline { --presence: #9ca3af; }
+body.avail-here, .availability-frame.avail-here { --presence: var(--vscode-testing-iconPassed); }
+body.avail-away, .availability-frame.avail-away { --presence: var(--vscode-editorWarning-foreground); }
+body.avail-awayValidator, .availability-frame.avail-awayValidator { --presence: var(--vscode-charts-purple); }
+body.avail-offline, .availability-frame.avail-offline { --presence: var(--vscode-descriptionForeground); }
+.presence-badge.avail-here { --presence: var(--vscode-testing-iconPassed); }
+.presence-badge.avail-away { --presence: var(--vscode-editorWarning-foreground); }
+.presence-badge.avail-awayValidator { --presence: var(--vscode-charts-purple); }
+.presence-badge.avail-offline { --presence: var(--vscode-descriptionForeground); }
 body[class*="avail-"]::before, .availability-frame::before {
     content: ''; position: fixed; inset: 0; z-index: 10000; pointer-events: none;
     border: 2px solid transparent; border-radius: 8px;
     background: linear-gradient(135deg, var(--presence), var(--presence-accent, var(--presence)), color-mix(in srgb, var(--presence) 35%, var(--vscode-editor-background)), var(--presence)) border-box;
     background-size: 250% 250%; animation: presence-glow 7s ease-in-out infinite;
-    mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(var(--vscode-foreground) 0 0) padding-box, linear-gradient(var(--vscode-foreground) 0 0);
     mask-composite: exclude; box-shadow: inset 0 0 8px var(--presence);
 }
 body.avail-awayValidator::before, .availability-frame.avail-awayValidator::before { animation: presence-glow 4s ease-in-out infinite; }
 @keyframes presence-glow { 50% { background-position: 100% 100%; opacity: .7; } }
 @media (prefers-reduced-motion: reduce) { body[class*="avail-"]::before, .availability-frame::before, .presence-flyout { animation: none !important; } }
-.presence-flyout { position: fixed; z-index: 11000; top: 8px; right: 8px; width: 330px; max-width: calc(100vw - 16px); border: 1px solid var(--vscode-widget-border); border-radius: 12px; background: var(--vscode-editorWidget-background); color: var(--vscode-foreground); box-shadow: 0 16px 48px #0005; padding: 16px 0 10px; }
+.presence-flyout { position: fixed; z-index: 11000; top: 8px; right: 8px; width: 330px; max-width: calc(100vw - 16px); border: 1px solid var(--vscode-widget-border); border-radius: 12px; background: var(--vscode-editorWidget-background); color: var(--vscode-foreground); box-shadow: 0 16px 48px var(--vscode-widget-shadow); padding: 16px 0 10px; }
 .presence-profile { display: flex; align-items: center; gap: 12px; padding: 0 16px 14px; }
-.presence-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #d6c6ee, #a795d6); color: #30234f; font-size: 12px; }
-.presence-badge { display: inline-grid; place-items: center; flex: none; width: 19px; height: 19px; border-radius: 50%; background: var(--badge); color: white; }
+.presence-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 12px; }
+.presence-badge { display: inline-grid; place-items: center; flex: none; width: 19px; height: 19px; border-radius: 50%; background: var(--badge); color: var(--vscode-badge-foreground); }
 .presence-menu { padding: 6px; }
 .presence-menu button { display: flex; align-items: center; gap: 10px; text-align: left; width: 100%; border: 0; border-radius: 7px; padding: 9px 10px; background: transparent; color: inherit; cursor: pointer; }
 .presence-menu button:hover { background: var(--vscode-list-hoverBackground); }

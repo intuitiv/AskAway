@@ -13,7 +13,7 @@ export function buildCommentaryKit({ webviewSrc, providerSrc }) {
         + '\n' + slice(webviewSrc, '// ── Commentary tab: pure render', '// ── end Commentary pure render ──', 'render block')
         + '\n' + slice(webviewSrc, '// ── Commentary typewriter', '// ── end Commentary typewriter ──', 'typewriter block');
     const fns = new Function(`${code}\nreturn { renderCommentaryHtml, validatorTraceRows, traceRowsHtml, commentaryOpenCount, commentaryTypewrite, commentaryAnimateNew };`)();
-    const panelHtml = slice(providerSrc, '<div class="tab-panel" id="panel-commentary">', '</div><!-- End panel-commentary -->', 'panel markup')
+    const panelHtml = slice(providerSrc, '<div class="tab-panel" id="panel-settings">', '</div><!-- End panel-settings -->', 'main goal settings markup')
         .replace('class="tab-panel"', 'class="tab-panel active"');
     return { ...fns, panelHtml };
 }

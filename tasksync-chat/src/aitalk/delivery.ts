@@ -1,6 +1,13 @@
 import { AITalkStore } from './store';
+import { setCommentaryAITalkMirror } from '../commentary/commentary';
 let workspace: string | undefined;
-export function configureAITalkDelivery(root: string): void { workspace = root; }
+export function configureAITalkDelivery(root: string): void {
+    workspace = root;
+    setCommentaryAITalkMirror((target, input) => {
+        const talk = new AITalkStore(target);
+        return talk.post(input.text, input.replyTo, talk.agentId(), input.details, input.kind);
+    });
+}
 export interface AITalkCaller { recipient: string; workspace?: string }
 export function mcpAITalkCaller(extra: any): AITalkCaller | undefined {
     const meta = extra?._meta;

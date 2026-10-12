@@ -11,6 +11,9 @@ export const MAX_COMMENTARY_WORDS = 20;
 export const MIN_COMMENTARY_WORDS = 3;
 const MAX_GOAL_CHARS = 2000;
 const OPENER_ITEMS = 30;
+type TalkPost = (workspace: string, input: { text: string; replyTo?: string; details?: string; kind?: string }) => unknown;
+let talkPost: TalkPost | undefined;
+export function setCommentaryAITalkMirror(callback: TalkPost): void { talkPost = callback; }
 
 /** `validator` items are written only by `postValidator()`; `detail` is the validator's expandable trace rows. */
 export interface CommentaryItem { id: string; ts: number; kind: CommentaryKind | 'validator'; text: string; turnId: string; detail?: Record<string, unknown> }
@@ -157,6 +160,7 @@ export class CommentaryStore {
             turnId: input.turnId ?? '' };
         state.items.push(item);
         this.write(state);
+        talkPost?.(workspacePath, { text, kind: input.kind });
         return { status: 'POSTED', id: item.id };
     }
 
@@ -229,9 +233,7 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
             const workspace = args.workspacePath || defaultWorkspace;
             if (!workspace) return { status: 'REJECTED', reason: 'workspacePath is required: say which workspace this line belongs to' };
             if (args.action === 'aitalk') {
-                const { AITalkStore } = require('../aitalk/store') as typeof import('../aitalk/store');
-                const talk = new AITalkStore(workspace);
-                return talk.post(args.text, args.replyTo, talk.agentId(), args.details);
+                return talkPost ? talkPost(workspace, args) : { status: 'REJECTED', reason: 'AITalk is not configured' };
             }
             if (!args.kind) return { status: 'INVALID_INPUT', reason: 'kind is required for commentary' };
             return store().post(workspace, args);

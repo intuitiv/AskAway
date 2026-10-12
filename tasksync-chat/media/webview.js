@@ -5357,13 +5357,13 @@
         presenceStates.forEach(function (value) {
             document.body.classList.toggle('avail-' + value.id, value.id === presenceState.mode);
             if (value.id === presenceState.mode) {
-                document.body.style.setProperty('--presence', value.colour);
-                document.body.style.setProperty('--presence-accent', value.accent);
+                document.body.style.setProperty('--presence', 'var(--vscode-' + (value.id === 'here' ? 'testing-iconPassed' : value.id === 'away' ? 'editorWarning-foreground' : value.id === 'awayValidator' ? 'charts-purple' : 'descriptionForeground') + ')');
+                document.body.style.setProperty('--presence-accent', 'var(--vscode-textLink-foreground)');
             }
         });
     }
     function presenceBadge(state) {
-        return '<span class="presence-badge" style="--badge:' + state.colour + '" role="img" aria-label="' + escapeHtml(state.label) + '">' + state.icon + '</span>';
+        return '<span class="presence-badge avail-' + state.id + '" style="--badge:var(--presence)" role="img" aria-label="' + escapeHtml(state.label) + '">' + state.icon + '</span>';
     }
     function closePresence() { var el = document.getElementById('presence-flyout'); if (el) el.remove(); }
     function choosePresence(mode) {
@@ -6116,7 +6116,7 @@
         if (tab === 'workers') {
             vscode.postMessage({ type: 'requestWorkersState' });
         }
-        if (tab === 'commentary') {
+        if (tab === 'settings') {
             vscode.postMessage({ type: 'requestCommentary' });
         }
     }

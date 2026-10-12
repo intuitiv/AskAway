@@ -6428,7 +6428,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             <button class="widget-tab hidden" data-tab="specs" id="tab-specs" title="Spec Kit features: progress, next task, active feature">Specs</button>
             <button class="widget-tab" data-tab="observability" title="Main agent, workers and validator traces">Trace</button>
             <button class="widget-tab" data-tab="workers" title="OpenCode workers in this workspace: state, cost, session links">Workers <span class="tab-badge hidden" id="tab-badge-workers"></span></button>
-            <button class="widget-tab" data-tab="commentary" title="Live orchestrator commentary and the main goal">Commentary</button>
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
             <button class="widget-tab" data-tab="chat" title="Main chat">Chat</button>
         </div>
@@ -6752,20 +6751,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             </div>
         </div><!-- End panel-workers -->
 
-        <!-- Commentary Panel (goal box + live orchestrator feed) -->
-        <div class="tab-panel" id="panel-commentary">
-            <div class="cm-shell">
-                <textarea class="cm-goal-input" id="cm-goal-input" rows="6" aria-label="Main goal" placeholder="Main goal: what should the orchestrator focus on? Saved as you type. Empty = the active spec cycle."></textarea>
-                <div class="cm-toolbar">
-                    <button class="cm-icon-btn" id="cm-copy" title="Copy goal + feed as the next conversation's opener" aria-label="Copy opener"><span class="codicon codicon-copy"></span></button>
-                    <button class="cm-icon-btn" id="cm-clear" title="Clear the feed (kept as history)" aria-label="Clear feed"><span class="codicon codicon-clear-all"></span></button>
-                </div>
-                <div class="cm-feed" id="cm-feed"></div>
-            </div>
-        </div><!-- End panel-commentary -->
-
         <!-- Settings Panel -->
         <div class="tab-panel" id="panel-settings">
+            <label>Main goal<textarea class="cm-goal-input" id="cm-goal-input" rows="6" aria-label="Main goal"></textarea></label>
+            <button id="cm-copy" title="Copy goal and feed">Copy opener</button><button id="cm-clear" title="Clear feed history boundary">Clear feed</button>
             <div class="settings-tab-shell" id="settings-tab-shell"></div>
         </div><!-- End panel-settings -->
 

@@ -2,35 +2,35 @@
    Colours come from VS Code theme variables with WhatsApp-like fallbacks. */
 
 .talk-prototype {
-    --tk-bg: var(--vscode-editor-background, #0b141a);
-    --tk-surface: var(--vscode-editorWidget-background, #202c33);
-    --tk-header: var(--vscode-sideBar-background, #202c33);
-    --tk-fg: var(--vscode-foreground, #e9edef);
-    --tk-muted: var(--vscode-descriptionForeground, #8696a0);
-    --tk-border: var(--vscode-panel-border, rgba(134, 150, 160, .25));
-    --tk-out: #005c4b;
-    --tk-out-fg: #e9edef;
-    --tk-in: #202c33;
-    --tk-in-fg: #e9edef;
-    --tk-wallpaper: #0b141a;
-    --tk-doodle: rgba(255, 255, 255, .035);
-    --tk-pill: rgba(24, 34, 41, .92);
-    --tk-pill-fg: #8696a0;
-    --tk-green: #00a884;
-    --tk-tick-grey: #8696a0;
-    --tk-tick-blue: #53bdeb;
-    --tk-mention: #53bdeb;
-    --tk-input: #2a3942;
-    --tk-frame: #00a884;
-    --tk-shadow: 0 1px .5px rgba(11, 20, 26, .4);
-    --who-you: #00a884;
-    --who-agent: #53bdeb;
-    --who-validator: #c39bff;
-    --who-worker: #ffa97c;
-    --who-p0: #e26ab6;
-    --who-p1: #7acba5;
-    --who-p2: #ffd279;
-    --who-p3: #ff8a8a;
+    --tk-bg: var(--vscode-editor-background);
+    --tk-surface: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    --tk-header: var(--vscode-sideBar-background, var(--tk-bg));
+    --tk-fg: var(--vscode-foreground);
+    --tk-muted: var(--vscode-descriptionForeground);
+    --tk-border: var(--vscode-contrastBorder, var(--vscode-panel-border));
+    --tk-out: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--vscode-textLink-foreground)) 18%, var(--tk-bg));
+    --tk-out-fg: var(--tk-fg);
+    --tk-in: var(--tk-surface);
+    --tk-in-fg: var(--tk-fg);
+    --tk-wallpaper: var(--tk-bg);
+    --tk-doodle: color-mix(in srgb, var(--tk-fg) 4%, transparent);
+    --tk-pill: var(--tk-surface);
+    --tk-pill-fg: var(--tk-muted);
+    --tk-green: var(--vscode-button-background);
+    --tk-tick-grey: var(--tk-muted);
+    --tk-tick-blue: var(--vscode-textLink-foreground);
+    --tk-mention: var(--vscode-textLink-foreground);
+    --tk-input: var(--vscode-input-background);
+    --tk-frame: var(--vscode-focusBorder);
+    --tk-shadow: 0 1px 4px var(--vscode-widget-shadow);
+    --who-you: var(--vscode-testing-iconPassed, var(--tk-mention));
+    --who-agent: var(--tk-mention);
+    --who-validator: var(--vscode-charts-purple, var(--tk-mention));
+    --who-worker: var(--vscode-charts-orange, var(--tk-mention));
+    --who-p0: var(--vscode-charts-purple, var(--tk-mention));
+    --who-p1: var(--who-you);
+    --who-p2: var(--vscode-charts-yellow, var(--tk-mention));
+    --who-p3: var(--vscode-errorForeground);
     position: relative;
     display: flex;
     flex-direction: column;
@@ -46,42 +46,14 @@
     line-height: 1.35;
     border: 3px solid var(--tk-frame);
     border-radius: 12px;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .35);
+    box-shadow: 0 8px 24px var(--vscode-widget-shadow);
 }
 
-.talk-prototype.moderator-you { --tk-frame: #00a884; }
-.talk-prototype.moderator-validator { --tk-frame: #8b5cf6; }
+.talk-prototype.moderator-you { --tk-frame: var(--who-you); }
+.talk-prototype.moderator-validator { --tk-frame: var(--who-validator); }
 
-.talk-prototype.theme-light {
-    --tk-bg: #f0f2f5;
-    --tk-surface: #ffffff;
-    --tk-header: #f0f2f5;
-    --tk-fg: #111b21;
-    --tk-muted: #667781;
-    --tk-border: rgba(17, 27, 33, .12);
-    --tk-out: #d9fdd3;
-    --tk-out-fg: #111b21;
-    --tk-in: #ffffff;
-    --tk-in-fg: #111b21;
-    --tk-wallpaper: #efeae2;
-    --tk-doodle: rgba(11, 20, 26, .045);
-    --tk-pill: rgba(255, 255, 255, .92);
-    --tk-pill-fg: #54656f;
-    --tk-tick-grey: #667781;
-    --tk-tick-blue: #34b7f1;
-    --tk-mention: #027eb5;
-    --tk-input: #ffffff;
-    --tk-shadow: 0 1px .5px rgba(11, 20, 26, .13);
-    --who-you: #008069;
-    --who-agent: #1f7aa8;
-    --who-validator: #7e4fd6;
-    --who-worker: #c4622d;
-    --who-p0: #b92d83;
-    --who-p1: #247a5a;
-    --who-p2: #a07800;
-    --who-p3: #c23b3b;
-    background: var(--tk-bg);
-}
+body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bubble { border: 1px solid var(--vscode-contrastBorder); }
+.talk-bubble.heads-up { border-left: 3px solid var(--vscode-editorWarning-foreground); background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 12%, var(--tk-in)) !important; }
 
 .talk-prototype *, .talk-prototype *::before, .talk-prototype *::after { box-sizing: border-box; }
 .talk-prototype button { font: inherit; color: inherit; cursor: pointer; }
@@ -125,8 +97,8 @@
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #00a884, #53bdeb);
-    color: #fff;
+    background: linear-gradient(135deg, var(--tk-green), var(--tk-mention));
+    color: var(--vscode-button-foreground);
     font-size: 18px;
 }
 .talk-title { flex: 1; min-width: 0; }
@@ -153,7 +125,7 @@
     background-image:
         radial-gradient(circle at 20% 15%, var(--tk-doodle) 0 2px, transparent 3px),
         radial-gradient(circle at 70% 60%, var(--tk-doodle) 0 3px, transparent 4px),
-        linear-gradient(180deg, rgba(255, 255, 255, .02), rgba(0, 0, 0, .06));
+        linear-gradient(180deg, transparent, var(--tk-doodle));
     background-size: 46px 46px, 62px 62px, 100% 100%;
     scrollbar-width: thin;
 }
@@ -196,7 +168,7 @@
 .talk-avatar.who-p1 { color: var(--who-p1); }
 .talk-avatar.who-p2 { color: var(--who-p2); }
 .talk-avatar.who-p3 { color: var(--who-p3); }
-.talk-avatar { -webkit-text-fill-color: #fff; }
+.talk-avatar { -webkit-text-fill-color: var(--vscode-button-foreground); }
 
 .talk-bubble {
     position: relative;
@@ -241,13 +213,12 @@
 .talk-details p { margin: 0 0 4px; }
 .talk-details ul { margin: 0 0 4px; padding-left: 18px; }
 .talk-details li { margin-bottom: 2px; }
-.talk-details code { padding: 0 3px; border-radius: 3px; background: rgba(134, 150, 160, .2); font-family: var(--vscode-editor-font-family, Menlo, monospace); font-size: 12px; }
+.talk-details code { padding: 0 3px; border-radius: 3px; background: var(--vscode-textCodeBlock-background); font-family: var(--vscode-editor-font-family, Menlo, monospace); font-size: 12px; }
 .talk-mention { color: var(--tk-mention); font-weight: 700; }
 
 /* Time + ticks sit inside the bubble, bottom-right. */
 .talk-meta { float: right; display: inline-flex; align-items: center; gap: 3px; margin: 6px 0 -3px 10px; color: var(--tk-muted); font-size: 11px; line-height: 1; }
-.talk-row.out .talk-meta { color: rgba(233, 237, 239, .6); }
-.theme-light .talk-row.out .talk-meta { color: #667781; }
+.talk-row.out .talk-meta { color: var(--tk-muted); }
 .talk-ticks { display: inline-flex; align-items: center; cursor: help; }
 .talk-tick-svg { display: block; width: 16px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .talk-ticks.posted { color: var(--tk-tick-grey); }
@@ -263,10 +234,9 @@
     padding: 4px 8px;
     border-left: 4px solid currentColor;
     border-radius: 6px;
-    background: rgba(0, 0, 0, .18);
+    background: color-mix(in srgb, var(--tk-fg) 6%, transparent);
     font-size: 12.5px;
 }
-.theme-light .talk-quote { background: rgba(11, 20, 26, .06); }
 .talk-quote.who-you { color: var(--who-you); }
 .talk-quote.who-agent { color: var(--who-agent); }
 .talk-quote.who-validator { color: var(--who-validator); }
@@ -294,20 +264,20 @@
     border: 1px solid var(--tk-border);
     border-radius: 20px;
     background: var(--tk-surface);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, .4);
+    box-shadow: 0 2px 8px var(--vscode-widget-shadow);
     white-space: nowrap;
 }
 .talk-bubble.reacting > .talk-react-bar { display: flex; }
 .talk-react-extra { display: inline-flex; gap: 2px; }
 .talk-react-extra[hidden] { display: none; }
 .talk-react-btn { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; font-size: 17px; line-height: 28px; transition: transform .12s; }
-.talk-react-btn:hover, .talk-react-btn:focus-visible { background: rgba(134, 150, 160, .25); outline: 0; transform: scale(1.25); }
+.talk-react-btn:hover, .talk-react-btn:focus-visible { background: var(--vscode-list-hoverBackground); outline: 0; transform: scale(1.25); }
 .talk-react-btn.more { font-size: 16px; color: var(--tk-muted); }
 
 /* ---- Reaction pill overlapping the bottom edge ---- */
 .talk-reaction-pill { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border: 1px solid var(--tk-border); border-radius: 12px; background: var(--tk-surface); box-shadow: var(--tk-shadow); color: var(--tk-fg); font-size: 12px; line-height: 18px; }
 .talk-reaction-pill small { color: var(--tk-muted); font-size: 11px; }
-.talk-reaction-pill.mine { border-color: var(--tk-green); background: rgba(0, 168, 132, .22); }
+.talk-reaction-pill.mine { border-color: var(--tk-green); background: var(--tk-out); }
 .talk-reaction-pill .talk-tick-svg { width: 12px; height: 8px; }
 @media (prefers-reduced-motion: reduce) { .talk-react-btn { transition: none; } }
 
@@ -340,8 +310,8 @@
     border: 0;
     border-radius: 14px;
     background: var(--tk-green);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
-    color: #fff;
+    box-shadow: 0 2px 6px var(--vscode-widget-shadow);
+    color: var(--vscode-button-foreground);
     font-size: 12px;
 }
 
@@ -372,7 +342,7 @@
     border: 0;
     border-radius: 50%;
     background: var(--tk-green);
-    color: #fff;
+    color: var(--vscode-button-foreground);
     font-size: 16px;
 }
 .talk-send:hover { filter: brightness(1.1); }
@@ -390,10 +360,10 @@
     border: 1px solid var(--tk-border);
     border-radius: 10px;
     background: var(--tk-surface);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, .4);
+    box-shadow: 0 4px 14px var(--vscode-widget-shadow);
 }
 .talk-mentions button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 12px; border: 0; background: none; text-align: left; }
-.talk-mentions button:hover { background: rgba(134, 150, 160, .18); }
+.talk-mentions button:hover { background: var(--vscode-list-hoverBackground); }
 .talk-mentions button.left { opacity: .5; }
 .talk-mention-name { display: flex; flex: 1; flex-direction: column; }
 .talk-mention-name small { color: var(--tk-muted); font-size: 11px; }

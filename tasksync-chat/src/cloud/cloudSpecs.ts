@@ -25,7 +25,8 @@ export function attachCloudRuns(data: SpecScanResult, runs: CloudRun[]) {
     }) };
 }
 export function shouldPollCloud(enabled: boolean, runs: CloudRun[]): boolean {
-    return enabled && runs.some(run => ['Queued', 'Working', 'Pushed', 'Checks passed', 'Checks failed', 'Checks waiting for approval'].includes(run.state));
+    return enabled && runs.some(run => ['Queued', 'Working', 'Pushed', 'Checks passed', 'Checks failed', 'Checks waiting for approval'].includes(run.state)
+        || (run.workflowRuns ?? []).some(workflow => workflow.status !== 'completed' || !workflow.timing));
 }
 export function cloudWorkers(runs: CloudRun[], now = Date.now()) {
     return runs.slice().sort((a, b) => Date.parse(a.queuedAt) - Date.parse(b.queuedAt)).map(run => {

@@ -39,6 +39,8 @@ export interface CloudRun {
     staleSince?: string;
     pollFailures?: number;
     nextPollAt?: string;
+    workflowRuns?: Array<{ id: number; workspace: string; headSha: string; status: string; ts: string; timing?: Array<{ os: 'Linux' | 'Windows' | 'macOS'; billableMs: number; runDurationMs: number; estimated: boolean }> }>;
+    agentSessions?: Array<{ id: string; ts: string }>;
     acceptance?: { result: 'Accepted' | 'Returned'; head: string; evidence: string; outOfScope?: string[] };
     request: QueueRequest;
 }
