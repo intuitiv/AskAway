@@ -529,3 +529,12 @@ Collected for one batch to the reviewer. Each answer becomes a dated line in the
 
 > When you create a style doc, you can create from my messages in vscode conversations also. There can be some spelling mistakes, but you can correct them out.
 > And use that style doc for agent to communicate with me or valdiator. Everybody should talk like that. Simple and clear sentences. As a demo, show me what is teh text which agent or validator will return with current setup, how it would look like after applyig my style.
+
+### 2026-10-12, light mode, one chat tab, extension cost, validator session reuse
+
+> I am on light mode, i see dark mode ui.
+> i see both comentary and aitalk. why?
+>
+> Its simple, i want to know how much cost extension spent. if you spent something show them here.
+>
+> And for validator, we can use the same validator session, if the cache isn't expired and the total input token is within 100K.

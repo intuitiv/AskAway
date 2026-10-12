@@ -12,6 +12,8 @@ export const MAX_PARALLEL_WORKERS = 8;
 export const WORKER_MAX_IDLE_MS = 3 * 60 * 60 * 1000;
 /** After its cache expired, a worker is still reused by start while its next input is under this many tokens. */
 export const EXPIRED_REUSE_MAX_CONTEXT_TOKENS = 100_000;
+export const VALIDATOR_CACHE_TTL_MS = 30 * 60 * 1000;
+export const VALIDATOR_MAX_INPUT_TOKENS = 100_000;
 /** The one-line prompt of a keep-warm ping (spec 005 T018). */
 export const KEEP_WARM_PROMPT = 'ping, reply ok';
 
@@ -117,14 +119,18 @@ export class WorkerRouter {
         const registryKey = workerRegistryKey(request.workspacePath, profile.name, selection);
         const rejections: string[] = [];
         const cwd = realDir(request.cwd || request.workspacePath);
+        const currentSession = request.sessionKey ? [...this.workersById.values()].reverse()
+            .filter(worker => worker.workspacePath === request.workspacePath && worker.sessionKey === request.sessionKey)
+            .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0] : undefined;
         // start means parallel: only an idle worker is reused; queuing behind a busy one is what submit is for.
         // Thinking is not part of the key: a reused worker keeps its own, so its session config and cache stay unchanged.
         // An expired-cache worker under EXPIRED_REUSE_MAX_CONTEXT_TOKENS is still reusable; a warm one is preferred.
         const eligible = [...this.workersById.values()]
             .filter((worker) => worker.registryKey === registryKey && worker.cwd === cwd
-                && worker.sessionKey === request.sessionKey && (request.sessionKey || !worker.active))
+                && worker.sessionKey === request.sessionKey && (request.sessionKey ? worker === currentSession : !worker.active))
             .filter((worker) => {
-                if (request.sessionKey) return worker.state !== 'RETIRED' && !worker.busyElsewhere;
+                if (request.sessionKey) return worker.state !== 'RETIRED' && worker.state !== 'ORPHANED' && !worker.busyElsewhere
+                    && this.now() - worker.lastActivityAt < VALIDATOR_CACHE_TTL_MS && worker.contextTokens <= VALIDATOR_MAX_INPUT_TOKENS;
                 const reason = this.ineligibility(worker, true, true);
                 if (reason) { rejections.push(`${worker.workerId}: ${reason}`); }
                 return !reason;
@@ -135,6 +141,11 @@ export class WorkerRouter {
         const reused = eligible[0];
         const reusedExpired = !!reused && this.isExpired(reused);
         const worker = reused ?? this.createWorker(registryKey, request.workspacePath, profile.name, selection.model, selection.thinking, cwd);
+        if (!reused && request.sessionKey) {
+            for (const previous of this.workersById.values()) {
+                if (previous !== worker && previous.workspacePath === request.workspacePath && previous.sessionKey === request.sessionKey) this.retire(previous.workerId, 'validator session replaced');
+            }
+        }
         worker.sessionKey = request.sessionKey;
         const estimatedWaitSeconds = this.estimatedWaitSeconds(worker);
         const entry: QueueEntry = { runId: this.nextId('run'), packetId: request.packetId, estimatedSeconds: request.estimatedSeconds, enqueuedAt: this.now() };
@@ -277,7 +288,7 @@ export class WorkerRouter {
     }
 
     /** Re-registers a worker known from the ledger after a reload. It keeps its identity and never re-runs work. */
-    adopt(record: Pick<RoutedWorker, 'workerId' | 'workspacePath' | 'profile' | 'model' | 'thinking' | 'contextTokens' | 'lastActivityAt' | 'forkedFrom'> & { cwd?: string },
+    adopt(record: Pick<RoutedWorker, 'workerId' | 'workspacePath' | 'profile' | 'model' | 'thinking' | 'contextTokens' | 'lastActivityAt' | 'forkedFrom'> & { cwd?: string; sessionKey?: string },
         state: 'IDLE' | 'ORPHANED', reason?: string): void {
         const existing = this.workersById.get(record.workerId);
         if (existing) {

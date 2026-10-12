@@ -18,6 +18,8 @@ export interface RunUsage { input: number; output: number; reasoning: number; ca
 
 /** A lifecycle fact. It carries identities, tool names, and usage numbers, never message or transcript text. */
 export interface LifecycleRecord {
+    lastUsedAt?: number;
+    inputTokens?: number;
     ts: number;
     type: LifecycleType;
     /** The owner workspace (dispatching window). */
@@ -301,7 +303,7 @@ export class OpenCodeWorkerRuntime {
         const capped = this.capRefusal(1);
         if (capped) { return capped; }
         const routed = this.router.route({ workspacePath: workspace, cwd: runDir(packet), profile: packet.profile, model: packet.model, thinking: packet.thinking,
-            sessionKey: packet.track === 'validator' ? packet.dispatchTurnId : undefined,
+            sessionKey: packet.track === 'validator' ? 'validator' : undefined,
             packetId: packet.objective.slice(0, 40), estimatedSeconds: packet.estimatedSeconds ?? 60 });
         if (routed.status === 'SELECTION_UNAVAILABLE') { return routed; }
         return this.admit(routed, workspace, packet);
@@ -563,7 +565,8 @@ export class OpenCodeWorkerRuntime {
             if (unfinishedWorkers.has(workerId)) { continue; }
             if (!known) {
                 this.router.adopt({ workerId, workspacePath: workspace, profile: adopted.profile, model: adopted.model, thinking: adopted.thinking,
-                    contextTokens: adopted.contextTokens, lastActivityAt: adopted.lastTs, forkedFrom: adopted.forkedFrom, cwd: adopted.cwd }, adopted.sessionId ? 'IDLE' : 'ORPHANED',
+                    contextTokens: adopted.contextTokens, lastActivityAt: adopted.lastTs, forkedFrom: adopted.forkedFrom, cwd: adopted.cwd,
+                    sessionKey: [...this.runs.values()].some(run => run.workerId === workerId && run.track === 'validator') ? 'validator' : undefined }, adopted.sessionId ? 'IDLE' : 'ORPHANED',
                     adopted.sessionId ? undefined : 'no OpenCode session was recorded');
                 if (adopted.sessionId) { this.sessionsByWorker.set(workerId, adopted.sessionId); }
             } else {
@@ -610,6 +613,7 @@ export class OpenCodeWorkerRuntime {
                 contextTokens = lastPromptTokens + record.usage.output;
             }
             const sessionId = [...records].reverse().find((record) => record.sessionId)?.sessionId ?? '';
+            if (first.track === 'validator') contextTokens = last.inputTokens ?? contextTokens;
             const ended = last.exitCode !== undefined;
             const state: RunState = ended ? last.state ?? (last.type === 'stop' ? 'COMPLETED' : 'FAILED') : 'FAILED';
             const reason = ended ? last.reason ?? (state === 'COMPLETED' ? undefined : `exit code ${last.exitCode}`)
@@ -620,7 +624,7 @@ export class OpenCodeWorkerRuntime {
                 usage, queuePosition: 0, reason, workspace, cwd: canonical(first.cwd ?? first.workspace), packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
                 lastPromptTokens, lastCachedTokens, ...(first.forkedFrom ? { forkedFrom: first.forkedFrom } : {}),
             });
-            const lastTs = records[records.length - 1].ts;
+            const lastTs = last.lastUsedAt ?? records[records.length - 1].ts;
             const adopted = this.adopted.get(first.workerId);
             if (!adopted || lastTs >= adopted.lastTs) {
                 this.adopted.set(first.workerId, { workspace, cwd: canonical(first.cwd ?? first.workspace), profile: first.profile, model: first.model, thinking: first.thinking,
@@ -905,6 +909,7 @@ export class OpenCodeWorkerRuntime {
             ts: this.now(), workspace: run.workspace, ...(run.cwd && run.cwd !== run.workspace ? { cwd: run.cwd } : {}), workerId: run.workerId, runId: run.runId, sessionId: run.sessionId,
             dispatchTurnId: run.dispatchTurnId, source: run.model.split('/')[0] || 'unknown', ...(run.track ? { track: run.track } : {}),
             ...(run.forkedFrom ? { forkedFrom: run.forkedFrom } : {}), profile: run.profile, model: run.model, thinking: run.thinking, ...fact,
+            ...(run.track === 'validator' ? { lastUsedAt: this.now(), inputTokens: run.nextInputTokens } : {}),
         };
         run.updatedAt = record.ts;
         fs.mkdirSync(this.ledgerDir, { recursive: true });
