@@ -1,5 +1,6 @@
 import { CloudRun, QueueIO, defaultIO, releaseHeld, serial } from './cloudQueue';
 import { deriveCloudState, PrSignals } from './cloudState';
+import { cloudTaskCost } from './cloudCost';
 
 export async function pollPr(root: string, pr: string, io: QueueIO = defaultIO, agentLogins = ['Copilot'], now = Date.now(), pollMinutes = 3): Promise<CloudRun[]> {
     const updated = await serial(root, async () => {
@@ -55,6 +56,7 @@ export async function pollPr(root: string, pr: string, io: QueueIO = defaultIO, 
                     if (!next.agentSessions.some(session => session.id === id)) next.agentSessions.push({ id, ts: event.created_at });
                 }
             } catch { /* Retry missing cost facts next poll; never invent billing data. */ }
+            if (!next.cost && ['Needs review', 'Accepted', 'Returned', 'Timed out', 'No response'].includes(next.state)) { next.cost = cloudTaskCost(next); }
             delete next.staleSince;
             next.pollFailures = 0;
             next.nextPollAt = new Date(now + Math.min(15, Math.max(1, pollMinutes)) * 60000).toISOString();

@@ -58,9 +58,7 @@ try {
     assert.match(r.hook, HOOK_RE);
     assert.equal(notices.length, 1, 'Offline sends no Telegram notice');
 
-    // The ask/continue tool result and the Telegram notifier use the same decision.
-    const tools = fs.readFileSync(path.join(__dirname, 'src', 'tools.ts'), 'utf8');
-    assert.match(tools, /provider\.longRunHandoffLine\(\)/);
+    // ask_user was removed (reviewer 2026-10-13); the hook line above and the Telegram notifier carry the decision.
     const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
     assert.match(provider, /new LongRunHandoff\(text => HandoffNotifier\.current\?\.postLongRunNotice\(text\)\)/);
     console.log('PASS EV-LONG-RUN-HANDOFF');

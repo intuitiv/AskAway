@@ -1,4 +1,4 @@
-// Main goal and copy opener remain in Settings; AITalk is the only live feed.
+// The retired main goal and copy opener are absent; AITalk is the only live feed.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -8,44 +8,11 @@ const webview = fs.readFileSync(path.join(__dirname, 'media', 'webview.js'), 'ut
 const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
 assert.doesNotMatch(provider, /data-tab="commentary"|id="panel-commentary"/);
 const settings = provider.slice(provider.indexOf('id="panel-settings"'), provider.indexOf('<!-- End panel-settings -->'));
-assert.match(settings, /id="cm-goal-input" rows="6"/);
-assert.match(settings, /id="cm-copy"/);
+assert.doesNotMatch(settings, /cm-goal-input|cm-copy|Copy opener|Main goal/);
 assert.doesNotMatch(provider, /cm-clear|case 'clearCommentary'/);
 assert.doesNotMatch(webview, /renderCommentaryHtml|commentaryTypewrite|commentaryAnimateNew|commentarySeen|commentaryOpenTurns|cm-feed|tab-badge-commentary|clearCommentary/);
-assert.match(webview, /case 'commentaryState':\s*applyCommentaryState\(message\.data\)/);
+assert.doesNotMatch(webview, /commentaryState|applyCommentaryState|initCommentaryTab|setCommentaryGoal/);
 const css = fs.readFileSync(path.join(__dirname, 'media', 'main.css'), 'utf8');
 assert.doesNotMatch(css, /\.cm-(?!goal-input)[\w-]+|@keyframes cm/);
-const messages = [];
-const handlers = {};
-const goal = { value: '', addEventListener: (name, handler) => { handlers[name] = handler; } };
-const copy = { addEventListener: (name, handler) => { handlers.copy = handler; } };
-const document = { activeElement: null, getElementById: id => id === 'cm-goal-input' ? goal : id === 'cm-copy' ? copy : null };
-let timer;
-const context = { document, vscode: { postMessage: message => messages.push(message) }, setTimeout: fn => { timer = fn; return 1; }, clearTimeout: () => { timer = null; } };
-vm.createContext(context);
-vm.runInContext(webview.slice(webview.indexOf('    var commentaryView = null;'), webview.indexOf('    var presenceStates = []')) +
-    webview.slice(webview.indexOf('    function initCommentaryTab()'), webview.indexOf('    // ── Workers tab: pure render')), context);
-vm.runInContext('initCommentaryTab()', context);
-assert.equal(messages[0].type, 'requestCommentary');
-context.data = { goal: 'Loaded goal', opener: 'Goal and progress' };
-vm.runInContext('applyCommentaryState(data)', context);
-assert.equal(goal.value, 'Loaded goal');
-document.activeElement = goal;
-goal.value = 'Unsaved edit';
-vm.runInContext('applyCommentaryState(data)', context);
-assert.equal(goal.value, 'Unsaved edit', 'a push does not replace an active edit');
-handlers.input();
-assert.equal(messages.length, 1, 'autosave is debounced');
-timer();
-assert.equal(messages[1].type, 'setCommentaryGoal');
-assert.equal(messages[1].goal, 'Unsaved edit');
-goal.value = 'Saved on blur';
-handlers.input(); handlers.blur();
-assert.equal(messages[2].goal, 'Saved on blur');
-handlers.copy();
-assert.equal(messages[3].type, 'copyToClipboard');
-assert.equal(messages[3].text, 'Goal and progress');
-document.activeElement = null;
-vm.runInContext('applyCommentaryState(null)', context);
-assert.equal(goal.value, '');
-console.log('PASS EV-030b Commentary cleanup: Settings goal load/debounced save/blur/copy retained; dead renderer, feed, badge, animations and clear control absent');
+require('./test-settings-cleanup.cjs');
+console.log('PASS EV-030b Commentary cleanup: Settings goal and copy absent; AITalk is the sole live feed');

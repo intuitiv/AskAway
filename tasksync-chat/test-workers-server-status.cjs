@@ -22,7 +22,7 @@ const runtime = { serverEndpoint: '', list: () => [], setServerEndpoint(endpoint
 const vscode = { workspace: { workspaceFolders: [{ uri: { fsPath: root } }], getConfiguration: () => ({ get: () => false }) } };
 const host = load('workers/workerHost.ts', {
     vscode, './sharedServer': shared, './openCodeRuntime': { OpenCodeWorkerRuntime: class { constructor() { return runtime; } } },
-    './workerProfiles': { loadWorkerProfiles: () => [] }, './keepWarm': { startKeepWarmTimer: () => () => {} },
+    './workerProfiles': { loadWorkerProfiles: () => [], syncOpenCodeAgents: () => [] }, './keepWarm': { startKeepWarmTimer: () => () => {} },
     '../commentary/commentary': {}, '../observability/cacheClock': {}
 });
 const source = fs.readFileSync(path.join(__dirname, 'src/mcp/mcpServer.ts'), 'utf8');

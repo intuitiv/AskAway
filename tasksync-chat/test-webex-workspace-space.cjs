@@ -20,9 +20,9 @@ async function main() {
             let body = ''; for await (const chunk of req) { body += chunk; }
             const data = JSON.parse(body);
             assert.equal(data.teamId, 'self-team');
-            assert.ok(['AskAway General', 'webex-missing'].includes(data.title));
+            assert.ok(['AskAway General', 'webex-missing', 'webex-existing_1'].includes(data.title));
             creations++;
-            const room = { id: data.title === 'AskAway General' ? 'askaway-general' : 'created', title: data.title }; rooms.push(room); res.end(JSON.stringify(room));
+            const room = { id: data.title === 'AskAway General' ? 'askaway-general' : data.title === 'webex-existing_1' ? 'collision' : 'created', title: data.title }; rooms.push(room); res.end(JSON.stringify(room));
         } else if (req.url.startsWith('/v1/rooms?')) { res.end(JSON.stringify({ items: rooms })); }
         else { res.writeHead(404); res.end('{}'); }
     });
@@ -39,8 +39,9 @@ async function main() {
         commands: { executeCommand: async command => commands.push(command) }
     };
     const build = await esbuild.build({ stdin: { contents: "export * from './src/services/webexAuth'; export * from './src/services/webexSpaces'; export * from './src/services/webexService'; export * from './src/services/webexDiscover'; export * from './src/services/webexIncomingWebhook';", resolveDir: __dirname, loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
+    const home = fs.mkdtempSync(path.join(__dirname, 'build', 'webex-home-'));
     const loaded = { exports: {} };
-    new Function('require', 'module', 'exports', build.outputFiles[0].text)(name => name === 'vscode' ? vscode : require(name), loaded, loaded.exports);
+    new Function('require', 'module', 'exports', build.outputFiles[0].text)(name => name === 'vscode' ? vscode : name === 'os' ? { ...require('os'), homedir: () => home } : require(name), loaded, loaded.exports);
     const { WebexAuth, setupWebex, ensureWebexWorkspace, WebexService } = loaded.exports;
     const auth = new WebexAuth({ get: async key => secrets.get(key), store: async (key, value) => secrets.set(key, value) }, async (file, args) => mirrors.push({ file, args }), 'darwin');
     const options = { baseUrl: `http://127.0.0.1:${server.address().port}/v1/` };
@@ -66,6 +67,19 @@ async function main() {
         const unavailableMirror = new WebexAuth({ get: async key => secrets.get(key) }, async () => { throw new Error('Keychain unavailable'); }, 'darwin');
         assert.equal(await setupWebex(unavailableMirror, workspace('webex-missing'), options), true, 'optional mirror failure cannot abort setup');
         assert.equal(creations, 2, 'mirror failure and rediscovery must not duplicate rooms');
+        // 009 T006 (reviewer, 2026-10-13): same folder name in another workspace gets a counter suffix, stable across reloads.
+        const twin = { fsPath: path.join(__dirname, 'build', 'webex-twin', 'webex-existing'), name: 'webex-existing' };
+        fs.rmSync(path.dirname(twin.fsPath), { recursive: true, force: true });
+        assert.equal(await setupWebex(auth, twin, options), true);
+        assert.equal(creations, 3); assert.equal(rooms.filter(room => room.title === 'webex-existing_1').length, 1);
+        assert.equal(JSON.parse(fs.readFileSync(path.join(twin.fsPath, '.askaway/webex-spaces.json'), 'utf8')).self.workspaceRoomId, 'collision');
+        assert.equal(await setupWebex(auth, twin, options), true);
+        assert.equal(await setupWebex(auth, workspace('webex-existing'), options), true);
+        assert.equal(creations, 3, 'reload keeps each workspace on its own space');
+        assert.equal(facts('webex-existing').self.workspaceRoomId, 'existing');
+        assert.equal(JSON.parse(fs.readFileSync(path.join(twin.fsPath, '.askaway/webex-spaces.json'), 'utf8')).self.workspaceRoomId, 'collision');
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, '.askaway/webex-workspace-spaces.json'), 'utf8'))[twin.fsPath], 'webex-existing_1');
+        console.log('PASS Webex same folder name: second workspace gets <name>_1, mapping persisted and stable on reload');
         const before = requests;
         assert.equal(await ensureWebexWorkspace(auth, workspace('webex-missing'), options), true);
         assert.equal(requests, before);

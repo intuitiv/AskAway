@@ -49,6 +49,7 @@ const snapshot = () => fs.readdirSync(path.join(workspace, 'specs'), { recursive
         await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${manager.getPort()}/sse`)));
         const before = snapshot();
         const tools = await client.listTools();
+        assert.equal(tools.tools.some(tool => tool.name === 'ask_user'), false, 'retired ask_user must not be exposed to MCP clients');
         assert.equal(tools.tools.some(tool => tool.name === 'askaway_asks'), false);
         const args = { action: 'capture', spec: '005-test', asks: [{ kind: 'request', text: 'Run Gradle in another repository worktree' }] };
         const response = await client.callTool({ name: 'askaway_asks', arguments: args });
@@ -62,7 +63,7 @@ const snapshot = () => fs.readdirSync(path.join(workspace, 'specs'), { recursive
         const profile = fs.readFileSync(path.join(__dirname, 'worker-profiles/webex.md'), 'utf8');
         assert.match(profile, /only the main orchestrator captures reviewer asks/);
         assert.doesNotMatch(profile.split('---')[1], /askaway_asks/);
-        console.log('PASS worker ask capture: OpenCode MCP tool unavailable, specs bytes unchanged; main agent capture persists; worker profile forbids capture');
+        console.log('PASS worker ask capture: ask_user absent from MCP list; OpenCode MCP tool unavailable, specs bytes unchanged; main agent capture persists; worker profile forbids capture');
     } finally {
         await client.close();
         if (manager.server) await new Promise(resolve => manager.server.close(resolve));

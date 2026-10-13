@@ -3,42 +3,32 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 // esbuild bundles the same browser rules; no second participant or routing configuration.
 const rules = require('../../media/aitalk/talkRules.js');
-const live = new Map<string, { active: boolean; workers: Array<{ id: string; displayName: string; running: boolean }> }>();
-const listeners = new Map<string, (message: any) => void>();
-export function onAITalkMessage(workspace: string, listener: (message: any) => void): () => void {
-    listeners.set(workspace, listener);
-    return () => { listeners.delete(workspace); };
-}
-export function activateAITalk(workspace: string): void {
-    const store = new AITalkStore(workspace);
-    for (const member of store.snapshot().members) store.setPresence(member, member.presencePolicy === 'alwaysPresent');
-}
-export function setAITalkPresence(workspace: string, active: boolean, workers: Array<{ id: string; displayName: string; running: boolean }>): void {
-    live.set(workspace, { active, workers: workers.map(worker => ({ ...worker, displayName: `${worker.displayName} · ${worker.id}` })) });
-    setAITalkTurnActive(workspace, active);
-    const store = new AITalkStore(workspace);
-    for (const worker of workers) store.setPresence({ ...worker, kind: 'worker', rank: 100, presencePolicy: 'joinsPerTurn' }, worker.running);
-}
-export function setAITalkTurnActive(workspace: string, active: boolean): void {
-    const previous = live.get(workspace); live.set(workspace, { active, workers: previous?.workers ?? [] });
-    const store = new AITalkStore(workspace);
-    for (const member of store.snapshot().members.filter(member => member.kind === 'agent')) store.setPresence(member, active);
-}
-export function isAITalkTurnActive(workspace: string): boolean { return live.get(workspace)?.active ?? false; }
-export function setAITalkWorkerPresence(workspace: string, worker: { id: string; displayName: string }, present: boolean): void {
-    new AITalkStore(workspace).setPresence({ ...worker, kind: 'worker', rank: 100, presencePolicy: 'joinsPerTurn' }, present);
-}
+let last = 0;
+/** Monotonic timestamp shared by messages and registration events, so their order merges exactly. */
+const stamp = () => (last = Math.max(Date.now(), last + 0.001));
+const lines = (file: string) => { try { return fs.readFileSync(file, 'utf8').split('\n'); } catch { return []; } };
+export const REACTIONS = ['👍', '👎', '❤️', '😂', '🙏', '🎉', '👀', '✅', '🤔'];
+/** Append-only AITalk logs: messages with tracker (delivered/read) events, and actor registration (joined/left) events. */
 export class AITalkStore {
     readonly file: string;
-    constructor(private workspace: string, private registry = rules.defaultMembers) { this.file = path.join(workspace, '.askaway', 'aitalk', 'messages.jsonl'); }
+    readonly presenceFile: string;
+    constructor(private workspace: string, private registry = rules.defaultMembers) {
+        this.file = path.join(workspace, '.askaway', 'aitalk', 'messages.jsonl');
+        this.presenceFile = path.join(workspace, '.askaway', 'aitalk', 'presence.jsonl');
+    }
     snapshot(full = false): { messages: any[]; members: any[] } {
-        let members = this.registry.map((member: any) => ({ ...member, presence: member.presencePolicy === 'alwaysPresent' ? 'joined' : 'left', joinedAt: null, leftAt: null }));
+        let members = this.registry.map((member: any) => ({ ...member, presence: member.kind === 'user' ? 'joined' : 'left', joinedAt: null, leftAt: null }));
         let messages: any[] = [];
-        let text = '';
-        try { text = fs.readFileSync(this.file, 'utf8'); } catch { /* New workspace. */ }
-        for (const line of text.split('\n')) {
+        const parse = (line: string) => { try { const event = JSON.parse(line); return event && typeof event === 'object' ? event : undefined; } catch { return undefined; } };
+        const registrations = lines(this.presenceFile).map(parse).filter(Boolean);
+        const events: any[] = [];
+        for (const event of lines(this.file).map(parse).filter(Boolean)) {
+            while (registrations.length && typeof event.ts === 'number' && registrations[0].ts <= event.ts) events.push(registrations.shift());
+            events.push(event);
+        }
+        events.push(...registrations);
+        for (const event of events) {
             try {
-                const event = JSON.parse(line);
                 if (!event || typeof event !== 'object') continue;
                 if (event.presenceEvent) {
                     const previous = members.find((member: any) => member.id === event.member.id);
@@ -59,54 +49,64 @@ export class AITalkStore {
                 messages = [...messages, ...next.messages.slice(messages.length).filter((message: any) => message.kind !== 'system')];
             } catch { /* Torn or invalid event does not hide subsequent messages. */ }
         }
-        messages = messages.map(message => ({ ...message, tick: message.delivery === 'posted' ? 'sent' : message.delivery }));
+        // Ticks belong to user messages only; other participants' messages never carry them.
+        const user = members.find((member: any) => member.kind === 'user');
+        messages = messages.map(message => {
+            const { tick: _tick, ...rest } = message;
+            return message.author && message.author === user?.id ? { ...rest, tick: message.delivery === 'posted' ? 'sent' : message.delivery } : rest;
+        });
         return { messages: full ? messages : messages.slice(-500), members: members.sort((a: any, b: any) => b.rank - a.rank) };
     }
     setPresence(member: any, present: boolean): void {
         const previous = this.snapshot().members.find(item => item.id === member.id);
         const presenceEvent = present ? 'joined' : 'left';
         if (previous?.presence === presenceEvent && (!present || previous.joinedAt)) return;
-        this.append({ id: randomUUID(), presenceEvent, member, ts: Date.now() });
+        if (!previous && !present) return;
+        this.append({ id: randomUUID(), presenceEvent, member, ts: stamp() }, this.presenceFile);
     }
+    /** Only a registered (joined) participant can post. */
     post(text: string, replyTo?: string, author?: string, details?: string, kind?: string, attachments?: Array<{ name: string; path: string }>) {
         const state = this.snapshot(true);
         const user = state.members.find((member: any) => member.kind === 'user');
-        const actor = author || user.id;
-        if (!state.members.some((member: any) => member.id === actor)) throw new Error('Unknown participant');
-        this.markRead(actor);
-        const message = rules.replyMessage(String(text).slice(0, 8000), actor, rules.selectReply(state.messages, replyTo), randomUUID());
+        const actor = rules.participant(state.members, author || user.id);
+        if (!actor) throw new Error('Unknown participant');
+        if (actor.presence !== 'joined') throw new Error(`${actor.displayName} is not registered in AITalk`);
+        this.markRead(actor.id);
+        const message = rules.replyMessage(String(text).slice(0, 8000), actor.id, rules.selectReply(state.messages, replyTo), randomUUID());
         rules.postMessage(message, state.messages, state.members);
-        this.append({ ...message, ...(attachments?.length ? { attachments } : {}), ...(kind ? { kind } : {}), ...(details ? { details: String(details).slice(0, 8000) } : {}), time: new Date().toTimeString().slice(0, 5), ts: Date.now() });
-        const snapshot = this.snapshot();
-        listeners.get(this.workspace)?.(snapshot.messages.at(-1));
-        return snapshot;
+        this.append({ ...message, ...(attachments?.length ? { attachments } : {}), ...(kind ? { kind } : {}), ...(details ? { details: String(details).slice(0, 8000) } : {}), time: new Date().toTimeString().slice(0, 5), ts: stamp() });
+        return this.snapshot(true);
     }
-    reply(text: string, replyTo: string) { return this.post(text, replyTo); }
     agentId(): string | undefined { return this.snapshot().members.find((member: any) => member.kind === 'agent')?.id; }
+    /** Tracker event from the receiving participant: delivered (double grey) or read (double blue). */
+    track(event: 'delivered' | 'read', recipient: string, ids: string[]): void {
+        if (ids.length) this.append({ deliveryEvent: event, recipient, ids });
+    }
     markRead(recipient: string): void {
-        const ids = this.snapshot(true).messages.filter((message: any) => message.receivedBy?.includes(recipient) && message.delivery === 'delivered').map((message: any) => message.id);
-        if (ids.length) this.append({ deliveryEvent: 'read', recipient, ids });
+        this.track('read', recipient, this.snapshot(true).messages.filter((message: any) => message.receivedBy?.includes(recipient) && message.delivery === 'delivered').map((message: any) => message.id));
     }
     takeForTool(recipient: string): any[] {
         const state = this.snapshot(true);
         if (!rules.participant(state.members, recipient)) return [];
         const received = state.messages.filter((message: any) => message.recipients?.includes(recipient) && !message.receivedBy?.includes(recipient))
             .sort((a: any, b: any) => (rules.participant(state.members, b.author)?.rank ?? 0) - (rules.participant(state.members, a.author)?.rank ?? 0));
-        if (received.length) this.append({ deliveryEvent: 'delivered', recipient, ids: received.map((message: any) => message.id) });
+        this.track('delivered', recipient, received.map((message: any) => message.id));
         return received.map((message: any) => ({ id: message.id, author: message.author, text: message.text, ...(message.attachments ? { attachments: message.attachments } : {}), ...(message.details ? { details: message.details } : {}), ...(message.replyTo ? { replyTo: message.replyTo } : {}) }));
     }
-    react(replyTo: string, emoji: string) {
-        const state = this.snapshot();
-        if (!['👍', '👎', '❤️', '😂', '🙏', '🎉', '👀', '✅', '🤔'].includes(emoji)) throw new Error('Unknown reaction');
+    react(replyTo: string, emoji: string, author?: string) {
+        const state = this.snapshot(true);
+        if (!REACTIONS.includes(emoji)) throw new Error('Unknown reaction');
         if (!state.messages.some((message: any) => message.id === replyTo)) throw new Error('Unknown message');
-        this.append({ id: randomUUID(), author: state.members.find((member: any) => member.kind === 'user').id, replyTo, emoji, ts: Date.now() });
-        return this.snapshot();
+        const by = rules.participant(state.members, author || state.members.find((member: any) => member.kind === 'user').id);
+        if (by?.presence !== 'joined') throw new Error('Participant is not registered in AITalk');
+        this.append({ id: randomUUID(), author: by.id, replyTo, emoji, ts: stamp() });
+        return this.snapshot(true);
     }
-    private append(event: object) {
+    private append(event: object, file = this.file) {
         let size = 0;
-        try { size = fs.statSync(this.file).size; } catch { /* New workspace. */ }
+        try { size = fs.statSync(file).size; } catch { /* New workspace. */ }
         if (size > 10 * 1024 * 1024) throw new Error('AITalk storage limit reached');
-        fs.mkdirSync(path.dirname(this.file), { recursive: true });
-        fs.appendFileSync(this.file, JSON.stringify(event) + '\n');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.appendFileSync(file, JSON.stringify(event) + '\n');
     }
 }

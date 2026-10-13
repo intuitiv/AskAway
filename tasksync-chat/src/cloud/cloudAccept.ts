@@ -94,3 +94,48 @@ export async function acceptCloudTask(run: CloudRun, runner: VerifyRunner = veri
     next.history.push({ state: next.state, at: new Date().toISOString(), signal: `local verification: ${next.acceptance.evidence}` });
     return next;
 }
+
+/**
+ * Brings an accepted cloud change into the local PR branch (reviewer, 2026-10-13): merge, run the packet's tests,
+ * and push without force only when the merge is clean and tests pass; otherwise restore the pre-merge commit.
+ */
+export async function mergeCloudChange(run: CloudRun, runner: VerifyRunner = verifyWorkerRunner, io: QueueIO = defaultIO): Promise<CloudRun> {
+    const next = structuredClone(run);
+    if (run.state !== 'Accepted' || !run.acceptance?.head || run.localMerge?.incoming === run.acceptance.head) { return next; }
+    const root = run.request.root;
+    const incoming = run.acceptance.head;
+    let before = '';
+    let result: NonNullable<CloudRun['localMerge']>['result'] = 'Not merged';
+    let evidence = '';
+    let merging = false;
+    try {
+        if (await io.git(['rev-parse', '--abbrev-ref', 'HEAD'], root) !== run.branch) { throw new Error(`Local checkout is not on ${run.branch}`); }
+        if (await io.git(['status', '--porcelain', '--untracked-files=no'], root)) { throw new Error('Local changes are uncommitted'); }
+        before = await io.git(['rev-parse', 'HEAD'], root);
+        const [, , , owner, repo, , number] = run.pr.split('/');
+        const pr = await io.gh.json<{ head: { ref: string; repo: { clone_url: string } } }>(['api', `repos/${owner}/${repo}/pulls/${number}`]);
+        await io.git(['fetch', pr.head.repo.clone_url, pr.head.ref], root);
+        merging = true;
+        try { await io.git(['merge', '--no-edit', '--no-ff', incoming], root); }
+        catch (error) { result = 'Conflict'; throw new Error(`Merge conflict with cloud ${incoming}: ${(error as Error).message}`); }
+        const commands = run.request.task.verify;
+        const tests = await runner({ root, cwd: root, head: await io.git(['rev-parse', 'HEAD'], root), commands: [...commands], run: structuredClone(run) });
+        evidence = tests.map(item => `${item.command} → exit ${item.exitCode}: ${item.output}`).join('\n');
+        if (!commands.length || tests.length !== commands.length || tests.some((item, index) => item.command !== commands[index] || item.exitCode !== 0)) {
+            result = 'Tests failed'; throw new Error('Local tests failed after merging the cloud change');
+        }
+        await io.git(['push', pr.head.repo.clone_url, `HEAD:refs/heads/${pr.head.ref}`], root);
+        result = 'Pushed';
+        merging = false;
+    } catch (error) {
+        evidence = [evidence, (error as Error).message].filter(Boolean).join('\n');
+        if (merging) {
+            await io.git(['merge', '--abort'], root).catch(() => undefined);
+            await io.git(['reset', '--hard', before], root);
+        }
+    }
+    next.localMerge = { result, at: new Date().toISOString(), before, incoming, evidence };
+    next.decisionNeeded = result === 'Pushed' ? undefined : `Cloud change not pushed (${result}); local branch left at ${before || 'its current commit'}`;
+    next.history.push({ state: next.state, at: next.localMerge.at, signal: `local merge ${result}: ${evidence}` });
+    return next;
+}

@@ -18,16 +18,9 @@ const groups = [
     { id: 'validator', label: 'Validator', events: [request('VALIDATOR', 50, 5)] }
 ];
 browser.ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics: { turnEvents: main, traceGroups: groups } } });
-for (const group of [{ id: 'main', label: 'Main agent', events: main }, groups[2]]) {
-    assert.ok(host.innerHTML.includes(group.label));
-    assert.ok(host.innerHTML.includes(browser.ui.traceRowsHtml(group.events.slice().sort((a, b) => a.ts - b.ts), {})), 'exact shared component output');
-    assert.ok(host.innerHTML.includes('data-trace-group="' + group.id + '"'));
-}
+assert.ok(host.innerHTML.includes(browser.ui.traceRowsHtml(main.slice().sort((a, b) => a.ts - b.ts), {})), 'exact shared component output');
 assert.ok(host.innerHTML.indexOf('MAIN-OLD') < host.innerHTML.indexOf('MAIN-NEW'), 'newest at bottom');
-assert.doesNotMatch(host.innerHTML, /worker-a|worker-b|WORKER-A|WORKER-B/);
-assert.ok(host.innerHTML.includes('$5.00'));
-assert.match(host.innerHTML, /<details class="trace-group"/);
-assert.match(browser.ui.traceGroupsHtml(main, groups, new Set(['validator'])), /data-trace-group="validator" open/);
+assert.doesNotMatch(host.innerHTML, /worker-a|worker-b|WORKER-A|WORKER-B|VALIDATOR|Validator|data-trace-group|<summary>/);
 const created = [];
 browser.document.createElement = () => { const e = { innerHTML: '', appendChild() {} }; created.push(e); return e; };
 const monthElement = { style: {} };
@@ -64,12 +57,10 @@ vm.runInNewContext(ts.transpileModule(provider, { compilerOptions: { module: ts.
 });
 (async () => {
     const instance = Object.create(mod.exports.AskAwayWebviewProvider.prototype); instance._lastSubmitTs = 10;
-    const projected = await instance._turnTraceGroups('/fixture');
-    assert.equal(projected.length, 1); assert.equal(projected[0].label, 'Validator');
-    assert.equal(projected[0].events[0].dollars, 5);
-    assert.equal(projected[0].events.find(event => event.kind === 'tool').tool, 'answer');
+    assert.equal(instance._turnTraceGroups, undefined, 'retired Trace Validator computation is absent');
+    const projected = groups;
     browser.ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics: { traceGroups: projected } } });
-    assert.match(host.innerHTML, /class="obs-tool-name">answer<\/span>/);
+    assert.doesNotMatch(host.innerHTML, /class="obs-tool-name">answer<\/span>|Validator|data-trace-group/);
     assert.ok(require('./package.json').scripts['pretest:workers'].includes('test-trace-tab-unification.cjs'));
-    console.log('PASS EV-TRACE-TAB-UNIFICATION Main agent/Validator only; summary/cache/Ping above groups; no inner Trace/RTK/Gradle headings; monthly cloud estimate; CRLF');
+    console.log('PASS EV-TRACE-TAB-UNIFICATION Main agent only, no collapsible group; summary/cache/Ping above shared rows; monthly cloud estimate; CRLF');
 })().catch(error => { console.error(error); process.exitCode = 1; });

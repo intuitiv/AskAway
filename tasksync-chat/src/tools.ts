@@ -6,7 +6,6 @@ import * as childProcess from 'child_process';
 import { AskAwayWebviewProvider } from './webview/webviewProvider';
 import { getImageMimeType } from './utils/imageUtils';
 import { withTimeout } from './utils/operationDeadline';
-import { PlanTaskStatus } from './plan/planTypes';
 import { dispatchGradle, GradleInput } from './gradle/gradleEngine';
 import { cacheSafeWaitMs } from './observability/cacheClock';
 import { commentaryToolDefinitions } from './commentary/commentary';
@@ -117,25 +116,6 @@ async function computeTurnSpend(context: vscode.ExtensionContext): Promise<{ nan
 
 
 export interface Input {
-    question: string;
-    taskId?: string;
-    taskStatus?: PlanTaskStatus;
-}
-
-export interface AskUserToolResult {
-    response: string;
-    attachments: string[];
-    queue: boolean;
-    taskId?: string;
-    taskStatus?: PlanTaskStatus;
-}
-
-type LspBridgeOperation = 'definition' | 'references' | 'implementation' | 'type_definition' | 'hover' | 'document_symbols' | 'workspace_symbols' | 'diagnostics';
-
-const DEFAULT_CODE_NAV_TIMEOUT_SECONDS = 90;
-const MAX_CODE_NAV_TIMEOUT_SECONDS = 120;
-
-interface LspBridgeInput {
     operation: LspBridgeOperation;
     filePath?: string;
     line?: number;
@@ -143,6 +123,13 @@ interface LspBridgeInput {
     query?: string;
     maxResults?: number;
 }
+
+type LspBridgeOperation = 'definition' | 'references' | 'implementation' | 'type_definition' | 'hover' | 'document_symbols' | 'workspace_symbols' | 'diagnostics';
+
+const DEFAULT_CODE_NAV_TIMEOUT_SECONDS = 90;
+const MAX_CODE_NAV_TIMEOUT_SECONDS = 120;
+
+type LspBridgeInput = Input;
 
 async function executeLspCommand<T>(
     token: vscode.CancellationToken,
@@ -405,148 +392,6 @@ function createCancellationPromise(token: vscode.CancellationToken): {
         promise,
         dispose: () => disposable?.dispose()
     };
-}
-
-/**
- * Core logic to ask user, reusable by MCP server
- * Queue handling and history tracking is done in waitForUserResponse()
- * Plan mode: taskId and taskStatus are passed through for orchestrator logic
- */
-export async function askUser(
-    params: Input,
-    provider: AskAwayWebviewProvider,
-    token: vscode.CancellationToken
-): Promise<AskUserToolResult> {
-    // Check if already cancelled before starting
-    if (token.isCancellationRequested) {
-        // Signal messaging services that Copilot conversation is done
-        provider.getWebexService()?.notifyCopilotStopped();
-        provider.getTelegramService()?.notifyCopilotStopped();
-        throw new vscode.CancellationError();
-    }
-
-    // ── Plan mode: If Copilot reports task status, let the orchestrator handle it ──
-    // Auto-map to active plan task if Copilot didn't include taskId
-    let taskId = params.taskId;
-    let taskStatus = params.taskStatus;
-    if (!taskId) {
-        const activeId = provider.getActivePlanTaskId();
-        if (activeId) {
-            taskId = activeId;
-            // Copilot didn't include taskId — it doesn't know about the plan system.
-            // Use AI to classify: is this a completion report or a mid-task question?
-            taskStatus = await provider.classifyTaskProgress(activeId, params.question);
-        }
-    }
-    if (taskId && taskStatus) {
-        const planResult = await provider.handlePlanTaskUpdate(
-            taskId, 
-            taskStatus, 
-            params.question,
-            token
-        );
-        if (planResult) {
-            return {
-                response: planResult.response,
-                attachments: [],
-                queue: true,  // Keep Copilot calling ask_user for the next plan task
-                taskId: taskId,
-                taskStatus: taskStatus
-            };
-        }
-        // If planResult is null, fall through to normal ask_user flow
-    }
-
-    // Notify messaging services that Copilot is still alive (resets idle timer)
-    provider.getWebexService()?.notifyCopilotActivity();
-    provider.getTelegramService()?.notifyCopilotActivity();
-    provider.getTelegramService()?.notifyToolCallStarted();
-
-    // Create cancellation promise with cleanup capability
-    const cancellation = createCancellationPromise(token);
-
-    try {
-        // Race the user response against cancellation
-        const result = await Promise.race([
-            provider.waitForUserResponse(params.question),
-            cancellation.promise
-        ]);
-
-        // Notify Telegram that the tool call returned (Copilot is processing again)
-        provider.getTelegramService()?.notifyToolCallReturned();
-
-        // Handle case where request was superseded by another call
-        if (result.cancelled) {
-            return {
-                response: result.value,
-                attachments: [],
-                queue: result.queue
-            };
-        }
-
-        let responseText = result.value;
-        const validAttachments: string[] = [];
-
-        // Process attachments to resolve context content
-        if (result.attachments && result.attachments.length > 0) {
-            for (const att of result.attachments) {
-                if (att.uri.startsWith('context://')) {
-                    // Compact context attachment — minimal markers to save tokens
-                    responseText += `\n--- ${att.name} ---\n`;
-
-                    const content = await provider.resolveContextContent(att.uri);
-                    if (content) {
-                        responseText += content;
-                    }
-
-                    responseText += '\n---\n';
-                } else {
-                    // Regular file attachment
-                    validAttachments.push(att.uri);
-                }
-            }
-        }
-
-        // ── Plan mode: Auto-merge user feedback into task instructions ──
-        // When Copilot asks the user mid-task and the user responds,
-        // merge the user's response into the task description so context accumulates.
-        const mergeTaskId = params.taskId || provider.getActivePlanTaskId();
-        if (mergeTaskId && (params.taskStatus === 'in-progress' || (!params.taskStatus && provider.getActivePlanTaskId()))) {
-            provider.mergeUserFeedbackIntoTask(mergeTaskId, params.question, responseText);
-        }
-
-        // Keep Copilot in the loop when there's an active plan task
-        const hasActivePlan = !!provider.getActivePlanTaskId();
-
-        const handoffLine = provider.longRunHandoffLine();
-        if (handoffLine) { responseText += `\n\n${handoffLine}`; }
-
-        return {
-            response: responseText,
-            attachments: validAttachments,
-            queue: result.queue || hasActivePlan
-        };
-    } catch (error) {
-        // Re-throw cancellation errors without logging (they're expected)
-        if (error instanceof vscode.CancellationError) {
-            // Signal messaging services that Copilot conversation ended
-            provider.getWebexService()?.notifyCopilotStopped();
-            provider.getTelegramService()?.notifyCopilotStopped();
-            throw error;
-        }
-        // Log other errors
-        console.error('[AskAway] askUser error:', error instanceof Error ? error.message : error);
-        // Show error to user so they know something went wrong
-        vscode.window.showErrorMessage(`AskAway: ${error instanceof Error ? error.message : 'Failed to show question'}`);
-        return {
-            response: '',
-            attachments: [],
-            queue: false
-        };
-    } finally {
-        // Always clean up the cancellation listener to prevent memory leaks
-        cancellation.dispose();
-    }
 }
 
 // ── ripgrep helpers ──────────────────────────────────────────────────────────

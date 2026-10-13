@@ -20,7 +20,12 @@ export function routeMessage(message, messages, registry) {
     const replyAuthor = parent?.author || message.quote?.author;
     const recipient = participant(registry, replyAuthor);
     if (recipient) targets.push(recipient.id);
-    return [...new Set(targets)].filter(id => id !== participant(registry, message.author)?.id);
+    const author = participant(registry, message.author);
+    const routed = [...new Set(targets)].filter(id => id !== author?.id);
+    // A user's direct message (no @tag, not a reply) goes to the Validator.
+    const validator = registry.find(p => p.kind === 'validator');
+    if (!routed.length && !message.replyTo && author && author.kind === 'user' && validator) routed.push(validator.id);
+    return routed;
 }
 export function presenceChange(registry, id, present) {
     const member = participant(registry, id);
@@ -31,13 +36,9 @@ export function presenceChange(registry, id, present) {
 export function postMessage(message, messages, registry) {
     if (!String(message.text || '').trim()) throw new Error('Crisp text is mandatory');
     if (message.questions || message.answers) throw new Error('Each answer must be its own message');
+    // Registration is the actor's job: routing never makes a recipient join.
     const recipients = routeMessage(message, messages, registry);
-    const notices = [];
-    for (const id of recipients) {
-        const changed = presenceChange(registry, id, true);
-        registry = changed.registry; notices.push(...changed.notices);
-    }
-    return { registry, messages: [...messages, ...notices, { ...message, recipients, delivery: 'posted' }] };
+    return { registry, messages: [...messages, { ...message, recipients, delivery: 'posted' }] };
 }
 export function reactMessage(message, emoji, reactor, messages, registry, id) {
     const route = reactionRoute(message, emoji, reactor, messages, registry);

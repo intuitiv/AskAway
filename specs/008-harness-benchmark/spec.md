@@ -10,6 +10,16 @@
 
 ## Clarifications
 
+### Session 2026-10-13 (planning; answers sourced from Rules.md, GOALS.md, ADR 0013)
+
+- Q: Which fixture? → A: A synthetic spec-bearing workspace in the repo with four levels: simple (1 small task), medium (multi-file change), complex (spec-bearing feature with tests), batch (20 small tasks in one message). Source: Rules.md "Reviewer decisions 2026-10-10" (recommendation accepted).
+- Q: Which main agent runs the benchmark? → A: The Build or Orchestrator prompt, headless in OpenCode; Copilot Chat cannot be scripted. Source: Rules.md 2026-10-10.
+- Q: Which score? → A: The current live banner Score (the 2026-10-10 revision below: round(100 × CacheHit × ContextFactor × PriceFactor)), computed by the same function and rendered by the same component. On the scoreboard it shows only when every hidden check passes, otherwise "incomplete k/n". The formula is revised after the first run's data. Source: Rules.md 2026-10-10 "keep the live formula, gate on full completion, revise after the first run's data"; R-SCORE-08. This supersedes the 1000 × … ÷ Cost formula in "Reviewer input 2026-10-07 (2)".
+- Q: Spend limit? → A: $2 per benchmark run. Source: GOALS.md section 4, 2026-10-10 answer 11 "spending limit per benchmark run is 2$ not 10$".
+- Q: New eval system? → A: No. Extend `tasksync-chat/evals/run-evals.cjs` and `graders.cjs`. Source: Rules.md; Assumptions.
+- Q: Does the benchmark judge live turns? → A: No. It reports task completion separately; the reviewer judges live turns. Source: ADR 0013, R-SCORE-07.
+- Open questions for the reviewer are listed in [plan.md](plan.md) "Open questions"; they do not block Setup, Foundational or US1.
+
 - **Score revision 2026-10-10 (proposed, pending reviewer veto)**: Score = round(100 × CacheHit × ContextFactor × PriceFactor), 0–100. CacheHit = cached / total input (main + workers); ContextFactor = 64000 / max(64000, average prompt tokens across ALL main-agent requests, excluding child rows); PriceFactor = min(1, 0.30 / (turn dollars / ((total input + output) / 1e6))). The $0.30 reference is calibrated from observed well-cached main turns (~$0.31/1M), to be revised by benchmark data. The old cumulative-cost/request formula fell as turns grew at unchanged efficiency. Missing/zero input or cost shows '–'; timer and Score lead the existing shared summary. Guard: test-efficiency-score.cjs EV-EFFICIENCY-SCORE.
 
 ### Reviewer decision 2026-10-07
@@ -89,6 +99,9 @@ The reviewer reads a scoreboard per configuration showing pass rate, total $, re
 - **FR-008**: Cost MUST identify its pricing basis and aggregate the actual model mix; missing cost data MUST NOT be reported as zero.
 - **FR-009**: Harness Efficiency MUST reuse the shared banner's formula and render component, per AGENTS.md consistent experience (reviewer 2026-10-07), with a visible formula and units. It MUST be shown alongside work completion, not replaced by $ per accepted task or an agent-defined 80% ranking bar. More benchmark input from the reviewer is pending.
 - **FR-010**: Results MUST make incomplete runs, incompatible benchmark versions and undefined ratios explicit so they cannot masquerade as efficiency improvements.
+- **FR-011**: A benchmark run MUST stop at $2 of observed spend and record the run as interrupted with that spend (reviewer 2026-10-10).
+- **FR-012**: The task set MUST cover four levels: simple, medium, complex and batch (20 small tasks in one message) (reviewer 2026-10-07, accepted 2026-10-10).
+- **FR-013**: The main agent MUST run headless as the Build or Orchestrator prompt in OpenCode, with its workers, so the comparison covers the whole harness (reviewer 2026-10-07 (3), accepted 2026-10-10).
 
 ### Key Entities
 
@@ -110,6 +123,6 @@ The reviewer reads a scoreboard per configuration showing pass rate, total $, re
 ## Assumptions
 
 - The existing evals capability is reused, not replaced by a second evaluation system; the benchmark is simulated and does not modify real workspaces.
-- The requested complex workspace must be confirmed before planning: the currently checked-in eval fixture is a small seeded-bug workspace with hidden checks, not yet a complex workspace with specs.
+- ~~The requested complex workspace must be confirmed before planning: the currently checked-in eval fixture is a small seeded-bug workspace with hidden checks, not yet a complex workspace with specs.~~ Resolved 2026-10-10: a synthetic spec-bearing workspace in the repo with four levels (Clarifications, Session 2026-10-13).
 - Prompt, harness and model-mix choices are fixed for a comparison; expanding the task corpus, automated prompt optimisation and claiming a universal best harness are out of scope.
 - Efficiency reuses the shared banner's formula and render component (reviewer 2026-10-07); more benchmark input from the reviewer is pending. This draft does not impose a target improvement or select a winning configuration.

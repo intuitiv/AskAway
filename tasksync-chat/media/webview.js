@@ -199,7 +199,6 @@
     function init() {
         try {
             console.log('[TaskSync Webview] init() starting...');
-            cacheDOMElements();
             createHistoryModal();
             createEditModeUI();
             createApprovalModal();
@@ -210,7 +209,6 @@
             initWorkerTabs();
             initSpecsTab();
             initWorkersTab();
-            initCommentaryTab();
             unlockAudioOnInteraction(); // Enable audio after first user interaction
             console.log('[TaskSync Webview] Event listeners bound, pendingMessage element:', !!pendingMessage);
             renderQueue();
@@ -248,9 +246,6 @@
             inputValue: chatInput ? chatInput.value : '',
             attachments: currentAttachments.filter(function (a) { return !a.isTemporary; }) // Don't persist temp images
         });
-    }
-
-    function cacheDOMElements() {
     }
 
     function createHistoryModal() {
@@ -435,15 +430,6 @@
         var modalContent = document.createElement('div');
         modalContent.className = 'settings-modal-content';
 
-        // Sound section - simplified, toggle right next to header
-        var soundSection = document.createElement('div');
-        soundSection.className = 'settings-section';
-        soundSection.innerHTML = '<div class="settings-section-header">' +
-            '<div class="settings-section-title"><span class="codicon codicon-unmute"></span> Notifications</div>' +
-            '<div class="toggle-switch active" id="sound-toggle" role="switch" aria-checked="true" aria-label="Enable notification sound" tabindex="0"></div>' +
-            '</div>';
-        modalContent.appendChild(soundSection);
-
         // Copilot Debug Logging — observability prerequisite (must be ON for Metrics to work),
         // so it sits above the Optimization group.
         var debugLoggingSection = document.createElement('div');
@@ -534,15 +520,6 @@
             '<div class="settings-section-title"><span class="codicon codicon-checklist"></span> Interactive Approvals</div>' +
             '<div class="toggle-switch active" id="interactive-approval-toggle" role="switch" aria-checked="true" aria-label="Enable interactive approval and choice buttons" tabindex="0"></div>' +
             '</div>';
-
-        // Send shortcut section - switch between Enter and Ctrl/Cmd+Enter send
-        var sendShortcutSection = document.createElement('div');
-        sendShortcutSection.className = 'settings-section';
-        sendShortcutSection.innerHTML = '<div class="settings-section-header">' +
-            '<div class="settings-section-title"><span class="codicon codicon-keyboard"></span> Ctrl/Cmd+Enter to Send</div>' +
-            '<div class="toggle-switch" id="send-shortcut-toggle" role="switch" aria-checked="false" aria-label="Use Ctrl/Cmd+Enter to send messages" tabindex="0"></div>' +
-            '</div>';
-        modalContent.appendChild(sendShortcutSection);
 
         // Turn budget (AIU) — soft per-turn credit limit the turn_budget tool checks against.
         var turnBudgetSection = document.createElement('div');
@@ -1356,9 +1333,6 @@
                 break;
             case 'workerTrace':
                 if (message.data && message.data.workerId) { workersTraces[message.data.workerId] = message.data; paintWorkers(); }
-                break;
-            case 'commentaryState':
-                applyCommentaryState(message.data);
                 break;
             case 'availabilityState':
                 presenceStates = message.states || presenceStates;
@@ -2949,12 +2923,9 @@
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
         });
     }
-    function traceGroupsHtml(main, groups, openGroups, ctx) {
-        return [{ id: 'main', label: 'Main agent', events: main || [] }].concat((groups || []).filter(function (group) { return /^Validator(?: ·|$)/.test(group.label); })).map(function (group) {
-            var events = (group.events || []).slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
-            var cost = events.reduce(function (sum, event) { return sum + (event.kind === 'request' ? Number(event.dollars != null ? event.dollars : (event.nanoAiu || 0) / 1e11) : 0); }, 0);
-            return '<details class="trace-group" data-trace-group="' + escapeHtml(group.id) + '"' + (openGroups && openGroups.has(group.id) ? ' open' : '') + '><summary>' + escapeHtml(group.label) + ' · $' + cost.toFixed(2) + '</summary><table class="observability-table obs-timeline-table">' + TRACE_HEAD + '<tbody>' + traceRowsHtml(events, ctx) + '</tbody></table></details>';
-        }).join('');
+    function traceGroupsHtml(main, ctx) {
+        var events = (main || []).slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+        return '<table class="observability-table obs-timeline-table">' + TRACE_HEAD + '<tbody>' + traceRowsHtml(events, ctx) + '</tbody></table>';
     }
 
     function traceRowsHtml(events, ctx) {
@@ -3319,8 +3290,7 @@
         // ── This turn: chronological timeline — LLM rows in columns, tool rows expandable ──
         var groupHost = document.getElementById('obs-trace-groups');
         if (groupHost) {
-            var openGroups = new Set(Array.from(groupHost.querySelectorAll('details[open][data-trace-group]')).map(function (el) { return el.getAttribute('data-trace-group'); }));
-            groupHost.innerHTML = traceGroupsHtml(observabilityMetrics.turnEvents, observabilityMetrics.traceGroups, openGroups, { openIds: traceOpenIds(groupHost), splitHtml: renderSplitDetail });
+            groupHost.innerHTML = traceGroupsHtml(observabilityMetrics.turnEvents, { openIds: traceOpenIds(groupHost), splitHtml: renderSplitDetail });
             if (!groupHost._traceClickBound) {
                 groupHost._traceClickBound = true;
                 groupHost.addEventListener('click', function (event) {
@@ -5122,14 +5092,6 @@
         'done': 'Done'
     };
 
-    var commentaryView = null;
-
-    function applyCommentaryState(data) {
-        commentaryView = data;
-        var goal = document.getElementById('cm-goal-input');
-        if (goal && document.activeElement !== goal) goal.value = (data && data.goal) || '';
-    }
-
     var presenceStates = [];
     var presenceState = { mode: 'here' };
     function applyAvailabilityState(state) {
@@ -5144,26 +5106,6 @@
     }
     function openPresence() {
         document.querySelector('#aitalk-root .presence-trigger')?.click();
-    }
-
-    function initCommentaryTab() {
-        var goal = document.getElementById('cm-goal-input');
-        var on = function (id, handler) { var el = document.getElementById(id); if (el) el.addEventListener('click', handler); };
-        var goalTimer = null;
-        var saveGoal = function () {
-            if (goalTimer) { clearTimeout(goalTimer); goalTimer = null; }
-            vscode.postMessage({ type: 'setCommentaryGoal', goal: goal ? goal.value : '' });
-        };
-        if (goal) {
-            goal.addEventListener('input', function () {
-                if (goalTimer) clearTimeout(goalTimer);
-                goalTimer = setTimeout(saveGoal, 700);
-            });
-            goal.addEventListener('blur', function () { if (goalTimer) saveGoal(); });
-        }
-        on('cm-copy', function () { if (commentaryView) vscode.postMessage({ type: 'copyToClipboard', text: commentaryView.opener }); });
-        // Subscribes the provider to live pushes even while another tab is open.
-        vscode.postMessage({ type: 'requestCommentary' });
     }
 
     // ── Workers tab: pure render (tested in test-workers-control-plane.cjs) ──

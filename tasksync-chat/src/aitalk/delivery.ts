@@ -1,14 +1,27 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import { AITalkStore } from './store';
+import { roomFor } from './actors';
 import { setCommentaryAITalkMirror } from '../commentary/commentary';
 let workspace: string | undefined;
+const mcpCaller = new AsyncLocalStorage<AITalkCaller>();
 export function configureAITalkDelivery(root: string): void {
     workspace = root;
     setCommentaryAITalkMirror((target, input) => {
-        const talk = new AITalkStore(target);
-        const state = talk.snapshot(true);
-        const author = state.members.find(member => member.kind === (input.authorKind ?? 'agent'));
+        const room = roomFor(target);
+        const state = room.store.snapshot(true);
+        const caller = mcpCaller.getStore();
+        const kind = input.authorKind ?? 'agent';
+        // A worker posts as itself over MCP; it joins AITalk with its first message.
+        if (kind === 'agent' && caller && !state.members.some(member => member.id === caller.recipient && member.kind !== 'worker')) {
+            return room.workerPost(caller.recipient, input.text, { replyTo: input.replyTo, details: input.details, kind: input.kind }).message;
+        }
+        const author = state.members.find(member => member.kind === kind);
         if (!author) throw new Error('AITalk participant is not registered');
-        if (input.authorKind !== 'validator') return talk.post(input.text, input.replyTo, author.id, input.details, input.kind);
+        // The main agent's commentary call is a tool call of its running turn: it registers like beginAITalkTool.
+        if (kind === 'agent' && !caller) room.registerAgent();
+        // An unregistered actor cannot post; the commentary feed itself carries on.
+        if (!room.isRegistered(author.id)) return { status: 'REJECTED', reason: `${author.displayName} is not registered in AITalk` };
+        if (kind !== 'validator') return room.post(author.id, input.text, { replyTo: input.replyTo, details: input.details, kind: input.kind }).message;
         const detail = input.detail ?? {};
         const crisp = detail.error ? `Could not check this: ${String(detail.error).slice(0, 240)}`
             : typeof detail.answer === 'string' && detail.answer.trim() ? detail.answer
@@ -20,7 +33,7 @@ export function configureAITalkDelivery(root: string): void {
         ].filter(Boolean).join('\n');
         const questionId = input.replyTo ?? (typeof detail.observedId === 'string' ? detail.observedId : undefined);
         const replyTo = state.messages.some(message => message.id === questionId) ? questionId : undefined;
-        return talk.post(crisp, replyTo, author.id, details || input.details, input.kind);
+        return room.post(author.id, crisp, { replyTo, details: details || input.details, kind: input.kind }).message;
     });
 }
 export interface AITalkCaller { recipient: string; workspace?: string }
@@ -35,14 +48,16 @@ export function withAITalkMcpDelivery(handler: (args: any, extra: any) => Promis
         if (!caller) return handler(args, extra);
         caller.workspace ??= defaultWorkspace;
         beginAITalkTool(caller);
-        const result = await handler(args, { ...extra, _meta: undefined });
+        const result = await mcpCaller.run(caller, () => handler(args, { ...extra, _meta: undefined }));
         const pending = appendAITalkDelivery('', caller);
         return pending ? { ...result, content: [...result.content, { type: 'text', text: pending }] } : result;
     };
 }
+/** A main-agent tool call (no caller) means its turn is running: the Agent registers itself. */
 export function beginAITalkTool(caller?: AITalkCaller): void {
     const root = caller?.workspace ?? workspace;
     if (!root) return;
+    if (!caller) roomFor(root).registerAgent();
     const store = new AITalkStore(root);
     const recipient = caller?.recipient ?? store.agentId();
     if (recipient) store.markRead(recipient);

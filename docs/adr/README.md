@@ -35,3 +35,5 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0018](0018-webex-replaces-telegram.md) | Webex replaces Telegram as the remote channel, with the same features | G7 | Accepted |
 | [0019](0019-cloud-task-done-shares-pr-link.md) | A finished cloud task shares its PR link; the reviewer finishes it by hand | G9 | Proposed |
 | [0020](0020-webex-browser-oauth-manual-callback.md) | Webex browser OAuth uses the confirmed localhost redirect and manual return through a local masked prompt | G7 | Proposed |
+| [0021](0021-aitalk-actor-framework.md) | AITalk is an actor framework; the chat widget only renders data and emits intents | G8 | Proposed |
+| [0022](0022-cloud-change-merged-tested-pushed.md) | A cloud change is merged locally, tested, then pushed; supersedes ADR 0019's no-push rule | G9 | Proposed |

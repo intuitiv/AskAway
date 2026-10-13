@@ -1,9 +1,9 @@
 // Shared AITalk renderer: pure functions, messages array -> HTML string.
 // Production can adopt these as-is; nothing here touches the DOM.
 
-export const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
+import { escapeHtml, inlineMarkdown, markdownHtml, hasBlockMarkdown } from './markdown.js';
 import { defaultMembers, participant, displayName, owner, primaryReply } from './talkRules.js';
+export { escapeHtml } from './markdown.js';
 import { presenceHtml } from './presence.js';
 export { defaultMembers } from './talkRules.js';
 const initialsOf = name => (name.match(/[A-Za-z0-9]+/g) || ['?']).map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -19,7 +19,9 @@ export function whoClass(name, members = defaultMembers) {
 }
 
 const mentionRegex = members => new RegExp(`@(${members.flatMap(m => [displayName(m), m.id]).filter(Boolean).map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?![\\w-])`, 'gi');
-export const textHtml = (text, members = defaultMembers) => escapeHtml(text).replace(mentionRegex(members), '<b class="talk-mention">@$1</b>');
+const mentionsOf = members => html => html.replace(mentionRegex(members), '<b class="talk-mention">@$1</b>');
+// Inline markdown (code, bold, italic, http links) with @mentions; HTML is always escaped first.
+export const textHtml = (text, members = defaultMembers) => inlineMarkdown(text, mentionsOf(members));
 
 const CHECK_A = 'M0.8 5.9 4.1 9.2 10.6 1.5';
 const CHECK_B = 'M4.4 5.9 7.7 9.2 14.2 1.5';
@@ -28,11 +30,13 @@ export function tickSvg(delivered) {
     return `<svg class="talk-tick-svg" viewBox="0 0 16 11" width="16" height="11" aria-hidden="true" focusable="false"><path d="${CHECK_A}"/>${delivered ? `<path d="${CHECK_B}"/>` : ''}</svg>`;
 }
 
+// Tick state from the receiving actor's tracker: sent (single), delivered (double grey), read (double blue).
 export function ticksHtml(message) {
-    if (!message.delivery) return '';
-    const delivery = message.delivery === 'sent' ? 'posted' : message.delivery === 'handedOver' ? 'delivered' : message.delivery;
+    const state = message.tick || message.delivery;
+    if (!state) return '';
+    const delivery = state === 'sent' ? 'posted' : state === 'handedOver' ? 'delivered' : state;
     const delivered = delivery !== 'posted';
-    const title = delivered ? `${message.delivery === 'read' ? 'Read' : 'Delivered'} · ${message.tool || 'recipient event'}` : 'Posted · waiting for a tool response';
+    const title = delivered ? `${delivery === 'read' ? 'Read' : 'Delivered'} · ${message.tool || 'recipient event'}` : 'Posted · waiting for a tool response';
     return `<span class="talk-ticks ${delivery}" role="img" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}">${tickSvg(delivered)}</span>`;
 }
 
@@ -98,26 +102,21 @@ export function splitBody(message) {
     return { short: text, full: text, details: '', collapsible: false };
 }
 
-// Details support short "- item" lists and `code`; everything else is plain paragraphs.
+// Details and long bodies use the same safe markdown renderer as every message.
 export function detailsHtml(details, members = defaultMembers) {
-    const out = [];
-    let list = [];
-    const flush = () => { if (list.length) { out.push(`<ul>${list.map(i => `<li>${i}</li>`).join('')}</ul>`); list = []; } };
-    const inline = line => textHtml(line, members).replace(/`([^`]+)`/g, '<code>$1</code>');
-    for (const line of details.split('\n')) {
-        if (/^\s*[-•] /.test(line)) list.push(inline(line.replace(/^\s*[-•] /, '')));
-        else { flush(); if (line.trim()) out.push(`<p>${inline(line)}</p>`); }
-    }
-    flush();
-    return out.join('');
+    return markdownHtml(details, mentionsOf(members));
 }
+
+const textBlockHtml = (text, members) => hasBlockMarkdown(text)
+    ? `<div class="talk-text talk-md">${markdownHtml(text, mentionsOf(members))}</div>`
+    : `<span class="talk-text">${textHtml(text, members)}</span>`;
 
 export function bodyHtml(message, members = defaultMembers) {
     if (!message.text && !message.details) return '';
     const { short, full, details, collapsible } = splitBody(message);
     const id = escapeHtml(message.id || '');
     const open = !!message.expanded;
-    const text = `<span class="talk-text">${textHtml(open && !details ? full : short, members)}</span>`;
+    const text = textBlockHtml(open && !details ? full : short, members);
     if (!collapsible) return text;
     const body = open && details ? `<div class="talk-details" id="talk-details-${id}">${detailsHtml(details, members)}</div>` : '';
     return `${text}${body}<button type="button" class="talk-more" data-more="${id}" aria-expanded="${open}"${open && details ? ` aria-controls="talk-details-${id}"` : ''}>${open ? 'Show less' : 'Show more'}</button>`;
@@ -132,7 +131,7 @@ export function bubbleHtml(message, { messages = [], members = defaultMembers, f
     const name = !mine && first ? `<span class="talk-sender ${whoClass(message.author, members)}">${escapeHtml(label)}</span>` : '';
     const avatar = mine ? '' : first ? `<span class="talk-avatar ${whoClass(message.author, members)}" aria-hidden="true">${escapeHtml(initialsOf(label))}</span>` : '<span class="talk-avatar-gap" aria-hidden="true"></span>';
     const trace = (message.attachments ?? []).map(file => `<span class="talk-attachment">${escapeHtml(file.name)}</span>`).join('') + (message.trace ? `<a class="talk-trace-link" href="#trace" data-tab="Trace">View trace ↗</a>` : '');
-    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'}" id="talk-${escapeHtml(message.id || '')}">${avatar}<div class="talk-bubble ${message.kind === 'heads-up' ? 'heads-up' : ''} ${first ? 'tail' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${escapeHtml(message.id || '')}" aria-label="${escapeHtml(message.author)}: message. Right-click, long-press or press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${bodyHtml(message, members)}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${ticksHtml(message)}</span>${reactions}</div></div>`;
+    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'}" id="talk-${escapeHtml(message.id || '')}">${avatar}<div class="talk-bubble ${message.kind === 'heads-up' ? 'heads-up' : ''} ${first ? 'tail' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${escapeHtml(message.id || '')}" aria-label="${escapeHtml(message.author)}: message. Right-click, long-press or press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${bodyHtml(message, members)}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${mine ? ticksHtml(message) : ''}</span>${reactions}</div></div>`;
 }
 
 export function systemHtml(item) {
@@ -159,15 +158,25 @@ export function mentionsHtml(members = defaultMembers) {
 
 export const mentioning = draft => /(?:^|\s)@[^\s@]*$/.test(draft);
 
-export function headerHtml({ name = 'AITalk', members = defaultMembers, typing = '', presence }) {
+// Registered actors' names on top; typing replaces them while an actor types.
+export function titleHtml({ name = 'AITalk', members = defaultMembers, typing = '' }) {
     const present = members.filter(member => member.presence !== 'left');
     const moderator = owner(present);
     const subtitle = typing
         ? `<span class="talk-typing-line">${escapeHtml(typing)}</span>`
         : present.map(m => `<span>${escapeHtml(displayName(m))}</span>`).join(', ');
     const label = moderator ? displayName(moderator) : '';
-    return `<header class="talk-header"><span class="talk-group-avatar" aria-hidden="true">✦</span><div class="talk-title"><h2>${escapeHtml(name)}</h2><div class="talk-subtitle">${subtitle}</div></div><span class="talk-moderator">${escapeHtml(label)} ${label === 'You' ? 'moderate' : 'moderates'}</span>${presenceHtml({ mode: 'here', reset: 'never', open: false, focusIndex: 0, expiresAt: null, name: displayName(members.find(member => member.kind === 'user') || { id: '' }), ...presence, embedded: true })}</header>`;
+    return `<div class="talk-title"><h2>${escapeHtml(name)}</h2><div class="talk-subtitle">${subtitle}</div></div><span class="talk-moderator">${escapeHtml(label)} ${label === 'You' ? 'moderate' : 'moderates'}</span>`;
 }
+
+export function headerPresenceHtml({ members = defaultMembers, presence }) {
+    return presenceHtml({ mode: 'here', reset: 'never', open: false, focusIndex: 0, expiresAt: null, name: displayName(members.find(member => member.kind === 'user') || { id: '' }), ...presence, embedded: true });
+}
+
+// Regions are patched independently, so a snapshot update never re-mounts an open menu, focus or scroll.
+const region = (key, html) => `<div class="talk-region" data-talk-region="${key}">${html}</div>`;
+const headerShell = (title, presence) => `<header class="talk-header"><span class="talk-group-avatar" aria-hidden="true">✦</span>${region('title', title)}${region('presence', presence)}</header>`;
+export const headerHtml = options => headerShell(titleHtml(options), headerPresenceHtml(options));
 
 export function composerHtml({ draft = '', reply, members = defaultMembers, popover = false, emoji = false, attachments = [] } = {}) {
     const replyBar = reply ? `<div class="talk-reply-bar">${quoteHtml(reply, members)}<button type="button" data-cancel-reply aria-label="Cancel reply">✕</button></div>` : '';
@@ -178,10 +187,24 @@ export function traceHtml(sessions, traceRowsHtml) {
     return `<section class="talk-trace" aria-label="Trace"><h2>Trace</h2><p class="talk-muted">Participant sessions</p>${sessions.map(session => `<details class="talk-trace-session" open><summary><strong>${escapeHtml(session.label)}</strong><span>${escapeHtml(session.time)} · ${escapeHtml(session.status)}</span></summary><div class="talk-trace-scroll"><table class="obs-timeline-table">${traceRowsHtml(session.events, { now: 1791716400000 })}</table></div></details>`).join('')}</section>`;
 }
 
-export function talkHtml(messages, options = {}) {
-    const { theme = 'dark', members = defaultMembers, moderator = owner(members) ? displayName(owner(members)) : '', typing = '', unread = 0, draft = '', reply, popover = mentioning(draft) } = options;
+// The widget's data → HTML, one string per independently patched region.
+export function talkParts(messages, options = {}) {
+    const { members = defaultMembers, typing = '', unread = 0, draft = '', reply, popover = mentioning(draft) } = options;
     const empty = '<div class="talk-empty"><span class="talk-empty-icon">✦</span><h3>No messages yet</h3><p>Say hi, or use @ to talk to a participant.</p></div>';
-    const tabs = ['AITalk', 'Specs', 'Trace', 'Workers', 'Settings'].map((tab, i) => `<button type="button" data-tab="${i === 0 ? 'Talk' : tab}" aria-pressed="${i === 0}">${tab}</button>`).join('');
     const typingRow = typing ? `<div class="talk-row in first"><span class="talk-avatar ${whoClass(typing.split(' ')[0])}" aria-hidden="true">${escapeHtml(initialsOf(typing.split(' ')[0]))}</span><div class="talk-bubble tail talk-typing" aria-label="${escapeHtml(typing)}"><i></i><i></i><i></i></div></div>` : '';
-    return `<div class="talk-prototype theme-${theme} moderator-${escapeHtml(moderator.toLowerCase())}">${options.embedded ? '' : `<nav class="talk-tabs" aria-label="Panel tabs">${tabs}</nav>`}<div class="talk-panel" data-panel="Talk">${headerHtml({ ...options, members, typing, moderator })}<div class="talk-thread" role="log" aria-label="Group chat">${messages.length ? threadHtml(messages, members) : empty}${typingRow}<div id="talk-bottom"></div></div>${unread ? `<button type="button" class="talk-unread" data-bottom>${unread} new messages ↓</button>` : ''}${composerHtml({ ...options, draft, reply, members, popover })}</div><div data-panel="Trace" hidden>${options.trace || ''}</div></div>`;
+    return {
+        title: titleHtml({ ...options, members, typing }),
+        presence: headerPresenceHtml({ ...options, members }),
+        thread: `${messages.length ? threadHtml(messages, members) : empty}${typingRow}<div id="talk-bottom"></div>`,
+        unread: unread ? `<button type="button" class="talk-unread" data-bottom>${unread} new messages ↓</button>` : '',
+        composer: composerHtml({ ...options, draft, reply, members, popover }),
+    };
+}
+
+export function talkHtml(messages, options = {}) {
+    const { theme = 'dark', members = defaultMembers, moderator = owner(members) ? displayName(owner(members)) : '' } = options;
+    const parts = talkParts(messages, { ...options, members });
+    const tabs = ['AITalk', 'Specs', 'Trace', 'Workers', 'Settings'].map((tab, i) => `<button type="button" data-tab="${i === 0 ? 'Talk' : tab}" aria-pressed="${i === 0}">${tab}</button>`).join('');
+    const header = headerShell(parts.title, parts.presence);
+    return `<div class="talk-prototype theme-${theme} moderator-${escapeHtml(moderator.toLowerCase())}">${options.embedded ? '' : `<nav class="talk-tabs" aria-label="Panel tabs">${tabs}</nav>`}<div class="talk-panel" data-panel="Talk">${header}<div class="talk-thread" role="log" aria-label="Group chat" data-talk-region="thread">${parts.thread}</div>${region('unread', parts.unread)}${region('composer', parts.composer)}</div><div data-panel="Trace" hidden>${options.trace || ''}</div></div>`;
 }

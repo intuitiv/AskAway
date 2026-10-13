@@ -2,14 +2,12 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { z } from 'zod';
-import { CREDENTIAL } from '../workers/openCodeRuntime';
-import type { ToolDefinition } from '../workers/workerTools';
+const CREDENTIAL = /\bgh[pousr]_[A-Za-z0-9]{20,}|\bsk-[A-Za-z0-9]{20,}|\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}|\bsqu_[A-Za-z0-9]{20,}|\d{8,}:[A-Za-z0-9_-]{30,}/;
 
 export const COMMENTARY_KINDS = ['update', 'heads-up'] as const;
 export type CommentaryKind = typeof COMMENTARY_KINDS[number];
 export const MAX_COMMENTARY_WORDS = 20;
 export const MIN_COMMENTARY_WORDS = 3;
-const MAX_GOAL_CHARS = 2000;
 const OPENER_ITEMS = 30;
 type TalkPost = (workspace: string, input: { text: string; replyTo?: string; details?: string; kind?: string; authorKind?: string; detail?: Record<string, unknown> }) => unknown;
 let talkPost: TalkPost | undefined;
@@ -21,8 +19,6 @@ export interface CommentaryItem { id: string; ts: number; kind: CommentaryKind |
 /** Persisted per workspace so the next conversation's hook can carry goal and feed over. */
 export interface CommentaryState {
     workspacePath: string;
-    goal: string;
-    goalUpdatedAt: number;
     clearedAt: number;
     items: CommentaryItem[];
     /**
@@ -49,7 +45,7 @@ export function uncleared(state: CommentaryState): CommentaryItem[] {
 /** The block the reviewer pastes into (or the hook injects at) the next conversation's first prompt. */
 export function buildOpener(state: CommentaryState): string {
     const items = uncleared(state).slice(-OPENER_ITEMS);
-    const lines = [`Main goal: ${state.goal || '(none set; use the active spec cycle)'}`];
+    const lines: string[] = [];
     if (items.length) {
         lines.push(`Commentary since last clear (${items.length}):`);
         for (const item of items) {
@@ -57,18 +53,17 @@ export function buildOpener(state: CommentaryState): string {
             lines.push(`- ${time} ${item.kind === 'heads-up' ? 'HEADS-UP: ' : ''}${item.text}`);
         }
     }
-    lines.push('Continue toward the main goal.');
     return lines.join('\n');
 }
 
 /** What the Commentary tab receives: the goal, the uncleared feed, when each chat turn started, and the ready-to-copy opener. */
-export interface CommentaryView { goal: string; goalUpdatedAt: number; items: CommentaryItem[]; archivedCount: number; opener: string; turnStarts: number[]; currentPrompt: string }
+export interface CommentaryView { items: CommentaryItem[]; archivedCount: number; opener: string; turnStarts: number[]; currentPrompt: string }
 
 export function commentaryView(state: CommentaryState, turnStarts: number[] = [], currentPrompt = ''): CommentaryView {
     const agentItems = uncleared(state);
     const validator = (state.validatorItems ?? []).filter((item) => item.ts > state.clearedAt);
     const items = validator.length ? [...agentItems, ...validator].sort((a, b) => a.ts - b.ts) : agentItems;
-    return { goal: state.goal, goalUpdatedAt: state.goalUpdatedAt, items, archivedCount: state.items.length - agentItems.length, opener: buildOpener(state), turnStarts, currentPrompt };
+    return { items, archivedCount: state.items.length - agentItems.length, opener: buildOpener(state), turnStarts, currentPrompt };
 }
 
 /** Same turns-file shape as hooks/spec-context-inject.cjs writes: parallel `starts` and `prompts`, newest last. */
@@ -132,10 +127,11 @@ export class CommentaryStore {
     }
 
     read(workspacePath: string): CommentaryState {
-        const empty: CommentaryState = { workspacePath, goal: '', goalUpdatedAt: 0, clearedAt: 0, items: [] };
+        const empty: CommentaryState = { workspacePath, clearedAt: 0, items: [] };
         try {
             const parsed = JSON.parse(fs.readFileSync(this.file(workspacePath), 'utf8'));
-            return { ...empty, ...parsed, items: Array.isArray(parsed.items) ? parsed.items : [] };
+            return { workspacePath, clearedAt: parsed.clearedAt ?? 0, items: Array.isArray(parsed.items) ? parsed.items : [],
+                ...(Array.isArray(parsed.validatorItems) ? { validatorItems: parsed.validatorItems } : {}) };
         } catch {
             return empty;
         }
@@ -185,19 +181,10 @@ export class CommentaryStore {
         return { status: 'POSTED', id: item.id };
     }
 
-    setGoal(workspacePath: string, goal: string): CommentaryState {
-        const state = this.read(workspacePath);
-        state.goal = String(goal ?? '').trim().slice(0, MAX_GOAL_CHARS);
-        state.goalUpdatedAt = this.now();
-        this.write(state);
-        return state;
-    }
-
     /** Clearing the feed keeps the items as audit history; only the carry-over boundary moves. */
-    clear(workspacePath: string, what: 'feed' | 'goal' | 'all'): CommentaryState {
+    clear(workspacePath: string, what: 'feed' | 'all'): CommentaryState {
         const state = this.read(workspacePath);
-        if (what !== 'goal') { state.clearedAt = Math.max(this.now(), state.items[state.items.length - 1]?.ts ?? 0); }
-        if (what !== 'feed') { state.goal = ''; state.goalUpdatedAt = this.now(); }
+        state.clearedAt = Math.max(this.now(), state.items[state.items.length - 1]?.ts ?? 0);
         this.write(state);
         return state;
     }
@@ -211,7 +198,9 @@ export class CommentaryStore {
     }
 }
 
-export function commentaryToolDefinitions(store: () => CommentaryStore, defaultWorkspace: string): ToolDefinition[] {
+export function commentaryToolDefinitions(store: () => CommentaryStore, defaultWorkspace: string): Array<{
+    name: string; description: string; inputSchema: z.ZodObject<any>; run: (args: any) => any;
+}> {
     return [{
         name: 'commentary',
         description: 'Live commentary: the trace of your execution for the reviewer, so they know what is happening, can guide you in time, and are prepared for questions coming their way. '

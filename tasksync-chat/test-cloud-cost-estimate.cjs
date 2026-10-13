@@ -10,7 +10,7 @@ async function main() {
     const { pollPr, createGh, workspaceCostRequests } = mod.exports;
     const at = '2026-10-12T10:00:00Z', start = '2026-10-12T09:59:00Z';
     const pr = 'https://github.com/example/repo/pull/1';
-    let records = [{ v: 1, slug: '006', taskId: 'T1', packetSha: 'packet', pr, branch: 'cloud', commentId: '1', state: 'Working', queuedAt: start, history: [], request: { root, explicitRequest: true, task: { verify: [] } } }];
+    let records = [{ v: 1, slug: '006', taskId: 'T1', attempt: 1, packetSha: 'packet', pr, branch: 'cloud', commentId: '1', state: 'Working', queuedAt: start, history: [], request: { root, explicitRequest: true, task: { verify: [] } } }];
     const calls = [];
     const workflows = [1,2,3,4,5].map(id => ({ databaseId: id, status: id === 5 ? 'in_progress' : 'completed', headSha: 'packet' }));
     workflows.push({ databaseId: 999, status: 'completed', headSha: 'unrelated' });
@@ -35,14 +35,31 @@ async function main() {
     assert.equal(calls.filter(args => args.at(-1).endsWith('/timing')).length, 4);
     assert.equal(records[0].workflowRuns.find(r => r.id === 4).timing[0].billableMs, 180000);
     console.log('PASS workflow IDs workspace-owned; completed timing fetched once; self-hosted duration/OS fallback; repeated polling deduped');
-    records.push({ ...structuredClone(records[0]), taskId: 'duplicate' }, { ...structuredClone(records[0]), request: { root: '/other-workspace' } });
+    // Reviewer 2026-10-13: the cloud estimate is the user's queued task, costed at PR fetch once it completes, from its own runs only.
+    assert.equal(records[0].cost, undefined, 'unfinished task is not costed');
+    assert.deepEqual((await workspaceCostRequests(root)).filter(row => row.source === 'cloud'), []);
+    records.push({ ...structuredClone(records[0]), taskId: 'T2', packetSha: 'packet2', workflowRuns: undefined, agentSessions: undefined, queuedAt: '2026-10-12T10:30:00Z' });
+    workflows.push({ databaseId: 7, status: 'completed', headSha: 'packet2' });
+    records[0].state = 'Needs review'; records[0].endedAt = '2026-10-12T10:20:00Z';
+    await pollPr(root, pr, io, ['Copilot'], Date.parse(at) + 480000);
+    assert.equal(records[0].cost, undefined, 'task with an in-progress run waits for its timing');
+    workflows[4].status = 'completed';
+    await pollPr(root, pr, io, ['Copilot'], Date.parse(at) + 720000);
+    const taskCost = 2*.006 + 2*.010 + 2*.062 + 3*.006 + 2*.062 + .04;
+    assert.deepEqual(Array.from(records[0].cost.workflowRuns).sort(), [1,2,3,4,5]); assert.ok(Math.abs(records[0].cost.dollars - taskCost) < 1e-10);
+    assert.equal(records[0].cost.at, '2026-10-12T10:20:00Z'); assert.equal(records[1].cost, undefined, 'other queued task still working');
+    assert.ok(records[1].workflowRuns.every(run => run.id === 7), 'runs match only their own task');
+    const stored = structuredClone(records[0].cost);
+    await pollPr(root, pr, io, ['Copilot'], Date.parse(at) + 960000);
+    assert.deepEqual(records[0].cost, stored, 'cost computed once');
+    records.push({ ...structuredClone(records[0]), request: { root: '/other-workspace' } });
     await fs.writeFile(file, JSON.stringify(records));
     const costs = (await workspaceCostRequests(root)).filter(row => row.source === 'cloud');
-    assert.equal(costs.length, 5); assert.ok(costs.every(row => row.estimated === true));
-    assert.deepEqual(costs.map(row => row.id).sort(), ['cloud:1','cloud:2','cloud:3','cloud:4','cloud:premium:example/repo:10'].sort());
-    assert.ok(Math.abs(costs.reduce((sum, row) => sum + row.dollars, 0) - (2*.006 + 2*.010 + 2*.062 + 3*.006 + .04)) < 1e-10);
+    assert.equal(costs.length, 1); assert.ok(costs.every(row => row.estimated === true));
+    assert.equal(costs[0].id, 'cloud:task:006:T1:1');
+    assert.ok(Math.abs(costs[0].dollars - taskCost) < 1e-10);
     assert.deepEqual(await workspaceCostRequests(root), await workspaceCostRequests(root));
-    console.log('PASS cloud estimated rows at official Linux/Windows/macOS rates plus $0.04/session; other workspace and unfinished excluded');
+    console.log('PASS per-task cloud estimate stored at PR fetch from that task\'s runs only (official rates plus $0.04/session); monthly rows sum task costs; other workspace and unfinished excluded');
     console.log('PASS EV-CLOUD-COST-ESTIMATE');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

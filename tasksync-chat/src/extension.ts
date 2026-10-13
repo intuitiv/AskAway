@@ -5,8 +5,9 @@ import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
 import { wireWebex } from './services/webexWiring';
-import { AITalkStore, activateAITalk, setAITalkTurnActive, setAITalkWorkerPresence } from './aitalk/store';
-import { registerAITalkValidator } from './aitalk/validatorDelivery';
+import { AITalkStore } from './aitalk/store';
+import { roomFor } from './aitalk/actors';
+import { registerAITalkValidator, askValidator } from './aitalk/validatorDelivery';
 import { notifyAttention, registerAttentionNotify } from './services/attentionNotify';
 import { createWebexSuiteHost } from './services/webexToolsHost';
 import { registerTools } from './tools';
@@ -278,6 +279,8 @@ async function ensureSubagentTimerHookInstalled(): Promise<void> {
             hooks: {
                 PreToolUse: [{ type: 'command', command: gatePath, cwd: '.', timeout: 5 }],
                 PostToolUse: [{ type: 'command', command: gatePath, cwd: '.', timeout: 5 }],
+                UserPromptSubmit: [{ type: 'command', command: gatePath, cwd: '.', timeout: 5 }],
+                Stop: [{ type: 'command', command: gatePath, cwd: '.', timeout: 5 }],
             },
         };
         await fs.promises.mkdir(path.dirname(copilotHookPath), { recursive: true });
@@ -1028,8 +1031,8 @@ export function activate(context: vscode.ExtensionContext) {
         // Register VS Code LM Tools (critical for Copilot — must be early)
         logRuntime('Registering language model tools');
         const memoryProject = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || context.globalStorageUri.fsPath;
-        activateAITalk(memoryProject);
-        setWorkerPresenceLifecycle(setAITalkWorkerPresence);
+        roomFor(memoryProject).activate();
+        setWorkerPresenceLifecycle((workspace, worker, running) => roomFor(workspace).workerLifecycle(worker, running));
         let memoryReady: Promise<KnowledgeStore> | undefined;
         const getMemory = () => {
             memoryReady ??= (async () => {
@@ -1054,11 +1057,11 @@ export function activate(context: vscode.ExtensionContext) {
             recall: async query => (await store.recall(query.text, { project: memoryProject, agentId: 'validator', spec: query.specSlug || undefined }, 20))
                 .map(item => ({ id: item.id, text: item.fact.text })),
             run: validatorWorkerRun(async () => {
+                const profile = validatorProfile();
+                syncOpenCodeAgents([profile], path.join(os.homedir(), '.config', 'opencode', 'agents'), path.join(memoryProject, '.opencode', 'agents'));
                 const shared = await sharedWorkerRuntimeReady(memoryProject);
                 if (!shared.serverEndpoint) throw new Error('Validator shared OpenCode server unavailable');
                 if (!validatorRuntime) {
-                    const profile = validatorProfile();
-                    syncOpenCodeAgents([profile], path.join(memoryProject, '.opencode', 'agents'));
                     validatorRuntime = new OpenCodeWorkerRuntime([profile]);
                 }
                 validatorRuntime.setServerEndpoint(shared.serverEndpoint);
@@ -1067,11 +1070,11 @@ export function activate(context: vscode.ExtensionContext) {
         })).catch(error => { observerReady = undefined; throw error; }), () => readActiveSpecSlug(memoryProject),
         () => { sharedCommentaryStore().postValidator(memoryProject, { text: 'Validator trigger failed; agent flow continued.' }); },
         () => new AITalkStore(memoryProject).snapshot(true).messages);
-        provider.setValidatorTurnStart((text, id) => { setAITalkTurnActive(memoryProject, true); void triggers.turnStart(triggers.previousFinal(), text, id); });
+        provider.setValidatorTurnStart((text, id) => { roomFor(memoryProject).registerAgent(); void triggers.turnStart(triggers.previousFinal(), text, id); });
         context.subscriptions.push(registerAITalkValidator(memoryProject, (text, id) => triggers.validatorCall(text, id)));
         const memory = memoryTool(getMemory, memoryProject, (query, agentId) => triggers.memoryCall(query, agentId));
         context.subscriptions.push(...registerLmToolDefinitions([asksTool(memoryProject)]));
-        registerTools(context, provider, memory, validatorTool(text => triggers.validatorCall(text), {
+        registerTools(context, provider, memory, validatorTool(text => askValidator(memoryProject, text), {
             workspace: memoryProject,
             enabled: () => vscode.workspace.getConfiguration('askaway').get<boolean>('validator.live', false),
             availability: () => readAvailability(memoryProject),
@@ -1282,7 +1285,7 @@ export function activate(context: vscode.ExtensionContext) {
                     debugLogsDir,
                     logRuntime,
                     () => provider.getTurnMetricsSnapshot(),
-                    (text, id) => { setAITalkTurnActive(memoryProject, false); return triggers.turnEnd(text, id); }
+                    (text, id) => { roomFor(memoryProject).unregisterAgent(); return triggers.turnEnd(text, id); }
                 );
                 notifier.start();
                 context.subscriptions.push(notifier);

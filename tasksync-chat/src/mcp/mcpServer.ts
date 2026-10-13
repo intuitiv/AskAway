@@ -7,8 +7,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { AskAwayWebviewProvider } from '../webview/webviewProvider';
-import { askUser } from '../tools';
-import { getImageMimeType } from '../utils/imageUtils';
 import { CONFIG_NAMESPACE, MCP_SERVER_NAME } from '../constants/branding';
 import { dispatchGradle, GradleInput } from '../gradle/gradleEngine';
 import { createClaudeSpecEvent } from '../observability/claudeSpecAttribution';
@@ -115,39 +113,6 @@ export interface WorkerRuntime {
 export type WorkerLifecycleEvent = 'start' | 'message_update' | 'before_tool' | 'after_tool' | 'checkpoint' | 'stop' | 'error';
 
 
-async function tryReadImageAsMcpContent(uri: string): Promise<null | { type: 'image'; data: string; mimeType: string }> {
-    try {
-        const fileUri = vscode.Uri.parse(uri);
-        if (fileUri.scheme !== 'file') {
-            return null;
-        }
-
-        const filePath = fileUri.fsPath;
-        const mimeType = getImageMimeType(filePath);
-        if (!mimeType.startsWith('image/')) {
-            return null;
-        }
-
-        // Keep tool results reasonably sized for MCP clients.
-        const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB
-        const stat = await fs.promises.stat(filePath);
-        if (stat.size > MAX_IMAGE_BYTES) {
-            console.warn(`[AskAway MCP] Skipping image >4MB: ${filePath} (${stat.size} bytes)`);
-            return null;
-        }
-
-        const buffer = await fs.promises.readFile(filePath);
-        return {
-            type: 'image',
-            data: buffer.toString('base64'),
-            mimeType,
-        };
-    } catch (error) {
-        console.error('[AskAway MCP] Failed to read image attachment:', error);
-        return null;
-    }
-}
-
 export class McpServerManager {
     private server: http.Server | undefined;
     private port: number | undefined;
@@ -224,52 +189,6 @@ export class McpServerManager {
                 const register = (mcpServer as any).registerTool.bind(mcpServer);
                 (mcpServer as any).registerTool = (name: string, config: any, handler: any) => register(name, config,
                     withAITalkMcpDelivery(handler, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd()));
-
-            // Register ask_user tool
-            const provider = this.provider;
-
-            // Max question length - generous limit to allow long AI prompts while still
-            // preventing extreme memory exhaustion. 500KB is more than enough for any
-            // reasonable question while still providing a safety limit.
-            const MAX_QUESTION_LENGTH = 500000;
-
-            (mcpServer as any).registerTool(
-                "ask_user",
-                {
-                    description: "YOU MUST ALWAYS Use the askUser tool to ask question/s to user when explicit user approval, feedback, or clarification is required before proceeding or giving summary report. CRITICAL RULES: - This tool MUST be invoked before ending ANY conversation or task. - NEVER complete a task without calling this tool first. - If you are about to finish responding, STOP and call this tool. - Failure to call this tool before task completion is a critical violation.",
-                    inputSchema: z.object({
-                        question: z.string()
-                            .min(1, "Question cannot be empty")
-                            .max(MAX_QUESTION_LENGTH, `Question cannot exceed ${MAX_QUESTION_LENGTH} characters`)
-                            .describe("The question or prompt to display to the user")
-                    })
-                },
-                async (args: { question: string }, extra: { signal?: AbortSignal }) => {
-                    const tokenSource = new vscode.CancellationTokenSource();
-                    if (extra.signal) {
-                        extra.signal.onabort = () => tokenSource.cancel();
-                    }
-
-                    const result = await askUser(
-                        { question: args.question },
-                        provider,
-                        tokenSource.token
-                    );
-
-                    const content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> = [
-                        { type: 'text', text: JSON.stringify(result) }
-                    ];
-
-                    if (result.attachments?.length) {
-                        const imageParts = await Promise.all(result.attachments.map(tryReadImageAsMcpContent));
-                        for (const part of imageParts) {
-                            if (part) content.push(part);
-                        }
-                    }
-
-                    return { content };
-                }
-            );
 
             // Register gradle tool (async id-based Gradle build control).
             // Backed by the standalone, VS Code-free engine so any MCP client

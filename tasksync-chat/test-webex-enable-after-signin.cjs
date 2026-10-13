@@ -37,7 +37,7 @@ async function main() {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const build = esbuild.buildSync({ entryPoints: [path.join(__dirname, 'src/services/webexWiring.ts')], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['vscode'] });
     const loaded = { exports: {} };
-    new Function('require', 'module', 'exports', build.outputFiles[0].text)(name => name === 'vscode' ? vscode : name === 'child_process' ? { execFile: (...args) => args.at(-1)(null) } : require(name), loaded, loaded.exports);
+    new Function('require', 'module', 'exports', build.outputFiles[0].text)(name => name === 'vscode' ? vscode : name === 'child_process' ? { execFile: (...args) => args.at(-1)(null) } : name === 'os' ? { ...require('os'), homedir: () => path.join(__dirname, 'build', 'webex-home-signin') } : require(name), loaded, loaded.exports);
     const originalFetch = global.fetch;
     global.fetch = (url, options) => originalFetch(String(url).replace('https://webexapis.com', `http://127.0.0.1:${server.address().port}`), options);
     try {

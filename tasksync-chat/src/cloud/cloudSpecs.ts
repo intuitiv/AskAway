@@ -1,7 +1,7 @@
 import { CloudRun, QueueIO, QueueRequest, defaultIO, queueTask } from './cloudQueue';
 import { pollPr } from './cloudPoller';
 import { SpecScanResult } from '../specs/specKitScanner';
-import { acceptCloudTask, VerifyRunner, verifyWorkerRunner } from './cloudAccept';
+import { acceptCloudTask, mergeCloudChange, VerifyRunner, verifyWorkerRunner } from './cloudAccept';
 import type { CommentaryStore } from '../commentary/commentary';
 import { serial } from './cloudQueue';
 
@@ -44,7 +44,8 @@ export function cloudWorkers(runs: CloudRun[], now = Date.now()) {
 export class CloudSpecsController {
     constructor(private io: QueueIO = defaultIO, private now: () => number = Date.now,
         private verify: VerifyRunner | undefined = io === defaultIO ? verifyWorkerRunner : undefined,
-        private commentary?: Pick<CommentaryStore, 'post'>) {}
+        private commentary?: Pick<CommentaryStore, 'post'>,
+        private mergeTests: VerifyRunner | undefined = io === defaultIO ? verifyWorkerRunner : undefined) {}
     click(request: QueueRequest) { return queueTask({ ...request, explicitRequest: true }, this.io); }
     private async shareFinished(root: string) {
         const store = this.commentary ?? (this.io === defaultIO ? (await import('../workers/workerHost')).sharedCommentaryStore() : undefined);
@@ -81,6 +82,7 @@ export class CloudSpecsController {
                 const latest = await this.io.load(root);
                 for (let index = 0; index < latest.length; index++) {
                     if (latest[index].state === 'Needs review') { latest[index] = await acceptCloudTask(latest[index], this.verify, this.io); }
+                    if (latest[index].state === 'Accepted' && this.mergeTests) { latest[index] = await mergeCloudChange(latest[index], this.mergeTests, this.io); }
                 }
                 await this.io.save(root, latest);
             });

@@ -232,11 +232,21 @@ const TIER_GUIDANCE: Record<WorkerTier, string> = {
 };
 
 /** Writes one OpenCode agent file per profile, named `aa-<profile>.md`. */
-export function syncOpenCodeAgents(profiles: WorkerProfile[], agentsDir: string): string[] {
+export function syncOpenCodeAgents(profiles: WorkerProfile[], agentsDir: string, workspaceAgentsDir?: string): string[] {
     fs.mkdirSync(agentsDir, { recursive: true });
-    return profiles.map((profile) => {
+    const written = profiles.map((profile) => {
         const file = path.join(agentsDir, `aa-${profile.name}.md`);
-        fs.writeFileSync(file, toOpenCodeAgent(profile));
+        fs.writeFileSync(file, toOpenCodeAgent(profile) + '\n<!-- AskAway generated agent -->\n');
         return file;
     });
+    if (workspaceAgentsDir && workspaceAgentsDir !== agentsDir && fs.existsSync(workspaceAgentsDir)) {
+        for (const name of fs.readdirSync(workspaceAgentsDir)) {
+            if (!/^aa-[a-z0-9-]+\.md$/.test(name)) continue;
+            const file = path.join(workspaceAgentsDir, name);
+            if (!fs.lstatSync(file).isFile()) continue;
+            const text = fs.readFileSync(file, 'utf8');
+            if (text.includes('<!-- AskAway generated agent -->') || text.includes('## Worker basics (every AskAway worker)')) fs.unlinkSync(file);
+        }
+    }
+    return written;
 }

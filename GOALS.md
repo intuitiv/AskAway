@@ -587,3 +587,45 @@ Recorded from the 2026-10-12 handoff; the original message was not captured verb
 > I talked a lot. Now its your turn to imeplement everything i asked for.
 >
 > User workers efficiently and effectively.
+
+### 2026-10-13, answers (stray specs, ask_user, cloud cost, cloud merge, Webex names)
+
+> 1. Delete stray specs
+> 2. Remove ask_user. noone is using it.
+> 3. The ones User queues for github actions, we poll for its update and check its completion and all. So, while getting PR, compute the cost and show in cloud estimates.
+> 4. Pushing to remote branch from local changes is okay. But when we get some change from cloud, we need to validate it doesnt break anything from local and all, so run some tests after merge and push to branch. If you mean somethign else, let me know.
+> 5. We can have counter in such case. `_1`, `_2` and so on.
+
+### 2026-10-13, AITalk actor framework, Settings cleanup, Trace main agent only, Opus for new designs
+
+> - Why there is some text box and copy operner button in Settings. We dont want that goal thing any more. Remove them.
+> - `Ctrl/Cmd+Enter to Send` setting is for Chat tab. Notifications setting is also old askaway notifications i guess. See code related to Chat tab, if that is not used. remove it.
+> - When i click on the profile icon. I keep it open. It is kinda shaking, every 2/3 sec. Close and open animation is happening.
+> - Markdown is not rendered correctly in cards.
+> - Single tick is for user messages. not for validator/Agent/worker.
+> - I see Validator replying "Hold all five decisions for the reviewer; the provided sourcew do not authorize a complete answer", But i dont see any questions from Agent. If i just see replies, they dont make sense.
+> - Turn is in progress, Agent pinged one message, but i dont see Agent in the participants.
+> - I see workers joining the chat. But worker joinsonly when they post mesage, not when a new worker is created. worker joins when it posts the message, and it leaves when all the messages posted by it are answered.
+> - Thats i told implement the aitalk chat box separately independnt of the implemenation. Just feed the data and react to whats happening on from chat box.
+> - I am expecting some message every 4-5 min from Agent telling what its doing. I only see one message.
+> - I see some message from Agent with @Validator tag, but Validator didnt respond.
+> - This is why i am saying, the framework should be some interface for actors, and they willl have some methods like take message, when that message is marked as read (single tick, double and blue tick), chat widget should just deal with actors, like displaying actor names on top. And chat widget also should take registration and dynamically register and deresgister themselves. When turn starts, Agent should register itself. Based on triggers, chat widget will call respective methods, like replying to some message, replying though emojies, tagging andall. When replied to some message, chat widget should identify the owner and find that actor and call some method with its message and response message. Chat widget should take some method from actor, when actor starts posting some message. That can be reply to some message, or standalone message or emoji to some message. Its actors responsibility to to send single tick, double tick and bluetick. And this is only for user messages, in that case, when user posts some message, it shoukd first identify who is the correct actor, like whether there are any tags, or reply or some direct message, direct message will be sent to Validator, tags are sent to respective actor, and reply also the same. When that message is sent, reponse will be a tracker, that guy will notify chat widget about single tick, doiuble tick and blue ticks.
+> And even we have Agent typing animation, that is also a registration to actor itself.
+> When a new actor joins, we add a small banner that actor joined. And its backend responsobility to only register workers when they ask questions not always. And when the turn starts, it should register, if agent is not registered, even agent cannot post messages.
+> Same is the case with Validator. If there are only 2 actors, validator should respond to my messages. it should call Validator agent and respond to me. I'll tune the Validator from aitalk only.
+>
+> I see the issue. You are using Sol 6.1 for build. Thats why there are so many bugs. Use Opus . Sol for build is very bad. Sol can do other tasks, explore, and other stuff. Build agent is always Opus. Implement the above design using Opus.
+>
+> I think Sol 6.1 is also okay. But for bigger deisgns and new features, do it with Opus. It will cost but get it done quickly. But Sol, will take more time and doesnt implement whole.
+>
+> I see Validator in workers tab, so you can remove Validator in Trace and show only main agent without collapsable pane. Why do i see 2 Validators present in Trace tab? We only have one Validator for the whole Turn.
+>
+> I see aa.validator agent in some of my workspace. All these agents sould be user level agents.
+
+### 2026-10-13, model tiers by difficulty; Agent speaks to someone
+
+> Go ahead and commit.
+> Go ahead and implement all remaining tasks. Design heavy or logical reasoning heavy do it with Opus. Smaller build and simple tasts, and other workers can be on Sol. Straightforward things can be on Luna/Haiku. Haiku is also good.
+>
+> The tone of the Agent should be like it is updating something or it is asking something. But its more like a banner. It is not informing/asking/warning.
+> It should say as if it is speaking to someone.

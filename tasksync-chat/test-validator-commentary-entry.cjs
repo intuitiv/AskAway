@@ -5,10 +5,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 const esbuild = require('esbuild');
 const ts = require('typescript');
-const bundle = esbuild.buildSync({ stdin: { contents: "export * from './src/commentary/commentary'; export * from './src/aitalk/delivery'; export * from './src/aitalk/store'; export * from './src/validator/observer'; export * from './src/validator/records';", resolveDir: __dirname }, bundle: true, platform: 'node', format: 'cjs', write: false });
+const bundle = esbuild.buildSync({ stdin: { contents: "export * from './src/commentary/commentary'; export * from './src/aitalk/delivery'; export * from './src/aitalk/store'; export * from './src/aitalk/actors'; export * from './src/validator/observer'; export * from './src/validator/records';", resolveDir: __dirname }, bundle: true, platform: 'node', format: 'cjs', write: false });
 const sharedModule = { exports: {} };
 new Function('require', 'module', 'exports', bundle.outputFiles[0].text)(require, sharedModule, sharedModule.exports);
-const { CommentaryStore, buildOpener, ValidatorObserver, ValidatorRecords, AITalkStore, configureAITalkDelivery } = sharedModule.exports;
+const { CommentaryStore, buildOpener, ValidatorObserver, ValidatorRecords, AITalkStore, configureAITalkDelivery, roomFor } = sharedModule.exports;
 (async () => {
     const render = await import('./media/aitalk/talkRender.js');
     const source = fs.readFileSync(path.join(__dirname, 'media/webview.js'), 'utf8');
@@ -25,6 +25,8 @@ const { CommentaryStore, buildOpener, ValidatorObserver, ValidatorRecords, AITal
     instance._lastSubmitTs = 0;
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-validator-entry-'));
     configureAITalkDelivery(root);
+    // Agent registers at turn start; Validator at activation. Unregistered actors cannot post.
+    roomFor(root).registerAgent(); roomFor(root).register({ id: 'validator', displayName: 'Validator', kind: 'validator', rank: 300 });
     const talk = new AITalkStore(root);
     const commentary = new CommentaryStore({ dir: path.join(root, 'commentary'), now: () => 1000 });
     // Same clock tick: the validator must still follow its update.
@@ -32,20 +34,15 @@ const { CommentaryStore, buildOpener, ValidatorObserver, ValidatorRecords, AITal
     const observe = async (id, run) => new ValidatorObserver({ workspaceRoot: root, commentary, run,
         recall: async () => [{ id: 'Rules.md', text: 'Use the shared server.' }] }).observe({ id, source: 'agent', text: 'Which server should I use?' });
     await observe('ok', async () => ({ text: JSON.stringify({ answer: 'Use the shared server.', sources: ['Rules.md'], observations: 'Rule applies.', summary: 'Covered.', impact: 'Reuse.' }) }));
-    let groups = await instance._turnTraceGroups(root);
-    const group = groups.find(group => group.label === 'Validator');
-    assert.ok(group, 'Validator evidence has a Trace group');
-    const rows = group.events;
-    assert.ok(rows.some(row => row.tool === 'answer' && row.outputPreview === 'Use the shared server.'));
+    assert.equal(instance._turnTraceGroups, undefined, 'Validator trace computation is retired');
+    let groups = [];
     browser.ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics: { turnEvents: [], traceGroups: groups } } });
-    assert.ok(host.innerHTML.includes(browser.ui.traceRowsHtml(rows, {})), 'Validator group contains the ONE shared trace output');
-    assert.ok(host.innerHTML.includes('data-trace-group="' + group.id + '"'));
+    assert.doesNotMatch(host.innerHTML, /Use the shared server|data-trace-group/, 'Validator evidence is not displayed in main-agent Trace');
     await observe('no-source', async () => ({ text: '{"answer":null,"sources":[]}' }));
     await observe('failed', async () => { throw new Error('validator server unavailable'); });
-    groups = await instance._turnTraceGroups(root);
-    assert.ok(groups.some(group => group.events.some(row => row.tool === 'error' && row.status === 'error')));
+    assert.ok(new ValidatorRecords(root, null).responses().some(record => record.error), 'Validator errors remain persisted outside Trace');
     browser.ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics: { turnEvents: [], traceGroups: groups } } });
-    assert.match(host.innerHTML, /validator server unavailable/);
+    assert.doesNotMatch(host.innerHTML, /validator server unavailable/);
     assert.equal(commentary.read(root).items.length, 1, 'beta agent-facing feed is untouched');
     assert.doesNotMatch(buildOpener(commentary.read(root)), /shared server|validator server unavailable/);
     assert.equal(commentary.post(root, { kind: 'validator', text: 'forged' }).status, 'REJECTED');

@@ -6,6 +6,7 @@ import * as fixtures from './talk.js';
 import * as rules from './talkRules.js';
 import { createTalkController } from '../../media/aitalk/talkController.js';
 import { mountPresence } from './presence.js';
+import { createSimulatedRoom } from './simulatedActors.js';
 
 export function fakeDocument() {
     const doc = { handlers: {}, addEventListener(name, fn) { (this.handlers[name] ||= []).push(fn); }, fire(name, target, key) { for (const fn of this.handlers[name] || []) fn({ target, key, preventDefault() {} }); } };
@@ -26,7 +27,7 @@ const stories = (source, bindings) => {
 };
 test('every Talk story renders on an arbitrary root and sends without affecting another mount', () => {
     const doc = fakeDocument();
-    const context = { document: doc, ...fixtures, ...rules, createTalkController, cssText: '', VSCODE_DARK_THEME: '', prototypeCss: '', traceRowsHtml: () => '', setTimeout: () => 0 };
+    const context = { document: doc, ...fixtures, ...rules, createTalkController, createSimulatedRoom, cssText: '', VSCODE_DARK_THEME: '', prototypeCss: '', traceRowsHtml: () => '', setTimeout: () => 0 };
     vm.runInNewContext(read('./mount.js').replace(/^import .*;$/gm, '').replace(/^const \{ traceRowsHtml \}.*$/gm, '').replace('export function', 'function') + ';globalThis.mountTalk = mountTalk;', context);
     for (const [name, story] of Object.entries(stories(read('../stories/Talk.stories.js'), context))) {
         const first = story.render().children[1], second = story.render().children[1];

@@ -98,7 +98,7 @@ test('css is readable, 420px, reduced-motion aware; stories live under AITalk/',
     for (const name of ['FullConversation', 'LiveSimulation', 'ValidatorWhileAgentAway', 'LightTheme', 'ValidatorAsProxy', 'EmptyState']) assert.ok(stories.includes(`export const ${name} =`));
     assert.match(read('../stories/Trace.stories.js'), /title: 'AITalk\/Trace tab'/);
     assert.match(read('./talk.css'), /prefers-reduced-motion/);
-    assert.match(read('./mount.js'), /controller.step\(step\)/);
+    assert.match(read('./mount.js'), /room.act\(step\)/);
 });
 
 test('every message from someone else gets a focusable bubble with a reaction bar; your own do not', () => {
@@ -170,7 +170,7 @@ test('each Validator answer is its own message; no multi-item bubble code remain
     assert.ok(scenarios.Full.messages.every(m => !m.questions));
     assert.doesNotMatch(read('./talk.css'), /talk-question|talk-votes|has-quiz/);
     assert.doesNotMatch(read('./talk.js'), /questionsHtml/);
-    assert.match(read('./mount.js'), /reactMessage\(state.messages.find/);
+    assert.match(read('./simulatedActors.js'), /reactMessage\(state.messages.find/);
 });
 
 test('Agent and Validator answer trivial messages with a reaction pill naming who reacted', () => {
@@ -193,7 +193,7 @@ test('ticks: Full shows both states; Live goes single grey to double blue after 
     assert.deepEqual(liveScript[0], { do: 'deliver', id: 'l1', tool: 'read_file', after: 1500 });
     assert.equal(liveStart.find(m => m.id === 'l1').delivery, 'posted');
     const mount = read('./mount.js');
-    assert.match(read('../../media/aitalk/talkController.js'), /value.do === 'deliver'.*deliveryEvent/);
+    assert.match(read('./simulatedActors.js'), /value.do === 'deliver'\) tick/);
     assert.match(mount, /step\.after \?\? 1700/);
     const css = read('./talk.css');
     assert.match(css, /\.talk-ticks\.posted \{ color: var\(--tk-tick-grey\)/);
@@ -245,14 +245,16 @@ const registry = [...defaultMembers, { id: 'sage', kind: 'navigator', displayNam
 test('config-only participant renders, routes, ranks and rejoins without a renderer edit', () => {
     const posted = postMessage({ id: 'new-q', author: 'you', text: '@Sage check this?' }, [], registry);
     assert.deepEqual(posted.messages.at(-1).recipients, ['sage']);
-    assert.match(talkHtml(posted.messages, { members: posted.registry }), /Sage joined/);
+    assert.doesNotMatch(talkHtml(posted.messages, { members: posted.registry }), /Sage joined/, 'routing never registers an actor');
+    const joined = presenceChange(registry, 'sage', true);
+    assert.match(talkHtml(joined.notices, { members: joined.registry }), /Sage joined/);
     const answers = [{ id: 'a', author: 'agent', text: 'A', replyTo: 'new-q' }, { id: 's', author: 'sage', text: 'S', replyTo: 'new-q' }];
     assert.equal(primaryReply(answers, registry).id, 's');
     assert.match(talkHtml(answers, { members: registry }), /talk-sender who-p2">Sage/);
     assert.match(talkHtml(answers, { members: registry }), /data-primary="true" class="talk-row in first" id="talk-s"/);
     assert.deepEqual(nextToolCall(posted.messages, 'sage').received.map(m => m.id), ['new-q']);
     assert.equal(nextToolCall(posted.messages, 'sage').messages.at(-1).delivery, 'read');
-    const left = presenceChange(posted.registry, 'sage', false);
+    const left = presenceChange(joined.registry, 'sage', false);
     assert.match(talkHtml(left.notices, { members: left.registry }), /Sage left/);
     assert.equal(presenceChange(registry, 'you', false).notices.length, 0);
 });

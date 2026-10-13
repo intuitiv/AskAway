@@ -1,11 +1,12 @@
 import * as os from 'os';
 import * as path from 'path';
+import * as fs from 'fs';
 import { CommentaryStore } from '../commentary/commentary';
 import { cacheSafeWaitMs } from '../observability/cacheClock';
 import { startKeepWarmTimer } from './keepWarm';
 import { OpenCodeWorkerRuntime, RuntimeOptions } from './openCodeRuntime';
 import { defaultRestartDeps, defaultServerDeps, DEFAULT_OPENCODE_SERVER_URL, ensureSharedOpenCodeServer, restartSharedOpenCodeServer, RestartDeps, ServerStatus } from './sharedServer';
-import { loadWorkerProfiles } from './workerProfiles';
+import { loadWorkerProfiles, syncOpenCodeAgents } from './workerProfiles';
 import { SessionMessage } from './workersState';
 
 let runtime: OpenCodeWorkerRuntime | undefined;
@@ -60,6 +61,8 @@ export function workerSpendSince(workspacePath: string | undefined, sinceMs: num
 
 /** The runtime once it is attached to the shared OpenCode server (started on first worker use, not at activation). */
 export async function sharedWorkerRuntimeReady(workspacePath?: string): Promise<OpenCodeWorkerRuntime> {
+    syncOpenCodeAgents(loadWorkerProfiles(path.join(os.homedir(), '.askaway', 'worker-profiles')),
+        path.join(os.homedir(), '.config', 'opencode', 'agents'), workspacePath ? path.join(workspacePath, '.opencode', 'agents') : undefined);
     // A server that stopped since it was attached must be started again, not attached to.
     if (ready && serverStatus?.state === 'ATTACHED' && !(await defaultServerDeps.probe(serverUrl()))) { ready = undefined; }
     ready ??= ensureSharedOpenCodeServer(serverUrl(), defaultServerDeps)
@@ -119,6 +122,14 @@ export function sharedServerStatus(): ServerStatus | undefined {
 }
 
 export function sharedCommentaryStore(): CommentaryStore {
-    commentary ??= new CommentaryStore();
+    if (!commentary) {
+        commentary = new CommentaryStore();
+        commentary.onChange(state => {
+            const last = state.items.at(-1)?.ts;
+            if (!last) return;
+            const file = commentary!.file(state.workspacePath).replace(/\.json$/, '.progress.json');
+            fs.writeFileSync(file, JSON.stringify({ lastCommentaryAt: last }));
+        });
+    }
     return commentary;
 }

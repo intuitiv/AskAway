@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
+import * as os from 'os';
 import * as path from 'path';
 import { WebexAuth } from './webexAuth';
 import { webexDiscover } from './webexDiscover';
@@ -8,6 +9,28 @@ import { WebexStatus } from './webexStatus';
 type Workspace = { fsPath: string; name: string };
 type Options = { baseUrl?: string; refresh?: () => Promise<string | undefined>; wait?: (ms: number) => Promise<void>; onResolved?: () => Promise<void>; status?: WebexStatus; onFailure?: (status: number) => void };
 const pending = new Map<string, Promise<boolean>>();
+let claims: Promise<unknown> = Promise.resolve();
+
+/** Stable workspace path → space title; a folder name another workspace owns gets `_1`, `_2`, … (reviewer, 2026-10-13). */
+function workspaceTitle(fsPath: string, recorded?: string): Promise<string> {
+    const claim = claims.catch(() => undefined).then(async () => {
+        const file = path.join(os.homedir(), '.askaway', 'webex-workspace-spaces.json');
+        let titles: Record<string, string> = {};
+        try { titles = JSON.parse(await fs.readFile(file, 'utf8')); } catch { /* First workspace. */ }
+        if (titles[fsPath]) { return titles[fsPath]; }
+        const taken = new Set(Object.values(titles));
+        const base = path.basename(fsPath);
+        // A space this workspace already recorded before the mapping existed stays its own.
+        let title = recorded && !taken.has(recorded) ? recorded : base;
+        for (let counter = 1; taken.has(title); counter++) { title = `${base}_${counter}`; }
+        titles[fsPath] = title;
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, JSON.stringify(titles, null, 2), 'utf8');
+        return title;
+    });
+    claims = claim;
+    return claim;
+}
 
 export async function webexSpaces(auth: WebexAuth, workspace: Workspace, options: Options = {}): Promise<boolean> {
     const existing = pending.get(workspace.fsPath);
@@ -20,7 +43,7 @@ export async function webexSpaces(auth: WebexAuth, workspace: Workspace, options
             if (teams.length !== 1) { throw new Error('Unresolved self team.'); }
             const team = teams[0];
             const general = team.rooms.filter((room: { title: string }) => room.title === 'AskAway General');
-            const title = path.basename(workspace.fsPath);
+            const title = await workspaceTitle(workspace.fsPath, team.rooms.find((room: { id: string }) => room.id === facts.self?.workspaceRoomId)?.title);
             const rooms = team.rooms.filter((room: { title: string }) => room.title === title);
             if (general.length > 1 || rooms.length > 1) { throw new Error('Unresolved space.'); }
             const tokens = await auth.tokens();

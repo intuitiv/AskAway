@@ -39,23 +39,24 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     assert.equal((await call(commentary, { text: 'missing kind here' })).status, 'INVALID_INPUT');
 
     // --- What the Commentary tab receives ---
-    store.setGoal(workspace, 'Finish CY-005: Workers tab usable end to end.');
     let view = commentaryView(store.read(workspace));
-    assert.equal(view.goal, 'Finish CY-005: Workers tab usable end to end.');
+    assert.equal('goal' in view, false);
+    const legacy = JSON.parse(fs.readFileSync(store.file(workspace), 'utf8'));
+    fs.writeFileSync(store.file(workspace), JSON.stringify({ ...legacy, goal: 'Retired goal', goalUpdatedAt: 1 }));
+    assert.equal('goal' in store.read(workspace), false, 'legacy goal state is ignored');
     assert.deepEqual(view.items.map((i) => i.kind), ['update', 'heads-up']);
     assert.equal(view.opener, [
-        'Main goal: Finish CY-005: Workers tab usable end to end.',
         'Commentary since last clear (2):',
         '- 19:14 Split T015: base tab now, swimlanes later, unblocks commentary work.',
         '- 19:15 HEADS-UP: Commentary tab beside Workers, or replace it?',
-        'Continue toward the main goal.',
     ].join('\n'));
     const pushed = [];
     store.onChange((state) => pushed.push(state.items.length));
     clock += 60_000;
     store.clear(workspace, 'feed');
+    assert.equal('goal' in JSON.parse(fs.readFileSync(store.file(workspace), 'utf8')), false, 'writes drop legacy goal persistence');
     view = commentaryView(store.read(workspace));
-    assert.deepEqual([view.items.length, view.archivedCount, view.goal !== ''], [0, 2, true], 'clear keeps audit history and the goal');
+    assert.deepEqual([view.items.length, view.archivedCount], [0, 2], 'clear keeps audit history');
     await call(commentary, { kind: 'update', text: 'Track A: code worker editing workersState.ts, verify queued next.' });
     assert.equal((await call(commentary, { kind: 'update', text: 'Accepted: verify worker saw the EV-014 PASS line exactly.' })).status, 'POSTED');
     assert.deepEqual(commentaryView(store.read(workspace)).items.map((i) => [i.kind, 'ref' in i]), [['update', false], ['update', false]], 'only posts after the clear are live; an old caller\'s ref is dropped');
@@ -119,11 +120,11 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     };
     const first = hook({ session_id: 'next-1', prompt: 'continue' });
     assert.match(first, /Ship the async worker runner/);
-    assert.match(first, /## Carry-over from the previous conversation[\s\S]*Main goal: Finish CY-005[\s\S]*\d\d:\d\d Track A: code worker/);
+    assert.match(first, /## Carry-over from the previous conversation[\s\S]*\d\d:\d\d Track A: code worker/);
     assert.doesNotMatch(first, /Split T015/, 'cleared commentary is not carried over');
     const second = hook({ session_id: 'next-1', prompt: 'next step' });
     assert.doesNotMatch(second, /Ship the async worker runner|Carry-over/, 'Goal.md and carry-over are injected once');
-    assert.match(second, /^Main goal \(goal box\): Finish CY-005: Workers tab usable end to end\.\nStay on it/);
+    assert.match(second, /^Main goal: finish CY-005 of 001-demo\./);
     assert.match(hook({ session_id: 'next-1', prompt: 'aside: what is RTK?' }), /This prompt is an aside: answer it briefly, do not change the main goal/);
     store.clear(workspace, 'all');
     assert.match(hook({ session_id: 'next-1', prompt: 'go' }), /^Main goal: finish CY-005 of 001-demo\./, 'without a goal box the anchor is the active cycle');

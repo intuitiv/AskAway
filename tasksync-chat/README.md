@@ -143,24 +143,6 @@ This is for people who want to dispatch a bounded background research/build task
 2. Open VS Code → AskAway in the Activity Bar
 3. Configure Telegram (optional but recommended)
 
-### Recommended Agent Instructions
-
-Add this to your VS Code custom instructions or `.github/copilot-instructions.md`:
-
-```
-### AskAway Tool Instructions
-
-1. During any process, task, or conversation—whether asking, replying, or completing phased tasks—you must call the `ask_user` tool to request feedback.
-2. Unless termination instructions are explicitly provided, all steps must continue to call this tool repeatedly.
-3. Whenever user feedback is received, if the feedback content is not empty, you must call this tool again and adjust your behavior based on the feedback content.
-4. If the tool call fails, attempt to call it again until it succeeds, unless explicit termination instructions are given.
-5. Only when the user explicitly indicates **"end"** or **"no more interaction needed"** can you stop calling this tool.
-
-**CRITICAL: YOU ARE ABSOLUTELY FORBIDDEN FROM:**
-- Ending the chat/conversation/session for ANY reason except explicit user termination commands ("stop", "end", "terminate", "quit")
-- Stopping the `ask_user` cycle under any circumstances
-```
-
 ---
 
 ## MCP Configuration (non-Copilot clients)

@@ -3,10 +3,12 @@ export const SUBAGENT_TIMER_INJECT_SCRIPT = `const fs = require('fs'), path = re
 const SOFT_MS = 150000, HARD_MS = 240000, STALE_MS = 900000, SEEN_MS = 86400000;
 const cfg = path.join(os.homedir(), '.askaway');
 const stateFile = path.join(cfg, 'subagent-inflight.json');
-function load() { try { const s = JSON.parse(fs.readFileSync(stateFile, 'utf8')); return { pending: Array.isArray(s.pending) ? s.pending : [], bySession: s.bySession || {}, seen: s.seen || {} }; } catch (e) { return { pending: [], bySession: {}, seen: {} }; } }
+function load() { try { const s = JSON.parse(fs.readFileSync(stateFile, 'utf8')); return { pending: Array.isArray(s.pending) ? s.pending : [], bySession: s.bySession || {}, seen: s.seen || {}, mainTurns: s.mainTurns || {} }; } catch (e) { return { pending: [], bySession: {}, seen: {}, mainTurns: {} }; } }
 function save(s) { try { fs.mkdirSync(cfg, { recursive: true }); } catch (e) {} try { fs.writeFileSync(stateFile, JSON.stringify(s), 'utf8'); } catch (e) {} }
 function fmt(ms) { const sec = Math.round(ms / 1000); return Math.floor(sec / 60) + 'm' + String(sec % 60).padStart(2, '0') + 's'; }
-function emit(text) { process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } })); }
+let context = [];
+function emit(text) { context.push(text); }
+process.on('exit', () => { if (context.length) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: context.join('\\n') } })); });
 // The parent's cache clock started when its last model request STARTED, earlier than this hook by the whole response.
 function parentClock(sid, now) { try { const t = JSON.parse(fs.readFileSync(path.join(cfg, 'cache-clock.json'), 'utf8')).sessions[sid]; return t && t <= now && now - t < HARD_MS ? t : now; } catch (e) { return now; } }
 try {
@@ -14,6 +16,18 @@ try {
     const event = p.hook_event_name || p.hookEventName || '', tool = p.tool_name || p.toolName || '';
     const useId = p.tool_use_id || p.toolUseId || '', sid = p.session_id || p.sessionId || '', now = Date.now();
     const s = load();
+    s.mainTurns = s.mainTurns || {};
+    if (event === 'UserPromptSubmit' && sid && !s.bySession[sid] && !s.pending.some(e => e.parentSid === sid)) { s.mainTurns[sid] = { startedAt: now, workspace: p.cwd || '' }; save(s); process.exit(0); }
+    if (event === 'Stop') { delete s.mainTurns[sid]; save(s); process.exit(0); }
+    const turn = s.mainTurns[sid];
+    if (event === 'PostToolUse' && turn && !s.bySession[sid]) {
+        let workspace = turn.workspace;
+        try { workspace = fs.realpathSync(workspace); } catch (e) {}
+        const key = workspace.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
+        let last = turn.startedAt;
+        try { last = Math.max(last, JSON.parse(fs.readFileSync(path.join(cfg, 'commentary', key + '.progress.json'), 'utf8')).lastCommentaryAt || 0); } catch (e) {}
+        if (now - last >= 240000) { emit('Post a one-line progress update with the commentary tool now: say what you are doing and why. It shows in AITalk.'); }
+    }
     s.pending = s.pending.filter(e => now - e.startedAt < STALE_MS);
     const live = s.pending.map(e => e.startedAt);
     // A session is bound only to a sub-agent that is still in flight; old bindings would time the wrong conversation.

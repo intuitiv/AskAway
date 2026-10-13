@@ -5,11 +5,6 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { LogCursor, readLogIncrement } from '../observability/logCursor';
 
-// Standard GitHub-hosted runner rates verified 2026-10-12:
-// https://docs.github.com/en/billing/reference/actions-minute-multipliers
-export const ACTIONS_USD_PER_MINUTE = { Linux: 0.006, Windows: 0.010, macOS: 0.062 } as const;
-export const CLOUD_PREMIUM_REQUEST_USD = 0.04;
-
 function canonical(root: string): string {
     try { return fs.realpathSync(root); } catch { return path.resolve(root); }
 }
@@ -88,15 +83,8 @@ export async function workspaceCostRequests(root: string): Promise<Array<{ id: s
                     requests.add(id); result.push({ id, ts, dollars, source: 'cloud', estimated: true });
                 }
             };
-            for (const run of task.workflowRuns ?? []) {
-                if (run.status !== 'completed' || !run.timing?.length || typeof run.workspace !== 'string' || canonical(run.workspace) !== workspace) continue;
-                const dollars = run.timing.reduce((sum: number, item: any) => {
-                    const rate = ACTIONS_USD_PER_MINUTE[item.os as keyof typeof ACTIONS_USD_PER_MINUTE];
-                    return sum + (rate && Number.isFinite(item.billableMs) && item.billableMs >= 0 ? item.billableMs / 60000 * rate : NaN);
-                }, 0);
-                emit(`cloud:${run.id}`, run.ts, dollars);
-            }
-            for (const session of task.agentSessions ?? []) emit(`cloud:premium:${session.id}`, session.ts, CLOUD_PREMIUM_REQUEST_USD);
+            // Only the user's queued task, costed once from its own runs when its PR poll saw it finish (reviewer, 2026-10-13).
+            if (task.cost) emit(`cloud:task:${task.slug}:${task.taskId}:${task.attempt}`, task.cost.at, task.cost.dollars);
         }
         for (const row of await rows(path.join(specs, slug, 'validator', 'responses.jsonl'))) {
             // The real validator producer stores the response timestamp before dispatch and returns worker/session IDs.

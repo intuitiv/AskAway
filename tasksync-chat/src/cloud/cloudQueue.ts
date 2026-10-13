@@ -43,6 +43,8 @@ export interface CloudRun {
     nextPollAt?: string;
     workflowRuns?: Array<{ id: number; workspace: string; headSha: string; status: string; ts: string; timing?: Array<{ os: 'Linux' | 'Windows' | 'macOS'; billableMs: number; runDurationMs: number; estimated: boolean }> }>;
     agentSessions?: Array<{ id: string; ts: string }>;
+    cost?: { dollars: number; at: string; workflowRuns: number[]; sessions: string[] };
+    localMerge?: { result: 'Pushed' | 'Conflict' | 'Tests failed' | 'Not merged'; at: string; before: string; incoming: string; evidence: string };
     acceptance?: { result: 'Accepted' | 'Returned'; head: string; evidence: string; outOfScope?: string[] };
     request: QueueRequest;
 }

@@ -15,9 +15,8 @@ import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
 import { CloudSpecsController, shouldPollCloud } from '../cloud/cloudSpecs';
 import { defaultIO } from '../cloud/cloudQueue';
 import { PacketTask } from '../cloud/packet';
-import { projectWorkersState, sessionOpenCommand, traceEvents, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
-import { ValidatorRecords } from '../validator/records';
-import { AITalkStore, setAITalkPresence, isAITalkTurnActive } from '../aitalk/store';
+import { projectWorkersState, sessionOpenCommand, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
+import { AITalkStore } from '../aitalk/store'; import { roomFor } from '../aitalk/actors';
 import { approveDraft } from '../services/webexDrafts';
 import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
 import { openInTerminalApp } from '../workers/terminalApp';
@@ -131,7 +130,6 @@ interface ModelBreakdown extends ScopeMetrics {
 }
 
 interface ObservabilityMetrics {
-    traceGroups?: Array<{ id: string; label: string; events: TraceEvent[] }>;
     monthCredits?: { label: string; aiu: number; workerDollars: number; cloudDollars: number; totalDollars: number; validatorDollars: number; evalDollars: number; allTimeDollars: number; allTimeAiu: number; months: Record<string, number> };
     // Flat fields mirror the workspace cumulative scope (kept for backward compatibility).
     requestCount: number;
@@ -530,8 +528,6 @@ type FromWebviewMessage =
     | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
     | { type: 'requestCommentary' }
     | { type: 'setAvailability'; mode: string; until: string; note: string }
-    | { type: 'setCommentaryGoal'; goal: string }
-    | { type: 'clearCommentary'; what: 'feed' | 'goal' | 'all' }
     | { type: 'clearPersistedHistory' }
     | { type: 'openHistoryModal' }
     | { type: 'searchFiles'; query: string }
@@ -1547,7 +1543,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         if (state?.until) this._availabilityExpiry = setTimeout(() => this._pushAvailability(), Math.max(0, Date.parse(state.until) - Date.now()));
     }
 
-    private _handleCommentary(action: 'request' | 'goal' | 'clear', value?: string): void {
+    private _handleCommentary(action: 'request'): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) { this._broadcast({ type: 'commentaryState', data: null }); return; }
         const store = sharedCommentaryStore();
@@ -1566,8 +1562,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             fs.watchFile(feed, { interval: 1000 }, onFile);
             this._disposables.push({ dispose: () => { fs.unwatchFile(turns, onFile); fs.unwatchFile(feed, onFile); } });
         }
-        if (action === 'goal') { store.setGoal(root, value ?? ''); return; }
-        if (action === 'clear') { store.clear(root, value === 'goal' || value === 'all' ? value : 'feed'); return; }
         push();
     }
 
@@ -2065,7 +2059,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 this._observabilityCache = this._stabilizeObservabilityMetrics(nextMetrics);
                 this._observabilityLastReadAt = Date.now();
                 const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                this._observabilityCache.traceGroups = root ? await this._turnTraceGroups(root) : [];
                 if (root) {
                     try { persistTurnTotals(root, this._lastSubmitTs, turnTotals(this._observabilityCache.lastRequest, this._observabilityCache.workers)); }
                     catch (error) { console.warn('[AskAway] Could not persist turn totals:', error); }
@@ -2676,39 +2669,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private _deriveLastRequest(): ScopeMetrics {
         return { ...this._lastRequestMetrics };
-    }
-
-    private async _turnTraceGroups(root: string): Promise<NonNullable<ObservabilityMetrics['traceGroups']>> {
-        const facts = sharedWorkerRuntime().facts(root).filter(fact => fact.ts >= this._lastSubmitTs);
-        const groups: NonNullable<ObservabilityMetrics['traceGroups']> = [];
-        for (const workerId of new Set(facts.map(fact => fact.workerId))) {
-            const owned = facts.filter(fact => fact.workerId === workerId);
-            const track = owned.find(fact => fact.track)?.track || '';
-            if (track !== 'validator') continue;
-            groups.push({ id: workerId, label: `${track === 'validator' ? 'Validator' : track || 'Worker'} · ${workerId}`, events: traceEvents(owned) });
-        }
-        let slugs: string[] = [];
-        try { slugs = await fs.promises.readdir(path.join(root, '.askaway', 'specs')); } catch { /* No validator records yet. */ }
-        for (const slug of slugs) {
-            for (const record of new ValidatorRecords(root, slug === '_no-spec' ? null : slug).responses()) {
-                if (!record || record.ts < this._lastSubmitTs) continue;
-                const worker = record.workerId && groups.find(group => group.id === record.workerId);
-                const group = worker || { id: `validator:${record.id}`, label: 'Validator', events: [] as TraceEvent[] };
-                if (!worker) {
-                    const u = record.usage;
-                    if (u) group.events.push({ kind: 'request', id: record.id, ts: record.ts, model: 'validator', dollars: u.cost,
-                        inputTokens: u.input + u.cacheRead + u.cacheWrite, outputTokens: u.output, cachedTokens: u.cacheRead });
-                    groups.push(group);
-                }
-                for (const field of ['answer', 'observations', 'summary', 'impact', 'error'] as const) {
-                    if (!record[field]) continue;
-                    group.events.push({ kind: 'tool', id: `${record.id}:${field}`, ts: record.ts, tool: field, durMs: 0,
-                        status: field === 'error' ? 'error' : 'ok', inputTokens: 0, outputTokens: 0,
-                        inputPreview: record.observedId, outputPreview: String(record[field]) });
-                }
-            }
-        }
-        return groups;
     }
 
     private _workspaceCostHistory?: WorkspaceCostHistory;
@@ -4532,11 +4492,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'aitalkReact': {
                 const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                 if (!root) break;
-                const store = new AITalkStore(root);
+                const room = roomFor(root);
                 try {
-                    if (message.type === 'aitalkPost' || message.type === 'aitalkReply') store.post(message.text, message.replyTo, undefined, undefined, undefined, message.attachments);
-                    if (message.type === 'aitalkReact') store.react(message.replyTo, message.emoji);
-                    const snapshot = store.snapshot();
+                    if (message.type === 'aitalkPost' || message.type === 'aitalkReply') room.userPost(message.text, message.replyTo, message.attachments);
+                    if (message.type === 'aitalkReact') room.react('you', message.replyTo, message.emoji);
+                    const snapshot = room.snapshot();
                     const config = vscode.workspace.getConfiguration('askaway.aitalk');
                     const configuredPhoto = config.get<string>('userPhoto', '');
                     const photo = configuredPhoto && !/^https?:\/\//i.test(configuredPhoto)
@@ -4580,9 +4540,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 this._pushAvailability();
                 break;
             }
-            case 'setCommentaryGoal':
-                this._handleCommentary('goal', message.goal);
-                break;
             case 'openSpecFile':
                 this._openSpecFile(message.dir, message.file);
                 break;
@@ -6642,8 +6599,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         <!-- Settings Panel -->
         <div class="tab-panel" id="panel-settings">
-            <label>Main goal<textarea class="cm-goal-input" id="cm-goal-input" rows="6" aria-label="Main goal"></textarea></label>
-            <button id="cm-copy" title="Copy goal and feed">Copy opener</button>
             <div class="settings-tab-shell" id="settings-tab-shell"></div>
         </div><!-- End panel-settings -->
 

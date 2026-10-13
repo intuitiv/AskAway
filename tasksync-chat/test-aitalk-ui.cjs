@@ -42,7 +42,7 @@ const vm = require('node:vm');
     const originalMenu = menu;
     type('@V'); type('@Validator'); assert.equal(menu, originalMenu); assert.equal(inserts, 1, 'mention menu does not flicker');
     type('@Validator check this?'); assert.equal(key(false), true);
-    assert.equal(sent.at(-1).type, 'aitalkPost'); assert.deepEqual(Array.from(sent.at(-1).recipients), ['review']);
+    assert.equal(sent.at(-1).type, 'aitalkPost'); assert.equal(sent.at(-1).recipients, undefined, 'routing belongs to the room, not the widget');
     snapshot.messages.push({ id: 'answer', author: 'human', text: sent.at(-1).text, delivery: 'sent' });
     for (const [delivery, paths, colour] of [['sent', 1, 'posted'], ['delivered', 2, 'delivered'], ['read', 2, 'read']]) {
         snapshot.messages.at(-1).delivery = delivery; paint();
@@ -84,9 +84,11 @@ const vm = require('node:vm');
     const scriptClick = (dataset = {}, attribute = '') => scriptHandlers.click[0]({ target: { closest: selector => selector === 'button' ? { dataset, hasAttribute: name => name === attribute } : null } });
     const scriptKey = key => scriptHandlers.keydown[0]({ target: input, key, preventDefault() {} });
     controller.render({ members: [...snapshot.messages.map(message => ({ id: message.author, displayName: message.displayName, kind: message.authorKind, rank: message.rank, presence: 'joined' })), { id: 'worker', displayName: 'Worker', rank: 100, presence: 'left' }], messages: [], unread: 2 });
-    for (const step of [{ do: 'join', who: 'worker' }, { do: 'typing', who: 'Planning is typing' }, { do: 'add', message: { id: 'long', author: 'planner', text: 'Quick question', details: 'Detailed plan' } }]) controller.step(step);
+    // Actors feed data only: the worker registers (banner), then the agent posts.
+    const fed = controller.snapshot();
+    controller.render({ ...fed, members: fed.members.map(member => member.id === 'worker' ? { ...member, presence: 'joined' } : member), messages: [{ id: 'worker-joined', kind: 'system', text: 'Worker joined' }, { id: 'long', author: 'planner', text: 'Quick question', details: 'Detailed plan' }] });
     assert.match(host.innerHTML, /Worker joined/); assert.doesNotMatch(host.innerHTML, /talk-typing"/);
-    controller.step({ do: 'typing', who: 'Planning is typing' }); assert.match(host.innerHTML, /talk-typing/);
+    controller.render({ ...controller.snapshot(), typing: 'Planning is typing' }); assert.match(host.innerHTML, /talk-typing/);
     scriptClick({ more: 'long' }); assert.match(host.innerHTML, /Detailed plan/);
     scriptClick({ more: 'long' }); assert.doesNotMatch(host.innerHTML, />Detailed plan</);
     scriptClick({ reply: 'long' }); scriptClick({}, 'data-cancel-reply'); assert.doesNotMatch(host.innerHTML, /talk-reply-bar/);
@@ -106,9 +108,10 @@ const vm = require('node:vm');
         if (key === 'Enter' || key === 'Tab') assert.match(host.innerHTML, /@Planning /);
         if (key === 'Escape') assert.equal(menu, undefined);
     }
-    controller.step({ do: 'add', message: { id: 'delivered', author: 'reviewer', text: 'Reply', delivery: 'posted' } });
-    controller.step({ do: 'event', id: 'delivered', event: 'read' }); assert.match(host.innerHTML, /talk-ticks read/);
-    controller.step({ do: 'leave', who: 'worker' }); assert.match(host.innerHTML, /Worker left/);
+    const later = controller.snapshot();
+    controller.render({ ...later, typing: '', messages: [...later.messages, { id: 'delivered', author: 'reviewer', text: 'Reply', tick: 'read' }] }); assert.match(host.innerHTML, /talk-ticks read/);
+    const leaving = controller.snapshot();
+    controller.render({ ...leaving, members: leaving.members.map(member => member.id === 'worker' ? { ...member, presence: 'left' } : member), messages: [...leaving.messages, { id: 'worker-left', kind: 'system', text: 'Worker left' }] }); assert.match(host.innerHTML, /Worker left/);
     const classes = new Set();
     const reactionButton = { focus() { this.focused = true; }, closest: () => bubble, matches: () => false };
     const bubble = { classList: { add: value => classes.add(value), toggle(value) { classes.has(value) ? classes.delete(value) : classes.add(value); } }, querySelectorAll: () => [reactionButton], closest: () => bubble, matches: () => false };
