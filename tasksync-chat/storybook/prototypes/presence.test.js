@@ -59,7 +59,7 @@ test('new availability states need config only; theme and reduced-motion renderi
     control.key('Enter'); assert.match(control.html(), /avail-focus/);
     assert.match(control.html(), /theme-light/);
     assert.ok(control.html().includes(badgeHtml(custom)));
-    const css = readFileSync(new URL('./presence.css', import.meta.url), 'utf8');
+    const css = readFileSync(new URL('../../media/aitalk/presence.css', import.meta.url), 'utf8');
     assert.match(css, /prefers-reduced-motion: reduce/);
     assert.match(css, /animation: presence-open/);
     assert.match(css, /animation: presence-border/);

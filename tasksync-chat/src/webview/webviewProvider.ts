@@ -2108,17 +2108,25 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         return workerSpendSince(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, this._lastSubmitTs);
     }
 
-    public async getTurnMetricsSnapshot(): Promise<{ latestInputTokens: number; turnOutputTokens: number; turnNanoAiu: number }> {
-        let snapshot = { latestInputTokens: 0, turnOutputTokens: 0, turnNanoAiu: 0 };
+    public async getTurnMetricsSnapshot(): Promise<import('../services/handoffNotifier').TurnMetricsSnapshot> {
+        let snapshot: import('../services/handoffNotifier').TurnMetricsSnapshot = { latestInputTokens: 0, turnOutputTokens: 0, turnNanoAiu: 0 };
         for (let attempt = 0; attempt < 8; attempt++) {
             await this._broadcastObservabilityMetrics();
             const turn = this._deriveLastRequest();
             const latest = this._turnRequests[this._turnRequests.length - 1];
-            const totals = turnTotals(turn, this._workerSpend());
+            const workers = this._workerSpend();
+            const totals = turnTotals(turn, workers);
+            const cacheHit = totals.inputTokens > 0 ? Math.min(1, Math.max(0, totals.cachedTokens / totals.inputTokens)) : 0;
+            const averagePrompt = totals.requests > 0 ? totals.inputTokens / totals.requests : 0;
+            const contextFactor = 64000 / Math.max(64000, averagePrompt);
+            const priceFactor = totals.dollars > 0 ? Math.min(1, 0.30 * (totals.inputTokens + totals.outputTokens) / 1000000 / totals.dollars) : 0;
             snapshot = {
                 latestInputTokens: latest?.inputTokens ?? turn.inputTokens,
                 turnOutputTokens: totals.outputTokens,
-                turnNanoAiu: Math.round(totals.dollars * 100 * 1e9)
+                turnNanoAiu: Math.round(totals.dollars * 100 * 1e9),
+                requests: totals.requests, workers: totals.workers, workerIds: totals.workerIds,
+                workerDollars: workers.dollars, cacheHitPct: Math.round(cacheHit * 100),
+                efficiencyScore: totals.dollars > 0 && totals.inputTokens > 0 ? Math.round(100 * cacheHit * contextFactor * priceFactor) : undefined
             };
             if (snapshot.latestInputTokens > 0 || snapshot.turnOutputTokens > 0 || snapshot.turnNanoAiu > 0) {
                 return snapshot;
@@ -4525,8 +4533,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                 if (!root) break;
                 const store = new AITalkStore(root);
-                const workers = projectWorkersState(sharedWorkerRuntime(), root).workers;
-                setAITalkPresence(root, isAITalkTurnActive(root), workers.map(worker => ({ id: worker.workerId, displayName: worker.profile, running: worker.state === 'RUNNING' })));
                 try {
                     if (message.type === 'aitalkPost' || message.type === 'aitalkReply') store.post(message.text, message.replyTo, undefined, undefined, undefined, message.attachments);
                     if (message.type === 'aitalkReact') store.react(message.replyTo, message.emoji);

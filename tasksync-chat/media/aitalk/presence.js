@@ -75,6 +75,23 @@ export function presenceHtml(value, states = presenceStates) {
     </div>`;
 }
 
+export function bindPresenceInteractions({ root, events = root, control, paint, choose = () => {} }) {
+    const inside = target => !root.contains || root.contains(target);
+    events.addEventListener('click', event => {
+        if (!inside(event.target)) { if (control().snapshot().open) { control().close(); paint(); } return; }
+        if (event.target.closest?.('.presence-trigger')?.classList?.contains('presence-trigger')) { control().toggle(); paint(true); return; }
+        const button = event.target.closest?.('[data-presence]');
+        if (button?.dataset?.presence) { control().choose(button.dataset.presence); choose(control().snapshot()); paint(true); return; }
+        if (!event.target.closest?.('.presence-anchor') && control().snapshot().open) { control().close(); paint(); }
+    });
+    events.addEventListener('change', event => { if (inside(event.target) && event.target.matches?.('.presence-reset select')) { control().setReset(event.target.value); paint(); } });
+    events.addEventListener('keydown', event => {
+        if (!inside(event.target) || (!event.target.closest?.('.presence-trigger, [data-presence]') && event.key !== 'Escape')) return;
+        const before = control().snapshot();
+        if (control().key(event.key)) { event.preventDefault(); const after = control().snapshot(); if (before.open && !after.open && event.key !== 'Escape') choose(after); paint(true); }
+    });
+}
+
 export function mountPresence(options = {}) {
     const root = document.createElement('div');
     const control = createPresence(options);
@@ -85,16 +102,7 @@ export function mountPresence(options = {}) {
             (value.open ? root.querySelectorAll('[data-presence]')[value.focusIndex] : root.querySelector('.presence-trigger'))?.focus();
         }
     };
-    root.addEventListener('click', event => {
-        if (event.target.closest('.presence-trigger')) { control.toggle(); paint(control.snapshot().open); }
-        const button = event.target.closest('[data-presence]');
-        if (button) { control.choose(button.dataset.presence); paint(true); }
-    });
-    root.addEventListener('change', event => { if (event.target.matches('select')) { control.setReset(event.target.value); paint(); root.querySelector('select')?.focus(); } });
-    root.addEventListener('keydown', event => {
-        if (!event.target.closest('.presence-trigger, [data-presence]') && event.key !== 'Escape') return;
-        if (control.key(event.key)) { event.preventDefault(); paint(true); }
-    });
+    bindPresenceInteractions({ root, events: root.ownerDocument || root, control: () => control, paint });
     root.addEventListener('focusout', event => { if (!root.contains(event.relatedTarget)) { control.close(); paint(); } });
     paint();
     return root;

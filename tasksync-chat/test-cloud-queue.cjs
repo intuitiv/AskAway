@@ -74,6 +74,8 @@ const writes = f => f.calls.filter(c => c[0] === 'git' || c[0] === 'gh' && c[1] 
     const secondRequest = { ...request, slug: 'another-spec', task: { ...request.task, taskId: 'T009' } };
     const results = await Promise.all([queueTask(request, concurrent.io), queueTask(secondRequest, concurrent.io)]);
     assert.deepEqual(results.map(r => r.run.state), ['Queued', 'Held']); assert.equal(concurrent.posts, 1);
+    assert.deepEqual(results[1].run.overlapPaths, ['src/a.ts']);
+    assert.match(results[1].run.decisionNeeded, /Held overlapping paths: src\/a.ts/);
     assert.equal([...concurrent.files.keys()].filter(file => file.includes('/packets/')).length, 1);
     assert.equal(await releaseHeld(request.root, request.pr, concurrent.io), undefined);
     passed++;
@@ -82,6 +84,7 @@ const writes = f => f.calls.filter(c => c[0] === 'git' || c[0] === 'gh' && c[1] 
     }
     concurrent.transition('Needs review');
     assert.equal((await releaseHeld(request.root, request.pr, concurrent.io)).taskId, 'T009');
+    assert.equal(concurrent.runs[1].decisionNeeded, undefined);
     assert.equal(concurrent.posts, 2);
     assert.equal(await releaseHeld(request.root, request.pr, concurrent.io), undefined);
     assert.equal(concurrent.posts, 2); passed++;
@@ -92,5 +95,18 @@ const writes = f => f.calls.filter(c => c[0] === 'git' || c[0] === 'gh' && c[1] 
     assert.equal(settings['askaway.cloud.enabled'].default, false);
     assert.equal(settings['askaway.cloud.pollMinutes'].default, 1);
     assert.deepEqual(settings['askaway.cloud.agentLogins'].default, ['Copilot']); passed++;
+    const disjoint = fixture(); await queueTask(request, disjoint.io);
+    const separate = await queueTask({ ...secondRequest, task: { ...secondRequest.task, allowedPaths: ['src/b.ts'] } }, disjoint.io);
+    assert.equal(separate.run.state, 'Held'); assert.deepEqual(separate.run.overlapPaths, []); assert.equal(disjoint.posts, 1);
+    disjoint.transition('Needs review'); await releaseHeld(request.root, request.pr, disjoint.io); assert.equal(disjoint.posts, 2);
+    const defaultCap = fixture();
+    await queueTask({ ...request, task: { ...request.task, ceilingMinutes: undefined } }, defaultCap.io);
+    assert.ok([...defaultCap.files.values()].some(text => text.includes('ceilingMinutes: 50')));
+    for (const ceilingMinutes of [0, 60, 50.5]) {
+        const invalidCap = fixture();
+        assert.match((await queueTask({ ...request, task: { ...request.task, ceilingMinutes } }, invalidCap.io)).refusal, /between 1 and 59/);
+        assert.equal(invalidCap.calls.length, 0); assert.equal(invalidCap.files.size, 0);
+    }
+    console.log('PASS EV-CLOUD-SAFETY-QUEUE overlap/disjoint Held; Needs review release; default50; invalid cap refused before GitHub/git writes');
     console.log(`test-cloud-queue: ${passed} passed, 0 failed`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

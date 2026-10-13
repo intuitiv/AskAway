@@ -6,8 +6,8 @@ const ts = require('typescript');
 const manifest = require('./package.json');
 const read = name => fs.readFileSync(path.join(__dirname, name), 'utf8');
 const removed = /askaway\.(?:.*Remote|openHistory|newSession|openSettings)/;
-assert.deepEqual(manifest.contributes.menus['view/title'].map(row => row.command),
-    ['here', 'away', 'awayValidator', 'offline'].map(mode => 'askaway.availability.' + mode));
+// Bug 6 (2026-10-12): the AITalk avatar menu replaced the view-title availability icons.
+assert.ok(!(manifest.contributes.menus?.['view/title'] || []).some(row => /^askaway\.availability\./.test(row.command)));
 assert.ok(manifest.contributes.commands.every(row => !removed.test(row.command)));
 assert.ok(Object.keys(manifest.contributes.configuration.properties).every(key => !/^askaway\.remote/.test(key)));
 assert.ok(!manifest.contributes.languageModelTools.some(tool => tool.name === 'ask_user'));

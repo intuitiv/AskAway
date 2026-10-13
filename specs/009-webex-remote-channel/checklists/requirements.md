@@ -9,19 +9,19 @@ Artifact map only, not a claim that all listed guards were rerun. Reviewer wordi
 | R-TELE-03 | FR-003 | US2 | test-telegram-live-commentary.cjs |
 | R-TELE-04 | FR-004/039 | US2 | test-availability-updates.cjs |
 | R-TELE-05 | FR-005/034/039 | US2/6 | test-webex-turn-thread.cjs; test-availability-updates.cjs |
-| R-TELE-06 | FR-006 | US2 | test-remote-channel-parity.cjs (status only; final workers gap) |
+| R-TELE-06 | FR-006 | US2 | test-remote-channel-parity.cjs (provider status/final combined totals and workers) |
 | R-TELE-07 | FR-007 | US2 | test-remote-channel-parity.cjs (banner ordering) |
 | R-TELE-08 | FR-008/035 | US2/6 | test-webex-turn-thread.cjs |
-| R-TELE-09 | FR-009 | US2 | test-telegram-turn-lifecycle.cjs; integrated parity gap |
+| R-TELE-09 | FR-009 | US2 | test-telegram-turn-lifecycle.cjs; test-remote-channel-parity.cjs |
 | R-TELE-10 | FR-010 | US2/3 | test-webex-remote-adapter.cjs (workspace/General routing only) |
 | R-TELE-11 | FR-011 | US2 | test-webex-ask-user.cjs |
 | R-TELE-12 | FR-012 | US2 | test-cloud-digest.cjs |
 | R-TELE-13 | FR-013/026 | US2/3 | test-webex-remote-adapter.cjs (partial); bounds/automatic edit retry gap |
 | R-TELE-14 | FR-014 | US2/3 | test-remote-handoff.cjs; test-webex-remote-adapter.cjs (PDF bytes only) |
 | R-TELE-15 | FR-015 | US2 | full event coverage gap |
-| R-TELE-16 | FR-016 | US2 | test-remote-channel-parity.cjs (status only); final worker details gap |
+| R-TELE-16 | FR-016 | US2 | test-remote-channel-parity.cjs (provider worker share/count/IDs, requests/cache/efficiency/cost/tokens) |
 | R-TELE-17 | FR-017/039 | US2 | test-availability-updates.cjs |
-| R-TELE-18 | FR-018 | US2 | test-remote-channel-contract.cjs; full parity gap |
+| R-TELE-18 | FR-018 | US2 | test-remote-channel-contract.cjs; test-remote-channel-parity.cjs |
 | R-TELE-19 | FR-019 | US2 | test-remote-channel-parity.cjs (existing Telegram adapter retained) |
 | R-TELE-20 | FR-020/027 | US1 | test-webex-token-command.cjs |
 | R-TELE-21 | FR-021 | US3 | test-webex-reply-poll.cjs |

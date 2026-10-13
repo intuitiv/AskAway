@@ -33,24 +33,14 @@ ui.apply = state => { for (const value of config.exports.presenceStates) browser
 ui.choose = mode => { control.choose(mode); const state = control.snapshot(); posted = { type: 'setAvailability', mode, until: state.expiresAt ? new Date(state.expiresAt).toISOString() : '', note: '' }; flyout = null; };
 ui.open = () => { control.toggle(); flyout = { innerHTML: control.html(), handlers: { keydown: event => { control.key(event.key); if (!control.snapshot().open) flyout = null; }, change: event => control.setReset(event.target.value) } }; };
 const manifest = require('./package.json');
-const statusIcons = { here: ['check', '#16833b'], away: ['clock', '#f5c244'], awayValidator: ['shield', '#7751c9'], offline: ['x', '#6b7280'] };
 for (const mode of ['here', 'away', 'awayValidator', 'offline']) {
     ui.apply({ mode });
     assert.deepEqual([...classes], ['avail-' + mode]);
-    const command = manifest.contributes.commands.find(row => row.command === 'askaway.availability.' + mode);
-    assert.ok(command);
-    for (const theme of ['light', 'dark']) {
-        const icon = fs.readFileSync(path.join(__dirname, command.icon[theme]), 'utf8');
-        assert.match(icon, /width="16" height="16" viewBox="0 0 16 16"/);
-        assert.match(icon, /<g id="person-avatar" fill="currentColor">\s*<circle id="avatar-head" cx="6" cy="4" r="3"\/>\s*<path id="avatar-shoulders" d="M0 14v-1a6 6 0 0 1 12 0v1Z"\/>/,
-            'title-bar icon is a neutral head and shoulders silhouette, not a status dot');
-        assert.match(icon, /<g id="status-badge">\s*<circle cx="12" cy="12" r="4"/, 'status badge is bottom-right and smaller than the avatar');
-        assert.ok(icon.includes(`id="status-${statusIcons[mode][0]}"`));
-        assert.ok(icon.includes(`fill="${statusIcons[mode][1]}"`));
-    }
-    assert.ok(manifest.contributes.menus['view/title'].some(row => row.command === command.command && row.group === 'navigation@0' && row.when === `view == askAwayView && askaway.availability == '${mode}'`));
+    assert.equal(manifest.contributes.commands.some(row => row.command === 'askaway.availability.' + mode), false);
+    assert.equal((manifest.contributes.menus?.['view/title'] || []).some(row => row.command === 'askaway.availability.' + mode), false);
 }
-console.log('PASS test-presence-icons: four 16x16 currentColor person avatars; bottom-right green check/yellow clock/violet shield/grey x badges');
+assert.doesNotMatch(JSON.stringify(manifest), /media\/icons\/presence-/);
+console.log('PASS test-presence-icons: native title availability commands/icons/menus absent; shared AITalk avatar owns availability');
 assert.doesNotMatch(webview, /cm-avail|availabilityControlHtml/);
 assert.match(webview, /case 'openPresence':\s*openPresence\(\)/);
 const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
@@ -68,7 +58,8 @@ const { writeAvailability, readAvailability } = mod.exports;
 const extension = fs.readFileSync(path.join(__dirname, 'src', 'extension.ts'), 'utf8');
 const commands = {};
 let opened = 0;
-const pickerCode = slice(extension, '        for (const item of presenceStates)', '        // Session commands');
+const pickerCode = 'provider._pushAvailability();';
+assert.doesNotMatch(extension, /registerCommand\('askaway\.availability\./);
 vm.runInNewContext(ts.transpileModule(pickerCode, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, {
     presenceStates: config.exports.presenceStates,
     vscode: { commands: { registerCommand: (name, fn) => { commands[name] = fn; return {}; } } },
@@ -114,11 +105,11 @@ try {
         assert.equal(readAvailability(workspace, home).mode, mode);
     }
     for (const mode of ['here', 'away', 'awayValidator', 'offline']) {
-        commands['askaway.availability.' + mode](); ui.open(); ui.choose(mode);
+        ui.open(); ui.choose(mode);
         assert.equal(posted.mode, mode); writeAvailability(workspace, posted, home);
         ui.apply(readAvailability(workspace, home)); assert.deepEqual([...classes], ['avail-' + mode]);
     }
-    assert.equal(opened, 4);
+    assert.equal(opened, 0, 'no native title command is registered');
     ui.open(); flyout.handlers.change({ target: { value: '30m' } }); ui.choose('away');
     assert.ok(Date.parse(posted.until) > Date.now() + 29 * 60000);
     writeAvailability(workspace, { mode: 'away', until: new Date(Date.now() - 1000).toISOString() }, home);

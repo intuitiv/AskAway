@@ -8,6 +8,9 @@ import { serial } from './cloudQueue';
 export function cloudTaskView(run: CloudRun, now = Date.now()) {
     const duration = Math.max(0, Date.parse(run.endedAt ?? '') || now) - Date.parse(run.startedAt ?? run.queuedAt);
     const output = [run.pr, run.model, run.report?.verifyOutput, run.report?.url, run.acceptance?.evidence,
+        run.branchConflict ? `Branch conflict: developer ${run.branchConflict.developerSha}; cloud ${run.branchConflict.cloudSha}` : undefined,
+        ['Working', 'Pushed', 'Checks passed', 'Checks failed', 'Checks waiting for approval'].includes(run.state)
+            ? `Remaining local cap: ${Math.max(0, Math.ceil((Math.min(run.request.task.ceilingMinutes ?? 50, 59) * 60000 - duration) / 60000))} min; remote stop not controlled by AskAway` : undefined,
         ...(run.commits ?? []).map(commit => commit.url), ...(run.checkRuns ?? []).map(check => `${check.name}: ${check.status} / ${check.conclusion ?? 'pending'} ${check.url}`),
         run.decisionNeeded, run.staleSince ? `Polling stale since ${run.staleSince}` : undefined].filter(Boolean).join('\n');
     return { state: run.state, events: [{ kind: 'tool', id: run.taskId, tool: run.state,

@@ -1150,38 +1150,6 @@
     },
     "commands": [
       {
-        "command": "askaway.availability.here",
-        "title": "Availability: Here",
-        "icon": {
-          "light": "media/icons/presence-here.svg",
-          "dark": "media/icons/presence-here.svg"
-        }
-      },
-      {
-        "command": "askaway.availability.away",
-        "title": "Availability: Away",
-        "icon": {
-          "light": "media/icons/presence-away.svg",
-          "dark": "media/icons/presence-away.svg"
-        }
-      },
-      {
-        "command": "askaway.availability.awayValidator",
-        "title": "Availability: Away + Validator answering",
-        "icon": {
-          "light": "media/icons/presence-awayValidator.svg",
-          "dark": "media/icons/presence-awayValidator.svg"
-        }
-      },
-      {
-        "command": "askaway.availability.offline",
-        "title": "Availability: Offline",
-        "icon": {
-          "light": "media/icons/presence-offline.svg",
-          "dark": "media/icons/presence-offline.svg"
-        }
-      },
-      {
         "command": "askaway.configureWebexNotifications",
         "title": "AskAway: Configure Webex Notifications"
       },
@@ -1231,31 +1199,7 @@
         "title": "AskAway: Open Plan Board",
         "icon": "$(project)"
       }
-    ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "askaway.availability.here",
-          "when": "view == askAwayView && askaway.availability == 'here'",
-          "group": "navigation@0"
-        },
-        {
-          "command": "askaway.availability.away",
-          "when": "view == askAwayView && askaway.availability == 'away'",
-          "group": "navigation@0"
-        },
-        {
-          "command": "askaway.availability.awayValidator",
-          "when": "view == askAwayView && askaway.availability == 'awayValidator'",
-          "group": "navigation@0"
-        },
-        {
-          "command": "askaway.availability.offline",
-          "when": "view == askAwayView && askaway.availability == 'offline'",
-          "group": "navigation@0"
-        }
-      ]
-    }
+    ]
   },
   "scripts": {
     "pretest:workers": "node test-trace-tab.cjs && node test-aitalk-ui.cjs && node test-cloud-cost-estimate.cjs && node test-theme-light.cjs && node test-style-voice.cjs && node test-aitalk-delivery.cjs && node test-style-sample-vscode.cjs && node test-worker-ask-capture-refused.cjs && node test-attention-notify.cjs && node test-aitalk-extension.cjs && node test-webex-tools-suite.cjs && node test-trace-tab-unification.cjs && node test-validator-session-per-turn.cjs && node test-validator-digest-watch.cjs && node test-validator-live.cjs && node test-validator-triggers.cjs && node test-efficiency-score.cjs && node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs && node test-import-vscode-memories.cjs",

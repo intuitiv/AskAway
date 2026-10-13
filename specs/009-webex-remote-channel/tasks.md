@@ -88,7 +88,7 @@ T029 subsequent retry (2026-10-08): `invalid_scope` persists with KMS included. 
 
 ### Tests for User Story 2
 
-- [ ] T008 [US2] Add parameterized caller-view parity replay in `tasksync-chat/test-remote-channel-parity.cjs` for new/queued turns, edited Commentary, heads-up, two-minute stuck status, new final, full banner/worker metrics, PDF/Markdown, digest and reply/VS Code stop; retain existing `test-telegram-*.cjs` regression cases (FR-001 to FR-019; depends on T005).
+- [x] T008 [US2] Parameterized `test-remote-channel-parity.cjs` PASS EV-REMOTE-CHANNEL-PARITY matched=2 (2026-10-12): real provider snapshot, both adapters/shared relay, new/queued turns, Commentary/heads-up, controlled two-minute/stuck status, final worker/share/IDs/requests/cache/efficiency/cost/tokens, mobile PDF/Markdown fallback, digest, once-only reply/local stop and disabled Telegram. All five Telegram regressions exit 0; repo tsc exit 0; provider CRLF asserted.
 
 ### Implementation for User Story 2
 
@@ -201,7 +201,7 @@ Write caller-view command tests first using fake APIs, bounded data and seeded f
 **Purpose**: Verify parity, secrecy and requirement coverage together.
 
 - [ ] T022 Run all new caller-view tests and existing Telegram regressions, including `tasksync-chat/test-remote-channel-parity.cjs`, `test-webex-remote-adapter.cjs`, `test-goals-docs.cjs` and `test-spec-planning-contract.cjs`; record results and FR/SC coverage in `specs/009-webex-remote-channel/quickstart.md`. Zero matched tests or unobserved live delivery is not a pass; US5 remains explicitly deferred if undecided.
-- [ ] T023 [P] Cite passing caller-view tests in `tasksync-chat/docs/requirements/telegram.md` and ensure the approved ADR/GOALS links stay true; caller-view `tasksync-chat/test-goals-docs.cjs` guards quotes/links. Do not rewrite reviewer requirements to fit implementation (depends on desired P1 story evidence).
+- [x] T023 [P] Cite passing caller-view parity in `tasksync-chat/docs/requirements/telegram.md`, preserving reviewer wording/links; `test-remote-channel-parity.cjs` PASS EV-REMOTE-CHANNEL-PARITY matched=2 and `test-goals-docs.cjs` PASS EV-GOALS-DOCS (2026-10-12). Live delivery and T006 identity remain separate.
 
 ---
 
@@ -279,11 +279,11 @@ Latest follow-up supersedes the first packet's dispositions; actual source paths
 - T003 done: test-spec-planning-contract.cjs PASS EV-WEBEX-MIGRATION-PLAN callers=6 rules=5; migration plan/research authored.
 - T004 done: test-goals-docs.cjs PASS EV-WEBEX-REQUIREMENTS-COVERAGE rows=44; unique FR/story/test-or-gap mappings.
 - T006 blocker: distinct workspace paths with the same basename still resolve the same titled room; identity migration needs a compatibility decision before changing existing mappings.
-- T008 blocker: formatter/adapters now preserve supplied worker metrics, but src/webview/webviewProvider.ts:2111–2122 drops them before handoff and is outside scope; full lifecycle replay remains incomplete.
+- T008 done: provider snapshot now preserves canonical final metrics; full two-adapter replay passes; only final-notification method patched with CRLF preserved.
 - T014 done: expanded fake-backed adapter test PASS matched=6; red transient-edit assertion preceded owning retry/content-bound fixes.
 - T018 blocker: live opt-in absent; FR-036 also requires safe credential injection before external script arrival verification.
 - T022 blocker: live opt-in absent; worker gate now fails outside scope at test-trace-tab-unification.cjs:71:29, `browser.ui.traceRowsHtml is not a function`.
-- T023 blocker: passing expanded adapter/formatter guards cited without wording changes; full P1 parity awaits the out-of-scope metrics provider fix.
+- T023 done: passing full parity guard cited; reviewer wording preserved, independent identity/live gaps remain explicit.
 - US5 live verification deferred per packet; confirmed webhook design and no-bots rule unchanged.
 - Compiler evidence (latest): repository `tasksync-chat/node_modules/.bin/tsc -p tasksync-chat --noEmit` TSC_EXIT=0; both new suites and all five Telegram regressions exit 0.
 

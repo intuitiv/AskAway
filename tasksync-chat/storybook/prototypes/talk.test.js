@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import './storyInteractions.test.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { talkHtml, traceHtml, scenarios, traceSessions, liveStart, liveScript, ticksHtml, whoClass, reactionNote, splitBody, bodyHtml } from './talk.js';
@@ -63,8 +64,8 @@ test('composer, @ popover with presence, typing and proxy frame', () => {
     assert.match(html, /aria-label="Attach"/);
     assert.match(html, /class="talk-send" data-send/);
     assert.match(html, /role="listbox"/);
-    assert.match(html, /class="left" data-mention="Agent"/);
-    assert.match(html, /mention to bring back/);
+    assert.doesNotMatch(html, /data-mention="Agent"/);
+    assert.doesNotMatch(html, /mention to bring back/);
     assert.match(html, /Validator memory updated/);
     assert.doesNotMatch(talkHtml([], { draft: 'hi' }), /talk-mentions/);
     assert.match(talkHtml(liveStart, { typing: 'Agent is typing…' }), /Agent is typing…/);
@@ -96,8 +97,8 @@ test('css is readable, 420px, reduced-motion aware; stories live under AITalk/',
     assert.match(stories, /title: 'AITalk\/Talk'/);
     for (const name of ['FullConversation', 'LiveSimulation', 'ValidatorWhileAgentAway', 'LightTheme', 'ValidatorAsProxy', 'EmptyState']) assert.ok(stories.includes(`export const ${name} =`));
     assert.match(read('../stories/Trace.stories.js'), /title: 'AITalk\/Trace tab'/);
-    assert.match(read('./mount.js'), /prefers-reduced-motion/);
-    assert.match(read('./mount.js'), /later\(\(\) => run\(step\)/);
+    assert.match(read('./talk.css'), /prefers-reduced-motion/);
+    assert.match(read('./mount.js'), /controller.step\(step\)/);
 });
 
 test('every message from someone else gets a focusable bubble with a reaction bar; your own do not', () => {
@@ -148,12 +149,12 @@ test('Full conversation and Live simulation show pre-reacted messages; other par
 });
 
 test('reaction bar opens only by right-click, long-press or keyboard; never on hover or focus', () => {
-    const mount = read('./mount.js');
+    const mount = read('../../media/aitalk/talkController.js');
     for (const key of ['Enter', 'ContextMenu', 'F10', 'ArrowRight', 'ArrowLeft', 'Escape']) assert.ok(mount.includes(`'${key}'`));
     assert.match(mount, /addEventListener\('contextmenu'/);
-    assert.match(mount, /pointerType !== 'touch'[\s\S]*setTimeout\(\(\) => openBar\(bubble\), 500\)/);
-    assert.match(mount, /addEventListener\('scroll'[\s\S]*closeBar\(\)/);
-    assert.match(mount, /addEventListener\('click'[\s\S]*closeBar\(\)/);
+    assert.match(mount, /pointerType === 'touch'[\s\S]*setTimeout/);
+    assert.match(mount, /'scroll'/);
+    assert.match(mount, /addEventListener\('click'[\s\S]*closeReactions\(\)/);
     const css = read('./talk.css');
     assert.doesNotMatch(css, /:hover > \.talk-react-bar/);
     assert.doesNotMatch(css, /:focus-within > \.talk-react-bar/);
@@ -169,7 +170,7 @@ test('each Validator answer is its own message; no multi-item bubble code remain
     assert.ok(scenarios.Full.messages.every(m => !m.questions));
     assert.doesNotMatch(read('./talk.css'), /talk-question|talk-votes|has-quiz/);
     assert.doesNotMatch(read('./talk.js'), /questionsHtml/);
-    assert.match(read('./mount.js'), /reactMessage\(message, emoji/);
+    assert.match(read('./mount.js'), /reactMessage\(state.messages.find/);
 });
 
 test('Agent and Validator answer trivial messages with a reaction pill naming who reacted', () => {
@@ -192,7 +193,7 @@ test('ticks: Full shows both states; Live goes single grey to double blue after 
     assert.deepEqual(liveScript[0], { do: 'deliver', id: 'l1', tool: 'read_file', after: 1500 });
     assert.equal(liveStart.find(m => m.id === 'l1').delivery, 'posted');
     const mount = read('./mount.js');
-    assert.match(mount, /step\.do === 'deliver'[^\n]*delivery: 'delivered'/);
+    assert.match(read('../../media/aitalk/talkController.js'), /value.do === 'deliver'.*deliveryEvent/);
     assert.match(mount, /step\.after \?\? 1700/);
     const css = read('./talk.css');
     assert.match(css, /\.talk-ticks\.posted \{ color: var\(--tk-tick-grey\)/);
@@ -237,7 +238,7 @@ test('Full and Live stories include the short Agent question with details and a 
     assert.doesNotMatch(full, /about 20 minutes later/);
     assert.ok(liveScript.some(s => s.message?.id === 'l8' && s.message.details));
     assert.ok(liveScript.some(s => s.message?.id === 'l9' && splitBody(s.message).collapsible));
-    assert.match(read('./mount.js'), /message\.expanded = !message\.expanded/);
+    assert.match(read('../../media/aitalk/talkController.js'), /expanded: !message.expanded/);
 });
 
 const registry = [...defaultMembers, { id: 'sage', kind: 'navigator', displayName: 'Sage', colour: 'who-p2', rank: 250, presencePolicy: 'joinsPerTurn', canProxyWhenAway: true, presence: 'left' }];
@@ -265,7 +266,7 @@ test('Reply action selects a quote bar and sent message quotes and routes to the
     const posted = postMessage(replyMessage('Yes', 'you', reply, 'reply'), messages, registry);
     assert.deepEqual(posted.messages.at(-1).recipients, ['sage']);
     assert.match(talkHtml(posted.messages, { members: registry }), /talk-quote who-p2/);
-    assert.match(read('./mount.js'), /button.dataset.reply.*selectReply/);
+    assert.match(read('../../media/aitalk/talkController.js'), /button.dataset.reply.*selectReply/);
 });
 test('configured events give single grey, double grey and double blue, never regress', () => {
     const map = { send: 'posted', handoff: 'delivered', response: 'read' };

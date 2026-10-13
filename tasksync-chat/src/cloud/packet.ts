@@ -34,7 +34,7 @@ export interface PacketTask {
     allowedPaths: string[];
     verify: string[];
     expect: string;
-    ceilingMinutes: number;
+    ceilingMinutes?: number;
     stopCondition?: string;
 }
 
@@ -67,7 +67,8 @@ function refuseSecrets(fields: Record<string, string>, known: string[]): void {
 
 export function buildPacket(task: PacketTask, story: PacketStory, facts: PacketFacts): { path: string; text: string } {
     if (!Number.isInteger(facts.attempt) || facts.attempt < 1) { throw new Error('attempt must start at 1'); }
-    if (!Number.isInteger(task.ceilingMinutes) || task.ceilingMinutes < 1 || task.ceilingMinutes > 59) {
+    const ceilingMinutes = task.ceilingMinutes ?? 50;
+    if (!Number.isInteger(ceilingMinutes) || ceilingMinutes < 1 || ceilingMinutes > 59) {
         throw new Error('ceilingMinutes must be between 1 and 59');
     }
     const stopCondition = task.stopCondition ?? 'Stop and ask on any undecided behaviour instead of guessing. Stop when verify passes.';
@@ -84,7 +85,7 @@ export function buildPacket(task: PacketTask, story: PacketStory, facts: PacketF
         `draft: ${['specify', 'clarify', 'plan', 'tasks'].includes(task.stage)}`, `base: ${scalar(facts.base)}`,
         'allowedPaths:', ...task.allowedPaths.map(value => `  - ${scalar(value)}`),
         'verify:', ...task.verify.map(value => `  - ${scalar(value)}`),
-        `expect: ${scalar(task.expect)}`, `ceilingMinutes: ${task.ceilingMinutes}`, `stopCondition: ${scalar(stopCondition)}`,
+        `expect: ${scalar(task.expect)}`, `ceilingMinutes: ${ceilingMinutes}`, `stopCondition: ${scalar(stopCondition)}`,
         'reportFormat: |', `  Report ${task.taskId}`, '  - Result: done | blocked', '  - Commits: <sha list>',
         '  - Verify output: <last line of each command>', '  - Model: <self-reported name, or not observed: reason>',
         '  - Question (if blocked): <one question>', '---', '', '## Task details', task.details, '',

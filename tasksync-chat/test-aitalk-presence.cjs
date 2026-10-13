@@ -38,6 +38,20 @@ const vm = require('node:vm');
     const run = runtime.start({ workspacePath: root, profile: 'verify', dispatchTurnId: 'turn', baseRevision: 'abc123', objective: 'Verify presence', allowedFiles: ['fixture.js'], acceptance: 'presence lifecycle', expected: 'PASS', command: 'node fixture.js' });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(store.snapshot().members.find(item => item.id === run.workerId).presence, 'joined');
+    const provider = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
+    assert.equal(provider.replace(/\r\n/g, '').includes('\n'), false, 'provider CRLF preserved');
+    const polling = provider.slice(provider.indexOf("            case 'requestAITalk':"), provider.indexOf("            case 'requestAITalk':") + 4000);
+    const pollingBlock = polling.slice(0, polling.indexOf('\n            case ', polling.indexOf("case 'aitalkReact':")));
+    const poll = require('typescript').transpileModule(`async function poll(message) { switch(message.type) { ${pollingBlock} } }`, { compilerOptions: { target: 9 } }).outputText;
+    for (const workerState of ['STARTING', 'RUNNING', 'WAITING_APPROVAL']) {
+        let delivered;
+        const pollingContext = { AITalkStore: api.AITalkStore, vscode: { workspace: { workspaceFolders: [{ uri: { fsPath: root } }], getConfiguration: () => ({ get: () => '' }) }, extensions: { getExtension: () => undefined } }, os, path, fs,
+            projectWorkersState: () => ({ workers: [{ workerId: run.workerId, state: workerState }] }), sharedWorkerRuntime: () => runtime,
+            setAITalkPresence: api.setAITalkPresence, isAITalkTurnActive: api.isAITalkTurnActive };
+        const invokePoll = vm.runInNewContext(poll + ';poll', pollingContext);
+        await invokePoll.call({ _broadcast: message => { delivered = message.data; } }, { type: 'requestAITalk' });
+        assert.equal(delivered.members.find(item => item.id === run.workerId).presence, 'joined', `${workerState} polling must retain lifecycle presence`);
+    }
     child.stdout.write(JSON.stringify({ type: 'text', sessionID: 'fixture', part: { text: 'Result: PASS' } }) + '\n');
     await new Promise(resolve => setImmediate(resolve)); child.emit('exit', 0, null);
     assert.equal(store.snapshot().members.find(item => item.id === run.workerId).presence, 'left');

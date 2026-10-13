@@ -21,11 +21,11 @@ const vm = require('node:vm');
     vm.runInNewContext(fs.readFileSync(__dirname + '/media/aitalk/extension.js', 'utf8').replace(/^import .*;$/gm, '').replace('export function', 'function'), {
         ...render, ...rules, ...presence, createTalkController, setInterval() {},
         window: { askawayPostMessage: action => sent.push(action), addEventListener: (name, fn) => { handlers['window-' + name] = fn; } },
-        document: { getElementById: () => host, addEventListener(name, fn) { (handlers[name] ||= []).push(fn); } }
+         document: { querySelector: selector => ({ click() { sent.push({ type: 'navigate', selector }); } }), getElementById: () => host, addEventListener(name, fn) { (handlers[name] ||= []).push(fn); } }
     });
     const paint = () => handlers['window-message']({ data: { type: 'aitalkState', data: snapshot } });
     const type = value => { input.value = value; handlers.input[0]({ target: input }); };
-    const click = dataset => handlers.click[0]({ target: { closest: selector => selector === '#aitalk-root' ? host : { dataset, hasAttribute: () => false } } });
+    const click = dataset => { const target = { closest: selector => selector === 'button' || selector === '[data-presence]' && dataset.presence ? { dataset, hasAttribute: () => false } : null }; for (const handler of handlers.click) handler({ target }); };
     const key = shiftKey => { let prevented = false; handlers.keydown[0]({ target: input, key: 'Enter', shiftKey, preventDefault() { prevented = true; } }); return prevented; };
     snapshot = { members: [
         { id: 'human', displayName: 'Sam Morgan', kind: 'user', rank: 400, presence: 'joined' },
@@ -65,6 +65,9 @@ const vm = require('node:vm');
     snapshot.userName = 'Sam Morgan'; paint(); assert.match(host.innerHTML, />SM<\/span>/);
     snapshot.userPhoto = 'https://example.invalid/avatar.png'; paint(); assert.match(host.innerHTML, /<img src="https:\/\/example.invalid\/avatar.png"/);
     assert.doesNotMatch(host.innerHTML, /Personal availability/);
+    let tracePrevented = false;
+    for (const handler of handlers.click) handler({ target: { closest: selector => selector === 'a.talk-trace-link[data-tab]' ? { dataset: { tab: 'Trace' } } : null }, preventDefault() { tracePrevented = true; } });
+    assert.equal(tracePrevented, true); assert.equal(sent.at(-1).type, 'navigate'); assert.equal(sent.at(-1).selector, '.widget-tab[data-tab="observability"]');
     click({ presence: 'away' }); assert.equal(sent.at(-1).type, 'setAvailability'); assert.equal(sent.at(-1).mode, 'away');
     snapshot.messages.push({ id: 'draft', author: 'main', text: 'Send this?', draftId: 'webex-draft' }); paint();
     click({ react: '👍', msg: 'draft' }); assert.equal(sent.at(-1).type, 'aitalkApproveDraft'); assert.equal(sent.at(-1).draftId, 'webex-draft');
@@ -73,10 +76,12 @@ const vm = require('node:vm');
     assert.match(fs.readFileSync(__dirname + '/storybook/prototypes/presence.js', 'utf8'), /media\/aitalk\/presence/);
     const scriptHandlers = {};
     const controller = createTalkController({ host, events: { addEventListener(name, fn) { (scriptHandlers[name] ||= []).push(fn); } }, post: action => sent.push(action) });
+    scriptHandlers.click[0]({ target: { closest: selector => selector === 'a.talk-trace-link[data-tab]' ? { dataset: { tab: 'Trace' } } : null }, preventDefault() {} });
+    assert.equal(sent.at(-1).type, 'talkTab'); assert.equal(sent.at(-1).tab, 'Trace');
     const thread = { scrollTop: 0, scrollHeight: 800, clientHeight: 800 };
     const originalQuery = host.querySelector;
     host.querySelector = selector => selector === '.talk-thread' ? thread : originalQuery(selector);
-    const scriptClick = (dataset = {}, attribute = '') => scriptHandlers.click[0]({ target: { closest: selector => selector === '#aitalk-root' ? host : { dataset, hasAttribute: name => name === attribute } } });
+    const scriptClick = (dataset = {}, attribute = '') => scriptHandlers.click[0]({ target: { closest: selector => selector === 'button' ? { dataset, hasAttribute: name => name === attribute } : null } });
     const scriptKey = key => scriptHandlers.keydown[0]({ target: input, key, preventDefault() {} });
     controller.render({ members: [...snapshot.messages.map(message => ({ id: message.author, displayName: message.displayName, kind: message.authorKind, rank: message.rank, presence: 'joined' })), { id: 'worker', displayName: 'Worker', rank: 100, presence: 'left' }], messages: [], unread: 2 });
     for (const step of [{ do: 'join', who: 'worker' }, { do: 'typing', who: 'Planning is typing' }, { do: 'add', message: { id: 'long', author: 'planner', text: 'Quick question', details: 'Detailed plan' } }]) controller.step(step);
@@ -111,6 +116,24 @@ const vm = require('node:vm');
     scriptHandlers.keydown[0]({ target: reactionButton, key: 'ArrowRight', preventDefault() {} }); assert.equal(reactionButton.focused, true);
     classes.clear(); scriptHandlers.pointerdown[0]({ target: bubble, pointerType: 'touch' });
     await new Promise(resolve => setTimeout(resolve, 520)); assert.ok(classes.has('reacting'));
+    const previousQueryAll = host.querySelectorAll;
+    bubble.classList.remove = value => classes.delete(value);
+    host.querySelectorAll = selector => selector === '.reacting' ? [bubble] : [];
+    const outside = { closest: () => null, matches: () => false };
+    for (const handler of scriptHandlers.click) handler({ target: outside }); assert.equal(classes.has('reacting'), false);
+    classes.add('reacting'); for (const handler of scriptHandlers.keydown) handler({ target: outside, key: 'Escape', preventDefault() {} }); assert.equal(classes.has('reacting'), false);
+    const trigger = { closest: selector => selector.includes('presence-trigger') || selector === '.presence-anchor' ? trigger : null, classList: { contains: name => name === 'presence-trigger' }, matches: () => false };
+    const presenceKey = key => { for (const handler of scriptHandlers.keydown) handler({ target: trigger, key, preventDefault() {} }); };
+    const open = () => { for (const handler of scriptHandlers.click) handler({ target: trigger }); };
+    open(); assert.match(host.innerHTML, /presence-flyout/);
+    presenceKey('ArrowDown'); assert.match(host.innerHTML, /tabindex="0" data-presence="away"/);
+    presenceKey('ArrowUp'); assert.match(host.innerHTML, /tabindex="0" data-presence="here"/);
+    presenceKey('ArrowDown'); presenceKey('Enter'); assert.equal(sent.at(-1).mode, 'away'); assert.doesNotMatch(host.innerHTML, /presence-flyout/);
+    open(); presenceKey('Escape'); assert.doesNotMatch(host.innerHTML, /presence-flyout/);
+    open(); for (const handler of scriptHandlers.click) handler({ target: outside }); assert.doesNotMatch(host.innerHTML, /presence-flyout/);
+    host.querySelectorAll = previousQueryAll;
+    assert.doesNotMatch(fs.readFileSync(__dirname + '/media/aitalk/talkController.js', 'utf8'), /aitalk-root|widget-tab/);
+    console.log('PASS EV-AITALK-UI availability Up/Down/Enter/Escape; availability/reaction outside and Escape dismissal; arbitrary mount root');
     assert.match(fs.readFileSync(__dirname + '/storybook/prototypes/mount.js', 'utf8'), /createTalkController/);
     console.log('PASS EV-AITALK-UI shared controller script: send/cancel/mentions keyboard/emoji/attach/more/reaction/live typing+delivery/join+leave/unread scroll');
     console.log('PASS EV-AITALK-UI avatar initials/photo; shared availability action; draft thumbs-up approval; fallback registry and viewer moderator');

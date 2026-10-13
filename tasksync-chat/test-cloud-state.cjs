@@ -15,6 +15,12 @@ function load(name) {
 }
 const { CloudSpecsController, shouldPollCloud } = load('cloudSpecs');
 const { queueTask } = load('cloudQueue');
+const { deriveCloudState } = load('cloudState');
+const { cloudTaskView, cloudWorkers } = load('cloudSpecs');
+const digestModule = { exports: {} };
+vm.runInNewContext(require('esbuild').buildSync({ entryPoints: [path.join(__dirname, 'src/cloud/cloudDigest.ts')], bundle: true,
+    platform: 'node', format: 'cjs', write: false, external: ['vscode'] }).outputFiles[0].text,
+    { module: digestModule, exports: digestModule.exports, require: id => id === 'vscode' ? {} : require(id), console, process, Buffer });
 const fixture = require('./test-fixtures/cloud-signals-2026-10-07.json');
 const pr = `https://github.com/${fixture.repo}/pull/${fixture.pr}`;
 const branch = 'askaway/cloud-proof-throwaway';
@@ -73,6 +79,34 @@ const view = async () => (await controller.refresh(root, { specs: [{ slug: '006-
         assert.match((await view()).events[0].outputPreview, /duration ceiling/);
     }
     console.log('PASS configured timeout and 59-minute ceiling');
+    const working = fresh(); working.state = 'Working'; working.startedAt = working.queuedAt;
+    const startTime = Date.parse(working.startedAt);
+    const commit = (sha, parent, login, message) => ({ sha, html_url: pr + '/commits/' + sha,
+        parents: [{ sha: parent }], author: { login, type: login === 'Copilot' ? 'Bot' : 'User' },
+        commit: { message, author: { name: login === 'Copilot' ? 'copilot-swe-agent[bot]' : login, date: new Date(startTime + minute).toISOString() } } });
+    const cloudCommit = commit('abcdef0123456789', working.packetSha, 'Copilot', '[PROOF-1] cloud work');
+    const developerCommit = commit('fedcba9876543210', cloudCommit.sha, 'Developer', 'developer changes');
+    const safetySignals = { ...empty(), at: new Date(startTime + 2 * minute).toISOString(), branch, state: 'open', commits: [cloudCommit, developerCommit] };
+    const conflict = deriveCloudState(working, safetySignals);
+    assert.equal(conflict.branchConflict.developerSha, developerCommit.sha); assert.equal(conflict.branchConflict.cloudSha, cloudCommit.sha);
+    for (const output of [cloudTaskView(conflict, startTime + 2 * minute).events[0].outputPreview,
+        Object.values(cloudWorkers([conflict], startTime + 2 * minute)[0].trace.runs)[0][0].outputPreview]) {
+        assert.ok(output.includes(developerCommit.sha) && output.includes(cloudCommit.sha)); assert.match(output, /Remaining local cap: 48 min/);
+    }
+    for (const trailer of ['packet', 'tick', 'record']) {
+        const own = commit('fedcba9876543210', cloudCommit.sha, 'AskAway', `extension write\n\nAskAway-Commit: ${trailer}`);
+        assert.equal(deriveCloudState(working, { ...safetySignals, commits: [cloudCommit, own] }).branchConflict, undefined);
+    }
+    assert.equal(deriveCloudState(working, { ...safetySignals, commits: [cloudCommit] }).branchConflict, undefined);
+    for (const cap of [50, 59]) {
+        const capped = { ...working, request: { ...working.request, task: { ...working.request.task, ceilingMinutes: cap } } };
+        assert.notEqual(deriveCloudState(capped, { ...safetySignals, commits: [], at: new Date(startTime + cap * minute - 1).toISOString() }).state, 'Timed out');
+        const expired = deriveCloudState(capped, { ...safetySignals, commits: [], at: new Date(startTime + cap * minute).toISOString() });
+        assert.equal(expired.state, 'Timed out'); assert.match(expired.decisionNeeded, /remote cancellation is not performed or confirmed/);
+        assert.match(cloudTaskView(expired).events[0].outputPreview, /GitHub controls its hard stop/);
+        assert.match(digestModule.exports.digestLines([expired])[0], /blocker: Local cloud duration ceiling reached; remote cancellation is not performed or confirmed/);
+    }
+    console.log('PASS EV-CLOUD-SAFETY-STATE developer/cloud SHAs in row/feed; extension/agent ignored; cap50/59 exact boundaries; local timeout not remote cancellation');
 
     stored = [fresh()]; snapshot = empty(); fail = true;
     const original = structuredClone(stored[0]);

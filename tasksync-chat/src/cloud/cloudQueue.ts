@@ -36,6 +36,8 @@ export interface CloudRun {
     checkRuns?: Array<{ name: string; status: string; conclusion: string | null; url: string }>;
     report?: { url: string; result: string; verifyOutput: string; commands: string[]; question: string; model: string };
     decisionNeeded?: string;
+    overlapPaths?: string[];
+    branchConflict?: { developerSha: string; cloudSha: string };
     staleSince?: string;
     pollFailures?: number;
     nextPollAt?: string;
@@ -136,11 +138,17 @@ async function post(request: QueueRequest, io: QueueIO, runs: CloudRun[], held?:
         state: 'Held', queuedAt: at, history: [], request };
     if (!held) { runs.push(run); }
     if (runs.some(other => other !== run && other.pr === request.pr && active.has(other.state))) {
-        run.history.push({ at, state: 'Held', signal: 'held: one cloud task at a time on this PR' });
+        const prefix = (value: string) => value.split('*')[0].replace(/\/$/, '');
+        run.overlapPaths = request.task.allowedPaths.filter(file => runs.some(other => other !== run && other.pr === request.pr && active.has(other.state)
+            && other.request.task.allowedPaths.some(allowed => file === allowed || prefix(file).startsWith(prefix(allowed)) || prefix(allowed).startsWith(prefix(file)))));
+        run.decisionNeeded = run.overlapPaths.length ? `Held overlapping paths: ${run.overlapPaths.join(', ')}` : 'Held: one cloud task at a time on this PR';
+        run.history.push({ at, state: 'Held', signal: run.decisionNeeded });
         await io.save(request.root, runs);
         return run;
     }
     run.state = 'Queued';
+    run.decisionNeeded = undefined;
+    run.overlapPaths = undefined;
     run.branch = pr.head.ref;
     run.history.push({ at, state: 'Queued', signal: 'explicit reviewer request' });
     // Reserve before any external write: even an uncertain push/comment failure cannot cause a duplicate retry.

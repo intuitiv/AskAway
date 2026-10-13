@@ -47,6 +47,14 @@ export function deriveCloudState(run: CloudRun, signals: PrSignals, agentLogins 
         commit.commit.message.startsWith(`[${run.taskId}]`) && !commit.commit.message.includes('AskAway-Commit:'));
     next.commits = commits.map(commit => ({ sha: commit.sha, author: commit.author.login, at: commit.commit.author.date, url: commit.html_url }));
     const latest = commits.at(-1);
+    const developer = signals.commits.filter(commit => reachable.has(commit.sha) && commit.sha !== run.packetSha
+        && commit.commit.author.date >= (next.startedAt ?? run.queuedAt)
+        && !bot(commit.author) && commit.commit.author.name !== 'copilot-swe-agent[bot]'
+        && !/^AskAway-Commit:\s*(packet|tick|record)\s*$/m.test(commit.commit.message)).at(-1);
+    if (developer && next.startedAt) {
+        next.branchConflict = { developerSha: developer.sha, cloudSha: latest?.sha ?? run.commits?.at(-1)?.sha ?? run.packetSha };
+        record('Working', developer.commit.author.date, `branch conflict: developer ${next.branchConflict.developerSha}; cloud ${next.branchConflict.cloudSha}`);
+    }
     const observedChecks = signals.checkRuns.check_runs.filter(check => check.head_sha === latest?.sha)
         .map(check => ({ name: check.name, status: check.status, conclusion: check.conclusion, url: check.html_url }));
     next.checkRuns = observedChecks.length ? observedChecks : (run.commits?.at(-1)?.sha === latest?.sha ? run.checkRuns ?? [] : []);
@@ -92,7 +100,7 @@ export function deriveCloudState(run: CloudRun, signals: PrSignals, agentLogins 
             next.decisionNeeded = 'No acknowledgment after 10 minutes; Copilot cloud agent may be disabled. Retry requires an explicit reviewer request.';
         } else if (elapsed >= Math.min(run.request.task.ceilingMinutes ?? 50, 59) * 60000) {
             next.state = 'Timed out';
-            next.decisionNeeded = 'Cloud run duration ceiling reached; retry requires an explicit reviewer request.';
+            next.decisionNeeded = 'Local cloud duration ceiling reached; remote cancellation is not performed or confirmed. GitHub controls its hard stop; retry requires an explicit reviewer request.';
         }
         if (['No response', 'Timed out'].includes(next.state)) { next.endedAt = signals.at; }
     }

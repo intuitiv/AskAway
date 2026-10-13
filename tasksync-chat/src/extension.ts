@@ -4,7 +4,6 @@ import * as path from 'path';
 import * as os from 'os';
 import { CONFIG_NAMESPACE, OUTPUT_CHANNEL_NAME, MCP_SERVER_NAME } from './constants/branding';
 import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvider';
-import { presenceStates } from './availability/presence';
 import { wireWebex } from './services/webexWiring';
 import { AITalkStore, activateAITalk, setAITalkTurnActive, setAITalkWorkerPresence } from './aitalk/store';
 import { registerAITalkValidator } from './aitalk/validatorDelivery';
@@ -1185,9 +1184,6 @@ export function activate(context: vscode.ExtensionContext) {
             })
         );
 
-        for (const item of presenceStates) {
-            context.subscriptions.push(vscode.commands.registerCommand('askaway.availability.' + item.id, () => provider.openPresence()));
-        }
         provider._pushAvailability();
 
         // Session commands
