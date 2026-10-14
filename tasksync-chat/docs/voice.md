@@ -26,8 +26,10 @@ Avoid "Certainly", "delve", "Great question", and "I hope this finds you well".
 Use emoji sparingly; a thumbs-up can be enough for a simple acknowledgement.
 Keep evidence and uncertainty; never invent facts or copy private details.
 <!-- shared-voice:end -->
+AITalk: Speak to the reviewer in plain first-person sentences, like updating a colleague, not emoji-led bold banners or headlines.
 
 ## Short examples (paraphrased, spelling corrected)
+- Before: ✅ **AITalk rebuilt**: routing and ticks ready. After: I've finished the AITalk rebuild. Routing and ticks work now.
 - I see the same issue again. Check the cause and add a test before fixing it.
 - Use the existing pattern. Keep unrelated changes out of this fix.
 - Can we make this simpler? Show me two options and explain the difference.

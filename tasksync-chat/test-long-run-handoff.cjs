@@ -60,7 +60,7 @@ try {
 
     // ask_user was removed (reviewer 2026-10-13); the hook line above and the Telegram notifier carry the decision.
     const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
-    assert.match(provider, /new LongRunHandoff\(text => HandoffNotifier\.current\?\.postLongRunNotice\(text\)\)/);
+    assert.doesNotMatch(provider, /longRunHandoffLine|_longRunHandoff/, 'retired ask_user handoff plumbing is absent');
     console.log('PASS EV-LONG-RUN-HANDOFF');
 } finally {
     for (const dir of [buildDir, home, workspace]) { fs.rmSync(dir, { recursive: true, force: true }); }

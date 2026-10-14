@@ -77,6 +77,18 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     const check = childProcess.spawnSync(process.execPath, [path.join(__dirname, 'tools', 'gen-lm-tool-manifest.cjs'), '--check'], { encoding: 'utf8' });
     assert.equal(check.status, 0, check.stderr);
     const declared = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).contributes.languageModelTools;
+    assert.equal(declared.find(tool => tool.name === 'commentary').modelDescription, commentary.description, 'VS Code and MCP expose identical commentary guidance');
+    assert.match(commentary.description, /plain first-person sentences/);
+    assert.match(commentary.description, /one or two short sentences/);
+    assert.match(commentary.description, /heads-up asks the exact question with options/);
+    assert.doesNotMatch(commentary.description, /Lead with one emoji|\*\*bold\*\*|==highlight==/);
+    const voice = fs.readFileSync(path.join(__dirname, 'docs/voice.md'), 'utf8');
+    const sharedVoice = /<!-- shared-voice:start -->[\s\S]*?<!-- shared-voice:end -->/.exec(voice)[0];
+    assert.match(voice, /plain first-person sentences/);
+    assert.ok(fs.readFileSync(path.join(__dirname, 'src/agents/sharedVoice.ts'), 'utf8').includes(sharedVoice));
+    assert.match(fs.readFileSync(path.join(__dirname, 'src/agents/askawayBuildAgent.ts'), 'utf8'), /one or two short first-person sentences/);
+    assert.equal((await call(commentary, { kind: 'heads-up', text: "Can you pick Workers or Trace? I'd put the scoreboard in Workers." })).status, 'POSTED');
+    console.log('EV-COMMENTARY-SPEECH: PASS first-person guidance shared by VS Code, MCP, voice doc and Build; direct question accepted');
     for (const name of [...Object.keys(workers), 'commentary']) {
         assert.ok(declared.some((tool) => tool.name === name && tool.toolReferenceName), `package.json declares ${name}`);
     }

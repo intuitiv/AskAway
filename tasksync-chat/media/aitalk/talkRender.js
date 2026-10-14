@@ -122,6 +122,21 @@ export function bodyHtml(message, members = defaultMembers) {
     return `${text}${body}<button type="button" class="talk-more" data-more="${id}" aria-expanded="${open}"${open && details ? ` aria-controls="talk-details-${id}"` : ''}>${open ? 'Show less' : 'Show more'}</button>`;
 }
 
+// A Webex draft card: recipient and full text, never collapsed; 👍 sends, 👎 rejects (the same reaction intents).
+const DRAFT_LABELS = { pending: 'Draft', sent: 'Sent', failed: 'Not confirmed', rejected: 'Rejected' };
+export function draftCardHtml(message) {
+    const draft = message.webexDraft || {};
+    const state = DRAFT_LABELS[draft.state] ? draft.state : 'pending';
+    const id = escapeHtml(message.id || '');
+    const to = [['Space', draft.space || draft.roomId], ['Person', draft.toPersonEmail], ['Thread', draft.parentId && `reply to ${draft.parentId}`]].filter(([, value]) => value);
+    const actions = state === 'pending' && message.draftId
+        ? `<div class="talk-draft-actions"><button type="button" class="talk-draft-approve" data-react="👍" data-msg="${id}" aria-label="Approve and send">👍 Send</button><button type="button" class="talk-draft-reject" data-react="👎" data-msg="${id}" aria-label="Reject draft">👎 Reject</button></div>` : '';
+    const outcome = state === 'sent' ? `<div class="talk-draft-outcome">Sent · id <code>${escapeHtml(draft.sentId || '')}</code></div>`
+        : state === 'rejected' ? '<div class="talk-draft-outcome">Rejected · nothing was sent</div>'
+            : state === 'failed' ? '<div class="talk-draft-outcome">Webex did not confirm the send</div>' : '';
+    return `<div class="talk-draft ${state}" data-draft-state="${state}"><div class="talk-draft-head"><span class="talk-draft-badge">${DRAFT_LABELS[state]}</span> Webex message${draft.edited && state === 'pending' ? ' · edited, approve again' : ''}</div><dl class="talk-draft-to">${to.map(([key, value]) => `<dt>${key}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl><div class="talk-draft-text">${escapeHtml(draft.text || '')}</div>${actions}${outcome}</div>`;
+}
+
 export function bubbleHtml(message, { messages = [], members = defaultMembers, first = true } = {}) {
     const mine = participant(members, message.author)?.id === owner(members)?.id;
     const parent = message.replyTo && messages.find(m => m.id === message.replyTo);
@@ -131,7 +146,7 @@ export function bubbleHtml(message, { messages = [], members = defaultMembers, f
     const name = !mine && first ? `<span class="talk-sender ${whoClass(message.author, members)}">${escapeHtml(label)}</span>` : '';
     const avatar = mine ? '' : first ? `<span class="talk-avatar ${whoClass(message.author, members)}" aria-hidden="true">${escapeHtml(initialsOf(label))}</span>` : '<span class="talk-avatar-gap" aria-hidden="true"></span>';
     const trace = (message.attachments ?? []).map(file => `<span class="talk-attachment">${escapeHtml(file.name)}</span>`).join('') + (message.trace ? `<a class="talk-trace-link" href="#trace" data-tab="Trace">View trace ↗</a>` : '');
-    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'}" id="talk-${escapeHtml(message.id || '')}">${avatar}<div class="talk-bubble ${message.kind === 'heads-up' ? 'heads-up' : ''} ${first ? 'tail' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${escapeHtml(message.id || '')}" aria-label="${escapeHtml(message.author)}: message. Right-click, long-press or press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${bodyHtml(message, members)}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${mine ? ticksHtml(message) : ''}</span>${reactions}</div></div>`;
+    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'}" id="talk-${escapeHtml(message.id || '')}">${avatar}<div class="talk-bubble ${first ? 'tail' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${escapeHtml(message.id || '')}" aria-label="${escapeHtml(message.author)}: message. Right-click, long-press or press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${message.webexDraft ? draftCardHtml(message) : bodyHtml(message, members)}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${mine ? ticksHtml(message) : ''}</span>${reactions}</div></div>`;
 }
 
 export function systemHtml(item) {

@@ -12,6 +12,7 @@ const browser = { acquireVsCodeApi: () => ({ getState: () => ({}), setState() {}
     document: { readyState: 'loading', addEventListener() {}, createElement: element, getElementById: id => id === 'settings-tab-shell' ? host : null },
     window: {}, console, setTimeout() {}, setInterval() {}, clearTimeout() {}, clearInterval() {} };
 const source = fs.readFileSync(__dirname + '/media/webview.js', 'utf8');
+assert.doesNotMatch(source, /function (?:handleAttach|toggleModeDropdown|positionModeDropdown|setMode)\(/, 'uncalled Chat entry points are removed');
 vm.runInNewContext(source.replace(/\}\(\)\);\s*$/, 'globalThis.renderSettings = createSettingsModal; }());'), browser);
 browser.renderSettings();
 assert.doesNotMatch(nodes.map(node => node.innerHTML).join(''), /sound-toggle|send-shortcut-toggle|Ctrl\/Cmd\+Enter|cm-goal|cm-copy/);

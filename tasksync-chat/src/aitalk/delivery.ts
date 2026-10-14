@@ -37,6 +37,8 @@ export function configureAITalkDelivery(root: string): void {
     });
 }
 export interface AITalkCaller { recipient: string; workspace?: string }
+/** The worker whose MCP tool call is running, if any. */
+export function currentAITalkCaller(): AITalkCaller | undefined { return mcpCaller.getStore(); }
 export function mcpAITalkCaller(extra: any): AITalkCaller | undefined {
     const meta = extra?._meta;
     const recipient = meta?.recipient ?? meta?.workerId ?? meta?.agentId;

@@ -15,7 +15,7 @@ export interface Actor extends ActorIdentity {
     receiveReply?(original: TalkMessage, reply: TalkMessage, tracker: Tracker): unknown;
     receiveReaction?(message: TalkMessage, emoji: string, by: string): unknown;
 }
-export interface PostOptions { replyTo?: string; details?: string; kind?: string; attachments?: Array<{ name: string; path: string }> }
+export interface PostOptions { replyTo?: string; details?: string; kind?: string; attachments?: Array<{ name: string; path: string }>; fields?: Record<string, unknown> }
 export interface Posted { message: TalkMessage; trackers: Tracker[]; deliveries: Promise<unknown>[] }
 export interface ActorHandle {
     post(text: string, options?: PostOptions): Posted;
@@ -33,6 +33,7 @@ export class Room {
     private readonly actors = new Map<string, Actor>();
     private readonly typingIds = new Set<string>();
     private readonly workerNames = new Map<string, string>();
+    private readonly reactionWatchers = new Set<(message: TalkMessage, emoji: string, by: string) => void>();
     constructor(readonly workspace: string) { this.store = new AITalkStore(workspace); }
 
     /** At activation nobody but the user is registered; actors register themselves again. */
@@ -62,7 +63,7 @@ export class Room {
     }
     /** Posts as a registered actor and routes the message: @tag → that actor, reply → owner, user direct → Validator. */
     post(author: string, text: string, options: PostOptions = {}): Posted {
-        const state = this.store.post(text, options.replyTo, author, options.details, options.kind, options.attachments);
+        const state = this.store.post(text, options.replyTo, author, options.details, options.kind, options.attachments, options.fields);
         this.typingIds.delete(author);
         const message = state.messages.at(-1) as TalkMessage;
         const parent = message.replyTo ? state.messages.find(item => item.id === message.replyTo) : undefined;
@@ -88,7 +89,13 @@ export class Room {
         const message = state.messages.find(item => item.id === messageId);
         const owner = message && this.actors.get(message.author);
         if (owner && owner.id !== by) void Promise.resolve(owner.receiveReaction?.(message, emoji, by)).catch(() => undefined);
+        if (message) for (const watch of this.reactionWatchers) { try { watch(message, emoji, by); } catch { /* One watcher never blocks the reaction. */ } }
         this.releaseAnswered();
+    }
+    /** Room-level reaction event, for cards whose meaning is not owned by the posting actor (e.g. Webex draft approval). */
+    onReaction(watch: (message: TalkMessage, emoji: string, by: string) => void): () => void {
+        this.reactionWatchers.add(watch);
+        return () => { this.reactionWatchers.delete(watch); };
     }
     typing(id: string, on: boolean): void { if (on && this.actors.has(id)) this.typingIds.add(id); else this.typingIds.delete(id); }
     typingText(): string {

@@ -85,8 +85,11 @@ export function registerToolDefinitions(register: Register, definitions: ToolDef
                 const recipient = meta?.recipient ?? meta?.workerId ?? meta?.agentId;
                 const caller = typeof recipient === 'string' ? { recipient, workspace: meta.workspacePath } : undefined;
                 const input = { ...args }; delete input._meta;
-                const result = await invokeDefinition(definition, input, !!caller, caller);
-                return { content: [{ type: 'text' as const, text: result }] };
+                const run = async () => ({ content: [{ type: 'text' as const, text: await invokeDefinition(definition, input, false) }] });
+                if (!caller) return run();
+                const { withAITalkMcpDelivery } = require('../aitalk/delivery') as typeof import('../aitalk/delivery');
+                const result = await withAITalkMcpDelivery(run, caller.workspace ?? '')(input, { _meta: meta });
+                return { content: [{ type: 'text' as const, text: result.content.map((part: any) => part.text).join('\n\n') }] };
             });
     }
 }

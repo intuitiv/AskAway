@@ -3,6 +3,7 @@ import { resolveSelection, workerRegistryKey, WorkerProfile, workerProfileRefres
 
 export const MAX_QUEUE_WAIT_SECONDS = 120;
 export const MAX_CONTEXT_TOKENS = 300000;
+export const START_REUSE_MAX_CONTEXT_TOKENS = 200000;
 export const DEFAULT_CACHE_TTL_SECONDS = 300;
 /** A submit to a busy worker whose expected wait exceeds this forks the worker's session instead of queuing. */
 export const FORK_AFTER_SECONDS = 30;
@@ -131,7 +132,9 @@ export class WorkerRouter {
             .filter((worker) => {
                 if (request.sessionKey) return worker.state !== 'RETIRED' && worker.state !== 'ORPHANED' && !worker.busyElsewhere
                     && this.now() - worker.lastActivityAt < VALIDATOR_CACHE_TTL_MS && worker.contextTokens <= VALIDATOR_MAX_INPUT_TOKENS;
-                const reason = this.ineligibility(worker, true, true);
+                const reason = worker.contextTokens > START_REUSE_MAX_CONTEXT_TOKENS
+                    ? `context ${worker.contextTokens} > start reuse limit ${START_REUSE_MAX_CONTEXT_TOKENS}`
+                    : this.ineligibility(worker, true, true);
                 if (reason) { rejections.push(`${worker.workerId}: ${reason}`); }
                 return !reason;
             })

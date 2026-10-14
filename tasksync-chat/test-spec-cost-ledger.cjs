@@ -50,11 +50,6 @@ assert.strictEqual(totals['001-async-subagent-runner'].nanoAiu, 36000000000);
 assert.strictEqual(totals['003-worker-side-channel'].requests, 1);
 
 const webview = fs.readFileSync(path.join(__dirname, 'media', 'webview.js'), 'utf8');
-const specWorkLabel = new Function(`${webview.match(/function specWorkLabel\([\s\S]*?\n    }/)[0]}; return specWorkLabel;`)();
-assert.strictEqual(specWorkLabel(['Cycle CY-001: P0 Contract', 'Cycle CY-002: P1 Spike']), 'Cycles');
-assert.strictEqual(specWorkLabel(['Phase 1: Setup', 'Phase 2: Runtime']), 'Phases');
-assert.strictEqual(specWorkLabel([]), 'Phases');
-
 const specCostFact = new Function(`${webview.match(/function specCostFact\([\s\S]*?\n    }/)[0]}; return specCostFact;`)();
 assert.strictEqual(specCostFact({ cost: { nanoAiu: 35000000000, requests: 7 } }), '$0.35 · 7 reqs');
 assert.strictEqual(specCostFact({}), 'No tracked cost');

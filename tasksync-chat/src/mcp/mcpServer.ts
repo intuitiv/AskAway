@@ -19,6 +19,7 @@ import { commentaryToolDefinitions } from '../commentary/commentary';
 import { registerVsCodeToolBridge, registerWindow } from '../workers/vscodeToolBridge';
 import { loadEvalScoreboard } from '../workers/evalScoreboard';
 import { withAITalkMcpDelivery } from '../aitalk/delivery';
+import { registerWebexToolsHost } from '../services/webexToolsHost';
 export { createWorkerOperationFacade, type WorkerOperationFacade } from './workerOperationFacade';
 
 export const WORKER_RUNTIME_OPERATIONS = [
@@ -188,7 +189,8 @@ export class McpServerManager {
                 });
                 const register = (mcpServer as any).registerTool.bind(mcpServer);
                 (mcpServer as any).registerTool = (name: string, config: any, handler: any) => register(name, config,
-                    withAITalkMcpDelivery(handler, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd()));
+                    (args: any, extra: any) => withAITalkMcpDelivery(handler, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd())(
+                        args, { ...extra, _meta: extra?._meta ?? args?._meta }));
 
             // Register gradle tool (async id-based Gradle build control).
             // Backed by the standalone, VS Code-free engine so any MCP client
@@ -228,7 +230,7 @@ export class McpServerManager {
             );
 
             registerWorkerTools((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), () => sharedWorkerRuntimeReady(gradleWorkspaceRoot), gradleWorkspaceRoot);
-            if (this.webex) registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), this.webex);
+            if (this.webex) registerWebexToolsHost((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), this.webex);
             registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), commentaryToolDefinitions(sharedCommentaryStore, ''));
             if (this.memory) registerToolDefinitions((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), [this.memory]);
             registerVsCodeToolBridge((name, config, handler) => (mcpServer as any).registerTool(name, config, handler), { selfPort: this.port });

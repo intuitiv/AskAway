@@ -27,8 +27,16 @@ export function createSimulatedRoom({ messages = [], members = defaultMembers, t
             schedule(() => act({ do: 'event', id, event: 'delivered' }), 1600);
             schedule(() => act({ do: 'event', id, event: 'read' }), 2400);
         }
+        const pendingDraft = id => state.messages.find(message => message.draftId && message.webexDraft?.state === 'pending' && (message.draftId === id || message.id === id));
+        if (action.type === 'aitalkReact' && action.emoji === '👎' && pendingDraft(action.replyTo)) { settleDraft(pendingDraft(action.replyTo), 'rejected'); return; }
         if (action.type === 'aitalkReact') { state.messages = reactMessage(state.messages.find(message => message.id === action.replyTo), action.emoji, me, state.messages, state.members, `reaction-${sent++}`).messages; emit(); }
-        if (action.type === 'aitalkApproveDraft') act({ do: 'add', message: { id: `approval-${sent++}`, author: me, text: '👍', delivery: 'posted' } });
+        // 👍 on a Webex draft is the permission: the simulated tool host sends it once and the card turns Sent.
+        if (action.type === 'aitalkApproveDraft' && pendingDraft(action.draftId)) settleDraft(pendingDraft(action.draftId), 'sent');
+    }
+    function settleDraft(card, outcome) {
+        const webexDraft = { ...card.webexDraft, state: outcome, ...(outcome === 'sent' ? { sentId: `webex-${sent++}` } : {}) };
+        state.messages = state.messages.map(message => message === card ? { ...message, draftId: '', webexDraft } : message);
+        act({ do: 'add', message: { id: `draft-outcome-${sent++}`, author: owner(state.members).id, replyTo: card.id, text: outcome === 'sent' ? `👍 Approved: sent to ${webexDraft.recipientLabel} · id ${webexDraft.sentId}` : `👎 Rejected: nothing was sent to ${webexDraft.recipientLabel}.`, delivery: 'posted' } });
     }
     return { act, intent, snapshot: () => state, start: emit };
 }

@@ -629,3 +629,26 @@ Recorded from the 2026-10-12 handoff; the original message was not captured verb
 >
 > The tone of the Agent should be like it is updating something or it is asking something. But its more like a banner. It is not informing/asking/warning.
 > It should say as if it is speaking to someone.
+
+### 2026-10-14, 008 answers; availability, border, Workers pin, Trace cost table, avatar name, moderator
+
+Answers to the six 008 questions (scoreboard place, $2 cap, levels in one run, first comparison, results file, score reference):
+
+> 1. Sure
+> 2. Yes. Not more than 5$ for the whole run.
+> 3. Sure
+> 4. Use Sonnet, it is better than Sol
+> 5. Okay
+> 6. Okay
+>
+> 004, i havent started yet.
+> Did you fix all the bugs i told earlier? availableiyty popup is still glimmering.
+> Color on the border is not very clear, sometimes i see green, sometimes i see blue. Pick one color and do gradient effect.
+> Validator should be pinned in workers.
+> I see some ping after 4+ mins, is that being reflected in worker tab by resetting the
+> May be in Trace tab, can we show, cost of each workers(by category) and main agent? Like a table with keys as, Main, Validator, Build, Explore and so on.
+>
+> In this workspace i see M as profile avatar, but in another workspace, i see Y (You). Shouldnt we read this from user level config and should be same?
+> Or may be read from current User name?
+>
+> I switched to Validator in charge, but i still see You moderate. Not sure whats the point of it.

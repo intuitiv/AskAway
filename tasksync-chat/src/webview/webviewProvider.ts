@@ -27,7 +27,6 @@ type WorkspaceCostHistory = { requests: Record<string, { ts: number; dollars: nu
 import type { TurnActivity } from '../commentary/telegramLive';
 import { CloudDigestScheduler, cloudDigestPoster } from '../cloud/cloudDigest';
 import { postRemoteQuestion } from '../services/remoteChannel';
-import { LongRunHandoff } from '../specs/handoffThreshold';
 import { HandoffNotifier } from '../services/handoffNotifier';
 import { observeWorkers, sharedCommentaryStore, sharedWorkerRuntime, workerSpendSince } from '../workers/workerHost';
 import { workspaceCostRequests } from '../services/workspaceCost';
@@ -69,16 +68,6 @@ export interface AttachmentInfo {
     isTemporary?: boolean;
     isFolder?: boolean;
     isTextReference?: boolean;
-}
-
-// File search result (also used for context items like #terminal, #problems)
-export interface FileSearchResult {
-    name: string;
-    path: string;
-    uri: string;
-    icon: string;
-    isFolder?: boolean;
-    isContext?: boolean; // true for #terminal, #problems context items
 }
 
 // User response result
@@ -439,10 +428,6 @@ type ToWebviewMessage =
     | { type: 'toolCallPending'; id: string; prompt: string; isApprovalQuestion: boolean; choices?: ParsedChoice[] }
     | { type: 'toolCallCompleted'; entry: ToolCallEntry }
     | { type: 'updateCurrentSession'; history: ToolCallEntry[] }
-    | { type: 'updatePersistedHistory'; history: ToolCallEntry[] }
-    | { type: 'fileSearchResults'; files: FileSearchResult[] }
-    | { type: 'updateAttachments'; attachments: AttachmentInfo[] }
-    | { type: 'imageSaved'; attachment: AttachmentInfo }
     | { type: 'openSettingsModal' }
     | {
         type: 'updateSettings';
@@ -475,7 +460,6 @@ type ToWebviewMessage =
         workersKeepWarm?: boolean;
     }
     | { type: 'updateObservabilityMetrics'; metrics: ObservabilityMetrics }
-    | { type: 'slashCommandResults'; prompts: ReusablePrompt[] }
     | { type: 'playNotificationSound' }
     | { type: 'contextSearchResults'; suggestions: Array<{ type: string; label: string; description: string; detail: string }> }
     | { type: 'contextReferenceAdded'; reference: { id: string; type: string; label: string; content: string } }
@@ -499,16 +483,6 @@ type FromWebviewMessage =
     | { type: 'requestSpecs' }
     | { type: 'openSpecFile'; dir: string; file: string }
     | { type: 'queueCloudTask'; slug: string; taskId: string }
-    | { type: 'submit'; value: string; attachments: AttachmentInfo[] }
-    | { type: 'addQueuePrompt'; prompt: string; id: string; attachments?: AttachmentInfo[] }
-    | { type: 'removeQueuePrompt'; promptId: string }
-    | { type: 'editQueuePrompt'; promptId: string; newPrompt: string }
-    | { type: 'reorderQueue'; fromIndex: number; toIndex: number }
-    | { type: 'toggleQueue'; enabled: boolean }
-    | { type: 'clearQueue' }
-    | { type: 'addAttachment' }
-    | { type: 'removeAttachment'; attachmentId: string }
-    | { type: 'removeHistoryItem'; callId: string }
     | { type: 'workerResolveManual'; taskId: string; result: string }
     | {
         type: 'workerRunAutopilot';
@@ -528,11 +502,6 @@ type FromWebviewMessage =
     | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
     | { type: 'requestCommentary' }
     | { type: 'setAvailability'; mode: string; until: string; note: string }
-    | { type: 'clearPersistedHistory' }
-    | { type: 'openHistoryModal' }
-    | { type: 'searchFiles'; query: string }
-    | { type: 'saveImage'; data: string; mimeType: string }
-    | { type: 'addFileReference'; file: FileSearchResult }
     | { type: 'webviewReady'; uiVersion?: string }
     | { type: 'openSettingsModal' }
     | { type: 'updateSoundSetting'; enabled: boolean }
@@ -544,11 +513,8 @@ type FromWebviewMessage =
     | { type: 'addReusablePrompt'; name: string; prompt: string }
     | { type: 'editReusablePrompt'; id: string; name: string; prompt: string }
     | { type: 'removeReusablePrompt'; id: string }
-    | { type: 'searchSlashCommands'; query: string }
     | { type: 'openExternal'; url: string }
     | { type: 'openFile'; path: string }
-    | { type: 'searchContext'; query: string }
-    | { type: 'selectContextReference'; contextType: string; options?: Record<string, unknown> }
     | { type: 'voiceResponse'; taskId: string; transcription: string }
     | { type: 'voiceError'; taskId: string; error: string }
     | { type: 'micButtonClicked' }
@@ -589,7 +555,6 @@ type FromWebviewMessage =
     | { type: 'editAutopilotPrompt'; index: number; prompt: string }
     | { type: 'removeAutopilotPrompt'; index: number }
     | { type: 'reorderAutopilotPrompts'; fromIndex: number; toIndex: number }
-    | { type: 'copyToClipboard'; text: string };
 
 
 export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -608,13 +573,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _promptQueue: QueuedPrompt[] = [];
     private _queueEnabled: boolean = true; // Default to queue mode
 
-    // Attachments state
-    private _attachments: AttachmentInfo[] = [];
-
     // Current session tool calls (memory only - not persisted during session)
     private _currentSessionCalls: ToolCallEntry[] = [];
-    // Persisted history from past sessions (loaded from disk)
-    private _persistedHistory: ToolCallEntry[] = [];
     private _currentToolCallId: string | null = null;
 
     // Webview ready state - prevents race condition on first message
@@ -706,10 +666,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     // Voice mode state
     private _pendingVoiceRequests: Map<string, { resolve: (text: string) => void; reject: (err: Error) => void }> = new Map();
 
-    // Debounce timer for history persistence (async background saves)
-    private _historySaveTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly _HISTORY_SAVE_DEBOUNCE_MS = 2000; // 2 seconds debounce
-    private _historyDirty: boolean = false; // Track if history needs saving
 
     // ── Worker task queues (Commands + Sub-Agents) ──
     // Tasks are routed to the widget tabs where user can resolve manually or via model.
@@ -730,17 +686,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }> = new Map();
 
     // Performance limits
-    private readonly _MAX_HISTORY_ENTRIES = 100;
-    private readonly _MAX_FILE_SEARCH_RESULTS = 500;
-    private readonly _MAX_QUEUE_PROMPT_LENGTH = 100000; // 100KB for queue prompts
-    private readonly _MAX_FOLDER_SEARCH_RESULTS = 1000;
     private readonly _VIEW_OPEN_TIMEOUT_MS = 5000;
     private readonly _VIEW_OPEN_POLL_INTERVAL_MS = 100;
     private readonly _SHORT_QUESTION_THRESHOLD = 100; // chars for approval heuristic
 
-    // File search cache with TTL
-    private _fileSearchCache: Map<string, { results: FileSearchResult[], timestamp: number }> = new Map();
-    private readonly _FILE_CACHE_TTL_MS = 5000;
 
     // Map for O(1) lookup of tool calls by ID (synced with _currentSessionCalls array)
     private _currentSessionCallsMap: Map<string, ToolCallEntry> = new Map();
@@ -828,9 +777,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         // Load both queue and history async to not block activation
         this._loadQueueFromDiskAsync().catch(err => {
             console.error('Failed to load queue:', err);
-        });
-        this._loadPersistedHistoryFromDiskAsync().catch(err => {
-            console.error('Failed to load history:', err);
         });
         // Load settings (sync - fast operation)
         this._loadSettings();
@@ -1582,29 +1528,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
-     * Save current tool call history to persisted history (called on deactivate)
-     * Uses synchronous save because deactivate cannot await async operations
-     */
-    public saveCurrentSessionToHistory(): void {
-        // Cancel any pending debounced saves
-        if (this._historySaveTimer) {
-            clearTimeout(this._historySaveTimer);
-            this._historySaveTimer = null;
-        }
-
-        // Only save completed calls from current session
-        const completedCalls = this._currentSessionCalls.filter(tc => tc.status === 'completed');
-        if (completedCalls.length > 0) {
-            // Prepend current session calls to persisted history, enforce max limit
-            this._persistedHistory = [...completedCalls, ...this._persistedHistory].slice(0, this._MAX_HISTORY_ENTRIES);
-            this._historyDirty = true;
-        }
-
-        // Force sync save on deactivation (async operations can't complete in deactivate)
-        this._savePersistedHistoryToDiskSync();
-    }
-
-    /**
      * Clear current session tool calls (called from view title bar button)
      * Preserves any pending tool call entry so responses don't lose their prompt
      * Cleans up temporary images associated with cleared entries
@@ -1643,10 +1566,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
-     * Start a new session: save current session to history, then clear
+     * Start a new session: clear the current session
      */
     public startNewSession(): void {
-        this.saveCurrentSessionToHistory();
         this.clearCurrentSession();
 
         // Reset session state
@@ -2074,17 +1996,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             }
         })();
         return this._observabilityScanPromise;
-    }
-
-    private readonly _longRunHandoff = new LongRunHandoff(text => HandoffNotifier.current?.postLongRunNotice(text));
-
-    /** Line for the ask/continue tool result when input is over 300K on a long (Away/Offline) run; also records lastIn for the hook. */
-    public longRunHandoffLine(): string {
-        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!root) { return ''; }
-        const state = readAvailability(root);
-        const expired = !!state?.until && !(Date.parse(state.until) >= Date.now());
-        return this._longRunHandoff.check(availabilityFile(root), this.getTurnActivity().lastIn ?? 0, expired ? 'here' : state?.mode === 'awayValidator' ? 'away' : state?.mode);
     }
 
     /** For the Telegram status line: the chat banner's turn numbers plus when the agent last made a model request. */
@@ -3869,10 +3780,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     public dispose(): void {
         if (this._cloudDigestTimer) { clearInterval(this._cloudDigestTimer); }
         if (this._cloudPollTimer) { clearTimeout(this._cloudPollTimer); }
-        // Save session history BEFORE clearing arrays
-        // This ensures tool calls are persisted when VS Code reloads
-        this.saveCurrentSessionToHistory();
-
         // Clear debounce timer
         if (this._queueSaveTimer) {
             clearTimeout(this._queueSaveTimer);
@@ -3889,8 +3796,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._stopSessionTimerInterval();
         this._stopObservabilityPolling();
 
-        // Clear file search cache
-        this._fileSearchCache.clear();
 
         // Clear session calls map (O(1) lookup cache)
         this._currentSessionCallsMap.clear();
@@ -3903,7 +3808,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         // Clear session data
         this._currentSessionCalls = [];
-        this._attachments = [];
 
         // Dispose all registered disposables
         this._disposables.forEach(d => d.dispose());
@@ -3939,18 +3843,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             this._stopObservabilityPolling();
             this._webviewReady = false;
             this._view = undefined;
-            // Clear file search cache when view is hidden
-            this._fileSearchCache.clear();
-            // Save current session to persisted history when view is disposed
-            this.saveCurrentSessionToHistory();
         }, null, this._disposables);
 
         // Save history when webview visibility changes (backup for reload)
         webviewView.onDidChangeVisibility(() => {
             if (!webviewView.visible) {
                 this._stopObservabilityPolling();
-                // Save current session when switching away
-                this.saveCurrentSessionToHistory();
             } else {
                 // Rebuild HTML on every show so stale retained DOM can't keep old worker layouts alive.
                 this._webviewReady = false;
@@ -4546,36 +4444,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'queueCloudTask':
                 void this._queueCloudTask(message.slug, message.taskId);
                 break;
-            case 'submit':
-                this._handleSubmit(message.value, message.attachments || []);
-                break;
-            case 'addQueuePrompt':
-                this._handleAddQueuePrompt(message.prompt, message.id, message.attachments || []);
-                break;
-            case 'removeQueuePrompt':
-                this._handleRemoveQueuePrompt(message.promptId);
-                break;
-            case 'editQueuePrompt':
-                this._handleEditQueuePrompt(message.promptId, message.newPrompt);
-                break;
-            case 'reorderQueue':
-                this._handleReorderQueue(message.fromIndex, message.toIndex);
-                break;
-            case 'toggleQueue':
-                this._handleToggleQueue(message.enabled);
-                break;
-            case 'clearQueue':
-                this._handleClearQueue();
-                break;
-            case 'addAttachment':
-                this._handleAddAttachment();
-                break;
-            case 'removeAttachment':
-                this._handleRemoveAttachment(message.attachmentId);
-                break;
-            case 'removeHistoryItem':
-                this._handleRemoveHistoryItem(message.callId);
-                break;
             case 'workerResolveManual':
                 // User submitted a manual response for a worker task
                 if (message.taskId && typeof message.result === 'string') {
@@ -4602,21 +4470,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'requestModels':
                 // Webview requesting fresh model list
                 this.broadcastAvailableModels();
-                break;
-            case 'clearPersistedHistory':
-                this._handleClearPersistedHistory();
-                break;
-            case 'openHistoryModal':
-                this._handleOpenHistoryModal();
-                break;
-            case 'searchFiles':
-                this._handleSearchFiles(message.query);
-                break;
-            case 'saveImage':
-                this._handleSaveImage(message.data, message.mimeType);
-                break;
-            case 'addFileReference':
-                this._handleAddFileReference(message.file);
                 break;
             case 'webviewReady':
                 this._handleWebviewReady(message.uiVersion);
@@ -4705,11 +4558,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'reorderAutopilotPrompts':
                 this._handleReorderAutopilotPrompts(message.fromIndex, message.toIndex);
                 break;
-            case 'copyToClipboard':
-                if (message.text) {
-                    vscode.env.clipboard.writeText(message.text);
-                }
-                break;
             case 'addReusablePrompt':
                 this._handleAddReusablePrompt(message.name, message.prompt);
                 break;
@@ -4718,9 +4566,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'removeReusablePrompt':
                 this._handleRemoveReusablePrompt(message.id);
-                break;
-            case 'searchSlashCommands':
-                this._handleSearchSlashCommands(message.query);
                 break;
             case 'openExternal':
                 if (message.url) {
@@ -4732,12 +4577,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     vscode.commands.executeCommand('vscode.open', vscode.Uri.file(message.path))
                         .then(undefined, () => { /* file may no longer exist — ignore */ });
                 }
-                break;
-            case 'searchContext':
-                this._handleSearchContext(message.query);
-                break;
-            case 'selectContextReference':
-                this._handleSelectContextReference(message.contextType, message.options);
                 break;
             case 'voiceResponse':
                 this._handleVoiceResponse(message.taskId, message.transcription);
@@ -5023,90 +4862,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
-     * Handle submit from webview
-     */
-    private _handleSubmit(value: string, attachments: AttachmentInfo[]): void {
-        // A new user message starts a new "This turn" aggregation window. The next
-        // observability scan sums only llm_requests at/after this timestamp.
-        this._resetTurnMetrics();
-        if (this._pendingRequests.size > 0 && this._currentToolCallId) {
-            const resolve = this._pendingRequests.get(this._currentToolCallId);
-            if (resolve) {
-                // User manually responded — reset auto-response tracking
-                this._consecutiveAutoResponses = 0;
-                if (this._responseTimeoutTimer) {
-                    clearTimeout(this._responseTimeoutTimer);
-                    this._responseTimeoutTimer = null;
-                }
-
-                // O(1) lookup using Map instead of O(n) findIndex
-                const pendingEntry = this._currentSessionCallsMap.get(this._currentToolCallId);
-
-                let completedEntry: ToolCallEntry;
-                if (pendingEntry && pendingEntry.status === 'pending') {
-                    // Update existing pending entry
-                    pendingEntry.response = value;
-                    pendingEntry.attachments = attachments;
-                    pendingEntry.status = 'completed';
-                    pendingEntry.timestamp = Date.now();
-                    completedEntry = pendingEntry;
-                } else {
-                    // Create new completed entry (shouldn't happen normally)
-                    completedEntry = {
-                        id: this._currentToolCallId,
-                        prompt: 'Tool call',
-                        response: value,
-                        attachments: attachments,
-                        timestamp: Date.now(),
-                        isFromQueue: false,
-                        status: 'completed'
-                    };
-                    this._currentSessionCalls.unshift(completedEntry);
-                    this._currentSessionCallsMap.set(completedEntry.id, completedEntry);
-                }
-
-
-                // Broadcast toolCallCompleted to trigger "Working...." state
-                this._broadcast({
-                    type: 'toolCallCompleted',
-                    entry: completedEntry
-                });
-
-                this._updateCurrentSessionUI();
-                // Notify messaging services so stale tasks don't keep polling
-                const resolvedId = this._currentToolCallId;
-                resolve({ value, queue: this._queueEnabled && this._promptQueue.length > 0, attachments });
-                this._pendingRequests.delete(this._currentToolCallId);
-                this._currentToolCallId = null;
-                this._signalNextWaiter();
-                this._userMessageDelivered(resolvedId, value);
-            } else {
-                // No pending tool call - add message to queue for later use
-                if (value && value.trim()) {
-                    const queuedPrompt: QueuedPrompt = {
-                        id: `q_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-                        prompt: value.trim()
-                    };
-                    this._promptQueue.push(queuedPrompt);
-                    // Auto-switch to queue mode so user sees their message went to queue
-                    this._queueEnabled = true;
-                    this._saveQueueToDisk();
-                    this._updateQueueUI();
-                }
-            }
-            // NOTE: Temp images are NOT cleaned up here anymore.
-            // They are stored in the ToolCallEntry.attachments and will be cleaned up when:
-            // 1. clearCurrentSession() is called
-            // 2. dispose() is called (extension deactivation)
-            // This ensures images are available for the entire session duration.
-
-            // Clear attachments after submit and sync with webview
-            this._attachments = [];
-            this._updateAttachmentsUI();
-        }
-    }
-
-    /**
      * Clean up temporary image files from disk by URI list
      */
     private _cleanupTempImagesByUri(uris: string[]): void {
@@ -5141,492 +4896,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         if (tempUris.length > 0) {
             this._cleanupTempImagesByUri(tempUris);
         }
-    }
-
-    /**
-     * Handle adding attachment via file picker
-     */
-    private async _handleAddAttachment(): Promise<void> {
-        // Use shared exclude pattern
-        const excludePattern = formatExcludePattern(FILE_EXCLUSION_PATTERNS);
-        const files = await vscode.workspace.findFiles('**/*', excludePattern, this._MAX_FOLDER_SEARCH_RESULTS);
-
-        if (files.length === 0) {
-            vscode.window.showInformationMessage('No files found in workspace');
-            return;
-        }
-
-        const items: (vscode.QuickPickItem & { uri: vscode.Uri })[] = files.map(uri => {
-            const relativePath = vscode.workspace.asRelativePath(uri);
-            const fileName = path.basename(uri.fsPath);
-            return {
-                label: `$(file) ${fileName}`,
-                description: relativePath,
-                uri: uri
-            };
-        }).sort((a, b) => a.label.localeCompare(b.label));
-
-        const selected = await vscode.window.showQuickPick(items, {
-            canPickMany: true,
-            placeHolder: 'Select files to attach',
-            matchOnDescription: true
-        });
-
-        if (selected && selected.length > 0) {
-            for (const item of selected) {
-                const labelMatch = item.label.match(/\$\([^)]+\)\s*(.+)/);
-                const cleanName = labelMatch ? labelMatch[1] : item.label;
-                const attachment: AttachmentInfo = {
-                    id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-                    name: cleanName,
-                    uri: item.uri.toString()
-                };
-                this._attachments.push(attachment);
-            }
-            this._updateAttachmentsUI();
-        }
-    }
-
-    /**
-     * Handle removing attachment
-     */
-    private _handleRemoveAttachment(attachmentId: string): void {
-        this._attachments = this._attachments.filter(a => a.id !== attachmentId);
-        this._updateAttachmentsUI();
-    }
-
-    /**
-     * Handle file search for autocomplete (also includes #terminal, #problems context)
-     */
-    private async _handleSearchFiles(query: string): Promise<void> {
-        try {
-            const queryLower = query.toLowerCase();
-            const cacheKey = queryLower || '__all__';
-
-            // Check cache first (TTL-based)
-            const cached = this._fileSearchCache.get(cacheKey);
-            if (cached && (Date.now() - cached.timestamp) < this._FILE_CACHE_TTL_MS) {
-                this._broadcast({
-                    type: 'fileSearchResults',
-                    files: cached.results
-                } as ToWebviewMessage);
-                return;
-            }
-
-            // First, get context suggestions (#terminal, #problems)
-            const contextResults: FileSearchResult[] = [];
-
-            // Check if query matches "terminal"
-            if (!queryLower || 'terminal'.includes(queryLower)) {
-                const commands = this._contextManager.terminal.formatCommandListForAutocomplete();
-                const description = commands.length > 0
-                    ? `${commands.length} recent commands`
-                    : 'No commands yet';
-                contextResults.push({
-                    name: 'terminal',
-                    path: description,
-                    uri: 'context://terminal',
-                    icon: 'terminal',
-                    isFolder: false,
-                    isContext: true
-                });
-            }
-
-            // Check if query matches "problems"
-            if (!queryLower || 'problems'.includes(queryLower)) {
-                const problemsInfo = this._contextManager.problems.formatForAutocomplete();
-                contextResults.push({
-                    name: 'problems',
-                    path: problemsInfo.description,
-                    uri: 'context://problems',
-                    icon: 'error',
-                    isFolder: false,
-                    isContext: true
-                });
-            }
-
-            // Exclude common unwanted files/folders for cleaner search results
-            // Includes: package managers, virtual envs, build outputs, hidden/config files
-            const excludePattern = formatExcludePattern(FILE_SEARCH_EXCLUSION_PATTERNS);
-            // Reduced from 2000 to _MAX_FILE_SEARCH_RESULTS for better performance
-            const allFiles = await vscode.workspace.findFiles('**/*', excludePattern, this._MAX_FILE_SEARCH_RESULTS);
-
-            const seenFolders = new Set<string>();
-            const folderResults: FileSearchResult[] = [];
-
-            for (const uri of allFiles) {
-                const relativePath = vscode.workspace.asRelativePath(uri);
-                const dirPath = path.dirname(relativePath);
-
-                if (dirPath && dirPath !== '.' && !seenFolders.has(dirPath)) {
-                    seenFolders.add(dirPath);
-                    const folderName = path.basename(dirPath);
-
-                    if (!queryLower || folderName.toLowerCase().includes(queryLower) || dirPath.toLowerCase().includes(queryLower)) {
-                        const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri)?.uri ?? vscode.workspace.workspaceFolders![0].uri;
-                        folderResults.push({
-                            name: folderName,
-                            path: dirPath,
-                            uri: vscode.Uri.joinPath(workspaceFolder, dirPath).toString(),
-                            icon: 'folder',
-                            isFolder: true
-                        });
-                    }
-                }
-            }
-
-            const fileResults: FileSearchResult[] = allFiles
-                .map(uri => {
-                    const relativePath = vscode.workspace.asRelativePath(uri);
-                    const fileName = path.basename(uri.fsPath);
-                    return {
-                        name: fileName,
-                        path: relativePath,
-                        uri: uri.toString(),
-                        icon: this._getFileIcon(fileName),
-                        isFolder: false
-                    };
-                })
-                .filter(file => !queryLower || file.name.toLowerCase().includes(queryLower) || file.path.toLowerCase().includes(queryLower));
-
-            // Combine: context results first, then folders, then files
-            const fileAndFolderResults = [...folderResults, ...fileResults]
-                .sort((a, b) => {
-                    if (a.isFolder && !b.isFolder) return -1;
-                    if (!a.isFolder && b.isFolder) return 1;
-                    const aExact = a.name.toLowerCase().startsWith(queryLower);
-                    const bExact = b.name.toLowerCase().startsWith(queryLower);
-                    if (aExact && !bExact) return -1;
-                    if (!aExact && bExact) return 1;
-                    return a.name.localeCompare(b.name);
-                })
-                .slice(0, 48); // Leave room for context items
-
-            // Context results go first, then files/folders
-            const allResults = [...contextResults, ...fileAndFolderResults];
-
-            // Cache results (don't cache context results as they're dynamic)
-            this._fileSearchCache.set(cacheKey, { results: fileAndFolderResults, timestamp: Date.now() });
-            // Limit cache size to prevent memory bloat
-            if (this._fileSearchCache.size > 20) {
-                const firstKey = this._fileSearchCache.keys().next().value;
-                if (firstKey) this._fileSearchCache.delete(firstKey);
-            }
-
-            this._broadcast({
-                type: 'fileSearchResults',
-                files: allResults
-            } as ToWebviewMessage);
-        } catch (error) {
-            console.error('File search error:', error);
-            this._view?.webview.postMessage({
-                type: 'fileSearchResults',
-                files: []
-            } as ToWebviewMessage);
-        }
-    }
-
-    /**
-     * Handle saving pasted/dropped image
-     */
-    private async _handleSaveImage(dataUrl: string, mimeType: string): Promise<void> {
-        const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
-
-        try {
-            const base64Match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
-            if (!base64Match) {
-                vscode.window.showWarningMessage('Invalid image format');
-                return;
-            }
-
-            const base64Data = base64Match[1];
-
-            // SECURITY FIX: Validate base64 size BEFORE decoding to prevent memory spike
-            // Base64 encoding increases size by ~33%, so decoded size ≈ base64Length * 0.75
-            const estimatedSize = Math.ceil(base64Data.length * 0.75);
-            if (estimatedSize > MAX_IMAGE_SIZE_BYTES) {
-                const sizeMB = (estimatedSize / (1024 * 1024)).toFixed(2);
-                vscode.window.showWarningMessage(`Image too large (~${sizeMB}MB). Max 10MB.`);
-                return;
-            }
-
-            const buffer = Buffer.from(base64Data, 'base64');
-
-            if (buffer.length > MAX_IMAGE_SIZE_BYTES) {
-                const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
-                vscode.window.showWarningMessage(`Image too large (${sizeMB}MB). Max 10MB.`);
-                return;
-            }
-
-            const validMimeTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp'];
-            if (!validMimeTypes.includes(mimeType)) {
-                vscode.window.showWarningMessage(`Unsupported image type: ${mimeType}`);
-                return;
-            }
-
-            const extMap: Record<string, string> = {
-                'image/png': '.png',
-                'image/jpeg': '.jpg',
-                'image/gif': '.gif',
-                'image/webp': '.webp',
-                'image/bmp': '.bmp'
-            };
-            const ext = extMap[mimeType] || '.png';
-
-            // Use storageUri if available (workspace-specific), otherwise fallback to globalStorageUri
-            const storageUri = this._context.storageUri || this._context.globalStorageUri;
-            if (!storageUri) {
-                throw new Error('VS Code extension storage URI not available. Cannot save temporary images without storage access.');
-            }
-
-            const tempDir = path.join(storageUri.fsPath, 'temp-images');
-            if (!fs.existsSync(tempDir)) {
-                fs.mkdirSync(tempDir, { recursive: true });
-            }
-
-            const existingImages = this._attachments.filter(a => a.isTemporary).length;
-            let fileName = existingImages === 0 ? `image-pasted${ext}` : `image-pasted-${existingImages}${ext}`;
-            let filePath = path.join(tempDir, fileName);
-
-            let counter = existingImages;
-            while (fs.existsSync(filePath)) {
-                counter++;
-                fileName = `image-pasted-${counter}${ext}`;
-                filePath = path.join(tempDir, fileName);
-            }
-
-            fs.writeFileSync(filePath, buffer);
-
-            const attachment: AttachmentInfo = {
-                id: `img_${Date.now()}`,
-                name: fileName,
-                uri: vscode.Uri.file(filePath).toString(),
-                isTemporary: true
-            };
-
-            this._attachments.push(attachment);
-
-            this._view?.webview.postMessage({
-                type: 'imageSaved',
-                attachment
-            } as ToWebviewMessage);
-
-            this._updateAttachmentsUI();
-        } catch (error) {
-            console.error('Failed to save image:', error);
-            vscode.window.showErrorMessage('Failed to save pasted image');
-        }
-    }
-
-    /**
-     * Handle adding file reference from autocomplete
-     */
-    private _handleAddFileReference(file: FileSearchResult): void {
-        const attachment: AttachmentInfo = {
-            id: `${file.isFolder ? 'folder' : 'file'}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-            name: file.name,
-            uri: file.uri,
-            isFolder: file.isFolder,
-            isTextReference: true
-        };
-        this._attachments.push(attachment);
-        this._updateAttachmentsUI();
-    }
-
-    /**
-     * Update attachments UI
-     */
-    private _updateAttachmentsUI(): void {
-        this._view?.webview.postMessage({
-            type: 'updateAttachments',
-            attachments: this._attachments
-        } as ToWebviewMessage);
-    }
-
-    /**
-     * Get file icon based on extension
-     */
-    private _getFileIcon(filename: string): string {
-        const ext = filename.split('.').pop()?.toLowerCase() || '';
-        const iconMap: Record<string, string> = {
-            'ts': 'file-code', 'tsx': 'file-code', 'js': 'file-code', 'jsx': 'file-code',
-            'py': 'file-code', 'java': 'file-code', 'c': 'file-code', 'cpp': 'file-code',
-            'html': 'file-code', 'css': 'file-code', 'scss': 'file-code',
-            'json': 'json', 'yaml': 'file-code', 'yml': 'file-code',
-            'md': 'markdown', 'txt': 'file-text',
-            'png': 'file-media', 'jpg': 'file-media', 'jpeg': 'file-media', 'gif': 'file-media', 'svg': 'file-media',
-            'sh': 'terminal', 'bash': 'terminal', 'ps1': 'terminal',
-            'zip': 'file-zip', 'tar': 'file-zip', 'gz': 'file-zip'
-        };
-        return iconMap[ext] || 'file';
-    }
-
-    /**
-     * Handle adding a prompt to queue
-     */
-    private _handleAddQueuePrompt(prompt: string, id: string, attachments: AttachmentInfo[]): void {
-        const trimmed = prompt.trim();
-        if (!trimmed || trimmed.length > this._MAX_QUEUE_PROMPT_LENGTH) return;
-
-        const queuedPrompt: QueuedPrompt = {
-            id: id || `q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            prompt: trimmed,
-            attachments: attachments.length > 0 ? [...attachments] : undefined  // Store attachments if any
-        };
-
-        // Check if we should auto-respond BEFORE adding to queue (race condition fix)
-        // This prevents the window between push and findIndex where queue could be modified
-        const shouldAutoRespond = this._queueEnabled &&
-            this._currentToolCallId &&
-            this._pendingRequests.has(this._currentToolCallId);
-
-        if (shouldAutoRespond) {
-            // Don't add to queue - consume directly for the pending request
-            const resolve = this._pendingRequests.get(this._currentToolCallId!);
-            if (!resolve) return;
-
-            // Update the pending entry to completed
-            const pendingEntry = this._currentSessionCallsMap.get(this._currentToolCallId!);
-
-            let completedEntry: ToolCallEntry;
-            if (pendingEntry && pendingEntry.status === 'pending') {
-                pendingEntry.response = queuedPrompt.prompt;
-                pendingEntry.attachments = queuedPrompt.attachments;
-                pendingEntry.status = 'completed';
-                pendingEntry.isFromQueue = true;
-                pendingEntry.timestamp = Date.now();
-                completedEntry = pendingEntry;
-            } else {
-                completedEntry = {
-                    id: this._currentToolCallId!,
-                    prompt: 'Tool call',
-                    response: queuedPrompt.prompt,
-                    attachments: queuedPrompt.attachments,
-                    timestamp: Date.now(),
-                    isFromQueue: true,
-                    status: 'completed'
-                };
-                this._currentSessionCalls.unshift(completedEntry);
-                this._currentSessionCallsMap.set(completedEntry.id, completedEntry);
-            }
-
-            // Send toolCallCompleted to webview
-            this._view?.webview.postMessage({
-                type: 'toolCallCompleted',
-                entry: completedEntry
-            } as ToWebviewMessage);
-
-            this._updateCurrentSessionUI();
-            this._saveQueueToDisk();
-            this._updateQueueUI();
-
-            resolve({ value: queuedPrompt.prompt, queue: this._queueEnabled && this._promptQueue.length > 0, attachments: queuedPrompt.attachments || [] });
-            const resolvedQueueId = this._currentToolCallId!;
-            this._pendingRequests.delete(resolvedQueueId);
-            this._currentToolCallId = null;
-            this._signalNextWaiter();
-            this._userMessageDelivered(resolvedQueueId, queuedPrompt.prompt);
-        } else {
-            // No pending request - add to queue normally
-            this._promptQueue.push(queuedPrompt);
-            this._saveQueueToDisk();
-            this._updateQueueUI();
-        }
-
-        // Clear attachments after adding to queue (they're now stored with the queue item)
-        // This prevents old images from reappearing when pasting new images
-        this._attachments = [];
-        this._updateAttachmentsUI();
-    }
-
-    /**
-     * Validate queue prompt ID format (defense in depth)
-     */
-    private _isValidQueueId(id: unknown): id is string {
-        return typeof id === 'string' && /^q_\d+_[a-z0-9]+$/.test(id);
-    }
-
-    /**
-     * Handle removing a prompt from queue
-     */
-    private _handleRemoveQueuePrompt(promptId: string): void {
-        if (!this._isValidQueueId(promptId)) return;
-        this._promptQueue = this._promptQueue.filter(p => p.id !== promptId);
-        this._saveQueueToDisk();
-        this._updateQueueUI();
-    }
-
-    /**
-     * Handle editing a prompt in queue
-     */
-    private _handleEditQueuePrompt(promptId: string, newPrompt: string): void {
-        if (!this._isValidQueueId(promptId)) return;
-        const trimmed = newPrompt.trim();
-        if (!trimmed || trimmed.length > this._MAX_QUEUE_PROMPT_LENGTH) return;
-
-        const prompt = this._promptQueue.find(p => p.id === promptId);
-        if (prompt) {
-            prompt.prompt = trimmed;
-            this._saveQueueToDisk();
-            this._updateQueueUI();
-        }
-    }
-
-    /**
-     * Handle reordering queue
-     */
-    private _handleReorderQueue(fromIndex: number, toIndex: number): void {
-        if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return;
-        if (fromIndex < 0 || toIndex < 0) return;
-        if (fromIndex >= this._promptQueue.length || toIndex >= this._promptQueue.length) return;
-
-        const [removed] = this._promptQueue.splice(fromIndex, 1);
-        this._promptQueue.splice(toIndex, 0, removed);
-        this._saveQueueToDisk();
-        this._updateQueueUI();
-    }
-
-    /**
-     * Handle toggling queue enabled state
-     */
-    private _handleToggleQueue(enabled: boolean): void {
-        this._queueEnabled = enabled;
-        this._saveQueueToDisk();
-        this._updateQueueUI();
-    }
-
-    /**
-     * Handle clearing the queue
-     */
-    private _handleClearQueue(): void {
-        this._promptQueue = [];
-        this._saveQueueToDisk();
-        this._updateQueueUI();
-    }
-
-    /**
-     * Handle removing a history item from persisted history (modal only)
-     */
-    private _handleRemoveHistoryItem(callId: string): void {
-        this._persistedHistory = this._persistedHistory.filter(tc => tc.id !== callId);
-        this._updatePersistedHistoryUI();
-        this._savePersistedHistoryToDisk();
-    }
-
-    /**
-     * Handle clearing all persisted history
-     */
-    private _handleClearPersistedHistory(): void {
-        this._persistedHistory = [];
-        this._updatePersistedHistoryUI();
-        this._savePersistedHistoryToDisk();
-    }
-
-    /**
-     * Handle opening history modal - send persisted history to webview
-     */
-    private _handleOpenHistoryModal(): void {
-        this._updatePersistedHistoryUI();
     }
 
     /**
@@ -6060,99 +5329,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
-     * Handle searching slash commands for autocomplete
-     */
-    private _handleSearchSlashCommands(query: string): void {
-        const queryLower = query.toLowerCase();
-        const matchingPrompts = this._reusablePrompts.filter(p =>
-            p.name.toLowerCase().includes(queryLower) ||
-            p.prompt.toLowerCase().includes(queryLower)
-        );
-
-        this._view?.webview.postMessage({
-            type: 'slashCommandResults',
-            prompts: matchingPrompts
-        } as ToWebviewMessage);
-    }
-
-    /**
-     * Handle searching context references (#terminal, #problems) - deprecated, now handled via file search
-     */
-    private async _handleSearchContext(query: string): Promise<void> {
-        try {
-            const suggestions = await this._contextManager.getContextSuggestions(query);
-            this._view?.webview.postMessage({
-                type: 'contextSearchResults',
-                suggestions: suggestions.map(s => ({
-                    type: s.type,
-                    label: s.label,
-                    description: s.description,
-                    detail: s.detail
-                }))
-            } as ToWebviewMessage);
-        } catch (error) {
-            console.error('[TaskSync] Error searching context:', error);
-            this._view?.webview.postMessage({
-                type: 'contextSearchResults',
-                suggestions: []
-            } as ToWebviewMessage);
-        }
-    }
-
-    /**
-     * Handle selecting a context reference to add as attachment
-     */
-    private async _handleSelectContextReference(contextType: string, options?: Record<string, unknown>): Promise<void> {
-        try {
-            const reference = await this._contextManager.getContextContent(
-                contextType as ContextReferenceType,
-                options
-            );
-
-            if (reference) {
-                // Add context reference as a special attachment
-                const contextAttachment: AttachmentInfo = {
-                    id: reference.id,
-                    name: reference.label,
-                    uri: `context://${reference.type}/${reference.id}`,
-                    isTextReference: true
-                };
-                this._attachments.push(contextAttachment);
-                this._updateAttachmentsUI();
-
-                // Also send the reference content so it can be displayed
-                this._view?.webview.postMessage({
-                    type: 'contextReferenceAdded',
-                    reference: {
-                        id: reference.id,
-                        type: reference.type,
-                        label: reference.label,
-                        content: reference.content
-                    }
-                } as ToWebviewMessage);
-            } else {
-                // Still add a placeholder attachment showing it was selected but empty
-                const emptyId = `ctx_empty_${Date.now()}`;
-                const friendlyType = contextType.replace(':', ' ');
-                const contextAttachment: AttachmentInfo = {
-                    id: emptyId,
-                    name: `#${friendlyType} (no content)`,
-                    uri: `context://${contextType}/${emptyId}`,
-                    isTextReference: true
-                };
-                this._attachments.push(contextAttachment);
-                this._updateAttachmentsUI();
-
-                // Show info message
-                vscode.window.showInformationMessage(`No ${contextType} content available yet`);
-            }
-        } catch (error) {
-            console.error('[TaskSync] Error selecting context reference:', error);
-            vscode.window.showErrorMessage(`Failed to get ${contextType} content`);
-        }
-    }
-
-    /**
      * Resolve context content from a context URI
      * URI format: context://type/id
      */
@@ -6192,16 +5368,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._broadcast({
             type: 'updateCurrentSession',
             history: this._currentSessionCalls
-        });
-    }
-
-    /**
-     * Update persisted history UI in webview (for modal)
-     */
-    private _updatePersistedHistoryUI(): void {
-        this._broadcast({
-            type: 'updatePersistedHistory',
-            history: this._persistedHistory
         });
     }
 
@@ -6266,116 +5432,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             await fs.promises.writeFile(queuePath, data, 'utf8');
         } catch (error) {
             console.error('Failed to save queue:', error);
-        }
-    }
-
-    /**
-     * Load persisted history from disk (past sessions only) - ASYNC to not block activation
-     */
-    private async _loadPersistedHistoryFromDiskAsync(): Promise<void> {
-        try {
-            const storagePath = this._context.globalStorageUri.fsPath;
-            const historyPath = path.join(storagePath, 'tool-history.json');
-
-            // Check if file exists using async stat
-            try {
-                await fs.promises.access(historyPath, fs.constants.F_OK);
-            } catch {
-                // File doesn't exist, use empty history
-                this._persistedHistory = [];
-                return;
-            }
-
-            const data = await fs.promises.readFile(historyPath, 'utf8');
-            const parsed = JSON.parse(data);
-            // Only load completed entries from past sessions, enforce max limit
-            this._persistedHistory = Array.isArray(parsed.history)
-                ? parsed.history
-                    .filter((entry: ToolCallEntry) => entry.status === 'completed')
-                    .slice(0, this._MAX_HISTORY_ENTRIES)
-                : [];
-        } catch (error) {
-            console.error('[TaskSync] Failed to load persisted history:', error);
-            this._persistedHistory = [];
-        }
-    }
-
-    /**
-     * Save persisted history to disk with debounced async write
-     * Uses background async saves to avoid blocking the main thread
-     */
-    private _savePersistedHistoryToDisk(): void {
-        this._historyDirty = true;
-
-        // Cancel any pending save
-        if (this._historySaveTimer) {
-            clearTimeout(this._historySaveTimer);
-        }
-
-        // Schedule debounced async save
-        this._historySaveTimer = setTimeout(() => {
-            this._savePersistedHistoryToDiskAsync();
-        }, this._HISTORY_SAVE_DEBOUNCE_MS);
-    }
-
-    /**
-     * Async save persisted history (non-blocking background save)
-     */
-    private async _savePersistedHistoryToDiskAsync(): Promise<void> {
-        try {
-            const storagePath = this._context.globalStorageUri.fsPath;
-            const historyPath = path.join(storagePath, 'tool-history.json');
-
-            // Use async fs operations from fs/promises
-            const fsPromises = await import('fs/promises');
-
-            try {
-                await fsPromises.access(storagePath);
-            } catch {
-                await fsPromises.mkdir(storagePath, { recursive: true });
-            }
-
-            // Only save completed entries
-            const completedHistory = this._persistedHistory.filter(entry => entry.status === 'completed');
-
-            const data = JSON.stringify({
-                history: completedHistory
-            }, null, 2);
-
-            await fsPromises.writeFile(historyPath, data, 'utf8');
-            this._historyDirty = false;
-        } catch (error) {
-            console.error('[TaskSync] Failed to save persisted history (async):', error);
-        }
-    }
-
-    /**
-     * Actually persist history to disk (synchronous - only for deactivate)
-     * Called during extension deactivation when async operations cannot complete
-     */
-    private _savePersistedHistoryToDiskSync(): void {
-        // Only save if there are pending changes
-        if (!this._historyDirty) return;
-
-        try {
-            const storagePath = this._context.globalStorageUri.fsPath;
-            const historyPath = path.join(storagePath, 'tool-history.json');
-
-            if (!fs.existsSync(storagePath)) {
-                fs.mkdirSync(storagePath, { recursive: true });
-            }
-
-            // Only save completed entries
-            const completedHistory = this._persistedHistory.filter(entry => entry.status === 'completed');
-
-            const data = JSON.stringify({
-                history: completedHistory
-            }, null, 2);
-
-            fs.writeFileSync(historyPath, data, 'utf8');
-            this._historyDirty = false;
-        } catch (error) {
-            console.error('[TaskSync] Failed to save persisted history:', error);
         }
     }
 

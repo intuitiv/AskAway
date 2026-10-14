@@ -7,6 +7,8 @@ import { AskAwayWebviewProvider, readAvailability } from './webview/webviewProvi
 import { wireWebex } from './services/webexWiring';
 import { AITalkStore } from './aitalk/store';
 import { roomFor } from './aitalk/actors';
+import { connectWebexDrafts } from './aitalk/webexDraftCards';
+import { currentAITalkCaller } from './aitalk/delivery';
 import { registerAITalkValidator, askValidator } from './aitalk/validatorDelivery';
 import { notifyAttention, registerAttentionNotify } from './services/attentionNotify';
 import { createWebexSuiteHost } from './services/webexToolsHost';
@@ -1032,6 +1034,8 @@ export function activate(context: vscode.ExtensionContext) {
         logRuntime('Registering language model tools');
         const memoryProject = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || context.globalStorageUri.fsPath;
         roomFor(memoryProject).activate();
+        // Webex drafts wait for the user's 👍 in AITalk; pending drafts return to the queue after a reload.
+        context.subscriptions.push({ dispose: connectWebexDrafts(roomFor(memoryProject), () => currentAITalkCaller()?.recipient) });
         setWorkerPresenceLifecycle((workspace, worker, running) => roomFor(workspace).workerLifecycle(worker, running));
         let memoryReady: Promise<KnowledgeStore> | undefined;
         const getMemory = () => {
@@ -1335,11 +1339,7 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export async function deactivate() {
-    // Save current tool call history to persisted history before deactivating
-    if (webviewProvider) {
-        webviewProvider.saveCurrentSessionToHistory();
-        webviewProvider = undefined;
-    }
+    webviewProvider = undefined;
 
     if (mcpServer) {
         await mcpServer.dispose();

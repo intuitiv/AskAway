@@ -18,7 +18,11 @@ assert.doesNotMatch(provider, /_remoteBroadcastCallback|_currentPendingRequest|s
 assert.equal(provider.replace(/\r\n/g, '').includes('\n'), false, 'provider remains CRLF');
 for (const tab of ['aitalk', 'settings']) assert.match(provider, new RegExp('data-tab="' + tab + '"'));
 assert.doesNotMatch(provider, /data-tab="chat"|id="panel-chat"/);
-for (const message of ['openHistoryModal', 'openSettingsModal']) assert.ok(provider.includes("case '" + message + "'"), 'shared webview handler remains: ' + message);
+assert.ok(provider.includes("case 'openSettingsModal'"), 'shared webview handler remains: openSettingsModal');
+// Chat tab removal (2026-10-13): its input, queue editing and history modal handlers are gone from both sides.
+for (const message of ['openHistoryModal', 'submit', 'addQueuePrompt', 'removeHistoryItem', 'clearPersistedHistory']) assert.ok(!provider.includes("case '" + message + "'"), 'Chat handler removed: ' + message);
+assert.doesNotMatch(read('media/webview.js'), /function (handleSend|renderCurrentSession|renderHistoryModal|renderQueue|selectCard)\(/);
+assert.doesNotMatch(read('media/main.css'), /\.(history-modal|tool-call-card|queue-item|approval-bar|welcome-section)\b/);
 assert.ok(provider.includes('public startNewSession()'), 'shared session logic remains');
 const ast = ts.createSourceFile('provider.ts', provider, ts.ScriptTarget.Latest, true);
 const klass = ast.statements.find(node => ts.isClassDeclaration(node) && node.name.text === 'TaskSyncWebviewProvider');

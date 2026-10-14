@@ -38,6 +38,15 @@ const vm = require('node:vm');
     snapshot.messages.push({ id: 'worker-join', kind: 'system', text: 'Review tests joined' });
     paint();
     assert.ok(host.innerHTML.includes(render.talkHtml(snapshot.messages, { members: snapshot.members, embedded: true })));
+    for (const kind of ['update', 'heads-up']) {
+        const post = { id: 'speech', author: 'main', kind, text: kind === 'update' ? "I've finished routing. I'm checking the tests now." : "Can you pick Workers or Trace? I'd put the scoreboard in Workers." };
+        snapshot.messages.push(post); paint();
+        assert.ok(host.innerHTML.includes(render.bubbleHtml(post, { messages: snapshot.messages, members: snapshot.members })), 'commentary uses the participant bubble');
+        assert.equal(render.bubbleHtml(post, { members: snapshot.members }), render.bubbleHtml({ ...post, kind: undefined }, { members: snapshot.members }), 'updates and questions look like ordinary messages');
+        snapshot.messages.pop();
+    }
+    assert.doesNotMatch(fs.readFileSync(__dirname + '/media/aitalk/talk.css', 'utf8'), /\.talk-bubble\.heads-up/, 'no warning strip overrides the shared bubble');
+    console.log('PASS EV-AITALK-SPEECH updates and questions render as ordinary participant bubbles');
     type('@'); assert.match(menu.html, /Validator|Review tests/);
     const originalMenu = menu;
     type('@V'); type('@Validator'); assert.equal(menu, originalMenu); assert.equal(inserts, 1, 'mention menu does not flicker');

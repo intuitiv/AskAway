@@ -205,9 +205,9 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
         name: 'commentary',
         description: 'Live commentary: the trace of your execution for the reviewer, so they know what is happening, can guide you in time, and are prepared for questions coming their way. '
             + 'One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. '
-            + 'Lead with one emoji; **bold** the outcome, ==highlight== the one number that matters. '
+            + 'Speak to the reviewer in plain first-person sentences, like updating a colleague. Use one or two short sentences, not emoji-led bold banners or headlines. '
             + 'kind `update` for everything that is just happening. kind `heads-up` when you will need something from the reviewer soon, or something is unclear to you, so they can prepare. '
-            + 'You hold the context the reviewer lacks, so a heads-up names exactly what you need: the decision and its options, or the input. Never just "something is unclear". '
+            + 'You hold the context the reviewer lacks, so a heads-up asks the exact question with options, or asks for the input you need. Never just "something is unclear". '
              + '10-20 words. Batch it with the step\'s real tool call; do not repeat it in chat. action aitalk posts a crisp question or reply; optional details appear under Read more.',
         inputSchema: z.object({
             action: z.enum(['post', 'aitalk']).optional(),

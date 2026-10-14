@@ -5,6 +5,11 @@ import { readAvailability } from '../webview/webviewProvider';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { webexSuiteTools } from './webexSuite';
+import { registerToolDefinitions, ToolDefinition } from '../workers/workerTools';
+
+export function registerWebexToolsHost(register: Parameters<typeof registerToolDefinitions>[0], tools: ToolDefinition[]): void {
+    registerToolDefinitions(register, tools);
+}
 
 export function createWebexSuiteHost(secrets: vscode.SecretStorage, workspace: string) {
     const auth = new WebexAuth(secrets);

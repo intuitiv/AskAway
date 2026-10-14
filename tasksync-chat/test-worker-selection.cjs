@@ -181,6 +181,18 @@ assert.equal(cold.status, 'CREATED');
 assert.match(cold.reason, /cache expired/);
 
 // Context above 300000 retires the worker; it is never reused.
+for (const contextTokens of [100000, 200000, 200001, 279000]) {
+    router = newRouter();
+    const previous = router.route(req());
+    router.complete(previous.workerId, previous.runId, { contextTokens });
+    const next = router.route(req());
+    assert.equal(next.status, contextTokens <= 200000 ? 'REUSED' : 'CREATED');
+    if (contextTokens > 200000) {
+        assert.notEqual(next.workerId, previous.workerId);
+        assert.equal(router.submitTo(previous.workerId, 'named', 30).status, 'REUSED', 'named submit keeps the retirement limit');
+    } else assert.equal(next.workerId, previous.workerId);
+}
+console.log('EV-START-CONTEXT: PASS 100K/200K reused; 200001/279K fresh lane; named submit unchanged');
 router = newRouter();
 const heavy = router.route(req());
 router.complete(heavy.workerId, heavy.runId, { contextTokens: 300001 });

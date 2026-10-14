@@ -4,7 +4,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import type { ToolDefinition } from '../workers/workerTools';
 import type { WebexToolDeps } from './webexTools';
-import { hasWebexDraftHook, queueWebexDraft, approveDraft } from './webexDrafts';
+import { hasWebexDraftHook, queueWebexDraft, approveDraft, editDraft, setWebexDraftSender, WebexDraft } from './webexDrafts';
 
 export interface WebexSuiteDeps extends WebexToolDeps {
     cacheDir: string;
@@ -20,14 +20,20 @@ export function webexSuiteTools(deps: WebexSuiteDeps): ToolDefinition[] {
         if (!response.ok) { throw new Error('Request failed.'); }
         return response.json();
     };
+    const post = async (draft: Readonly<WebexDraft>) => {
+        const { roomId, toPersonEmail, parentId, text } = draft;
+        const response = await deps.request('POST', '/messages', { ...(roomId ? { roomId } : { toPersonEmail }), text, ...(parentId ? { parentId } : {}) });
+        if (!response.ok) { throw new Error('Request failed.'); }
+        return { status: 'sent', id: clean((await response.json() as any).id) };
+    };
+    setWebexDraftSender(post);
     const send = async (args: any) => {
         if (Number(!!args.roomId) + Number(!!args.toPersonEmail) !== 1 || !args.text.trim()) { return { status: 'invalid' }; }
-        const draft = { ...args, recipientLabel: args.roomId ?? args.toPersonEmail };
-        const draftId = await queueWebexDraft(draft, async () => {
-            const response = await deps.request('POST', '/messages', args);
-            if (!response.ok) { throw new Error('Request failed.'); }
-            return { status: 'sent', id: clean((await response.json() as any).id) };
-        });
+        // The reviewer sees the space by name; the id stays the fallback label.
+        const space = args.roomId ? await get(`/rooms/${encodeURIComponent(args.roomId)}`).then(room => clean(room?.title), () => '') : '';
+        const draft: WebexDraft = { recipientLabel: space || (args.roomId ?? args.toPersonEmail), text: args.text,
+            ...(args.roomId ? { roomId: args.roomId } : { toPersonEmail: args.toPersonEmail }), ...(args.parentId ? { parentId: args.parentId } : {}), ...(space ? { space } : {}) };
+        const draftId = await queueWebexDraft(draft, post);
         if (!hasWebexDraftHook() && await deps.approve(draft) === 'approved') { return approveDraft(draftId); }
         return { status: 'pending', draftId, recipientLabel: draft.recipientLabel, text: args.text };
     };
@@ -60,6 +66,7 @@ export function webexSuiteTools(deps: WebexSuiteDeps): ToolDefinition[] {
     add('webex_thread', z.object({ roomId: id, parentId: id }).strict(), messages);
     add('webex_wait_reply', z.object({ roomId: id, parentId: id.optional(), fromEmail: z.string().email().optional(), since }).strict(), messages);
     add('webex_send', z.object({ roomId: id.optional(), toPersonEmail: z.string().email().optional(), text: id, parentId: id.optional() }).strict(), send);
+    add('webex_edit_draft', z.object({ draftId: id, text: id }).strict(), async args => editDraft(args.draftId, args.text));
     add('webex_reply', z.object({ messageId: id, text: id }).strict(), async args => {
         const message = await get(`/messages/${encodeURIComponent(args.messageId)}`);
         return send({ roomId: message.roomId, parentId: message.parentId || args.messageId, text: args.text });

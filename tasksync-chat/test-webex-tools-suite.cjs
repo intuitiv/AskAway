@@ -58,9 +58,9 @@ async function main() {
     assert.equal((await run('webex_style_card', {})).text, 'plain short replies');
     registerWebexDraftHook();
     assert.equal((await run('webex_send', { roomId: 'r', text: 'modal approved' })).status, 'sent');
-    modal = 'denied'; const before = calls.length;
+    modal = 'denied'; const before = calls.filter(c => c.method === 'POST').length;
     assert.equal((await run('webex_send', { roomId: 'r', text: 'modal denied' })).status, 'pending');
-    assert.equal(calls.length, before);
+    assert.equal(calls.filter(c => c.method === 'POST').length, before, 'refused draft sends nothing (the space-name read is not a send)');
     console.log('PASS webex_style_card; modal fallback approval and refusal');
     console.log('PASS EV-WEBEX-TOOLS-SUITE');
     assert.deepEqual(await fs.readdir(realCache).catch(() => []), cacheBefore);

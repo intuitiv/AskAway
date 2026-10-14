@@ -39,6 +39,11 @@ export class AITalkStore {
                     messages.push({ id: event.id, kind: 'system', text: `${member.displayName} ${event.presenceEvent}`, ts: event.ts });
                     continue;
                 }
+                if (event.updateEvent) {
+                    // A card update (e.g. a Webex draft turning Sent) never changes who posted it or its id.
+                    messages = messages.map((message: any) => message.id === event.updateEvent ? { ...message, ...event.fields, id: message.id, author: message.author } : message);
+                    continue;
+                }
                 if (event.deliveryEvent) {
                     messages = messages.map((message: any) => event.ids.includes(message.id)
                         ? { ...rules.deliveryEvent(message, event.deliveryEvent), receivedBy: [...new Set([...(message.receivedBy || []), event.recipient])] } : message);
@@ -65,7 +70,7 @@ export class AITalkStore {
         this.append({ id: randomUUID(), presenceEvent, member, ts: stamp() }, this.presenceFile);
     }
     /** Only a registered (joined) participant can post. */
-    post(text: string, replyTo?: string, author?: string, details?: string, kind?: string, attachments?: Array<{ name: string; path: string }>) {
+    post(text: string, replyTo?: string, author?: string, details?: string, kind?: string, attachments?: Array<{ name: string; path: string }>, fields?: Record<string, unknown>) {
         const state = this.snapshot(true);
         const user = state.members.find((member: any) => member.kind === 'user');
         const actor = rules.participant(state.members, author || user.id);
@@ -74,8 +79,12 @@ export class AITalkStore {
         this.markRead(actor.id);
         const message = rules.replyMessage(String(text).slice(0, 8000), actor.id, rules.selectReply(state.messages, replyTo), randomUUID());
         rules.postMessage(message, state.messages, state.members);
-        this.append({ ...message, ...(attachments?.length ? { attachments } : {}), ...(kind ? { kind } : {}), ...(details ? { details: String(details).slice(0, 8000) } : {}), time: new Date().toTimeString().slice(0, 5), ts: stamp() });
+        this.append({ ...fields, ...message, ...(attachments?.length ? { attachments } : {}), ...(kind ? { kind } : {}), ...(details ? { details: String(details).slice(0, 8000) } : {}), time: new Date().toTimeString().slice(0, 5), ts: stamp() });
         return this.snapshot(true);
+    }
+    /** Appends a change to an existing message's card fields; the log stays append-only. */
+    update(id: string, fields: Record<string, unknown>): void {
+        this.append({ updateEvent: id, fields, ts: stamp() });
     }
     agentId(): string | undefined { return this.snapshot().members.find((member: any) => member.kind === 'agent')?.id; }
     /** Tracker event from the receiving participant: delivered (double grey) or read (double blue). */

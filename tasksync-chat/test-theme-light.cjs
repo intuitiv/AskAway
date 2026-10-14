@@ -33,7 +33,8 @@ const esbuild = require('esbuild');
     const messages = fs.readFileSync(path.join(root, '.askaway/aitalk/messages.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
     assert.ok(messages.every(message => message.author === render.defaultMembers.find(member => member.kind === 'agent').id));
     const html = `<body class="vscode-light"><div class="talk-prototype">${render.threadHtml(messages)}</div><section class="presence-flyout">Personal availability</section><div class="trace-group">Trace</div></body>`;
-    assert.match(html, /talk-bubble heads-up/); assert.match(html, /update needs/); assert.match(html, /vscode-light/);
+    // R-AITALK-18: heads-ups are ordinary participant bubbles, not a highlighted strip.
+    assert.match(html, /heads-up needs/); assert.doesNotMatch(html, /talk-bubble heads-up/); assert.match(html, /update needs/); assert.match(html, /vscode-light/);
     assert.ok(require('./package.json').scripts['pretest:workers'].includes('node test-theme-light.cjs'));
     console.log('PASS EV-THEME-LIGHT theme-variable AITalk/presence/Trace; sole AITalk feed; commentary agent bubbles and heads-up; CRLF');
 })().catch(error => { console.error(error); process.exitCode = 1; });
