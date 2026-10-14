@@ -652,3 +652,13 @@ Answers to the six 008 questions (scoreboard place, $2 cap, levels in one run, f
 > Or may be read from current User name?
 >
 > I switched to Validator in charge, but i still see You moderate. Not sure whats the point of it.
+
+### 2026-10-14, README and marketplace page
+
+> Can you update readme doc and there is a doc which is seen on main page of marketplace, they still show old legacy askaway. I want that to reflect what we have now. I think on every update we need to update those files, thats what people see. so, Update them to reflect new state and new motto.
+>
+> New motto is,
+> - spec based develoment
+> - opencode based workers to delegate tasks
+> - aitalk room
+> - telegram and webex integration, and other misc stuff, keep alive ping, timer, tracing and so on.

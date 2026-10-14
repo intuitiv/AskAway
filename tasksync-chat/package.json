@@ -2,7 +2,7 @@
   "name": "askaway",
   "publisher": "intuitiv",
   "displayName": "AskAway",
-  "description": "Never miss an AI agent question again — get Telegram notifications and reply from your phone. Queue prompts, respond remotely, and keep your coding workflow moving.",
+  "description": "Spec-based development, OpenCode workers to delegate tasks, an AITalk room, and Telegram / Webex remote control, with live cost tracing, keep-alive pings and timers.",
   "icon": "media/askaway-logo.png",
   "version": "2.2.0",
   "engines": {
@@ -15,6 +15,11 @@
   ],
   "keywords": [
     "askaway",
+    "spec kit",
+    "spec-driven development",
+    "opencode",
+    "workers",
+    "aitalk",
     "telegram",
     "ai agent",
     "copilot",

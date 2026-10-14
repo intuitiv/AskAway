@@ -5,8 +5,8 @@
 <h1 align="center">AskAway</h1>
 
 <p align="center">
-  <strong>Copilot AI credit observability and optimization for VS Code agent workflows.</strong><br/>
-  <sub>See where GitHub Copilot credits are spent, catch expensive tool patterns live, and give agents cheaper ways to work.</sub>
+  <strong>Spec-based development, OpenCode workers, an AITalk room, and Telegram / Webex remote control.</strong><br/>
+  <sub>Dictate what you need; AskAway runs it through Spec Kit, delegates the detail to parallel workers, keeps you informed in one room, and shows what it costs.</sub>
 </p>
 
 <p align="center">
@@ -17,7 +17,11 @@
 </p>
 
 <p align="center">
-  <a href="#why-askaway-now">Why now</a> -
+  <a href="#what-askaway-does">What it does</a> -
+  <a href="#aitalk-room">AITalk</a> -
+  <a href="#spec-based-development">Specs</a> -
+  <a href="#opencode-workers">Workers</a> -
+  <a href="#telegram-and-webex">Remote</a> -
   <a href="#metrics-dashboard">Metrics</a> -
   <a href="#live-turn-trace">This Turn</a> -
   <a href="#optimization-tools">Tools</a> -
@@ -27,15 +31,70 @@
 
 ---
 
-## Why AskAway Now
+## What AskAway Does
 
-GitHub Copilot moved from the older premium-request model to token-based AI credit billing. Under the newer pricing model, agent work is not just "one request" anymore: input tokens, output tokens, cached tokens, model choice, tool output, compaction, retries, and long-running calls can all change the bill.
+You tell the agent what you need. AskAway turns that into a flow you do not have to manage:
 
-That changes the value of AskAway.
+| Pillar | What you get |
+|--------|--------------|
+| **Spec-based development** | Plain-text requests are routed through Spec Kit (specify, clarify, plan, tasks, implement, check). The **Specs** tab shows the stage, user stories and tasks. You answer one batch of questions and approve three gates: what, how, done. |
+| **OpenCode workers** | Detail work is delegated to reusable [OpenCode](https://opencode.ai) workers that run in parallel, so the main conversation stays short and cheap. |
+| **AITalk room** | A WhatsApp-style group chat per workspace for you, the Agent, the Validator and the workers, with `@mentions`, replies, reactions, ticks and presence. |
+| **Telegram and Webex** | Monitor everything from your phone and reply from there. Webex drafts need your approval in AITalk before they are sent. |
+| **Cost, trace and timers** | Live per-turn and monthly cost, tokens, cache, worker share, efficiency score, keep-alive pings, turn timer and a full trace. |
 
-The original AskAway/TaskSync flow focused on the `ask_user` tool: route agent questions to Telegram, Webex, or a remote browser so an agent does not pause while you are away. That still exists, but it is no longer the main cost-optimization lever. With token-based pricing, the bigger wins come from seeing exactly where credits are consumed and helping the agent choose cheaper behavior before the turn runs away.
+## In Action
 
-AskAway now focuses on live Copilot observability and credit optimization:
+### AITalk room
+
+![AITalk room with messages, replies and reactions](tasksync-chat/docs/screenshots/aitalk-room.png)
+
+### Workers
+
+![Workers tab with worker status and cost](tasksync-chat/docs/screenshots/workers-tab.png)
+
+### Trace
+
+![Trace tab with request and token details](tasksync-chat/docs/screenshots/trace-tab.png)
+
+The side panel tabs are **AITalk**, **Specs**, **Trace**, **Workers** and **Settings**, with one shared cost banner above them.
+
+## AITalk Room
+
+The workspace group chat. The Agent joins when a turn starts and leaves when it ends, workers join when they post, and the **Validator** is always present.
+
+- `@mention` an actor, or reply to a message, to route it to its owner; anything else goes to the Validator.
+- Ticks on your messages show sent, delivered and read.
+- Agent updates read like normal messages, so you can see what it is doing, where it is stuck, and steer it early.
+- Set your availability (away for 30 minutes, a few hours, or until you are back) from your avatar.
+- Webex drafts show as a **Draft** card with recipient and full text; only your 👍 sends it.
+
+## Spec-Based Development
+
+- Plain text works without Spec Kit knowledge. `/sk.start`, `/sk.plan`, `/sk.tasks`, `/sk.check`, `/sk.continue` and `/sk.handoff` are shortcuts to the same stages.
+- Standard artifacts: user stories with acceptance scenarios, tasks per story, `[P]` for parallel tasks.
+- Every new ask becomes a Spec Kit task, so nothing is dropped; questions arrive in one batch.
+- Optional cloud tasks run flagged work on the GitHub Copilot cloud agent while you are offline; AskAway tracks the PR and shares its link when done.
+
+## OpenCode Workers
+
+- Workers run through OpenCode on one shared local server per workspace and are reused rather than recreated.
+- Warm workers get a cheap keep-alive ping (at most four) so their context is not lost.
+- The **Workers** tab shows state, cost, tokens, tool trace and a link to each live session; the shared banner and Telegram show worker spend.
+- A side channel lets you look inside a running worker, nudge it, or ask a side question without derailing the main agent.
+- Setup: [Workers setup guide](tasksync-chat/docs/WORKERS_SETUP.md).
+
+## Telegram and Webex
+
+Whatever happens in VS Code can reach your phone, including live commentary, cost and tokens, and you can reply from there. Each workspace gets its own Telegram topic or Webex space. Webex replies are polled, so the laptop is never exposed. Setup steps are under [Remote Integrations](#remote-integrations).
+
+## Validator and Availability
+
+The **Validator** is a decisioning agent with memory: it learns your answers, predicts your reply to the agent's final message, and is the memory tool. With `askaway.validator.live` on (off by default) and you set to Away, it answers low-risk reversible questions, holds the rest, and gives you a digest on return.
+
+## Cost Observability
+
+AskAway also reads GitHub Copilot's token-based AI credit usage from local logs, so you can see where credits go and catch expensive patterns live:
 
 | Area | What AskAway helps you see |
 |------|-----------------------------|
@@ -48,13 +107,13 @@ AskAway now focuses on live Copilot observability and credit optimization:
 
 ## Metrics Dashboard
 
-AskAway adds a dedicated **Metrics** tab to the VS Code side panel. It reads Copilot debug logs locally and turns them into live usage telemetry. No separate cloud service is required.
+AskAway adds a **Metrics** view, opened from the shared cost banner at the top of the side panel. It reads Copilot debug logs locally and turns them into live usage telemetry. No separate cloud service is required.
 
 ### How to enable metrics
 
 1. Install AskAway from the VS Code Marketplace or from source.
 2. Open the AskAway activity bar panel.
-3. Open the **Metrics** tab.
+3. Click the cost banner to open **Metrics**.
 4. Keep **Debug Logging** enabled in AskAway settings so local Copilot request and tool-call logs can be read.
 5. Optional: set `askaway.turnBudgetAiu` to a non-zero value if you want agents to see a soft per-turn credit budget through the `turn_budget` tool.
 6. Optional: install `rtk` and enable AskAway's RTK compression toggle to show RTK savings in the dashboard.
@@ -202,26 +261,9 @@ RTK helps compress noisy command output before it becomes model input. AskAway d
 
 If `rtk` is not installed, AskAway gracefully disables the RTK toggle and continues showing Copilot metrics.
 
-## Workers & Commentary (Advanced, Optional)
+## Classic Features
 
-The side panel also has two more tabs: **Workers** (state, cost, and session links for background agents) and **Commentary** (a live narration feed). Both are visible by default in every install, but they only do anything once you install [OpenCode](https://opencode.ai), authenticate a provider, and add a worker profile — most users can skip this entirely.
-
-[Workers & Commentary setup guide](tasksync-chat/docs/WORKERS_SETUP.md)
-
-## Legacy Remote Ask User Features
-
-AskAway still includes the original human-in-the-loop features from TaskSync and earlier AskAway releases:
-
-| Feature | Status |
-|---------|--------|
-| `ask_user` | Still available for agent questions and review loops |
-| Telegram | Still available for answering agent questions from mobile |
-| Webex | Still available for answering from a Webex space |
-| Remote web/mobile UI | Still available for browser-based access to the AskAway panel |
-| Queue and autopilot | Still available for prompt batching and automatic responses |
-| MCP server | Still available for external MCP-compatible clients |
-
-These features are useful for remote control and unattended workflows. They are just no longer the main cost story under token-based Copilot pricing.
+Still included from TaskSync: `ask_user`, Smart Queue, Normal and Autopilot modes, concurrent `ask_user` queuing, `#` file references, image paste, reusable `/slash` prompts, tool-call history, the remote web/mobile UI, and an MCP server for external clients.
 
 ## Installation
 
@@ -254,6 +296,8 @@ Optional cost controls:
 }
 ```
 
+Workers need [OpenCode](https://opencode.ai) and a worker profile; Specs need Spec Kit in the workspace.
+
 ## Remote Integrations
 
 ### Telegram
@@ -266,8 +310,8 @@ Optional cost controls:
 ### Webex
 
 1. Enable `askaway.webex.enabled`.
-2. Set `askaway.webex.roomId`.
-3. Configure one auth method: `askaway.webex.accessToken`, `askaway.webex.tokenFilePath`, or OAuth settings.
+2. Run `AskAway: Set Webex Token` (or `AskAway: Authorize Webex (OAuth)`); tokens are kept in secret storage.
+3. Run `AskAway: Discover Webex Spaces` and `AskAway: Configure Webex Notifications`, or set `askaway.webex.roomId`.
 
 ### Remote browser UI
 
@@ -275,15 +319,11 @@ Optional cost controls:
 2. Open the local network URL shown by VS Code.
 3. Enter the PIN shown in the AskAway panel.
 
-## What Is Coming Next
-
-More cost-optimization tools are coming soon. The current direction is simple: give agents cheaper, narrower, more structured ways to inspect code, run builds, read logs, and understand when enough context has already been gathered.
-
 ## FAQ
 
 ### Is AskAway only for saving Copilot credits?
 
-No. It still includes queueing, remote questions, Telegram, Webex, remote browser access, prompt history, MCP support, and the original `ask_user` workflow. The newer README leads with cost observability because token-based Copilot pricing makes it the most important current problem.
+No. Cost observability is one pillar. The others are spec-based development, OpenCode workers, the AITalk room, and Telegram / Webex remote control.
 
 ### Does AskAway change GitHub Copilot pricing?
 

@@ -1,151 +1,133 @@
 # AskAway
 
-> **Based on [TaskSync v2.0.14](https://github.com/4regab/TaskSync)** — fully synced with upstream as of July 2025.
+**Spec-driven development, OpenCode workers, an AITalk room, and remote control from Telegram or Webex.**
 
-> [!WARNING]  
-> **CONFLICT WARNING**: This extension (`AskAway`) uses the tool name `ask_user`. It conflicts with the `TaskSync` extension which uses the same tool name. **Disable one before using the other.**
+You say what you need in plain words. AskAway runs it through Spec Kit, hands the detail to reusable background workers, keeps you informed in one chat room, and shows what every turn costs. Reach it from your phone while you are away.
 
-**Keep AI agents in check. Get notified on Telegram. Reply from anywhere.**
+> **Based on [TaskSync](https://github.com/4regab/TaskSync)** by [4regab](https://github.com/4regab), extended by [intuitiv](https://github.com/intuitiv).
 
-AskAway bridges your AI coding agent (Copilot, Cursor, etc.) and your phone via Telegram — so you can monitor tasks, get asked questions, and send replies without being at your desk. Built on [TaskSync](https://github.com/4regab/TaskSync) by [intuitiv](https://github.com/intuitiv).
+> [!WARNING]
+> **CONFLICT WARNING**: AskAway uses the tool name `ask_user`, the same as the `TaskSync` extension. **Disable one before using the other.**
 
 ---
 
-## 📸 In Action
+## What AskAway Does
 
-### Telegram Integration — Forum Topics per Workspace
+| Pillar | What you get |
+|--------|--------------|
+| **Spec-based development** | Dictate a requirement. AskAway drives Spec Kit behind the scenes (specify, clarify, plan, tasks, implement, check) and the **Specs** tab shows the stage, user stories and tasks. You only answer questions and approve three gates: what, how, done. |
+| **OpenCode workers** | Detail work goes to reusable [OpenCode](https://opencode.ai) workers that run in parallel, so the main conversation stays short and cheap. Each worker shows state, cost and a link to its live session in the **Workers** tab. |
+| **AITalk room** | One WhatsApp-style group chat per workspace: you, the Agent, the Validator and the workers. Message them, `@mention` them, reply and react, with sent / delivered / read ticks and presence. |
+| **Telegram and Webex** | Everything that happens in VS Code can reach your phone, and you can answer from there. Webex messages can be drafted in AITalk and sent only after you approve. |
+| **Cost and trace** | Live per-turn and monthly cost, tokens, cache hit, worker share and an efficiency score, plus a trace of every request and tool call. |
 
-> _Each VS Code workspace gets its own Telegram topic. Questions and replies are neatly organized._
+## In Action
+
+### AITalk room
+
+![AITalk room with messages, replies and reactions](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/aitalk-room.png)
+
+### Workers
+
+![Workers tab with worker status and cost](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/workers-tab.png)
+
+### Trace
+
+![Trace tab with request and token details](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/trace-tab.png)
+
+---
+
+## AITalk Room
+
+The **AITalk** tab is the workspace group chat. The Agent joins when a turn starts and leaves when it ends; workers join when they post; the **Validator** is always there.
+
+- Post a message, `@mention` an actor, or reply to a message to route it to its owner. Unaddressed messages go to the Validator.
+- Ticks on your messages show sent, delivered and read.
+- Agent updates read like normal messages, so you can follow the agent's thinking, see where it is stuck, and steer it before it finishes.
+- Set your availability from your avatar (away for 30 minutes, a few hours, or until you are back).
+- Webex drafts appear as a **Draft** card with recipient and full text. Nothing is sent until you 👍 it.
+
+## Spec-Based Development
+
+The **Specs** tab mirrors Spec Kit without making you learn it.
+
+- Plain text works: a normal message is routed to the right stage. Shortcuts `/sk.start`, `/sk.plan`, `/sk.tasks`, `/sk.check`, `/sk.continue` and `/sk.handoff` are there if you prefer them.
+- Specs use standard user stories with acceptance scenarios and tasks per story; `[P]` tasks run in parallel.
+- New asks and recommendations become Spec Kit tasks, so nothing is dropped.
+- Questions come in one batch, so you answer once.
+- Flagged tasks can run on the GitHub Copilot cloud agent while you are offline (opt-in); AskAway tracks the PR and shares its link when done.
+
+## OpenCode Workers
+
+Workers are background agents run through [OpenCode](https://opencode.ai) on one shared local server per workspace.
+
+- Delegated and run in parallel, so detail work does not bloat the main conversation.
+- Reused and kept warm with a cheap keep-alive ping (up to four per worker) so their context is not recreated.
+- Each worker's cost, tokens, tool trace and session link live in the **Workers** tab and in the shared banner.
+- Side channel: look inside a running worker, nudge it, or ask a side question without derailing the main agent.
+
+Workers need OpenCode and at least one worker profile; see the [Workers setup guide](docs/WORKERS_SETUP.md). Without them, the tab stays empty.
+
+## Telegram and Webex
+
+Get the agent's questions, status, cost and final answers on your phone and reply from anywhere. Each workspace gets its own topic (Telegram) or space (Webex). Commentary streams live as it happens.
+
+### Telegram setup
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token.
+2. For topics per workspace, create a group, enable **Topics**, add the bot and make it admin (Manage Topics + Post Messages). For DM only, just message the bot.
+3. Run **AskAway: Get Telegram Chat ID**, or read the chat ID from `https://api.telegram.org/bot<TOKEN>/getUpdates`.
+4. Set `askaway.telegram.enabled`, `askaway.telegram.botToken` and `askaway.telegram.chatId`.
 
 ![Telegram forum topics screenshot](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/telegram-topics.png)
 
-### VS Code Widget — Tool Call History with Timestamps
+### Webex setup
 
-> _Every ask/reply pair shows the time asked and time answered, right in the VS Code sidebar._
+1. Enable `askaway.webex.enabled`.
+2. Run **AskAway: Set Webex Token** (or **AskAway: Authorize Webex (OAuth)**); tokens are kept in VS Code secret storage.
+3. Run **AskAway: Discover Webex Spaces** and **AskAway: Configure Webex Notifications**, then set `askaway.webex.roomId` or let AskAway use a space per workspace.
 
-![VS Code widget with timestamps](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/vscode-widget-timestamps.png)
+Replies are polled, so your laptop is never exposed to the internet.
 
----
+## Cost, Trace and Timers
 
-## What's Different from TaskSync?
+- **Shared banner**: last input, turn output, cache hit, a turn timer, cache age and worker spend, on every tab.
+- **Trace**: main-agent requests and tool calls with token and cost detail, a monthly cost table by Main, Validator and worker profile, and red flags for cache misses, long tool calls and oversized tool output.
+- **Efficiency score**: one cost-to-work number per turn; a drop means something was not optimal.
+- **Keep-alive pings and cache clock**: warm workers are pinged inside the prompt-cache window; calls that run past it are flagged.
+- **Turn budget**: set `askaway.turnBudgetAiu` for a soft per-turn credit budget the agent can read with `turn_budget`.
 
-| Feature | TaskSync | AskAway |
-|---------|----------|---------|
-| Smart Queue / Normal / Autopilot modes | ✅ | ✅ |
-| File & Folder References (#mentions) | ✅ | ✅ |
-| Image Support (paste/drag-drop) | ✅ | ✅ |
-| Tool Call History & Settings Modal | ✅ | ✅ |
-| Reusable Prompts (/slash commands) | ✅ | ✅ |
-| Interactive Approvals | ✅ | ✅ |
-| MCP Server Integration | ✅ | ✅ |
-| Webex Messaging Integration | ❌ | ✅ |
-| **Telegram Bot Integration** | ❌ | ✅ |
-| **Telegram Forum Topics per Workspace** | ❌ | ✅ |
-| **Concurrent ask_user queuing** | ❌ | ✅ |
-| **Timestamps on tool call cards** | ❌ | ✅ |
+![AskAway This Turn trace](https://raw.githubusercontent.com/intuitiv/TaskSync/main/resources/This%20Turn.jpg)
 
----
+## Validator and Availability
 
-## 🤖 Telegram Setup (5 minutes)
+The **Validator** is a decisioning agent with memory. It learns your answers, predicts your reply to the agent's final message, and doubles as the memory tool. Turn on `askaway.validator.live` and, while you are Away, it answers low-risk reversible questions for you, holds the rest, and gives you a digest when you return. It is off by default.
 
-Receive AI agent questions on your phone and reply from anywhere. Here's everything in one place:
+## Own Tools
 
-### Step 1 — Create a Bot
+| Tool | Purpose |
+|------|---------|
+| `worker` | Start, reuse, wait for and inspect OpenCode workers |
+| `gradle` | Async Gradle builds with paginated logs and test-failure extraction |
+| `code_nav` | VS Code language-server navigation instead of reading whole files |
+| `rg_search`, `read_doc` | Cheap, structured search and document reads |
+| `turn_budget` | Live cost signal for the current turn |
+| `askaway_memory`, `askaway_validator` | Durable memory and validator questions |
+| `commentary` | Plain-language narration to the room |
 
-1. Open Telegram → search for **[@BotFather](https://t.me/BotFather)**
-2. Send `/newbot` → choose a name (e.g. "My AskAway Bot") → choose a username ending in `bot`
-3. BotFather sends you a **token** like `1234567890:ABCDefGhIJKlmNOPqrSTUvwxYZ` — copy it
+If [`rtk`](https://github.com/rtk-ai/rtk) is installed, its token savings show next to the metrics.
 
-### Step 2 — Create a Group with Topics
+## Classic Features
 
-> _Skip this if you just want 1:1 DM notifications — just message the bot and use its DM chat ID._
-
-1. Create a new Telegram group (any name, e.g. "AI Workspace")
-2. Open the group → **Edit** → **Topics** → enable it
-3. Add your bot to the group and **make it admin** (needs "Manage Topics" + "Post Messages" permissions)
-
-### Step 3 — Get Your Chat ID
-
-**For DM (1:1):**
-1. Send any message to your bot
-2. Open: `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
-3. Find `"chat": {"id": 123456789}` — that number is your chat ID
-
-**For a group:**
-1. Send any message in the group
-2. Open the same `getUpdates` URL
-3. Find `"chat": {"id": -1001234567890}` — the **negative number** is the group chat ID
-
-### Step 4 — Configure AskAway
-
-In VS Code Settings (`Cmd+,`), search for `askaway`:
-
-| Setting | Value |
-|---------|-------|
-| `askaway.telegram.enabled` | `true` |
-| `askaway.telegram.botToken` | your bot token from Step 1 |
-| `askaway.telegram.chatId` | your chat/group ID from Step 3 |
-
-AskAway automatically creates one Telegram topic per VS Code workspace — no extra configuration needed.
-
-### Backward Compatibility
-
-DM bot setup (no group/topics) works exactly as before — messages go directly to the DM chat.
-
----
-
-## Core Features
-
-### Smart Queue Mode
-Queue multiple prompts to be automatically sent when the AI agent requests feedback. Perfect for batching instructions for long-running tasks.
-
-### Normal Mode
-Direct interaction — respond to each agent request as it comes in.
-
-### Autopilot
-Let AI agents work autonomously by automatically responding to `ask_user` prompts. Queue items always take priority over Autopilot responses.
-
-### Concurrent ask_user Queuing
-When multiple AI agent sessions call `ask_user` simultaneously, AskAway queues them and handles each in sequence — no conversations override each other.
-
-### Tool Call History with Timestamps
-Every question/reply pair is stored in the VS Code sidebar with:
-- **Asked time** (HH:MM) shown in the card header
-- **Replied time** shown as `14:32 → 14:35`
-- Persisted across sessions in VS Code global storage
-
-### File & Folder References
-Type `#` in the input field to attach files or folders as context with your response.
-
-### Image Support
-Paste or drag-and-drop images into the chat input.
-
----
-
-## 🧪 Workers & Commentary (Advanced, Optional)
-
-The side panel always shows two extra tabs — **Workers** and **Commentary** — for viewing and controlling asynchronous background AI agents ("workers") that run through [OpenCode](https://opencode.ai). They render in every install, but the tabs stay empty until OpenCode is installed and at least one worker profile is configured — that's expected, not a bug.
-
-| Tab | What it shows |
-|-----|----------------|
-| **Workers** | State, cost, and session links for OpenCode-backed workers started in the current workspace |
-| **Commentary** | A live, plain-language narration feed a worker (or the agent) can post to while it works |
-
-This is for people who want to dispatch a bounded background research/build task to a separate AI agent process and watch it from VS Code — most AskAway users can ignore these tabs entirely.
-
-[See the full Workers & Commentary setup guide](docs/WORKERS_SETUP.md) for installing OpenCode, writing a worker profile, and starting your first worker.
-
----
+Still included from TaskSync: Smart Queue, Normal and Autopilot modes, concurrent `ask_user` queuing, `#` file and folder references, image paste and drag-and-drop, reusable `/slash` prompts, tool-call history with timestamps, interactive approvals, and an MCP server.
 
 ## Installation
 
-1. Install from [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intuitiv.askaway)
-2. Open VS Code → AskAway in the Activity Bar
-3. Configure Telegram (optional but recommended)
+1. Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intuitiv.askaway).
+2. Open **AskAway** in the Activity Bar; **AITalk** is the first tab.
+3. Optional: install OpenCode for workers, and configure Telegram or Webex for remote control.
 
----
-
-## MCP Configuration (non-Copilot clients)
+### MCP configuration (non-Copilot clients)
 
 AskAway auto-registers with Kiro and Cursor. For other clients:
 
@@ -160,11 +142,10 @@ AskAway auto-registers with Kiro and Cursor. For other clients:
 }
 ```
 
----
-
 ## Requirements
 
 - VS Code 1.90.0 or higher
+- Optional: OpenCode (workers), Spec Kit, a Telegram bot or Webex account, `rtk`
 
 ## License
 

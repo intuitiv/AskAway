@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+- **README and Marketplace page rewritten for the current product.** Both READMEs now lead with the new motto: spec-based development, OpenCode workers to delegate tasks, the AITalk room, Telegram and Webex integration, plus keep-alive pings, timers and tracing. The old `ask_user`-first and Commentary-tab wording is gone; the extension description and keywords match.
+
 ## AskAway v2.2.0 (09-29-26)
 - **Workers & Commentary are now documented.** These two side-panel tabs (async OpenCode-backed background agents, and a live plain-language narration feed) have been present since v2.1.0 but were never explained anywhere. Added a full [Workers & Commentary setup guide](tasksync-chat/docs/WORKERS_SETUP.md) covering installing OpenCode, authenticating a provider, writing a worker profile, and the optional VS Code tool bridge.
 - Both READMEs now call out Workers/Commentary explicitly as advanced/optional, so a fresh install isn't left guessing what those always-visible tabs are for.

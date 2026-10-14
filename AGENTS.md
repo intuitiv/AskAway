@@ -21,6 +21,14 @@ Read GOALS.md before starting any work here.
   memory tool: it decides what the reviewer would decide from GOALS.md, the ADRs, the requirement rows and what it
   learned from his replies. A wrong or stale row becomes a wrong decision, so keep them true, short and quoted.
 
+## Keep the public READMEs current (reviewer, 2026-10-14)
+
+"I think on every update we need to update those files, thats what people see."
+- `tasksync-chat/README.md` is the Marketplace page and `README.md` is the repo front page. On every user-visible update,
+  update both, `package.json` description/keywords and the CHANGELOG so they show the current product, never legacy AskAway.
+- Current motto: spec-based development; OpenCode workers to delegate tasks; the AITalk room; Telegram and Webex
+  integration; keep-alive pings, timers, tracing and the other extras. Requirement R-DOCS-01.
+
 ## Ownership (reviewer, 2026-09-24)
 
 The agent owns this entire repo: code organisation, maintenance, tests, skills, prompts, and docs.
