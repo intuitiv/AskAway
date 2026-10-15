@@ -516,6 +516,7 @@
         observabilitySection.innerHTML = '<div class="observability-rtk-line" id="obs-workspace-month"></div>' +
             '<div id="obs-turn-view">' +
             '<div class="obs-turn-summary" id="obs-turn-summary">No requests yet this turn</div>' +
+            '<div id="obs-cost-categories"></div>' +
             '<div class="obs-cache-row">' +
             '<div class="obs-cache-age" id="obs-cache-age" title="Time since the last model request. The prompt prefix cache stays warm for ~5 min; past that a new message likely incurs a cache MISS (more expensive). A long-running tool ages this clock too.">Prompt cache age: \u2013</div>' +
             '<button type="button" class="obs-cache-ping-btn" id="obs-cache-ping-btn" title="Keep-warm ping: fills the CURRENT chat input and submits it in the SAME agent/mode (identical system prompt \u2192 cache HIT at the cheap cached rate), refreshing the ~5-min TTL. Use it while the agent is idle and this chat is the active one. For automatic keep-warm, enable the native settings below (Keep cache warm + Extended prompt cache).">\u26a1 Ping</button>' +
@@ -1060,7 +1061,6 @@
     }
 
     function closeSettingsModal() {
-        flushAutopilotTextUpdate();
         hideAddPromptForm();
         hideAddAutopilotPromptForm();
     }
@@ -1662,6 +1662,8 @@
 
     function updateObservabilityUI() {
         renderConversationHealth();
+        var categories = document.getElementById('obs-cost-categories');
+        if (categories) categories.innerHTML = monthlyCostTableHtml(observabilityMetrics.monthCredits);
         var monthLine = document.getElementById('obs-workspace-month');
         var month = observabilityMetrics.monthCredits;
         if (monthLine && month) {
@@ -2938,7 +2940,6 @@
             document.body.classList.toggle('avail-' + value.id, value.id === presenceState.mode);
             if (value.id === presenceState.mode) {
                 document.body.style.setProperty('--presence', 'var(--vscode-' + (value.id === 'here' ? 'testing-iconPassed' : value.id === 'away' ? 'editorWarning-foreground' : value.id === 'awayValidator' ? 'charts-purple' : 'descriptionForeground') + ')');
-                document.body.style.setProperty('--presence-accent', 'var(--vscode-textLink-foreground)');
             }
         });
     }
@@ -2947,6 +2948,11 @@
     }
 
     // ── Workers tab: pure render (tested in test-workers-control-plane.cjs) ──
+    function monthlyCostTableHtml(month) {
+        if (!month || !month.categories) return '';
+        return '<table class="observability-table observability-model-table"><thead><tr><th>Category</th><th>Cost ($)</th><th>Requests</th></tr></thead><tbody>' +
+            month.categories.map(function (row) { return '<tr><td>' + workersEsc(row.category) + '</td><td><span class="obs-month-amount">$' + Number(row.dollars).toFixed(2) + '</span></td><td>' + (row.requests == null ? '\u2013' : row.requests) + '</td></tr>'; }).join('') + '</tbody></table>';
+    }
     function workersEsc(value) {
         return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -2978,7 +2984,9 @@
         var age = cacheAgeLabel(Math.floor((now - (b.lastActivityAt || now)) / 1000));
         return '<div class="worker-banner" title="Requests, cost, full prompt of the last request / output this run, cache hit of the last request, time since last activity (cache is cold after 5:00)">' +
             '<span class="worker-banner-metrics">' + usageBannerHtml(Object.assign({}, b, { flagContext: true })) + '</span>' +
-            '<strong class="health-cache ' + age.state + '">' + age.text + '</strong></div>';
+            '<strong class="health-cache ' + age.state + '">' + age.text + '</strong>' +
+            (worker.cacheExpiresAt > now ? '<span> warm for ' + workersDuration(worker.cacheExpiresAt - now) + '</span>' : '') +
+            (worker.lastPingAt ? '<span> · pinged ' + Math.floor(Math.max(0, now - worker.lastPingAt) / 60000) + 'm ago</span>' : '') + '</div>';
     }
     // Worker tools return JSON with workerId/runId; the turn trace shows them as a link to the Workers tab.
     function workerRefsFromPreview(text) {
@@ -3078,7 +3086,7 @@
         var shown = (state.workers || []).filter(function (w) { return (showExpired || !w.expired || turnWorkerIds.indexOf(w.workerId) !== -1) && workersMatch(w, filter); });
         var hidden = (state.workers || []).filter(function (w) { return w.expired && turnWorkerIds.indexOf(w.workerId) === -1; }).length;
         if (!shown.length) {
-            return html + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>' + workersScoreboardHtml(state.scoreboard, openIds);
+            return html + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>' + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
         }
         // Swimlanes: one lane per orchestrator track, only when packets carry tracks.
         var laned = shown.some(function (w) { return w.track; });
@@ -3087,6 +3095,9 @@
                 return (a.track ? 0 : 1) - (b.track ? 0 : 1) || String(a.track).localeCompare(String(b.track));
             });
         }
+        shown = shown.slice().sort(function (a, b) {
+            return Number(b.kind === 'validator' || b.profile === 'validator' || b.track === 'validator') - Number(a.kind === 'validator' || a.profile === 'validator' || a.track === 'validator');
+        });
         var lane = null;
         shown.forEach(function (w) {
             if (laned && w.track !== lane) {
@@ -3117,7 +3128,7 @@
             }
             html += '</div>';
         });
-        return html + workersScoreboardHtml(state.scoreboard, openIds);
+        return html + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
     }
     // Eval results by mode × model: the evidence for picking a worker tier. Same expander and table as Metrics.
     function workersScoreboardHtml(rows, openIds) {
@@ -3132,6 +3143,59 @@
         return '<details class="obs-tl-item workers-scoreboard" data-eid="evals"' + (openIds && openIds.evals ? ' open' : '') + '>' +
             '<summary class="obs-tl-head"><span class="obs-tl-kind">evals</span><span class="obs-tl-name">Eval scoreboard</span><span class="obs-tl-metric">' + runs + ' runs · ' + rows.length + ' mode/model pairs</span></summary>' +
             '<table class="observability-table observability-model-table"><thead><tr><th>Mode</th><th>Model</th><th>Pass</th><th>Rate</th><th>Avg $</th><th>Avg time</th></tr></thead><tbody>' + body + '</tbody></table></details>';
+    }
+    // 008 benchmark: a stored result row converted into the shared banner's `b` shape (research D5), so the
+    // scoreboard (CLI and Workers tab) uses the same efficiencyScore and usageBannerHtml as the live banner.
+    function benchmarkBanner(row) {
+        var u = (row && row.usage) || {};
+        var uncached = (Number(u.input) || 0) + (Number(u.cacheWrite) || 0);
+        var w = u.workers || {};
+        return { dollars: u.dollars === null ? null : Number(u.dollars) || 0, cacheInput: uncached + (Number(u.cacheRead) || 0),
+            lastCached: Number(u.cacheRead) || 0, lastIn: Number(u.mainAveragePrompt) || 0, averagePrompt: Number(u.mainAveragePrompt) || 0,
+            turnOut: Number(u.output) || 0, requests: Number(u.requests) || 0, cacheMisses: uncached, mainContext: true,
+            workers: { workers: Number(w.workers) || 0, requests: Number(w.requests) || 0, dollars: Number(w.dollars) || 0 } };
+    }
+    function benchmarkCompletion(row) {
+        var tasks = (row && row.tasks) || [];
+        return { accepted: tasks.filter(function (t) { return t.outcome === 'accepted'; }).length, total: tasks.length };
+    }
+    // Gate (research D6): '–' when cost or input is unavailable, 'incomplete k/n' unless every task is accepted.
+    function benchmarkScoreLabel(row) {
+        var b = benchmarkBanner(row);
+        var c = benchmarkCompletion(row);
+        if (b.dollars === null || !b.cacheInput) return '\u2013';
+        if (!c.total || c.accepted < c.total) return 'incomplete ' + c.accepted + '/' + c.total;
+        var value = efficiencyScore(b).value;
+        return value === null ? '\u2013' : String(value);
+    }
+    // Rows are comparable only with the reference benchmark version and pricing basis (default: the newest row's).
+    function benchmarkComparable(rows, version, pricingBasis) {
+        var last = rows.length ? rows[rows.length - 1] : {};
+        var v = version || last.benchmarkVersion;
+        var p = pricingBasis || last.pricingBasis;
+        return rows.map(function (r) { return String(r.benchmarkVersion || '').indexOf(v) === 0 && r.pricingBasis === p; });
+    }
+    function workersBenchmarkHtml(rows, openIds) {
+        if (!rows || !rows.length) return '';
+        var comparable = benchmarkComparable(rows);
+        var body = rows.map(function (r, i) {
+            var c = benchmarkCompletion(r);
+            var label = benchmarkScoreLabel(r);
+            var cfg = r.configuration || {};
+            var gated = !/^\d+$/.test(label);
+            return '<div class="benchmark-row' + (gated ? ' benchmark-incomplete' : '') + (comparable[i] ? '' : ' benchmark-not-comparable') + '" data-run-id="' + workersEsc(r.runId) + '">' +
+                '<div class="benchmark-head"><span class="worker-mode">' + workersEsc(cfg.mainAgent) + '</span> ' +
+                '<span class="benchmark-models">' + workersEsc((cfg.modelMix && cfg.modelMix.main) || '') + '</span> &middot; ' +
+                '<span class="benchmark-completion" title="Accepted by hidden checks / fixed task count">' + c.accepted + '/' + c.total + ' accepted</span> &middot; ' +
+                '<span class="benchmark-score">' + workersEsc(label) + '</span>' +
+                (r.status && r.status !== 'completed' ? ' &middot; <span class="benchmark-status">' + workersEsc(r.status) + (r.stopReason ? ' (' + workersEsc(r.stopReason) + ')' : '') + '</span>' : '') +
+                (r.usage && r.usage.dollars === null ? ' &middot; <span class="benchmark-unavailable">cost unavailable</span>' : '') +
+                (comparable[i] ? '' : ' &middot; <span class="benchmark-flag" title="Different benchmark version or pricing basis">not comparable</span>') + '</div>' +
+                '<div class="benchmark-banner">' + usageBannerHtml(benchmarkBanner(r)) + '</div></div>';
+        }).join('');
+        return '<details class="obs-tl-item workers-benchmark" data-eid="benchmark"' + (openIds && openIds.benchmark ? ' open' : '') + '>' +
+            '<summary class="obs-tl-head"><span class="obs-tl-kind">benchmark</span><span class="obs-tl-name">Benchmark</span><span class="obs-tl-metric">' + rows.length + ' run' + (rows.length === 1 ? '' : 's') + '</span></summary>' +
+            body + '</details>';
     }
     // ── end Workers pure render ──
 

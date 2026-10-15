@@ -31,6 +31,7 @@ export interface WorkerRow {
     sessionId: string;
     sessionOpenAction: string;
     lastUpdateAt: number;
+    lastPingAt: number;
     blocker: string;
     /** Tokens the worker's next request will send; the number that drives cost and the 300K retirement. */
     nextInputTokens: number;
@@ -190,6 +191,10 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
         byWorker.set(run.workerId, runs);
     }
     const workers: WorkerRow[] = [];
+    const pings = new Map<string, number>();
+    for (const fact of runtime.facts(workspacePath)) {
+        if (fact.ping) pings.set(fact.workerId, Math.max(pings.get(fact.workerId) ?? 0, fact.ts));
+    }
     for (const [workerId, runs] of byWorker) {
         runs.sort((a, b) => a.startedAt - b.startedAt);
         const routed = runtime.router.worker(workerId);
@@ -213,17 +218,17 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
         workers.push({
             workerId, state, adapter: 'opencode', profile: latest.profile, model: latest.model, thinking: latest.thinking,
             sessionId: session?.sessionId ?? '', sessionOpenAction: session?.sessionOpenAction ?? '',
-            lastUpdateAt: Math.max(...runs.map((run) => run.updatedAt)), blocker,
+            lastUpdateAt: Math.max(...runs.map((run) => run.updatedAt)), lastPingAt: pings.get(workerId) ?? 0, blocker,
             nextInputTokens: current.nextInputTokens || routed?.contextTokens || 0, cacheExpiresAt, expired,
             knowledge: [...runs].reverse().find((run) => run.knowledge)?.knowledge ?? '',
             forkedFrom: routed?.forkedFrom ?? runs.find((run) => run.forkedFrom)?.forkedFrom ?? '',
             track: [...runs].reverse().find((run) => run.track)?.track ?? '',
             banner: { requests: current.usage.steps, dollars: current.usage.cost, lastIn: current.lastPromptTokens, lastCached: current.lastCachedTokens,
-                turnOut: current.usage.output, lastActivityAt: current.updatedAt },
+                turnOut: current.usage.output, lastActivityAt: Math.max(current.updatedAt, pings.get(workerId) ?? 0) },
             usage: sumUsage(traces), runs: traces,
         });
     }
-    workers.sort((a, b) => b.lastUpdateAt - a.lastUpdateAt);
+    workers.sort((a, b) => Number(b.track === 'validator' || b.profile === 'validator') - Number(a.track === 'validator' || a.profile === 'validator') || b.lastUpdateAt - a.lastUpdateAt);
     const endpoint = runtime.serverEndpoint;
     return { workspacePath, generatedAt: now(), server: { state: endpoint ? 'ATTACHED' : 'NOT_ATTACHED', endpoint }, workers };
 }

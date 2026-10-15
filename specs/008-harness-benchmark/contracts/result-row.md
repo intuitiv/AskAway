@@ -12,7 +12,7 @@ One JSON object per line, appended (store location: plan Q5). Never rewritten.
   "configuration": { "mainAgent": "orchestrator", "promptHash": "sha256", "harness": "opencode", "modelMix": { "main": "github-copilot/...", "workers": { "build": "github-copilot/..." } } },
   "startedAt": "ISO-8601",
   "status": "completed | interrupted | skipped",
-  "stopReason": "spend cap $2 | model unavailable | null",
+  "stopReason": "spend cap $2 | total spend cap $5 | model unavailable | null",
   "tasks": [{ "id": "simple-1", "level": "simple", "outcome": "accepted | failed | skipped | interrupted", "failedChecks": ["name"] }],
   "usage": { "requests": 0, "toolCalls": 0, "input": 0, "output": 0, "reasoning": 0, "cacheRead": 0, "cacheWrite": 0, "dollars": 0.0, "mainAveragePrompt": 0, "workers": { "workers": 0, "requests": 0, "dollars": 0.0 } }
 }

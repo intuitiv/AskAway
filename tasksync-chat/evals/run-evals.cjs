@@ -1,6 +1,8 @@
 // Live eval runner for AskAway workers and the orchestrator.
 //   node evals/run-evals.cjs --suite workers [--case a,b] [--mode m] [--model id] [--variant v] --live
 //   node evals/run-evals.cjs --suite orchestrator [--case a] [--model id] --live
+//   node evals/run-evals.cjs --suite benchmark [--config name|file.json ...] [--level l] [--repeat n] [--model id] [--attach url] --live
+//   node evals/run-evals.cjs --suite benchmark --scoreboard [--version v] [--results file]
 // Without --live it lists what would run and makes no provider request. Results append to ~/.askaway/evals/results.jsonl.
 const childProcess = require('node:child_process');
 const crypto = require('node:crypto');
@@ -22,7 +24,7 @@ function args() {
     const argv = process.argv.slice(2);
     for (let i = 0; i < argv.length; i++) {
         const key = argv[i].replace(/^--/, '');
-        if (key === 'live') { out.live = true; } else { out[key] = argv[++i]; }
+        if (key === 'live') { out.live = true; } else if (key === 'scoreboard') { out.scoreboard = true; } else if (key === 'config') { (out.configs = out.configs || []).push(argv[++i]); } else { out[key] = argv[++i]; }
     }
     return out;
 }
@@ -179,8 +181,37 @@ async function runOrchestrator(opts, profiles, totals) {
     }
 }
 
+async function runBenchmarkSuite(opts) {
+    const benchmark = require('./benchmark/runner.cjs');
+    const { manifest, tasks, version } = benchmark.loadBenchmark();
+    const configs = opts.configs || Object.keys(manifest.configurations);
+    const levels = opts.level ? [opts.level] : benchmark.LEVELS;
+    if (!levels.every((l) => benchmark.LEVELS.includes(l))) { throw new Error(`unknown level: ${opts.level}`); }
+    if (opts.scoreboard !== undefined) {
+        const board = require('./benchmark/scoreboard.cjs');
+        const results = opts.results || RESULTS;
+        const rows = board.scoreboard(board.readRows(results), { version: opts.version, referenceVersion: version, pricingBasis: manifest.pricingBasis });
+        for (const row of rows) { console.log(board.scoreboardLine(row)); }
+        console.log(`SCOREBOARD runs=${rows.length} comparable=${rows.filter((r) => r.comparable).length} version=${version.slice(0, 12)} results=${results}`);
+        return;
+    }
+    if (!opts.live) {
+        console.log(`BENCHMARK ${manifest.id} version=${version.slice(0, 12)} levels=${levels.join(',')} tasks=${tasks.filter((t) => levels.includes(t.level)).length} configs=${configs.join(',')} cap=$${manifest.spendCapUsd}/config total=$${manifest.totalSpendCapUsd} (dry run: pass --live to spend provider credits)`);
+        return;
+    }
+    const profiles = loadProfiles();
+    const workers = Object.fromEntries(Object.values(profiles).map((p) => [p.name, p.model]));
+    const resolved = configs.map((name) => {
+        const base = name.endsWith('.json') ? JSON.parse(fs.readFileSync(name, 'utf8')) : manifest.configurations[name];
+        if (!base) { throw new Error(`unknown configuration: ${name}`); }
+        return { name, ...base, model: opts.model || base.model, workers: base.workers || workers };
+    });
+    await benchmark.runBenchmark({ configs: resolved, levels, repeat: Number(opts.repeat || 1), resultsFile: RESULTS, attach: opts.attach });
+}
+
 (async () => {
     const opts = args();
+    if (opts.suite === 'benchmark') { await runBenchmarkSuite(opts); return; }
     const profiles = loadProfiles();
     const totals = { pass: 0, fail: 0, skip: 0, cost: 0 };
     if (opts.suite === 'orchestrator') { await runOrchestrator(opts, profiles, totals); } else { await runWorkers(opts, profiles, totals); }

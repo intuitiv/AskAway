@@ -76,7 +76,11 @@ assert.match(flyout.innerHTML, /presence-badge/);
 flyout.handlers.keydown({ key: 'Escape', preventDefault() {} }); assert.equal(flyout, null);
 const css = fs.readFileSync(path.join(__dirname, 'media', 'main.css'), 'utf8');
 assert.match(css, /prefers-reduced-motion/);
-assert.match(css, /body\.avail-awayValidator::before[^}]+animation: presence-glow/);
+// One hue per mode as a static light→strong gradient; no second accent colour, no pulsing (2026-10-14).
+const frame = css.match(/body\[class\*="avail-"\]::before, \.availability-frame::before \{[^}]+\}/)[0];
+assert.match(frame, /linear-gradient\(135deg, color-mix\(in srgb, var\(--presence\) \d+%, transparent\), var\(--presence\)\)/);
+assert.doesNotMatch(css + fs.readFileSync(path.join(__dirname, 'media', 'webview.js'), 'utf8'), /presence-accent|presence-glow/);
+for (const mode of ['here', 'away', 'awayValidator', 'offline']) assert.equal((css.match(new RegExp(`body\\.avail-${mode},[^{]*\\{ --presence: var\\(--vscode-[\\w-]+\\); \\}`, 'g')) || []).length, 1, `${mode} has one hue`);
 assert.match(provider, /'setContext', 'askaway.availability'/);
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-avail-ui-home-'));

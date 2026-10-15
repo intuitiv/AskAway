@@ -10,7 +10,7 @@
 - [x] CHK002 Main agent and harness are decided (FR-013; Rules 2026-10-10)
 - [x] CHK003 Score definition and gate are decided and point to one function (FR-006, FR-009; research D2, D6)
 - [x] CHK004 Spend limit is stated with a value and stop behaviour (FR-011; research D4)
-- [ ] CHK005 Scoreboard surface in the UI is decided (plan Q1, blocks T014)
+- [x] CHK005 Scoreboard surface in the UI is decided (plan Q1, blocks T014)
 - [ ] CHK006 Spend-cap scope (per configuration run vs per comparison) is confirmed (plan Q2)
 - [ ] CHK007 Result-row storage location is confirmed (plan Q5)
 

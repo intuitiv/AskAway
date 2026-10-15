@@ -106,7 +106,7 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
 .talk-subtitle { overflow: hidden; color: var(--tk-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .talk-subtitle .left { opacity: .5; text-decoration: line-through; }
 .talk-typing-line { color: var(--tk-green); }
-.talk-moderator {
+.talk-in-charge {
     flex: none;
     padding: 2px 8px;
     border: 1px solid var(--tk-frame);

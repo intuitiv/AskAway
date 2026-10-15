@@ -1086,12 +1086,6 @@ export function activate(context: vscode.ExtensionContext) {
         const liveEnabled = () => vscode.workspace.getConfiguration('askaway').get<boolean>('validator.live', false);
         const availability = () => readAvailability(memoryProject);
         context.subscriptions.push(registerAttentionNotify({ availability: () => availability() ?? undefined, view: () => attentionView }));
-        const waitForUserResponse = provider.waitForUserResponse.bind(provider);
-        let attentionQuestion = 0;
-        provider.waitForUserResponse = question => {
-            void notifyAttention({ id: `question-${++attentionQuestion}`, kind: 'question', pending: true, to: 'user', text: question }).catch(() => undefined);
-            return waitForUserResponse(question);
-        };
         const digest = new LiveDigest(memoryProject, sharedCommentaryStore(), liveEnabled, availability);
         const watch = new CommentaryWatch(memoryProject, sharedCommentaryStore(), liveEnabled, availability,
             text => triggers.validatorCall(text));
@@ -1126,13 +1120,6 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         // ── Commands — registered synchronously, reference lazy-loaded services ──
-
-        // Send current input command (for Keyboard Shortcuts)
-        context.subscriptions.push(
-            vscode.commands.registerCommand('askaway.sendMessage', () => {
-                provider.triggerSendFromShortcut();
-            })
-        );
 
         context.subscriptions.push(
             vscode.commands.registerCommand('askaway.dumpLmTools', async () => {
@@ -1192,18 +1179,6 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         provider._pushAvailability();
-
-        // Session commands
-        context.subscriptions.push(
-            vscode.commands.registerCommand('askaway.clearCurrentSession', async () => {
-                const result = await vscode.window.showWarningMessage(
-                    'Clear all tool calls from current session?',
-                    { modal: true },
-                    'Clear'
-                );
-                if (result === 'Clear') { provider.clearCurrentSession(); }
-            })
-        );
 
         // Webex/Telegram commands (services loaded in deferred block)
         const initializeWebex = wireWebex(context, provider, outputChannel, sharedCommentaryStore(),

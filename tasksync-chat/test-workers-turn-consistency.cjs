@@ -55,6 +55,7 @@ vm.runInNewContext('out.Provider = class { ' + push + ' };', {
 const p = new bridge.Provider();
 p._workersStateSource = () => projectWorkersState(runtime, workspace, () => 400000);
 p._workerSpend = () => spend;
+p._benchmarkRows = () => [];
 let state;
 p._broadcast = (message) => { state = message.data; };
 p._refreshWorkersState();

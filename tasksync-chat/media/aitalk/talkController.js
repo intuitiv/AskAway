@@ -44,7 +44,7 @@ function renderAITalk(next = state) {
 }
 function receive(data) {
     if (data.type === 'aitalkState') renderAITalk(data.data);
-    if (data.type === 'availabilityState') { availability = createPresence({ ...availability.snapshot(), ...(data.data || { mode: 'here' }) }); renderAITalk(); }
+    if (data.type === 'availabilityState') { availability = createPresence({ ...availability.snapshot(), ...(data.data || { mode: 'here' }), until: data.data?.until || '' }); renderAITalk(); }
     if (data.type === 'openPresence') { if (!availability.snapshot().open) availability.toggle(); renderAITalk(); }
     if (data.type === 'aitalkAttachments') { attachments.push(...data.files); draft = root().querySelector('textarea').value; renderAITalk(); }
 }

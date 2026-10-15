@@ -1,0 +1,23 @@
+// Reference solution for batch-01..batch-20.
+module.exports = {
+    sum: (a, b) => a + b,
+    max: (a, b) => (a > b ? a : b),
+    isEven: (n) => n % 2 === 0,
+    square: (n) => n * n,
+    last: (arr) => arr[arr.length - 1],
+    upper: (s) => s.toUpperCase(),
+    count: (arr) => arr.length,
+    abs: (n) => Math.abs(n),
+    negate: (b) => !b,
+    first: (s) => s.charAt(0),
+    reverse: (s) => s.split('').reverse().join(''),
+    min: (arr) => Math.min(...arr),
+    avg: (arr) => arr.reduce((a, b) => a + b, 0) / arr.length,
+    trim: (s) => s.trim(),
+    clamp: (n, lo, hi) => Math.max(lo, Math.min(n, hi)),
+    startsWithA: (s) => s.startsWith('a'),
+    double: (arr) => arr.map((x) => x * 2),
+    unique: (arr) => [...new Set(arr)],
+    join: (arr) => arr.join(','),
+    cube: (n) => n * n * n,
+};

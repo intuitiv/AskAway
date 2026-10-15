@@ -81,7 +81,17 @@ const vm = require('node:vm');
     snapshot.messages.push({ id: 'draft', author: 'main', text: 'Send this?', draftId: 'webex-draft' }); paint();
     click({ react: '👍', msg: 'draft' }); assert.equal(sent.at(-1).type, 'aitalkApproveDraft'); assert.equal(sent.at(-1).draftId, 'webex-draft');
     snapshot = { messages: [{ id: 'fallback', author: 'reviewer', authorKind: 'user', displayName: 'Sam Morgan', rank: 400, text: 'Hello' }, { id: 'fallback-agent', author: 'planner', authorKind: 'agent', displayName: 'Planning', rank: 200, text: 'Ready' }] };
-    paint(); assert.match(host.innerHTML, /Sam Morgan moderates/); assert.match(host.innerHTML, />SM<\/span>/);
+    paint(); assert.doesNotMatch(host.innerHTML, /moderate/); assert.match(host.innerHTML, />SM<\/span>/);
+    // Who is in charge follows availability, not rank (2026-10-14).
+    const inCharge = { here: null, away: 'You answer from your phone', awayValidator: 'Validator in charge', offline: 'Nobody answers; questions wait for you' };
+    for (const [mode, label] of Object.entries(inCharge)) {
+        handlers['window-message']({ data: { type: 'availabilityState', data: { mode, setAt: '' } } });
+        const shown = host.innerHTML.match(/<span class="talk-in-charge">([^<]*)<\/span>/);
+        assert.equal(shown ? shown[1] : null, label, mode);
+    }
+    handlers['window-message']({ data: { type: 'availabilityState', data: { mode: 'here', setAt: '' } } });
+    assert.doesNotMatch(fs.readFileSync(__dirname + '/media/aitalk/talkRender.js', 'utf8'), /moderates?'/);
+    console.log('PASS EV-AITALK-IN-CHARGE Here no label; Away phone; Validator in charge; Offline nobody answers; no moderate wording');
     assert.match(fs.readFileSync(__dirname + '/storybook/prototypes/presence.js', 'utf8'), /media\/aitalk\/presence/);
     const scriptHandlers = {};
     const controller = createTalkController({ host, events: { addEventListener(name, fn) { (scriptHandlers[name] ||= []).push(fn); } }, post: action => sent.push(action) });
@@ -150,4 +160,5 @@ const vm = require('node:vm');
     console.log('PASS EV-AITALK-UI shared controller script: send/cancel/mentions keyboard/emoji/attach/more/reaction/live typing+delivery/join+leave/unread scroll');
     console.log('PASS EV-AITALK-UI avatar initials/photo; shared availability action; draft thumbs-up approval; fallback registry and viewer moderator');
     console.log('PASS EV-AITALK-UI shared prototype; scripted joins/leaves; stable present mentions; addressed Enter send; sent/delivered/read ticks; quote reply; Shift+Enter; escaped text');
+    require('./test-aitalk-availability-menu.cjs');
 })().catch(error => { console.error(error); process.exitCode = 1; });

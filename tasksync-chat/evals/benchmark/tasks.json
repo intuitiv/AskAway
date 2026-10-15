@@ -1,0 +1,33 @@
+{
+  "levels": {
+    "simple": "Fix this task in the workspace, then run node test/visible.cjs.",
+    "medium": "Fix this task in the workspace, then run node test/visible.cjs.",
+    "complex": "Implement this feature in the workspace, then run node test/visible.cjs.",
+    "batch": "Fix all of these 20 small tasks in src/batch.js (each helper's comment states what it must do), then run node test/visible.cjs."
+  },
+  "tasks": [
+    { "id": "simple-1", "level": "simple", "hiddenCheck": "simple-1.cjs", "prompt": "percent(part, total) in src/math.js must return the whole-number percentage of part in total, e.g. percent(1, 4) is 25." },
+    { "id": "medium-1", "level": "medium", "hiddenCheck": "medium-1.cjs", "prompt": "cartSummary(items) in src/cart.js must charge price x qty for every item plus tax from src/tax.js, and money(amount) in src/format.js must show two decimals, e.g. '$12.00'." },
+    { "id": "complex-1", "level": "complex", "hiddenCheck": "complex-1.cjs", "prompt": "Implement specs/001-discount-codes/spec.md by completing specs/001-discount-codes/tasks.md: applyDiscount in src/discount.js and tests in test/visible.cjs." },
+    { "id": "batch-01", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "sum in src/batch.js: a plus b." },
+    { "id": "batch-02", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "max in src/batch.js: the larger of a and b." },
+    { "id": "batch-03", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "isEven in src/batch.js: true when n is even." },
+    { "id": "batch-04", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "square in src/batch.js: n squared." },
+    { "id": "batch-05", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "last in src/batch.js: last element of arr." },
+    { "id": "batch-06", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "upper in src/batch.js: s in upper case." },
+    { "id": "batch-07", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "count in src/batch.js: number of elements in arr." },
+    { "id": "batch-08", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "abs in src/batch.js: absolute value of n." },
+    { "id": "batch-09", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "negate in src/batch.js: logical not of b." },
+    { "id": "batch-10", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "first in src/batch.js: first character of s." },
+    { "id": "batch-11", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "reverse in src/batch.js: s reversed." },
+    { "id": "batch-12", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "min in src/batch.js: smallest element of arr." },
+    { "id": "batch-13", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "avg in src/batch.js: mean of arr." },
+    { "id": "batch-14", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "trim in src/batch.js: s without leading and trailing spaces." },
+    { "id": "batch-15", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "clamp in src/batch.js: n limited to [lo, hi]." },
+    { "id": "batch-16", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "startsWithA in src/batch.js: true when s starts with 'a'." },
+    { "id": "batch-17", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "double in src/batch.js: every element times 2." },
+    { "id": "batch-18", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "unique in src/batch.js: arr without duplicates, first occurrence order." },
+    { "id": "batch-19", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "join in src/batch.js: elements joined by ','." },
+    { "id": "batch-20", "level": "batch", "hiddenCheck": "batch.cjs", "prompt": "cube in src/batch.js: n cubed." }
+  ]
+}

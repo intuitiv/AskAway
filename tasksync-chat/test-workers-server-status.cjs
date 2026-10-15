@@ -18,7 +18,7 @@ const shared = load('workers/sharedServer.ts', {});
 let probes = 0, spawns = 0;
 shared.defaultServerDeps.probe = url => { probes++; return shared.probeHttp(url); };
 shared.defaultServerDeps.spawn = () => { spawns++; throw new Error('must not spawn for an existing server or view'); };
-const runtime = { serverEndpoint: '', list: () => [], setServerEndpoint(endpoint) { this.serverEndpoint = endpoint; }, rehydrate() {} };
+const runtime = { serverEndpoint: '', list: () => [], facts: () => [], setServerEndpoint(endpoint) { this.serverEndpoint = endpoint; }, rehydrate() {} };
 const vscode = { workspace: { workspaceFolders: [{ uri: { fsPath: root } }], getConfiguration: () => ({ get: () => false }) } };
 const host = load('workers/workerHost.ts', {
     vscode, './sharedServer': shared, './openCodeRuntime': { OpenCodeWorkerRuntime: class { constructor() { return runtime; } } },
@@ -48,6 +48,7 @@ vm.runInNewContext(blocks.map(([from, to]) => webview.slice(webview.indexOf(from
 const pushed = [];
 const provider = new output.Provider();
 provider._workerSpend = () => ({ workerIds: [] });
+provider._benchmarkRows = () => [];
 provider._broadcast = message => { pushed.push(message.data); ui.apply(message.data); };
 provider.refreshWorkersState = () => provider._refreshWorkersState();
 provider.setWorkersStateSource = source => { provider._workersStateSource = source; };

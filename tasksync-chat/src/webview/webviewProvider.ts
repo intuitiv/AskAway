@@ -23,14 +23,15 @@ import { openInTerminalApp } from '../workers/terminalApp';
 import { commentaryKey, commentaryView, CommentaryView } from '../commentary/commentary';
 import { noteRequestStart } from '../observability/cacheClock';
 import { LogCursor, readLogIncrement } from '../observability/logCursor';
-type WorkspaceCostHistory = { requests: Record<string, { ts: number; dollars: number; source: string }>; cursors: Record<string, LogCursor> };
+type WorkspaceCostHistory = { requests: Record<string, { ts: number; dollars: number; source: string; profile?: string; category?: string }>; cursors: Record<string, LogCursor> };
 import type { TurnActivity } from '../commentary/telegramLive';
 import { CloudDigestScheduler, cloudDigestPoster } from '../cloud/cloudDigest';
 import { postRemoteQuestion } from '../services/remoteChannel';
 import { HandoffNotifier } from '../services/handoffNotifier';
 import { observeWorkers, sharedCommentaryStore, sharedWorkerRuntime, workerSpendSince } from '../workers/workerHost';
-import { workspaceCostRequests } from '../services/workspaceCost';
+import { workspaceCostRequests, monthlyCostCategories } from '../services/workspaceCost';
 import { presenceStates } from '../availability/presence';
+import { aitalkUserName, gitGlobalUserName } from '../aitalk/userName';
 import { turnTotals, mergeToolUsage, persistTurnTotals } from '../workers/turnBudget';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
@@ -79,16 +80,6 @@ export interface UserResponseResult {
 }
 
 // Tool call history entry
-export interface ToolCallEntry {
-    id: string;
-    prompt: string;
-    response: string;
-    timestamp: number;
-    askedAt?: number;
-    isFromQueue: boolean;
-    status: 'pending' | 'completed' | 'cancelled';
-    attachments?: AttachmentInfo[];
-}
 
 // Parsed choice from question
 export interface ParsedChoice {
@@ -119,7 +110,7 @@ interface ModelBreakdown extends ScopeMetrics {
 }
 
 interface ObservabilityMetrics {
-    monthCredits?: { label: string; aiu: number; workerDollars: number; cloudDollars: number; totalDollars: number; validatorDollars: number; evalDollars: number; allTimeDollars: number; allTimeAiu: number; months: Record<string, number> };
+    monthCredits?: { label: string; aiu: number; workerDollars: number; cloudDollars: number; totalDollars: number; validatorDollars: number; evalDollars: number; allTimeDollars: number; allTimeAiu: number; months: Record<string, number>; categories: ReturnType<typeof monthlyCostCategories> };
     // Flat fields mirror the workspace cumulative scope (kept for backward compatibility).
     requestCount: number;
     inputTokens: number;
@@ -416,7 +407,7 @@ type ToWebviewMessage =
     | { type: 'aitalkState'; data: ReturnType<AITalkStore['snapshot']> & { userName?: string; userPhoto?: string } }
     | { type: 'aitalkAttachments'; files: Array<{ name: string; path: string }> }
     | { type: 'specsData'; data: SpecScanResult }
-    | { type: 'workersState'; data: (WorkersState & { cloudWorkers?: Awaited<ReturnType<CloudSpecsController['workers']>> }) | null }
+    | { type: 'workersState'; data: (WorkersState & { cloudWorkers?: Awaited<ReturnType<CloudSpecsController['workers']>>; benchmark?: unknown[] }) | null }
     | { type: 'workerTrace'; data: WorkerTrace }
     | { type: 'commentaryState'; data: CommentaryView | null }
     | { type: 'availabilityState'; data: AvailabilityState | null; states: typeof presenceStates }
@@ -425,9 +416,6 @@ type ToWebviewMessage =
     | { type: 'updateWorkerQueue'; tasks: Array<{ id: string; role: 'command' | 'subagent'; task: string; status: 'pending' | 'running' | 'done'; createdAt: number }> }
     | { type: 'availableModels'; models: Array<{ id: string; name: string; vendor: string; family: string; maxInputTokens: number }> }
     | { type: 'availableTools'; tools: Array<{ name: string; description: string; tags: string[] }> }
-    | { type: 'toolCallPending'; id: string; prompt: string; isApprovalQuestion: boolean; choices?: ParsedChoice[] }
-    | { type: 'toolCallCompleted'; entry: ToolCallEntry }
-    | { type: 'updateCurrentSession'; history: ToolCallEntry[] }
     | { type: 'openSettingsModal' }
     | {
         type: 'updateSettings';
@@ -471,7 +459,6 @@ type ToWebviewMessage =
     | { type: 'planAutoAdvancing'; taskId: string; nextTaskId: string; nextTaskTitle: string }
     | { type: 'planExecutionStarted' }
     | { type: 'planExecutionPaused' }
-    | { type: 'triggerSendFromShortcut' }
     | { type: 'clear' };
 
 type FromWebviewMessage =
@@ -574,12 +561,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _queueEnabled: boolean = true; // Default to queue mode
 
     // Current session tool calls (memory only - not persisted during session)
-    private _currentSessionCalls: ToolCallEntry[] = [];
     private _currentToolCallId: string | null = null;
 
     // Webview ready state - prevents race condition on first message
     private _webviewReady: boolean = false;
-    private _pendingToolCallMessage: { id: string; prompt: string } | null = null;
 
     private _observabilityPollInterval: ReturnType<typeof setInterval> | null = null;
     private readonly _OBSERVABILITY_POLL_MS = 2000;
@@ -691,8 +676,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private readonly _SHORT_QUESTION_THRESHOLD = 100; // chars for approval heuristic
 
 
-    // Map for O(1) lookup of tool calls by ID (synced with _currentSessionCalls array)
-    private _currentSessionCallsMap: Map<string, ToolCallEntry> = new Map();
 
     // Reusable prompts (loaded from VS Code settings)
     private _reusablePrompts: ReusablePrompt[] = [];
@@ -841,17 +824,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 this._handleMessagingResponse(taskId, response, user, attachments);
             });
         }
-        // Wire up history callback so Telegram /history command can fetch conversation data
-        if (service && typeof service.setHistoryCallback === 'function') {
-            service.setHistoryCallback(() => {
-                return this._currentSessionCalls.map(entry => ({
-                    prompt: entry.prompt,
-                    response: entry.response,
-                    timestamp: entry.timestamp,
-                    status: entry.status
-                }));
-            });
-        }
     }
 
     public getTelegramService(): any {
@@ -875,18 +847,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     this._currentToolCallId = null;
                     this._signalNextWaiter();
 
-                    // Update the session entry
-                    const entry = this._currentSessionCallsMap.get(toolCallId);
-                    if (entry) {
-                        entry.response = prompt;
-                        entry.isFromQueue = true;
-                        entry.status = 'completed';
-                    }
-
-                    // Broadcast toolCallCompleted to trigger "Processing your response" state
-                    if (entry) {
-                        this._broadcast({ type: 'toolCallCompleted', entry });
-                    }
 
                     resolver({ value: prompt, queue: true, attachments: [] });
                     this._userMessageDelivered(toolCallId, prompt);
@@ -1341,24 +1301,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const resolve = this._pendingRequests.get(this._currentToolCallId);
         if (!resolve) { return; }
 
-        // Update the pending entry
-        const pendingEntry = this._currentSessionCallsMap.get(this._currentToolCallId);
-        if (pendingEntry && pendingEntry.status === 'pending') {
-            pendingEntry.response = `${response} [via ${user}]`;
-            pendingEntry.status = 'completed';
-            pendingEntry.timestamp = Date.now();
-        }
-
-
-        // Broadcast completion
-        if (pendingEntry) {
-            this._broadcast({
-                type: 'toolCallCompleted',
-                entry: pendingEntry
-            });
-        }
-
-        this._updateCurrentSessionUI();
         this._resetTurnMetrics();
         const resolvedMsgId = this._currentToolCallId;
         resolve({ value: response, queue: this._queueEnabled, attachments: attachments || [] });
@@ -1399,11 +1341,23 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             void observeWorkers(root).then(() => {
                 const observed = projectWorkersState(sharedWorkerRuntime(), root);
                 observed.turnWorkerIds = this._workerSpend().workerIds;
-                this._broadcast({ type: 'workersState', data: { ...observed, cloudWorkers: this._cloudWorkers ?? [] } });
+                this._broadcast({ type: 'workersState', data: { ...observed, cloudWorkers: this._cloudWorkers ?? [], benchmark: this._benchmarkRows() } });
             }).catch(error => console.warn('[AskAway] Worker server observation failed:', error));
         }
         if (data) { data.turnWorkerIds = this._workerSpend().workerIds; }
-        this._broadcast({ type: 'workersState', data: data ? { ...data, cloudWorkers: this._cloudWorkers ?? [] } : null });
+        this._broadcast({ type: 'workersState', data: data ? { ...data, cloudWorkers: this._cloudWorkers ?? [], benchmark: this._benchmarkRows() } : null });
+    }
+
+    /** 008 Benchmark section: the newest benchmark result rows (ids, hashes and usage only), oldest first. */
+    private _benchmarkRows(): unknown[] {
+        let text = '';
+        try { text = fs.readFileSync(path.join(os.homedir(), '.askaway', 'evals', 'results.jsonl'), 'utf8'); } catch { return []; }
+        const rows: unknown[] = [];
+        for (const line of text.split('\n')) {
+            if (!line.includes('"suite":"benchmark"')) { continue; }
+            try { rows.push(JSON.parse(line)); } catch { /* skip malformed line */ }
+        }
+        return rows.slice(-20);
     }
 
     private _workerTraceSource: ((workspacePath: string, workerId: string) => Promise<WorkerTrace>) | undefined;
@@ -1532,44 +1486,15 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      * Preserves any pending tool call entry so responses don't lose their prompt
      * Cleans up temporary images associated with cleared entries
      */
-    public clearCurrentSession(): void {
-        // Preserve pending entry if there is one
-        let pendingEntry: ToolCallEntry | undefined;
-        if (this._currentToolCallId) {
-            pendingEntry = this._currentSessionCallsMap.get(this._currentToolCallId);
-        }
-
-        // Clean up temp images from entries being cleared (except pending)
-        const entriesToClear = pendingEntry
-            ? this._currentSessionCalls.filter(e => e.id !== pendingEntry!.id)
-            : this._currentSessionCalls;
-        this._cleanupTempImagesFromEntries(entriesToClear);
-
-        // Clear all entries
-        this._currentSessionCalls = [];
-        this._currentSessionCallsMap.clear();
-
-        // Restore pending entry if we had one
-        if (pendingEntry) {
-            this._currentSessionCalls.push(pendingEntry);
-            this._currentSessionCallsMap.set(pendingEntry.id, pendingEntry);
-        }
-
-        this._updateCurrentSessionUI();
-    }
 
     /**
      * Trigger send from keyboard shortcut (Ctrl/Cmd+Enter)
      */
-    public triggerSendFromShortcut(): void {
-        this._view?.webview.postMessage({ type: 'triggerSendFromShortcut' } as ToWebviewMessage);
-    }
 
     /**
      * Start a new session: clear the current session
      */
     public startNewSession(): void {
-        this.clearCurrentSession();
 
         // Reset session state
         this._sessionStartTime = null;
@@ -1841,14 +1766,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         const resolve = this._pendingRequests.get(toolCallId);
         if (resolve) {
-            const pendingEntry = this._currentSessionCallsMap.get(toolCallId);
-            if (pendingEntry && pendingEntry.status === 'pending') {
-                pendingEntry.response = responseText;
-                pendingEntry.status = 'completed';
-                pendingEntry.timestamp = Date.now();
-                this._view?.webview.postMessage({ type: 'toolCallCompleted', entry: pendingEntry } as ToWebviewMessage);
-            }
-            this._updateCurrentSessionUI();
             this._resetTurnMetrics();
             resolve({ value: responseText, queue: this._queueEnabled && this._promptQueue.length > 0, attachments: [] });
             this._pendingRequests.delete(toolCallId);
@@ -1885,10 +1802,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 const warningThresholdMs = this._sessionWarningHours * 60 * 60 * 1000;
                 if (this._sessionWarningHours > 0 && !this._sessionWarningShown && elapsed >= warningThresholdMs) {
                     this._sessionWarningShown = true;
-                    const callCount = this._currentSessionCalls.length;
                     const hoursLabel = this._sessionWarningHours === 1 ? 'hour' : 'hours';
                     vscode.window.showWarningMessage(
-                        `Your session has been running for over ${this._sessionWarningHours} ${hoursLabel} (${callCount} tool calls). Consider starting a new session.`,
+                        `Your session has been running for over ${this._sessionWarningHours} ${hoursLabel}. Consider starting a new session.`,
                         'New Session', 'Dismiss'
                     ).then(action => {
                         if (action === 'New Session') { this.startNewSession(); }
@@ -2615,7 +2531,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const local = { workerDollars: 0, validatorDollars: 0, evalDollars: 0, cloudDollars: 0 };
         for (const row of root ? await workspaceCostRequests(root) : []) {
-            history.requests[row.id] ??= row;
+            history.requests[row.id] = row;
         }
         await this._context.workspaceState.update('workspace-cost-history-v1', history);
         for (const row of Object.values(history.requests)) {
@@ -2629,7 +2545,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             else local.evalDollars += row.dollars;
         }
         return { label: now.toLocaleString('en', { month: 'long', timeZone: 'UTC' }), aiu: nanoAiu / 1e9, ...local,
-            totalDollars: months[now.toISOString().slice(0, 7)] ?? 0, months,
+            totalDollars: months[now.toISOString().slice(0, 7)] ?? 0, months, categories: monthlyCostCategories(Object.values(history.requests), start, end),
             allTimeAiu: allTimeNanoAiu / 1e9,
             allTimeDollars: Object.values(months).reduce((sum, dollars) => sum + dollars, 0) };
     }
@@ -3797,17 +3713,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._stopObservabilityPolling();
 
 
-        // Clear session calls map (O(1) lookup cache)
-        this._currentSessionCallsMap.clear();
 
         // Clear pending requests (reject any waiting promises)
         this._pendingRequests.clear();
 
-        // Clean up temp images from current session before clearing
-        this._cleanupTempImagesFromEntries(this._currentSessionCalls);
-
-        // Clear session data
-        this._currentSessionCalls = [];
 
         // Dispose all registered disposables
         this._disposables.forEach(d => d.dispose());
@@ -3881,13 +3790,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             });
             this._pendingRequests.delete(oldToolCallId);
 
-            // Update the old entry status to indicate it was superseded
-            const oldEntry = this._currentSessionCallsMap.get(oldToolCallId);
-            if (oldEntry && oldEntry.status === 'pending') {
-                oldEntry.status = 'cancelled';
-                oldEntry.response = '[Superseded by new request]';
-                this._updateCurrentSessionUI();
-            }
             // Notify messaging services so the superseded task stops polling
             this._telegramService?.resolveTask?.(oldToolCallId);
             this._webexService?.resolveTask?.(oldToolCallId);
@@ -3955,17 +3857,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
                     vscode.window.showInformationMessage(`AskAway: Autopilot auto-responded. (${this._consecutiveAutoResponses}/${maxConsecutive})`);
 
-                    const entry: ToolCallEntry = {
-                        id: toolCallId,
-                        prompt: question,
-                        response: effectiveText,
-                        timestamp: Date.now(),
-                        isFromQueue: false,
-                        status: 'completed'
-                    };
-                    this._currentSessionCalls.unshift(entry);
-                    this._currentSessionCallsMap.set(entry.id, entry);
-                    this._updateCurrentSessionUI();
                     this._currentToolCallId = null;
                     this._signalNextWaiter();
                     this._resetTurnMetrics();
@@ -4025,17 +3916,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     this._saveQueueToDisk();
                     this._updateQueueUI();
                 } else {
-                    const entry: ToolCallEntry = {
-                        id: toolCallId,
-                        prompt: displayQuestion,
-                        response: queuedPrompt.prompt,
-                        timestamp: Date.now(),
-                        isFromQueue: true,
-                        status: 'completed'
-                    };
-                    this._currentSessionCalls.unshift(entry);
-                    this._currentSessionCallsMap.set(entry.id, entry); // Maintain O(1) lookup map
-                    this._updateCurrentSessionUI();
                     this._currentToolCallId = null;
                     this._signalNextWaiter();
                     this._resetTurnMetrics();
@@ -4051,18 +3931,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         this._view.show(true);
 
-        // Add pending entry to current session (so we have the prompt when completing)
-        const pendingEntry: ToolCallEntry = {
-            id: toolCallId,
-            prompt: displayQuestion,
-            response: '',
-            timestamp: Date.now(),
-            askedAt: Date.now(),
-            isFromQueue: false,
-            status: 'pending'
-        };
-        this._currentSessionCalls.unshift(pendingEntry);
-        this._currentSessionCallsMap.set(toolCallId, pendingEntry); // O(1) lookup
 
         // Parse choices from question and determine if it's an approval question
         const choices = this._parseChoices(question);
@@ -4080,28 +3948,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             }
         }
 
-        // Broadcast pending tool call to VS Code webview
-        const pendingMessage: ToWebviewMessage = {
-            type: 'toolCallPending',
-            id: toolCallId,
-            prompt: displayQuestion,
-            isApprovalQuestion: isApproval,
-            choices: choices.length > 0 ? choices : undefined
-        };
-
-        if (this._webviewReady && this._view) {
-            this._broadcast(pendingMessage);
-            // Play notification sound when AI triggers ask_user
-            this.playNotificationSound();
-        } else {
-            // Fallback: queue the message (should rarely happen now)
-            this._pendingToolCallMessage = { id: toolCallId, prompt: displayQuestion };
-        }
 
         void postRemoteQuestion(this._webexService, this._telegramService, toolCallId, question, choices.length > 0 ? choices.map(choice => choice.label) : undefined)
             .catch(() => console.error('[AskAway] Remote question delivery failed'));
 
-        this._updateCurrentSessionUI();
 
         // Start response-timeout auto-respond timer (if configured)
         this._startResponseTimeoutTimer(toolCallId);
@@ -4144,19 +3994,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         const taskId = `voice_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-        // Also track as a tool call for history
-        const pendingEntry: ToolCallEntry = {
-            id: taskId,
-            prompt: `🎤 ${question}`,
-            response: '',
-            timestamp: Date.now(),
-            askedAt: Date.now(),
-            isFromQueue: false,
-            status: 'pending'
-        };
-        this._currentSessionCalls.unshift(pendingEntry);
-        this._currentSessionCallsMap.set(taskId, pendingEntry);
-        this._updateCurrentSessionUI();
 
         // Show voice overlay in webview (waveform animation)
         this._broadcast({ type: 'voiceStart', taskId, question });
@@ -4187,13 +4024,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     this._currentSayProcess = null;
                 }
 
-                // Mark tool call as cancelled
-                const entry = this._currentSessionCallsMap.get(taskId);
-                if (entry) {
-                    entry.status = 'cancelled';
-                    entry.response = '(cancelled)';
-                    this._updateCurrentSessionUI();
-                }
 
                 reject(new vscode.CancellationError());
                 disposable.dispose();
@@ -4210,13 +4040,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     if (pending) {
                         this._pendingVoiceRequests.delete(taskId);
 
-                        // Update tool call history
-                        const entry = this._currentSessionCallsMap.get(taskId);
-                        if (entry) {
-                            entry.response = value.trim();
-                            entry.status = 'completed';
-                            this._updateCurrentSessionUI();
-                        }
 
                         this._broadcast({ type: 'voiceStop' });
                         pending.resolve(value.trim());
@@ -4281,13 +4104,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         if (pending) {
             this._pendingVoiceRequests.delete(taskId);
 
-            // Update tool call history
-            const entry = this._currentSessionCallsMap.get(taskId);
-            if (entry) {
-                entry.response = transcription;
-                entry.status = 'completed';
-                this._updateCurrentSessionUI();
-            }
 
             pending.resolve(transcription);
         }
@@ -4301,13 +4117,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         if (pending) {
             this._pendingVoiceRequests.delete(taskId);
 
-            // Update tool call history
-            const entry = this._currentSessionCallsMap.get(taskId);
-            if (entry) {
-                entry.response = `(voice error: ${error})`;
-                entry.status = 'completed';
-                this._updateCurrentSessionUI();
-            }
 
             // Fall back to text — don't reject, just return the error message
             // so Copilot can ask again via text
@@ -4375,7 +4184,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _handleWebviewMessage(message: FromWebviewMessage): void {
         switch (message.type) {
             case 'aitalkApproveDraft': {
-                void approveDraft(message.draftId);
+                void approveDraft(message.draftId).then(() => this._handleWebviewMessage({ type: 'requestAITalk' }));
                 break;
             }
             case 'aitalkAttach': {
@@ -4399,10 +4208,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     const configuredPhoto = config.get<string>('userPhoto', '');
                     const photo = configuredPhoto && !/^https?:\/\//i.test(configuredPhoto)
                         ? 'data:image/' + (path.extname(configuredPhoto).slice(1) === 'svg' ? 'svg+xml' : path.extname(configuredPhoto).slice(1)) + ';base64,' + fs.readFileSync(path.resolve(root, configuredPhoto)).toString('base64') : configuredPhoto;
-                    const git = vscode.extensions.getExtension('vscode.git')?.exports?.getAPI(1);
-                    const repository = git?.repositories?.find((item: any) => item.rootUri.fsPath === root);
-                    void Promise.resolve(repository?.getConfig('user.name')).then(name => {
-                        this._broadcast({ type: 'aitalkState', data: { ...snapshot, userName: name || os.userInfo().username, userPhoto: photo } });
+                    void aitalkUserName(config.get<string>('userName', ''), () => gitGlobalUserName(root)).then(name => {
+                        this._broadcast({ type: 'aitalkState', data: { ...snapshot, userName: name, userPhoto: photo } });
                     });
                 } catch (error) { console.warn('[AskAway] AITalk post failed:', error); }
                 break;
@@ -4656,7 +4463,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._startObservabilityPolling();
         // Send initial queue state and current session history
         this._updateQueueUI();
-        this._updateCurrentSessionUI();
         // Send available models and worker queue
         this.broadcastAvailableModels();
         this._broadcastWorkerQueue();
@@ -4666,38 +4472,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             this._broadcast({ type: 'updatePlan', plan: this._currentPlan });
         }
 
-        // If there's a pending tool call message that was never sent, send it now
-        if (this._pendingToolCallMessage) {
-            const prompt = this._pendingToolCallMessage.prompt;
-            const choices = this._parseChoices(prompt);
-            const isApproval = choices.length === 0 && this._isApprovalQuestion(prompt);
-            this._view?.webview.postMessage({
-                type: 'toolCallPending',
-                id: this._pendingToolCallMessage.id,
-                prompt: prompt,
-                isApprovalQuestion: isApproval,
-                choices: choices.length > 0 ? choices : undefined
-            });
-            this._pendingToolCallMessage = null;
-        }
-        // If there's an active pending request (webview was hidden/recreated while waiting),
-        // re-send the pending tool call message so the user sees the question again
-        else if (this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId)) {
-            // Find the pending entry to get the prompt
-            const pendingEntry = this._currentSessionCallsMap.get(this._currentToolCallId);
-            if (pendingEntry && pendingEntry.status === 'pending') {
-                const prompt = pendingEntry.prompt;
-                const choices = this._parseChoices(prompt);
-                const isApproval = choices.length === 0 && this._isApprovalQuestion(prompt);
-                this._view?.webview.postMessage({
-                    type: 'toolCallPending',
-                    id: this._currentToolCallId,
-                    prompt: prompt,
-                    isApprovalQuestion: isApproval,
-                    choices: choices.length > 0 ? choices : undefined
-                });
-            }
-        }
     }
 
     private _startObservabilityPolling(): void {
@@ -4881,22 +4655,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      * Clean up temporary images from tool call entries
      * Called when entries are removed from current session or on dispose
      */
-    private _cleanupTempImagesFromEntries(entries: ToolCallEntry[]): void {
-        const tempUris: string[] = [];
-        for (const entry of entries) {
-            if (entry.attachments) {
-                for (const att of entry.attachments) {
-                    // Only clean up temporary attachments (pasted/dropped images)
-                    if (att.isTemporary && att.uri) {
-                        tempUris.push(att.uri);
-                    }
-                }
-            }
-        }
-        if (tempUris.length > 0) {
-            this._cleanupTempImagesByUri(tempUris);
-        }
-    }
 
     /**
      * Handle opening settings modal - send settings to webview
@@ -5364,12 +5122,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     /**
      * Update current session UI in webview (cards in chat)
      */
-    private _updateCurrentSessionUI(): void {
-        this._broadcast({
-            type: 'updateCurrentSession',
-            history: this._currentSessionCalls
-        });
-    }
 
     /**
      * Load queue from disk

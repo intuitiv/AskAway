@@ -53,7 +53,7 @@ test('Enter and Space open; arrows wrap roving menu focus; selection and Escape 
     control.key('Escape'); assert.equal(control.snapshot().open, false);
 });
 test('new availability states need config only; theme and reduced-motion rendering remain generic', () => {
-    const custom = { id: 'focus', label: 'Focus', meaning: 'Quiet time', icon: '◆', colour: '#123456', accent: '#abcdef' };
+    const custom = { id: 'focus', label: 'Focus', meaning: 'Quiet time', icon: '◆', colour: '#123456' };
     const control = createPresence({ states: [...presenceStates, custom], open: true, theme: 'light' });
     control.key('End'); assert.equal(control.snapshot().focusIndex, 4);
     control.key('Enter'); assert.match(control.html(), /avail-focus/);
@@ -62,5 +62,9 @@ test('new availability states need config only; theme and reduced-motion renderi
     const css = readFileSync(new URL('../../media/aitalk/presence.css', import.meta.url), 'utf8');
     assert.match(css, /prefers-reduced-motion: reduce/);
     assert.match(css, /animation: presence-open/);
-    assert.match(css, /animation: presence-border/);
+    // One hue per state as a static light→strong gradient: no second accent colour, no pulsing frame (2026-10-14).
+    const frame = css.match(/\.presence-widget::before \{[^}]+\}/)[0];
+    assert.match(frame, /linear-gradient\(135deg, color-mix\(in srgb, var\(--presence\) \d+%, transparent\), var\(--presence\)\)/);
+    assert.doesNotMatch(frame, /accent|animation/);
+    assert.doesNotMatch(control.html(), /--presence-accent/);
 });

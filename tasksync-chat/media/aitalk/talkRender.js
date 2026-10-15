@@ -173,15 +173,17 @@ export function mentionsHtml(members = defaultMembers) {
 
 export const mentioning = draft => /(?:^|\s)@[^\s@]*$/.test(draft);
 
+// Who answers for the user, driven by availability only; Here needs no label because the user is in charge.
+export const inChargeLabels = { here: '', away: 'You answer from your phone', awayValidator: 'Validator in charge', offline: 'Nobody answers; questions wait for you' };
+
 // Registered actors' names on top; typing replaces them while an actor types.
-export function titleHtml({ name = 'AITalk', members = defaultMembers, typing = '' }) {
+export function titleHtml({ name = 'AITalk', members = defaultMembers, typing = '', presence }) {
     const present = members.filter(member => member.presence !== 'left');
-    const moderator = owner(present);
     const subtitle = typing
         ? `<span class="talk-typing-line">${escapeHtml(typing)}</span>`
         : present.map(m => `<span>${escapeHtml(displayName(m))}</span>`).join(', ');
-    const label = moderator ? displayName(moderator) : '';
-    return `<div class="talk-title"><h2>${escapeHtml(name)}</h2><div class="talk-subtitle">${subtitle}</div></div><span class="talk-moderator">${escapeHtml(label)} ${label === 'You' ? 'moderate' : 'moderates'}</span>`;
+    const label = inChargeLabels[presence?.mode || 'here'] || '';
+    return `<div class="talk-title"><h2>${escapeHtml(name)}</h2><div class="talk-subtitle">${subtitle}</div></div>${label ? `<span class="talk-in-charge">${escapeHtml(label)}</span>` : ''}`;
 }
 
 export function headerPresenceHtml({ members = defaultMembers, presence }) {

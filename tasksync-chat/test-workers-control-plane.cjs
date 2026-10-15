@@ -302,7 +302,7 @@ const packet = (overrides = {}) => ({
 
     // The tab answers "how many are there" and "how do I spend less" before any card.
     assert.match(all, /^<div class="workers-summary"><strong>2<\/strong> live workers &middot; 1 running &middot; 1 queued &middot; 1 warm &middot; 1 completed &middot; <strong class="health-cost">\$0\.0025<\/strong> spent<\/div>/);
-    assert.doesNotMatch(all, /Reuse \w+ worker|warm for/, 'no reuse tip: the headline counts warm workers and each card shows its cache age');
+    assert.doesNotMatch(all, /Reuse \w+ worker/, 'no reuse tip: each card shows its cache age and warm-for');
     assert.doesNotMatch(all, /workers-tips/, 'no tips block when nothing needs attention');
     const tipsWithBoard = ui.render({ ...state, scoreboard: [
         { mode: 'code', model: 'gpt-5.6-terra', variant: 'high', runs: 3, passed: 2, avgCost: 0.01, avgMs: 1 },

@@ -13,7 +13,7 @@ const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 const buildDir = path.join(__dirname, '.worker-keep-warm-test-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(buildDir);
-for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'keepWarm']) {
+for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'keepWarm', 'workersState']) {
     fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
         fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
         { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
@@ -21,6 +21,9 @@ for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'keepWa
 const { parseWorkerProfile } = require(path.join(buildDir, 'workerProfiles.js'));
 const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'openCodeRuntime.js'));
 const { workersToPing, keepWarmTick, startKeepWarmTimer, KEEP_WARM_PROMPT } = require(path.join(buildDir, 'keepWarm.js'));
+const { projectWorkersState } = require(path.join(buildDir, 'workersState.js'));
+const browser = { acquireVsCodeApi: () => ({ getState: () => ({}), setState() {}, postMessage() {} }), document: { readyState: 'loading', addEventListener() {}, querySelectorAll: () => [], getElementById: () => null }, window: {}, console, setTimeout() {}, setInterval() {} };
+require('node:vm').runInNewContext(fs.readFileSync(__dirname + '/media/webview.js', 'utf8').replace(/\}\(\)\);\s*$/, 'globalThis.render = renderWorkersHtml; }());'), browser);
 
 const fixtureDir = path.join(__dirname, '.worker-keep-warm-test-fixture');
 fs.rmSync(fixtureDir, { recursive: true, force: true });
@@ -103,6 +106,15 @@ assert.deepEqual(decide({}, now - 301_000), [], 'main chat idle for over 5 minut
     assert.equal(pings().length, 0);
 
     assert.deepEqual(await keepWarmTick(runtime, workspace, mainActive()), [workerId], 'ping #1');
+    const projected = projectWorkersState(runtime, workspace, () => clock);
+    assert.equal(projected.workers[0].lastPingAt, clock);
+    assert.equal(projected.workers[0].banner.lastActivityAt, clock);
+    assert.equal(projected.workers[0].cacheExpiresAt - clock, 300000);
+    const card = browser.render(projected, '', {}, false);
+    assert.match(card, /pinged 0m ago/);
+    assert.match(card, /warm for 5m0s/);
+    assert.match(card, /Age: 0:00 warm/);
+    assert.doesNotMatch(card, /4:10/);
     assert.equal(pings().length, 1, 'exactly ONE message');
     assert.equal(pings()[0].url, '/session/ses_W1/message');
     assert.equal(pings()[0].body.agent, 'aa-verify', 'same agent');

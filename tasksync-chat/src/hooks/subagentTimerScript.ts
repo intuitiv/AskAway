@@ -26,7 +26,8 @@ try {
         const key = workspace.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
         let last = turn.startedAt;
         try { last = Math.max(last, JSON.parse(fs.readFileSync(path.join(cfg, 'commentary', key + '.progress.json'), 'utf8')).lastCommentaryAt || 0); } catch (e) {}
-        if (now - last >= 240000) { emit('Post a one-line progress update with the commentary tool now: say what you are doing and why. It shows in AITalk.'); }
+        const resultId = useId || tool + ':' + now;
+        if (now - last >= 240000 && turn.lastReminderResult !== resultId) { turn.lastReminderResult = resultId; save(s); emit('Post a one-line progress update with the commentary tool now: say what you are doing and why. It shows in AITalk.'); }
     }
     s.pending = s.pending.filter(e => now - e.startedAt < STALE_MS);
     const live = s.pending.map(e => e.startedAt);

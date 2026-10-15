@@ -204,4 +204,29 @@ function gradePlan(testCase, text, modes) {
     return { pass: checks.every((c) => c.pass), checks, plan };
 }
 
-module.exports = { modelTier, parseEvents, gradeWorker, gradePlan, extractPlan, COMMENTARY_KINDS, COMMENTARY_WORDS, CAPTURE_DESTINATIONS };
+// Runs in a child process so a hanging or crashing agent edit cannot take the grader down.
+const HIDDEN_RUNNER = `
+const path = require('node:path');
+const [dir, hiddenDir, tasks] = [process.argv[1], process.argv[2], JSON.parse(process.argv[3])];
+const out = tasks.map((task) => {
+    let checks;
+    try { checks = require(path.join(hiddenDir, task.hiddenCheck))(dir, task.id); } catch (error) { return { id: task.id, failedChecks: ['load: ' + String(error.message).split('\\n')[0]] }; }
+    const failedChecks = checks.filter(([, run]) => { try { return run() !== true; } catch { return true; } }).map(([name]) => name);
+    return { id: task.id, failedChecks };
+});
+process.stdout.write(JSON.stringify(out));`;
+
+/** Grades benchmark tasks with hidden checks against a finished copy; the agent's success claims are never an input. */
+function gradeBenchmark(tasks, dir, hiddenDir) {
+    const result = require('node:child_process').spawnSync(process.execPath, ['-e', HIDDEN_RUNNER, dir, hiddenDir,
+        JSON.stringify(tasks.map(({ id, hiddenCheck }) => ({ id, hiddenCheck })))], { encoding: 'utf8', timeout: 30000 });
+    let graded = [];
+    try { graded = JSON.parse(result.stdout); } catch { graded = []; }
+    const byId = new Map(graded.map((g) => [g.id, g.failedChecks]));
+    return tasks.map((task) => {
+        const failedChecks = byId.get(task.id) || ['hidden checks did not finish'];
+        return { id: task.id, level: task.level, outcome: failedChecks.length ? 'failed' : 'accepted', failedChecks };
+    });
+}
+
+module.exports = { modelTier, parseEvents, gradeWorker, gradePlan, gradeBenchmark, extractPlan, COMMENTARY_KINDS, COMMENTARY_WORDS, CAPTURE_DESTINATIONS };

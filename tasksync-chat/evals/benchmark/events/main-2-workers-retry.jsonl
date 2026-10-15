@@ -1,0 +1,13 @@
+{"type":"step_start","sessionID":"ses_main","part":{}}
+{"type":"tool_use","sessionID":"ses_main","part":{"tool":"read"}}
+{"type":"step_finish","sessionID":"ses_main","part":{"cost":0.10,"tokens":{"input":1000,"output":200,"reasoning":50,"cache":{"read":9000,"write":0}}}}
+{"type":"tool_use","sessionID":"ses_main","part":{"tool":"askaway_askaway_asks"}}
+{"type":"step_finish","sessionID":"ses_main","part":{"cost":0.20,"tokens":{"input":2000,"output":300,"reasoning":0,"cache":{"read":18000,"write":1000}}}}
+{"type":"tool_use","sessionID":"ses_worker_a","part":{"tool":"edit"}}
+{"type":"step_finish","sessionID":"ses_worker_a","part":{"cost":0.05,"tokens":{"input":500,"output":100,"reasoning":10,"cache":{"read":4000,"write":0}}}}
+{"type":"step_finish","sessionID":"ses_worker_a","part":{"cost":0.05,"tokens":{"input":500,"output":100,"reasoning":10,"cache":{"read":4000,"write":0}}}}
+{"type":"error","sessionID":"ses_worker_b","error":{"name":"APIError","message":"retry"}}
+{"type":"step_finish","sessionID":"ses_worker_b","part":{"cost":0.03,"tokens":{"input":300,"output":0,"reasoning":0,"cache":{"read":0,"write":0}}}}
+{"type":"tool_use","sessionID":"ses_worker_b","part":{"tool":"bash"}}
+{"type":"step_finish","sessionID":"ses_worker_b","part":{"cost":0.07,"tokens":{"input":700,"output":150,"reasoning":0,"cache":{"read":2000,"write":500}}}}
+{"type":"text","sessionID":"ses_main","part":{"text":"Result: PASS"}}

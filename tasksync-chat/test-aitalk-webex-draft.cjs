@@ -7,6 +7,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const esbuild = require('esbuild');
+const ts = require('typescript');
+const providerSource = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
+const routing = providerSource.slice(providerSource.indexOf('    private _handleWebviewMessage('), providerSource.indexOf("            case 'requestSpecs':")) + '        }\n    }\n';
+const routingJs = ts.transpileModule('class Provider { ' + routing + ' } exports.Provider = Provider;', { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const code = esbuild.buildSync({ stdin: { contents: "export * from './src/aitalk/actors'; export * from './src/aitalk/webexDraftCards'; export * from './src/aitalk/delivery'; export { registerToolDefinitions } from './src/workers/workerTools'; export * from './src/services/webexSuite'; export * from './src/services/webexDrafts';", resolveDir: __dirname }, bundle: true, platform: 'node', format: 'cjs', write: false }).outputFiles[0].text;
 // Each load is a fresh extension host: new draft queue, new rooms, same workspace files.
 const load = () => { const mod = { exports: {} }; new Function('require', 'module', 'exports', code)(require, mod, mod.exports); return mod.exports; };
@@ -26,11 +30,14 @@ const load = () => { const mod = { exports: {} }; new Function('require', 'modul
     const mount = (api, room) => {
         const handlers = [], intents = [];
         const panel = { innerHTML: '', querySelector: () => undefined };
+        const providerModule = {};
+        new Function('exports', 'approveDraft', 'roomFor', 'vscode', 'aitalkUserName', 'gitGlobalUserName', routingJs)(providerModule, api.approveDraft, () => room, { workspace: { workspaceFolders: [{ uri: { fsPath: root } }], getConfiguration: () => ({ get: (key, fallback) => fallback }) } }, async () => 'Reviewer', () => 'Reviewer');
+        const provider = new providerModule.Provider();
         const widget = createTalkController({ host: panel, events: { addEventListener: (name, fn) => { if (name === 'click') handlers.push(fn); } }, post: action => {
             intents.push(action);
-            if (action.type === 'aitalkApproveDraft') void api.approveDraft(action.draftId);
-            if (action.type === 'aitalkReact') room.react('you', action.replyTo, action.emoji);
+            provider._handleWebviewMessage(action);
         } });
+        provider._broadcast = message => { if (message.type === 'aitalkState') widget.render(message.data); };
         const click = dataset => { for (const fn of handlers) fn({ target: { closest: selector => selector === 'button' ? { dataset, hasAttribute: () => false } : null } }); };
         return { panel, intents, click, paint: () => widget.render(room.snapshot()) };
     };
@@ -78,7 +85,6 @@ const load = () => { const mod = { exports: {} }; new Function('require', 'modul
     assert.deepEqual(view.intents.slice(-2).map(intent => intent.draftId), [edited.draftId, edited.draftId]);
     assert.deepEqual(posts, [{ roomId: 'room-1', text: 'Deploy at 3pm.', parentId: 'thread-7' }], 'sent exactly once, edited text, in thread');
     assert.equal(card(firstCard.id).webexDraft.state, 'sent'); assert.equal(card(firstCard.id).webexDraft.sentId, 'msg-1');
-    view.paint();
     assert.match(view.panel.innerHTML, /talk-draft-badge">Sent</); assert.match(view.panel.innerHTML, /Sent · id <code>msg-1<\/code>/);
     assert.doesNotMatch(view.panel.innerHTML.slice(view.panel.innerHTML.indexOf(`id="talk-${firstCard.id}"`)).split('talk-row')[0], /Approve and send/);
     let inbox = room.store.takeForTool('webex-worker-1');
@@ -95,7 +101,7 @@ const load = () => { const mod = { exports: {} }; new Function('require', 'modul
     assert.equal(card(secondCard.id).webexDraft.state, 'rejected');
     assert.equal((await api.approveDraft(second.draftId)).status, 'unavailable');
     assert.equal(posts.length, 1, 'rejected draft is never sent');
-    view.paint(); assert.match(view.panel.innerHTML, /Rejected · nothing was sent/);
+    await flush(); assert.match(view.panel.innerHTML, /Rejected · nothing was sent/);
     inbox = room.store.takeForTool('webex-worker-1');
     const outcome = inbox.find(message => /Rejected/.test(message.text));
     assert.equal(outcome.replyTo, secondCard.id); assert.match(outcome.text, /Rejected: nothing was sent to ana@example.test/);

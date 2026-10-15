@@ -104,6 +104,17 @@ Each has a recommendation. None blocks Setup, Foundational or US1; Q1 blocks T01
 | Q5 | Where are result rows stored? | (a) existing `~/.askaway/evals/results.jsonl` with `suite: "benchmark"`; (b) workspace `.askaway/benchmark/runs.jsonl` | (a): reuses the evals store, the benchmark is not workspace work |
 | Q6 | When the first data arrives, who revises `SCORE_REF_USD_PER_MTOK` ($0.30/1M)? | (a) agent proposes a new value with the data, reviewer approves; (b) keep $0.30 | (a) |
 
+### Answers (reviewer, 2026-10-14)
+
+> 1. Sure 2. Yes. Not more than 5$ for the whole run. 3. Sure 4. Use Sonnet, it is better than Sol 5. Okay 6. Okay
+
+- Q1 (b): CLI + a Benchmark section in the Workers tab rendered with `usageBannerHtml`.
+- Q2 (a) with a ceiling: $2 per configuration run, and at most $5 for the whole comparison run.
+- Q3 (a): one run of all four levels; the cap marks it interrupted.
+- Q4: Orchestrator vs Build, both on Sonnet (not Sol), default worker profiles, one repeat each.
+- Q5 (a): `~/.askaway/evals/results.jsonl` with `suite: "benchmark"`.
+- Q6 (a): the agent proposes a new value with the data; the reviewer approves.
+
 ## Complexity Tracking
 
 None.

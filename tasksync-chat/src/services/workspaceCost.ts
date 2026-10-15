@@ -40,7 +40,7 @@ async function ownersOf(workspace: string): Promise<Set<string>> {
 }
 
 /** Request identities, not session identities: one session can contain many billed requests. */
-export async function workspaceCostRequests(root: string): Promise<Array<{ id: string; ts: number; dollars: number; source: 'worker' | 'validator' | 'eval' | 'cloud'; estimated?: boolean }>> {
+export async function workspaceCostRequests(root: string): Promise<Array<{ id: string; ts: number; dollars: number; source: 'worker' | 'validator' | 'eval' | 'cloud'; profile?: string; category?: string; estimated?: boolean }>> {
     const workspace = canonical(root);
     const owners = await ownersOf(workspace);
     const home = path.join(os.homedir(), '.askaway');
@@ -56,7 +56,8 @@ export async function workspaceCostRequests(root: string): Promise<Array<{ id: s
             : row.id ? `request:${row.sessionId ?? ''}:${row.id}` : `row:${row.runId ?? ''}:${ts}:${JSON.stringify(row.usage)}`;
         if (!Number.isFinite(ts) || requests.has(id) || (source !== 'worker' && row.runId && billedRuns.has(row.runId))) return;
         requests.add(id);
-        result.push({ id, ts, dollars: cost(row), source });
+        result.push({ id, ts, dollars: cost(row), source, profile: row.profile,
+            category: source === 'validator' || row.track === 'validator' || row.profile === 'validator' ? 'Validator' : undefined });
     };
     for (const owner of owners) {
         const key = owner.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
@@ -100,4 +101,19 @@ export async function workspaceCostRequests(root: string): Promise<Array<{ id: s
         if (owned) add(row, 'eval');
     }
     return result;
+}
+
+export function monthlyCostCategories(requests: Array<{ ts: number; dollars: number; source: string; profile?: string; category?: string }>, start: number, end: number): Array<{ category: string; dollars: number; requests?: number }> {
+    const totals = new Map<string, { category: string; dollars: number; requests?: number }>(['Main', 'Validator'].map(category => [category, { category, dollars: 0, requests: 0 }]));
+    for (const row of requests) {
+        if (row.ts < start || row.ts >= end) continue;
+        const category = row.category || (row.source === 'copilot' ? 'Main' : row.source === 'validator' ? 'Validator'
+            : row.source === 'cloud' ? 'Cloud estimate' : row.source === 'eval' ? 'Evals'
+            : row.profile ? row.profile.charAt(0).toUpperCase() + row.profile.slice(1) : 'Workers');
+        const total = totals.get(category) ?? { category, dollars: 0, requests: row.source === 'cloud' ? undefined : 0 };
+        total.dollars += row.dollars;
+        if (total.requests !== undefined) total.requests++;
+        totals.set(category, total);
+    }
+    return [...totals.values()];
 }

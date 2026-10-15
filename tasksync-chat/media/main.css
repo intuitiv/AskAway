@@ -2388,17 +2388,15 @@ body.avail-here, .availability-frame.avail-here { --presence: var(--vscode-testi
 body.avail-away, .availability-frame.avail-away { --presence: var(--vscode-editorWarning-foreground); }
 body.avail-awayValidator, .availability-frame.avail-awayValidator { --presence: var(--vscode-charts-purple); }
 body.avail-offline, .availability-frame.avail-offline { --presence: var(--vscode-descriptionForeground); }
+/* One hue per availability mode, a static light→strong gradient: no second accent, no pulsing (2026-10-14). */
 body[class*="avail-"]::before, .availability-frame::before {
     content: ''; position: fixed; inset: 0; z-index: 10000; pointer-events: none;
     border: 2px solid transparent; border-radius: 8px;
-    background: linear-gradient(135deg, var(--presence), var(--presence-accent, var(--presence)), color-mix(in srgb, var(--presence) 35%, var(--vscode-editor-background)), var(--presence)) border-box;
-    background-size: 250% 250%; animation: presence-glow 7s ease-in-out infinite;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--presence) 30%, transparent), var(--presence)) border-box;
     mask: linear-gradient(var(--vscode-foreground) 0 0) padding-box, linear-gradient(var(--vscode-foreground) 0 0);
-    mask-composite: exclude; box-shadow: inset 0 0 8px var(--presence);
+    mask-composite: exclude;
 }
-body.avail-awayValidator::before, .availability-frame.avail-awayValidator::before { animation: presence-glow 4s ease-in-out infinite; }
-@keyframes presence-glow { 50% { background-position: 100% 100%; opacity: .7; } }
-@media (prefers-reduced-motion: reduce) { body[class*="avail-"]::before, .availability-frame::before, .presence-flyout { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .presence-flyout { animation: none !important; } }
 
 /* ===== Workers tab (OpenCode control plane; no transcript or approval controls) ===== */
 .workers-shell { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
@@ -2438,6 +2436,12 @@ body.avail-awayValidator::before, .availability-frame.avail-awayValidator::befor
 .worker-banner { display: flex; gap: 8px; align-items: baseline; font-size: 11px; }
 .worker-banner-metrics { flex: 1; min-width: 0; }
 .worker-knowledge { font-size: 11px; font-style: italic; opacity: 0.8; }
+/* 008 Benchmark section: each run reuses the shared usage banner; an ungated Score is voided until every task is accepted. */
+.benchmark-row { padding: 4px 8px; border-top: 1px solid var(--vscode-panel-border); font-size: 11px; }
+.benchmark-banner { font-family: var(--vscode-editor-font-family); opacity: 0.85; }
+.benchmark-incomplete .benchmark-banner > span[title^="Score ="] { text-decoration: line-through; opacity: 0.5; }
+.benchmark-flag, .benchmark-status { color: var(--vscode-editorWarning-foreground); }
+.benchmark-not-comparable { opacity: 0.6; }
 .obs-worker-tag {
     font-size: 10px; padding: 0 5px; border-radius: 8px; cursor: pointer; font-family: var(--vscode-editor-font-family);
     background: var(--vscode-charts-blue); color: #fff;

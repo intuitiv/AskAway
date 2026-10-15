@@ -48,7 +48,7 @@ const vm = require('node:vm');
     const pollingBlock = polling.slice(0, polling.indexOf('\n            case ', polling.indexOf("case 'aitalkReact':")));
     const poll = require('typescript').transpileModule(`async function poll(message) { switch(message.type) { ${pollingBlock} } }`, { compilerOptions: { target: 9 } }).outputText;
     let delivered;
-    const pollingContext = { roomFor: api.roomFor, vscode: { workspace: { workspaceFolders: [{ uri: { fsPath: root } }], getConfiguration: () => ({ get: () => '' }) }, extensions: { getExtension: () => undefined } }, os, path, fs };
+    const pollingContext = { roomFor: api.roomFor, vscode: { workspace: { workspaceFolders: [{ uri: { fsPath: root } }], getConfiguration: () => ({ get: () => '' }) }, extensions: { getExtension: () => undefined } }, os, path, fs, aitalkUserName: async configured => configured || 'Sam Morgan', gitGlobalUserName: async () => '' };
     const invokePoll = vm.runInNewContext(poll + ';poll', pollingContext);
     await invokePoll.call({ _broadcast: message => { delivered = message.data; } }, { type: 'requestAITalk' });
     assert.equal(delivered.members.find(item => item.id === run.workerId).presence, 'joined', 'polling keeps the registered worker');

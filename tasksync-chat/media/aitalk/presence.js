@@ -1,10 +1,10 @@
 import { escapeHtml } from './talkRender.js';
 
 export const presenceStates = [
-    { id: 'here', label: 'Available', meaning: 'You are here and in charge.', icon: '✓', colour: 'var(--vscode-testing-iconPassed)', accent: 'var(--vscode-focusBorder)' },
-    { id: 'away', label: 'Away (notify on phone)', meaning: 'Keep working; notify you on your phone.', icon: '◷', colour: 'var(--vscode-editorWarning-foreground)', accent: 'var(--vscode-focusBorder)' },
-    { id: 'awayValidator', label: 'Away, Validator in charge', meaning: 'Validator answers for you when live is enabled.', icon: '⛨', colour: 'var(--vscode-charts-purple)', accent: 'var(--vscode-focusBorder)' },
-    { id: 'offline', label: 'Offline', meaning: 'You are not reachable; hold questions for later.', icon: '×', colour: 'var(--vscode-descriptionForeground)', accent: 'var(--vscode-focusBorder)' },
+    { id: 'here', label: 'Available', meaning: 'You are here and in charge.', icon: '✓', colour: 'var(--vscode-testing-iconPassed)' },
+    { id: 'away', label: 'Away (notify on phone)', meaning: 'Keep working; notify you on your phone.', icon: '◷', colour: 'var(--vscode-editorWarning-foreground)' },
+    { id: 'awayValidator', label: 'Away, Validator in charge', meaning: 'Validator answers for you when live is enabled.', icon: '⛨', colour: 'var(--vscode-charts-purple)' },
+    { id: 'offline', label: 'Offline', meaning: 'You are not reachable; hold questions for later.', icon: '×', colour: 'var(--vscode-descriptionForeground)' },
 ];
 export const resetOptions = [
     { id: '30m', label: '30 min', minutes: 30 }, { id: '1h', label: '1 h', minutes: 60 },
@@ -18,7 +18,7 @@ export function badgeHtml(state) {
     return `<span class="presence-badge" style="--badge:${escapeHtml(state.colour)}" role="img" aria-label="${escapeHtml(state.label)}">${escapeHtml(state.icon)}</span>`;
 }
 
-export function createPresence({ states = presenceStates, mode = states[0].id, reset = 'never', now = Date.now, name = '', photo = '', open = false, theme = 'dark' } = {}) {
+export function createPresence({ states = presenceStates, mode = states[0].id, reset = 'never', now = Date.now, name = '', photo = '', open = false, theme = 'dark', until } = {}) {
     if (!states.some(state => state.id === mode)) throw new Error('Unknown presence state');
     let value = { mode, reset, expiresAt: null, open, focusIndex: states.findIndex(state => state.id === mode), name, photo, theme };
     const expiry = id => {
@@ -36,6 +36,8 @@ export function createPresence({ states = presenceStates, mode = states[0].id, r
     };
     const setReset = id => { value = { ...value, reset: id, expiresAt: expiry(id) }; };
     setReset(reset);
+    // A persisted state carries its own expiry; recomputing it from "now" would move "Resets at" on every push.
+    if (until !== undefined) value = { ...value, expiresAt: until ? Date.parse(until) : null };
     return {
         snapshot: () => ({ ...value }),
         html: () => presenceHtml(value, states),
@@ -69,7 +71,7 @@ export function presenceHtml(value, states = presenceStates) {
     </section>` : '';
     const anchor = `<div class="presence-anchor"><button type="button" class="presence-trigger" aria-haspopup="menu" aria-expanded="${value.open}" aria-label="${escapeHtml(value.name)}: ${escapeHtml(current.label)}" title="Change availability">${avatar}</button>${flyout}</div>`;
     if (value.embedded) return anchor;
-    return `<div class="presence-widget theme-${escapeHtml(value.theme)} avail-${escapeHtml(value.mode)}" style="--presence:${escapeHtml(current.colour)};--presence-accent:${escapeHtml(current.accent || current.colour)}">
+    return `<div class="presence-widget theme-${escapeHtml(value.theme)} avail-${escapeHtml(value.mode)}" style="--presence:${escapeHtml(current.colour)}">
         <header class="presence-titlebar"><strong>ASKAWAY</strong><div class="presence-actions">${titleIcons.map(item => `<button type="button" class="presence-icon" aria-label="${item.label}" title="${item.label}">${item.icon}</button>`).join('')}${anchor}</div></header>
         <div class="presence-preview"><span class="presence-eyebrow">YOUR WORKSPACE</span><h2>Room to focus.</h2><p>Your availability stays with you.<br>Choose who takes charge, without leaving the conversation.</p><div class="presence-status">${badgeHtml(current)}<span>${escapeHtml(current.label)}</span></div><div class="presence-placeholder"><span>AITalk</span><p>The team is ready when you are.</p></div></div>
     </div>`;
