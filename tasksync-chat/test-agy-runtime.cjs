@@ -6,6 +6,7 @@
 // OpenCode server, no duplicate resume while the old process lives, Workers-tab projection. OpenCode stays the default.
 // Run: node test-agy-runtime.cjs   (add --live for one real gemini-4-argon-medium worker through this runtime)
 const assert = require('node:assert/strict');
+const cp = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -383,6 +384,55 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
     assert.equal((await legacyCall('wait', { runId: legacyPass.runId, timeoutSeconds: 20 })).status, 'COMPLETED');
     assert.equal(fs.existsSync(checkStateFile), false, 'setting false does not run the packet verify command');
     console.log('PASS EV-AGY-VERIFY-LOOP fail->resume->pass=COMPLETED 3xFail=FAILED opencode=untouched settingFalse=legacy');
+
+    // EV-AGY-READONLY-MODE: read-only profile (edit: deny) omits --mode=accept-edits on start and when resumed after reload.
+    const { agyArgs, runVerifyCommand } = require(path.join(buildDir, 'agyRuntime.js'));
+    assert.ok(!agyArgs({ model: 'agy/gemini-4-argon-medium', thinking: 'medium', message: 'ro', edit: 'deny' }).some((arg) => arg.includes('accept-edits')));
+    assert.ok(agyArgs({ model: 'agy/gemini-4-argon-medium', thinking: 'medium', message: 'rw', edit: 'allow' }).includes('--mode=accept-edits'));
+    const roBefore = calls().length;
+    const roStarted = await legacyCall('start', {
+        ...packet, profile: 'explore', allowedFiles: [],
+        objective: 'BREAK read-only explore under agy', command: 'none: read-only check',
+    });
+    assert.equal((await legacyCall('wait', { runId: roStarted.runId, timeoutSeconds: 20 })).status, 'FAILED');
+    const roCall = calls()[roBefore];
+    assert.ok(!roCall.args.some((arg) => arg.includes('accept-edits')), `read-only profile args must not contain accept-edits: ${JSON.stringify(roCall.args)}`);
+    assert.ok(first.args.includes('--mode=accept-edits'), 'edit-allowed profile still gets --mode=accept-edits');
+    const roReloaded = new OpenCodeWorkerRuntime([profile, readOnly], { ledgerDir: path.join(tmp, 'ledger-legacy'), agyCommand: fakeAgy, agyVerifyLoop: false });
+    roReloaded.rehydrate(workspace, false);
+    const roReloadedCall = toolOf(roReloaded);
+    assert.equal((await roReloadedCall('resume', { runId: roStarted.runId })).state, 'STARTING');
+    assert.equal((await roReloadedCall('wait', { runId: roStarted.runId, timeoutSeconds: 20 })).status, 'COMPLETED');
+    const roResumedCall = calls().at(-1);
+    assert.ok(roResumedCall.args.includes('--conversation=conv-1'), JSON.stringify(roResumedCall.args));
+    assert.ok(!roResumedCall.args.some((arg) => arg.includes('accept-edits')), `resumed read-only args must not contain accept-edits: ${JSON.stringify(roResumedCall.args)}`);
+
+    // Throwing spawner / spawn in runVerifyCommand ends the run FAILED with a reason for both agy and OpenCode.
+    const throwRuntime = new OpenCodeWorkerRuntime([profile, readOnly], {
+        ledgerDir: path.join(tmp, 'ledger-throw'),
+        agyCommand: fakeAgy,
+        spawner: () => { throw new Error('spawn ENOENT fake-agy'); },
+    });
+    const throwCall = toolOf(throwRuntime);
+    const throwStarted = await throwCall('start', { ...packet, objective: 'Spawner throws synchronously' });
+    const throwDone = await throwCall('wait', { runId: throwStarted.runId, timeoutSeconds: 20 });
+    assert.equal(throwDone.status, 'FAILED', JSON.stringify(throwDone));
+    assert.match(throwDone.reason, /spawn ENOENT fake-agy/);
+    const throwOcStarted = await throwCall('start', { ...packet, runtime: undefined, model: undefined, objective: 'OpenCode spawner throws synchronously' });
+    const throwOcDone = await throwCall('wait', { runId: throwOcStarted.runId, timeoutSeconds: 20 });
+    assert.equal(throwOcDone.status, 'FAILED', JSON.stringify(throwOcDone));
+    assert.match(throwOcDone.reason, /spawn ENOENT fake-agy/);
+
+    const origSpawn = cp.spawn;
+    cp.spawn = () => { throw new Error('verify spawn sync throw'); };
+    try {
+        const verifyThrown = await runVerifyCommand('node -e "process.exit(0)"', tmp);
+        assert.equal(verifyThrown.exitCode, 1);
+        assert.match(verifyThrown.output, /verify spawn sync throw/);
+    } finally {
+        cp.spawn = origSpawn;
+    }
+    console.log('PASS EV-AGY-READONLY-MODE readOnly=noAcceptEdits editAllow=acceptEdits spawnThrow=FAILED+noReferenceError');
 
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log('PASS EV-WORKER-AGY fake-cli start/status/wait/logs/list/submit/resume/cancel deny=FAILED+noLoop optIn=explicit instructions=fresh reload=noServer+noDuplicate usage=raw+once cost=unreported viewer=none');

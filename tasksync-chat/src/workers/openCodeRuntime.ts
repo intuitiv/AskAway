@@ -926,16 +926,25 @@ export class OpenCodeWorkerRuntime {
         const { agyArgs, agyEventNormalizer, deniedContinueMessage, verifyFailureMessage, runVerifyCommand, MAX_VERIFY_ROUNDS, VERIFY_TIMEOUT_MS, VERIFY_FACT_TAIL_CHARS } = agy
             ? require('./agyRuntime') as typeof import('./agyRuntime') : {} as Partial<typeof import('./agyRuntime')>;
         // OpenCode reads the profile instructions from its agent file; agy gets the same text at the start of its conversation.
-        const profile = agy && !sessionId ? this.router.profile(run.profile) : undefined;
+        const profile = agy ? this.router.profile(run.profile) : undefined;
         // --print-logs is required: without it `opencode run` is SIGKILLed after ~14s.
         const args = agyArgs ? agyArgs({ model: run.model, thinking: run.thinking, conversationId: sessionId, addDir: run.cwd, skipPermissions: run.agyPermissions === 'skip',
-            message: profile ? `${workerInstructions(profile)}\n\n${message}` : message })
+            edit: profile?.edit, message: !sessionId && profile ? `${workerInstructions(profile)}\n\n${message}` : message })
             : ['run', '--print-logs', '--log-level', 'ERROR', '--format', 'json', '--agent', `aa-${run.profile}`,
                 '--model', run.model, '--variant', run.thinking, '--dir', run.cwd, '--title', `${run.workerId}/${run.runId}`];
         if (sessionId && !agy) { args.push('--session', sessionId); }
         if (this.attachUrl && !agy) { args.push('--attach', this.attachUrl); }
         if (!agy) { args.push(message); }
-        const child = agy ? this.spawner(args, { command: this.agyCommand, cwd: run.cwd, title: `${run.workerId}/${run.runId}` }) : this.spawner(args);
+        let child: ChildLike;
+        try {
+            child = agy ? this.spawner(args, { command: this.agyCommand, cwd: run.cwd, title: `${run.workerId}/${run.runId}` }) : this.spawner(args);
+        } catch (error) {
+            if (!this.terminal(run.state)) {
+                run.reason = (error as Error).message;
+                this.finalizeRun(run, 'FAILED', -1);
+            }
+            return;
+        }
         const normalize = agyEventNormalizer ? agyEventNormalizer() : (event: any) => [event];
         run.child = child;
         run.pid = child.pid;

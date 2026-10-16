@@ -1,5 +1,6 @@
 import * as childProcess from 'child_process';
 import { AGY_PREFIX, type ChildLike } from './openCodeRuntime';
+import type { WorkerProfile } from './workerProfiles';
 
 /**
  * agy (Antigravity CLI) as an alternate worker runtime. agy is the runtime, its models (e.g. gemini-4-argon-medium) are
@@ -18,9 +19,9 @@ export const VERIFY_FACT_TAIL_CHARS = 1500;
  * added only for a run whose packet explicitly opted in (`agyPermissions: 'skip'`). `--flag=value` keeps a message from
  * ever being read as a flag.
  */
-export function agyArgs(options: { model: string; thinking: string; conversationId?: string; addDir?: string; message: string; skipPermissions?: boolean }): string[] {
+export function agyArgs(options: { model: string; thinking: string; conversationId?: string; addDir?: string; message: string; skipPermissions?: boolean; edit?: WorkerProfile['edit'] }): string[] {
     const model = options.model.slice(AGY_PREFIX.length);
-    const args = [`--print=${options.message}`, '--output-format=stream-json', `--model=${model}`, '--mode=accept-edits', '--disable-slash-commands'];
+    const args = [`--print=${options.message}`, '--output-format=stream-json', `--model=${model}`, ...(options.edit === 'deny' ? [] : ['--mode=accept-edits']), '--disable-slash-commands'];
     // A model whose name carries its effort (gemini-4-argon-high) keeps it; otherwise the profile thinking maps to --effort.
     if (EFFORTS.includes(options.thinking) && !/-(low|medium|high)$/.test(model)) { args.push(`--effort=${options.thinking}`); }
     if (options.conversationId) { args.push(`--conversation=${options.conversationId}`); }
@@ -75,10 +76,11 @@ export function runVerifyCommand(command: string, cwd: string, timeoutMs = VERIF
         let out = '';
         let timedOut = false;
         let settled = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
         const finish = (exitCode: number, extra = '') => {
             if (settled) { return; }
             settled = true;
-            clearTimeout(timer);
+            if (timer !== undefined) { clearTimeout(timer); }
             resolve({ exitCode, output: (out + extra).trimEnd() });
         };
         let child: childProcess.ChildProcess;
@@ -89,7 +91,7 @@ export function runVerifyCommand(command: string, cwd: string, timeoutMs = VERIF
             return;
         }
         onSpawn?.(child);
-        const timer = setTimeout(() => {
+        timer = setTimeout(() => {
             timedOut = true;
             child.kill('SIGTERM');
         }, timeoutMs);
