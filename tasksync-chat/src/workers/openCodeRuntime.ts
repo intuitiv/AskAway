@@ -281,7 +281,15 @@ function processAlive(pid: number): boolean {
 
 /** The lines of a verify output that name a failure (`FAIL …`) or its location (`at …:line`), compared before and after a worker. */
 export function failingLines(output: string): string[] {
-    return [...new Set(output.split('\n').map((line) => line.trim()).filter((line) => /^FAIL\b/.test(line) || /^at\s.+:\d+/.test(line)))];
+    return [...new Set(output.split('\n').map((line) => line.trim())
+        .filter((line) => (/^FAIL\b/.test(line) || /^at\s.+:\d+/.test(line)) && !line.includes('node:internal')))];
+}
+
+/** A failure inside a file the packet may edit (or a missing check file) is the packet's job, never "pre-existing". */
+export function failureOwnedByPacket(failing: string[], packet: string, output: string): boolean {
+    if (/Cannot find module|MODULE_NOT_FOUND/.test(output)) { return true; }
+    const allowed = (/^Allowed files: (.*)$/m.exec(packet)?.[1] ?? '').split(',').map((f) => f.trim()).filter((f) => f && !f.startsWith('none'));
+    return failing.some((line) => allowed.some((file) => line.includes(file)));
 }
 
 function defaultAgyVerifyLoop(): boolean {
@@ -1047,7 +1055,8 @@ export class OpenCodeWorkerRuntime {
                         const failing = failingLines(verify.output);
                         if (verify.exitCode === 0) {
                             finalize('COMPLETED', 0);
-                        } else if (failing.length && run.baseline && failing.every((line) => run.baseline?.includes(line))) {
+                        } else if (failing.length && run.baseline && failing.every((line) => run.baseline?.includes(line))
+                            && !failureOwnedByPacket(failing, run.packet, verify.output)) {
                             run.reason = `pre-existing failure: every failing line was already failing before the worker started (${failing.slice(0, 3).join(' | ')}); not caused by this packet`;
                             finalize('FAILED', verify.exitCode);
                         } else if (round < (MAX_VERIFY_ROUNDS ?? 3) && run.sessionId) {

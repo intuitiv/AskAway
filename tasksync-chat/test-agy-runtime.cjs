@@ -342,6 +342,16 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
     assert.equal((await verifyCall('logs', { runId: sameFail.runId })).filter((fact) => fact.type === 'verify_round').length, 1);
     assert.equal(JSON.parse(fs.readFileSync(checkStateFile, 'utf8')).count, 2, 'baseline before agy plus one verify round');
     console.log('PASS EV-AGY-PRE-EXISTING identical failing lines before/after => one verify round, no resume, reason pre-existing');
+    {
+        // A packet's own unfinished test or a missing check file is never "pre-existing" (2026-10-16 Lane A/B runs).
+        const { failingLines, failureOwnedByPacket } = require(path.join(buildDir, 'openCodeRuntime.js'));
+        const packetText = 'Allowed files: tasksync-chat/media/webview.js, tasksync-chat/test-new.cjs';
+        assert.equal(failureOwnedByPacket(['at between (/repo/tasksync-chat/test-new.cjs:19:5)'], packetText, ''), true);
+        assert.equal(failureOwnedByPacket(['at x (/repo/tasksync-chat/test-other.cjs:3:1)'], packetText, 'Error: Cannot find module'), true);
+        assert.equal(failureOwnedByPacket(['FAIL EV-REQUIREMENTS-DOCS'], packetText, ''), false);
+        assert.deepEqual(failingLines('    at Module._load (node:internal/modules/cjs/loader:1368:5)\nFAIL X'), ['FAIL X']);
+        console.log('PASS EV-AGY-PRE-EXISTING-OWNED own-file and missing-check failures keep the worker resuming');
+    }
 
     // OpenCode path untouched: never runs verify_round even when command would fail.
     fs.rmSync(checkStateFile, { force: true });
