@@ -45,7 +45,8 @@ const SIGNED_IN = 'Fetching available models...\ngemini-4-argon-high\tGemini 4 A
 const FALLBACK = 'Fetching available models...\ngemini-3.1-pro-low\tGemini 3.1 Pro (Low)\n';
 
 function fakeHost() {
-    const host = { settings: { opencode: true, agy: false }, files: new Set(['/fake/bin/agy', TOKEN]), models: SIGNED_IN, server: true,
+    const host = { settings: { opencode: true, agy: false, claude: false }, files: new Set(['/fake/bin/agy', '/fake/bin/claude', TOKEN]), models: SIGNED_IN, server: true,
+        claude: '{"loggedIn":true,"authMethod":"claude.ai"}', claudeCalls: 0, restarts: 0, order: [],
         clock: new Date(2026, 9, 15, 10, 0).getTime(), warnings: [], modelCalls: 0, probes: 0, started: [] };
     health.configureRuntimeHealth({
         enabled: (runtime) => host.settings[runtime],
@@ -55,7 +56,9 @@ function fakeHost() {
         pathDirs: () => ['/fake/bin'],
         exists: (file) => host.files.has(file),
         agyModels: async (binary) => { assert.equal(binary, '/fake/bin/agy'); host.modelCalls++; if (host.modelsError) { throw new Error(host.modelsError); } return host.models; },
-        probeOpenCode: async () => { host.probes++; return host.server; },
+        claudeAuth: async (binary) => { assert.equal(binary, '/fake/bin/claude'); host.claudeCalls++; if (host.claudeError) { throw new Error(host.claudeError); } return host.claude; },
+        probeOpenCode: async () => { host.probes++; host.order.push('probe'); return host.server; },
+        restartOpenCode: async () => { host.restarts++; host.order.push('restart'); if (host.restartError) { throw new Error(host.restartError); } host.server = true; },
         now: () => host.clock,
     });
     return host;
@@ -76,14 +79,17 @@ function tool(host, workers = {}, runs = {}) {
 }
 
 (async () => {
-    // Defaults: package.json declares OpenCode on and agy off; outside VS Code the same defaults apply.
+    // Defaults (reviewer 2026-10-16 "Why did we disable it?"): OpenCode and agy on, Claude off; outside VS Code the same.
     const props = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).contributes.configuration.properties;
     assert.equal(props['askaway.workers.opencode.enabled'].default, true);
-    assert.equal(props['askaway.workers.agy.enabled'].default, false);
+    assert.equal(props['askaway.workers.agy.enabled'].default, true);
+    assert.equal(props['askaway.workers.claude.enabled'].default, false);
     health.configureRuntimeHealth({ probeOpenCode: async () => true });
     const defaults = health.getRuntimeHealth();
     assert.equal(defaults.opencode.enabled, true);
-    assert.equal(defaults.agy.enabled, false);
+    assert.equal(defaults.agy.enabled, true);
+    assert.equal(defaults.claude.enabled, false);
+    assert.equal(defaults.claude.enabled, false);
     console.log('EV-RUNTIME-HEALTH defaults: PASS');
 
     // Refusal reasons, from the worker tool's caller.
@@ -99,7 +105,7 @@ function tool(host, workers = {}, runs = {}) {
     assert.deepEqual([fallback.status, fallback.reason], ['RUNTIME_UNHEALTHY', 'agy login expired: run agy and sign in']);
     host.models = SIGNED_IN;
     assert.equal((await call({ action: 'start', ...packet, runtime: 'agy', model: 'gemini-4-argon-high' })).status, 'QUEUED');
-    assert.deepEqual(health.getRuntimeHealth().agy.models, ['gemini-4-argon-high', 'gemini-3.8-flash-low']);
+    assert.deepEqual(health.runtimeDetail('agy').models, ['gemini-4-argon-high', 'gemini-3.8-flash-low']);
     // A submit without a model follows the warm worker's agy model.
     call = tool(host, { 'w-agy': { model: 'agy/gemini-4-argon-high' } });
     host.settings.agy = false;
@@ -165,11 +171,18 @@ function tool(host, workers = {}, runs = {}) {
     assert.match(host.warnings.pop(), /at least one worker runtime/);
     await health.handleRuntimeHealthMessage({ type: 'setRuntimeEnabled', runtime: 'agy', enabled: true });
     await health.handleRuntimeHealthMessage({ type: 'setRuntimeEnabled', runtime: 'opencode', enabled: false });
-    assert.deepEqual(host.settings, { opencode: false, agy: true });
+    assert.deepEqual(host.settings, { opencode: false, agy: true, claude: false });
     host.settings.agy = false;
     await health.runtimeSettingChanged('agy');
     assert.equal(host.settings.agy, true);
     assert.match(host.warnings.pop(), /agy stays on/);
+    // The rule spans all three integrations: Claude on lets the last worker runtime go off, then Claude itself is kept.
+    host.settings = { opencode: true, agy: false, claude: true };
+    assert.equal(await health.setRuntimeEnabled('opencode', false), true);
+    assert.equal(await health.setRuntimeEnabled('claude', false), false);
+    assert.equal(host.settings.claude, true);
+    const call2 = tool(host);
+    assert.equal((await call2({ action: 'start', ...packet })).status, 'WORKERS_DISABLED', 'Claude has no worker runtime yet');
     console.log('EV-RUNTIME-HEALTH last runtime refused: PASS');
 
     // Daily recheck: once per day after 06:00 local, and before an agy task whose last ok check predates 06:00 today.
@@ -204,7 +217,7 @@ function tool(host, workers = {}, runs = {}) {
     assert.deepEqual([last.type, last.health.agy.enabled, last.health.agy.ok], ['runtimeHealth', true, true]);
     host.server = false;
     await health.handleRuntimeHealthMessage({ type: 'recheckRuntimeHealth' });
-    assert.deepEqual([posted.at(-1).health.opencode.ok, posted.at(-1).health.opencode.reason], [false, 'OpenCode server is not up']);
+    assert.deepEqual([posted.at(-1).health.opencode.ok, health.runtimeDetail('opencode').reason], [false, 'OpenCode server is not up']);
     view.dispose();
     const count = posted.length;
     await health.recheckRuntimeHealth();
@@ -213,5 +226,47 @@ function tool(host, workers = {}, runs = {}) {
     assert.match(provider, /case 'setRuntimeEnabled':\s*case 'recheckRuntimeHealth':\s*void handleRuntimeHealthMessage\(message\)/);
     assert.match(provider, /onDidChangeRuntimeHealth\(\(health\) => this\._broadcast\(\{ type: 'runtimeHealth', health \}\)\)/);
     console.log('EV-RUNTIME-HEALTH runtimeHealth message: PASS');
+
+    // Integrations (reviewer 2026-10-16): Claude is checked through its CLI login; every integration shows the same
+    // {enabled, ok, checkedAt}; one refresh per integration (OpenCode restarts its server first, agy/Claude only check).
+    host = fakeHost();
+    const integrationsView = [];
+    const integrations = health.bindRuntimeHealthView((message) => integrationsView.push(message));
+    await health.handleRuntimeHealthMessage({ type: 'setRuntimeEnabled', runtime: 'claude', enabled: true });
+    assert.deepEqual(integrationsView.at(-1).health.claude, { enabled: true, ok: true, checkedAt: host.clock });
+    host.claude = '{"loggedIn":false,"authMethod":"none"}';
+    host.clock += 1000;
+    await health.handleRuntimeHealthMessage({ type: 'refreshIntegration', runtime: 'claude' });
+    assert.deepEqual(integrationsView.at(-1).health.claude, { enabled: true, ok: false, checkedAt: host.clock });
+    assert.equal(health.runtimeDetail('claude').reason, 'Claude is not signed in');
+    host.claudeError = 'timed out after 20s';
+    await health.refreshIntegration('claude');
+    assert.equal(health.runtimeDetail('claude').reason, 'Claude auth check failed: timed out after 20s');
+    host.claudeError = undefined;
+    host.files.delete('/fake/bin/claude');
+    await health.refreshIntegration('claude');
+    assert.match(health.runtimeDetail('claude').reason, /not installed/);
+    assert.equal(host.restarts, 0, 'refreshing Claude never restarts the OpenCode server');
+    host.settings.agy = true;
+    const agyCalls = host.modelCalls;
+    await health.handleRuntimeHealthMessage({ type: 'refreshIntegration', runtime: 'agy' });
+    assert.deepEqual([host.modelCalls, host.restarts, integrationsView.at(-1).health.agy.ok], [agyCalls + 1, 0, true]);
+    host.server = false;
+    host.order.length = 0;
+    await health.handleRuntimeHealthMessage({ type: 'refreshIntegration', runtime: 'opencode' });
+    assert.deepEqual([host.restarts, host.order, integrationsView.at(-1).health.opencode.ok], [1, ['restart', 'probe'], true]);
+    host.restartError = 'port busy';
+    host.server = false;
+    await health.refreshIntegration('opencode');
+    assert.deepEqual([host.restarts, health.getRuntimeHealth().opencode.ok], [2, false]);
+    assert.match(host.warnings.pop(), /OpenCode restart failed: port busy/);
+    host.settings.opencode = false;
+    await health.refreshIntegration('opencode');
+    assert.equal(host.restarts, 2, 'a disabled OpenCode is checked, not restarted');
+    const uniform = health.getRuntimeHealth();
+    assert.deepEqual(Object.keys(uniform).sort(), ['agy', 'claude', 'opencode']);
+    for (const name of ['opencode', 'agy', 'claude']) { assert.deepEqual(Object.keys(uniform[name]).sort(), ['checkedAt', 'enabled', 'ok'], name); }
+    integrations.dispose();
+    console.log('EV-RUNTIME-HEALTH integrations: claude check, refreshIntegration per runtime, uniform state: PASS');
     fs.rmSync(buildDir, { recursive: true, force: true });
 })().catch((error) => { console.error(error); process.exit(1); });

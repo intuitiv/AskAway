@@ -44,11 +44,10 @@ export const UnknownAgent = {
 };
 
 export const MemberEdit = {
-	name: '4. MemberEdit (OpenCode + agy Model Dropdown & Effort)',
+	name: '4. MemberEdit (Profile: Name, Role, Status, Picture)',
 	render: () => mountTeamStory({
 		scenario: 'member-edit',
 		editingMemberId: 'diego',
-		modelDropdownOpen: true,
 	}),
 };
 

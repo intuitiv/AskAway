@@ -16,7 +16,8 @@ import { CloudSpecsController, shouldPollCloud } from '../cloud/cloudSpecs';
 import { defaultIO } from '../cloud/cloudQueue';
 import { PacketTask } from '../cloud/packet';
 import { projectWorkersState, sessionOpenCommand, TeamMemberState, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
-import { getRuntimeHealth, handleRuntimeHealthMessage, onDidChangeRuntimeHealth, RuntimeHealth, RuntimeHealthMessage } from '../workers/runtimeHealth';
+import { getRuntimeHealth, handleRuntimeHealthMessage, onDidChangeRuntimeHealth, recheckRuntimeHealth, refreshIntegration, RUNTIME_NAMES, RuntimeHealth, RuntimeHealthMessage } from '../workers/runtimeHealth';
+import { applyMemberOverride, AVATARS_DIR, initialsOf, readMemberOverrides, saveMemberProfile } from '../team/roster';
 import { AITalkStore } from '../aitalk/store'; import { roomFor } from '../aitalk/actors';
 import { approveDraft } from '../services/webexDrafts';
 import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
@@ -33,7 +34,7 @@ import { observeWorkers, sharedCommentaryStore, sharedWorkerRuntime, workerSpend
 import { workspaceCostRequests, monthlyCostCategories } from '../services/workspaceCost';
 import { presenceStates } from '../availability/presence';
 import { aitalkUserName, aitalkUserPhoto, gitGlobalUserName } from '../aitalk/userName';
-import { turnTotals, mergeToolUsage, persistTurnTotals } from '../workers/turnBudget';
+import { turnTotals, mergeToolUsage, persistTurnTotals, AIU_PER_DOLLAR } from '../workers/turnBudget';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
 
@@ -411,6 +412,7 @@ type ToWebviewMessage =
     | { type: 'workersState'; data: (WorkersState & { cloudWorkers?: Awaited<ReturnType<CloudSpecsController['workers']>>; benchmark?: unknown[] }) | null }
     | { type: 'workerTrace'; data: WorkerTrace }
     | { type: 'runtimeHealth'; health: RuntimeHealth }
+    | { type: 'memberPicturePicked'; memberId: string; name: string }
     | { type: 'commentaryState'; data: CommentaryView | null }
     | { type: 'availabilityState'; data: AvailabilityState | null; states: typeof presenceStates }
     | { type: 'openPresence' }
@@ -464,7 +466,9 @@ type ToWebviewMessage =
     | { type: 'clear' };
 
 type FromWebviewMessage =
-    | { type: 'openAgentFile' | 'editTeamMember'; memberId?: string; profile?: string; path?: string; agentFile?: string }
+    | { type: 'openAgentFile'; memberId?: string; profile?: string; path?: string; agentFile?: string }
+    | { type: 'pickMemberPicture'; memberId: string }
+    | { type: 'saveMemberProfile'; memberId: string; name?: string; role?: string; status?: string }
     | { type: 'requestAITalk' }
     | { type: 'aitalkPost' | 'aitalkReply'; text: string; replyTo?: string; attachments?: Array<{ name: string; path: string }> }
     | { type: 'aitalkAttach' }
@@ -1349,6 +1353,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             const extUri = this._extensionUri;
             if (!webview || !extUri?.fsPath) { return state; }
             const members = state.members.map(member => {
+                // The Edit form's picture (outside the repo and extension) wins; ?v= reloads it after a new pick.
+                if (member.avatarFile && fs.existsSync(member.avatarFile)) {
+                    return { ...member, avatarSrc: `${webview.asWebviewUri(vscode.Uri.file(member.avatarFile))}?v=${Math.round(fs.statSync(member.avatarFile).mtimeMs)}` };
+                }
                 if (this._memberAvatarUris.has(member.id)) { return { ...member, avatarSrc: this._memberAvatarUris.get(member.id) || member.avatarSrc }; }
                 for (const ext of ['png', 'svg']) {
                     const avatarUri = vscode.Uri.joinPath(extUri, 'media', 'team', 'avatars', `${member.id}.${ext}`);
@@ -1978,21 +1986,44 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         return path.join(path.dirname(path.dirname(this._context.globalStorageUri.fsPath)), 'prompts');
     }
 
-    /** The Team row of the selected chat agent (AskAway Build → Bhaskar, AA.Orchestrator → Mahesh): its own .agent.md, chat model and spend. */
+    /** The Team row of the selected chat agent (AskAway Build → Bhaskar, AA.Orchestrator → Mahesh): its own .agent.md, chat model and spend.
+     *  Turn = the main-agent AIU of this turn (subagents included) ÷ 100, the same number turn_budget counts as main spend. */
     private _mainAgentMember(root: string): TeamMemberState {
         const room = roomFor(root);
-        const persona = room.mainAgentIdentity();
+        const persona = applyMemberOverride(room.mainAgentIdentity(), readMemberOverrides());
         const active = room.snapshot().members.some((item: { kind?: string; presence?: string }) => item.kind === 'agent' && item.presence === 'joined');
         const agentFile = [path.resolve(root, persona.agentFile), path.join(this._userPromptsDir(), path.basename(persona.agentFile))]
             .find(candidate => fs.existsSync(candidate)) ?? persona.agentFile;
         const requests = this._turnRequests.filter(request => !request.subagent);
         return {
             id: persona.id, name: persona.name, role: persona.role, profile: persona.nativeAgent || persona.profile, kind: 'main', active,
-            pinned: false, initials: persona.initials, avatarSrc: '', creativeStatus: active ? persona.workingStatus : persona.idleStatus,
+            pinned: false, initials: initialsOf(persona.name), avatarSrc: '', avatarFile: persona.avatarFile ?? '', creativeStatus: active ? persona.workingStatus : persona.idleStatus,
             agentFile, model: requests[requests.length - 1]?.model ?? '', thinking: '', adapter: 'copilot', taskIds: [],
-            turnCost: requests.reduce((sum, request) => sum + request.nanoAiu, 0) / 1e11,
+            turnCost: this._deriveLastRequest().nanoAiu / 1e9 / AIU_PER_DOLLAR,
             monthCost: (this._observabilityCache.monthCredits?.aiu ?? 0) / 100,
         };
+    }
+
+    /** Team Edit form pictures the user picked, by member id: only a path from this dialog is ever copied. */
+    private readonly _pickedPictures = new Map<string, string>();
+
+    private async _pickMemberPicture(memberId: string): Promise<void> {
+        const picked = await vscode.window.showOpenDialog({ canSelectMany: false, openLabel: 'Use picture', filters: { Images: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] } });
+        if (!picked?.[0]) { return; }
+        this._pickedPictures.set(memberId, picked[0].fsPath);
+        this._view?.webview.postMessage({ type: 'memberPicturePicked', memberId, name: path.basename(picked[0].fsPath) });
+    }
+
+    /** Saves the Edit form to ~/.askaway/team/members.json (+ the picture to ~/.askaway/profile/avatars) and repaints Team. */
+    private _saveMemberProfile(message: { memberId: string; name?: string; role?: string; status?: string }): void {
+        try {
+            saveMemberProfile(message.memberId, { name: message.name, role: message.role, status: message.status, picture: this._pickedPictures.get(message.memberId) });
+            this._pickedPictures.delete(message.memberId);
+            this._memberAvatarUris.delete(message.memberId);
+        } catch (error) {
+            void vscode.window.showWarningMessage(`Team profile not saved: ${(error as Error).message}`);
+        }
+        this._refreshWorkersState();
     }
 
     public async getTurnMetricsSnapshot(): Promise<import('../services/handoffNotifier').TurnMetricsSnapshot> {
@@ -3806,7 +3837,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this._extensionUri]
+            localResourceRoots: [this._extensionUri, vscode.Uri.file(AVATARS_DIR)]
         };
 
         webviewView.webview.html = this._getHtmlContent(webviewView.webview);
@@ -4304,8 +4335,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'restartOpenCodeServer':
                 void this._restartOpenCodeServer();
                 break;
-            case 'openAgentFile':
-            case 'editTeamMember': {
+            case 'openAgentFile': {
                 const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                 if (!root) break;
                 const profiles = path.join(os.homedir(), '.askaway', 'worker-profiles');
@@ -4314,13 +4344,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 const profile = typeof message.profile === 'string' && /^[\w.-]+$/.test(message.profile) ? message.profile : '';
                 const requested = message.path || message.agentFile;
                 const promptFile = requested && path.join(prompts, path.basename(requested));
-                const candidates = message.type === 'editTeamMember'
-                    ? [profile && path.join(profiles, profile + '.md'), requested && path.resolve(root, requested), promptFile]
-                    : [requested && path.resolve(root, requested), promptFile, profile && path.join(profiles, profile + '.md')];
+                // Built-in profiles (build, build-lite, ...) ship in the extension; the user's own file of the same name wins.
+                const builtin = path.join(this._extensionUri.fsPath, 'worker-profiles');
+                const candidates = [requested && path.resolve(root, requested), promptFile, profile && path.join(profiles, profile + '.md'), profile && path.join(builtin, profile + '.md')];
                 for (const candidate of candidates) {
                     if (!candidate || !fs.existsSync(candidate)) continue;
                     const real = fs.realpathSync(candidate);
-                    const allowed = [root, profiles, prompts].some(base => {
+                    const allowed = [root, profiles, prompts, builtin].some(base => {
                         if (!fs.existsSync(base)) return false;
                         const relative = path.relative(fs.realpathSync(base), real);
                         return relative !== '' && !relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative);
@@ -4334,6 +4364,16 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'setRuntimeEnabled':
             case 'recheckRuntimeHealth':
                 void handleRuntimeHealthMessage(message);
+                break;
+            case 'refreshIntegration':
+                // OpenCode's Refresh is the confirmed server restart (it interrupts workers in every workspace), then a recheck.
+                if (message.runtime === 'opencode') { void this._restartOpenCodeServer().finally(() => recheckRuntimeHealth('opencode')); } else if (RUNTIME_NAMES.includes(message.runtime)) { void refreshIntegration(message.runtime); }
+                break;
+            case 'pickMemberPicture':
+                void this._pickMemberPicture(message.memberId);
+                break;
+            case 'saveMemberProfile':
+                this._saveMemberProfile(message);
                 break;
             case 'openWorkerSession':
                 this._openWorkerSession(message.sessionId, message.external === true);

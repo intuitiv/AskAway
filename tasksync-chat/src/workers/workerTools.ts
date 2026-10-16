@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { MAX_WAIT_SECONDS, OpenCodeWorkerRuntime, WorkerPacket } from './openCodeRuntime';
 import { projectWorkersState } from './workersState';
-import { defaultModel } from './workerProfiles';
+import { catalogWorkerProfiles, defaultModel } from './workerProfiles';
+import { teamRoster } from '../team/roster';
 import type { TurnBudget } from './turnBudget';
 type Caller = { recipient: string; workspace?: string };
 let delivery: ((result: string, caller?: Caller) => string) | undefined;
@@ -27,9 +28,25 @@ function dispatchRuntimes(action: string, args: any, live: OpenCodeWorkerRuntime
     });
 }
 
-export const WORKER_TOOL_NAMES = ['worker_start', 'worker_submit', 'worker_list', 'worker_status', 'worker_wait', 'worker_cancel', 'worker_resume', 'worker_logs', 'worker_fanout'] as const;
+/** Where worker profiles come from: the extension's built-in directory, the user's own, and the runtime toggles. */
+export interface WorkerProfileCatalog { builtinDir: string; userDir: string; enabled: (runtime: RuntimeName) => boolean }
+let profileCatalog: WorkerProfileCatalog | undefined;
+/** The host installs the profile directories and runtime toggles behind `action: "profiles"`. */
+export function setWorkerProfileCatalog(catalog: WorkerProfileCatalog | undefined): void { profileCatalog = catalog; }
+
+/** The enabled profiles (their default model's runtime is on), each with its Team member and role. */
+export function enabledWorkerProfiles(catalog: WorkerProfileCatalog): Array<{ profile: string; member: string; role: string; model: string; thinking: string; runtime: RuntimeName; source: 'builtin' | 'user' }> {
+    const roster = teamRoster(catalog.userDir);
+    return catalogWorkerProfiles(catalog.builtinDir, catalog.userDir).map((profile) => {
+        const model = defaultModel(profile);
+        const member = roster.find((entry) => entry.kind === 'worker' && entry.profiles.includes(profile.name));
+        return { profile: profile.name, member: member?.name ?? '', role: member?.role ?? '', model, thinking: profile.thinking, runtime: runtimeOfModel(model), source: profile.origin };
+    }).filter((entry) => catalog.enabled(entry.runtime));
+}
+
+export const WORKER_TOOL_NAMES = ['worker_start', 'worker_submit', 'worker_list', 'worker_status', 'worker_wait', 'worker_cancel', 'worker_resume', 'worker_logs', 'worker_fanout', 'worker_profiles'] as const;
 /** Hosts see ONE `worker` tool; `action` selects the operation, like the `gradle` tool (reviewer, 2026-09-25). */
-export const WORKER_ACTIONS = WORKER_TOOL_NAMES.map((name) => name.slice('worker_'.length)) as ['start', 'submit', 'list', 'status', 'wait', 'cancel', 'resume', 'logs', 'fanout'];
+export const WORKER_ACTIONS = WORKER_TOOL_NAMES.map((name) => name.slice('worker_'.length)) as ['start', 'submit', 'list', 'status', 'wait', 'cancel', 'resume', 'logs', 'fanout', 'profiles'];
 
 type Register = (name: string, config: { description: string; inputSchema: z.ZodTypeAny }, handler: (args: any) => Promise<{ content: Array<{ type: 'text'; text: string }> }>) => unknown;
 
@@ -52,7 +69,7 @@ export function webexTool(host: (input: unknown) => Promise<Record<string, unkno
 }
 
 const packetShape = {
-    profile: z.string().describe('Worker mode: build, code, test, explore, research, verify, gradle, rca, review, quality, perf, authoring, devx.'),
+    profile: z.string().describe('Worker mode: one of the enabled profiles that `action: "profiles"` lists.'),
     runtime: z.enum(['opencode', 'agy']).optional().describe('Worker runtime; default opencode. agy runs `model` (e.g. gemini-4-argon-medium) through the agy CLI for any mode; its cost is unreported and it has no OpenCode viewer.'),
     agyPermissions: z.enum(['review', 'skip']).optional().describe('agy only. Default review: headless agy auto-denies commands/MCP calls its settings.json permissions.allow does not grant, and the run FAILS with that reason. skip: explicit per-run --dangerously-skip-permissions; refused for modes that deny edits or shell.'),
     model: z.string().optional().describe('provider/model; must be allowed by the mode. Omit for the mode default.'),
@@ -143,6 +160,7 @@ export function workerTool(source: () => RuntimeSource, defaultWorkspace: string
             + '- start: run one self-contained packet (profile, dispatchTurnId, baseRevision, objective, allowedFiles, acceptance, expected, command; optional model, thinking, track). Returns a handle at once.\n'
             + '- submit: same packet plus workerId, queued on a warm worker (reuses its session, ~4x cheaper).\n'
             + '- list: live workers with knowledge, nextInputTokens, warmForSeconds; check before start.\n'
+            + '- profiles: the enabled worker profiles (built-in and the user\'s own) with member, role, model, thinking, runtime, source.\n'
             + '- fanout: ONLY when you explicitly want parallel copies of one warm worker: workerId (an IDLE warm worker holding the shared context) + packets (2..8, same fields as start; model/thinking must match the warm worker or be omitted). Forks its session once per packet, each a new worker on the same model so the cache is reused. Max 8 workers run at once (PARALLEL_CAP).\n'
             + `- status | wait | cancel | resume | logs: by runId. status adds the report (evidence) once the run is terminal. wait blocks at most ${MAX_WAIT_SECONDS}s (timeoutSeconds), then STILL_RUNNING: end your turn. logs: facts only (limit).\n`
             + 'Replies are bounded JSON facts, never transcripts.',
@@ -212,6 +230,11 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
                 lastRunId: worker.runs[worker.runs.length - 1]?.runId ?? '', cost: worker.model.startsWith('agy/') ? 'unreported' : worker.usage.cost, sessionOpenAction: worker.sessionOpenAction,
             }));
     });
+
+    register('worker_profiles', {
+        description: 'The enabled worker profiles (built-in and the user\'s own) with member, role, model, thinking, runtime and source.',
+        inputSchema: z.object({}),
+    }, async () => profileCatalog ? enabledWorkerProfiles(profileCatalog) : { status: 'PROFILES_UNAVAILABLE', reason: 'no profile catalog is installed in this host' });
 
     register('worker_status', {
         description: 'Current state, usage, and blocker reason for one run; once terminal (COMPLETED/FAILED/CANCELLED) also its report as evidence lines.',

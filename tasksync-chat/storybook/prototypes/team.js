@@ -243,13 +243,14 @@ export const TEAM_ROSTER_FIXTURES = [
 		name: 'Diego',
 		role: 'Developer',
 		kind: 'worker',
-		profile: 'code',
-		profiles: ['code', 'developer'],
-		model: 'agy/gemini-4-argon-high',
-		thinking: 'high',
+		// Build split (reviewer, 2026-10-16): `build` (high) is Anika's, `build-lite` (low) is Diego's.
+		profile: 'build-lite',
+		profiles: ['build-lite', 'code', 'developer'],
+		model: 'github-copilot/gpt-6.1-sol',
+		thinking: 'medium',
 		turnDollars: 0,
 		monthDollars: 0,
-		agentFile: '.github/agents/code.agent.md',
+		agentFile: '.github/agents/build-lite.agent.md',
 		workingStatus: CREATIVE_ROLE_STATUSES.diego.working,
 		idleStatus: CREATIVE_ROLE_STATUSES.diego.idle,
 	},
@@ -345,7 +346,8 @@ export const TEAM_ROSTER_FIXTURES = [
 	},
 ];
 
-export const ALLOWED_EDIT_FIELDS = ['name', 'role', 'model', 'thinking', 'agentFile'];
+// Edit = the member's profile (reviewer, 2026-10-16); model and thinking stay on the row, the prompt behind Agent file.
+export const ALLOWED_EDIT_FIELDS = ['name', 'role', 'status'];
 
 export function esc(value) {
 	return String(value ?? '').replace(/[&<>"']/g, (ch) => (
@@ -605,73 +607,12 @@ export function renderMemberRowHtml(member, state) {
 	const kit = getWorkersKit();
 	const workers = (member.tasks || []).map((task) => toSharedWorkerRecord(task, state.now || 1_700_000_000_000));
 	const normalized = kit.normalizeTeamMember({ ...member, pinned: member.pinnedFirst, active: memberStatusInfo(member).state === 'working', avatarSrc: avatarFor(member.id, state.avatarOverrides), turnCost: member.turnDollars, monthCost: member.monthDollars, creativeStatus: memberStatusInfo(member).text });
-	return kit.teamMemberRowHtml(normalized, workers, { generatedAt: state.now, memberSettings: { [member.id]: { model: member.model } }, validatorTrace: member.traceEvents || (member.id === 'priya' ? VALIDATOR_TRACE_FIXTURES : []) }, { ...state.expandedTraces, ['member:' + member.id]: Boolean(state.expandedTasksByMember && state.expandedTasksByMember[member.id]), highlightedMember: state.highlightedMemberId }, state.openTraceIds, {});
-}
-
-export function renderMemberEditModalHtml(member, state) {
-	if (!member) return '';
-	const draft = state.editDraft || {
-		name: member.name,
-		role: member.role,
-		model: member.model,
-		thinking: member.thinking,
-		agentFile: member.agentFile,
-	};
-	const supportedEfforts = effortsForModel(draft.model);
-	const modelOptionsHtml = AVAILABLE_TEAM_MODELS.map((m) => (
-		`<option value="${esc(m.id)}"${m.id === draft.model ? ' selected' : ''}>${esc(m.id)}</option>`
-	)).join('');
-	const effortOptionsHtml = supportedEfforts.map((eff) => (
-		`<option value="${esc(eff)}"${eff === draft.thinking ? ' selected' : ''}>${esc(eff)}</option>`
-	)).join('');
-	const dropdownOpen = Boolean(state.modelDropdownOpen);
-	const openModelMenuHtml = dropdownOpen
-		? `<div class="team-model-dropdown-list" role="listbox" aria-label="Available models">` +
-			AVAILABLE_TEAM_MODELS.map((m) => (
-				`<div class="team-model-dropdown-option${m.id === draft.model ? ' selected' : ''}" role="option" aria-selected="${m.id === draft.model ? 'true' : 'false'}" data-pick-edit-model="${esc(m.id)}" data-adapter="${esc(m.adapter)}">${esc(m.id)}</div>`
-			)).join('') +
-		  `</div>`
-		: '';
-
-	return `<div class="team-edit-modal" role="dialog" aria-label="Edit ${esc(member.name)}" data-editing-member="${esc(member.id)}">` +
-		`<div class="team-edit-modal-head">` +
-			`<div class="team-edit-modal-portrait">${avatarMarkup(member, { sizeClass: 'team-portrait-48', avatarOverrides: state.avatarOverrides })}</div>` +
-			`<div class="team-edit-modal-title">Edit member</div>` +
-			`<button type="button" class="team-edit-close-btn" data-close-edit="true" title="Close">✕</button>` +
-		`</div>` +
-		`<div class="team-edit-form">` +
-			`<label class="team-edit-label">Display name` +
-				`<input type="text" class="team-edit-input" data-edit-field="name" value="${esc(draft.name)}" />` +
-			`</label>` +
-			`<label class="team-edit-label">Role` +
-				`<input type="text" class="team-edit-input" data-edit-field="role" value="${esc(draft.role)}" />` +
-			`</label>` +
-			`<div class="team-edit-label">Model` +
-				`<div class="team-edit-model-wrap">` +
-					`<select class="team-edit-select" data-edit-field="model">${modelOptionsHtml}</select>` +
-					openModelMenuHtml +
-				`</div>` +
-			`</div>` +
-			`<label class="team-edit-label">Thinking effort` +
-				`<select class="team-edit-select" data-edit-field="thinking">${effortOptionsHtml}</select>` +
-			`</label>` +
-			`<div class="team-edit-label">Agent file` +
-				`<a href="#" class="team-agent-file-link" data-edit-field="agentFile" data-agent-file="${esc(draft.agentFile)}" data-member-id="${esc(member.id)}">${esc(draft.agentFile)} ↗</a>` +
-			`</div>` +
-		`</div>` +
-		`<div class="team-edit-actions">` +
-			`<button type="button" class="team-edit-save-btn" data-save-edit="${esc(member.id)}">Save</button>` +
-		`</div>` +
-	`</div>`;
+	return kit.teamMemberRowHtml(normalized, workers, { generatedAt: state.now, memberSettings: { [member.id]: { model: member.model } }, validatorTrace: member.traceEvents || (member.id === 'priya' ? VALIDATOR_TRACE_FIXTURES : []) }, { ...state.expandedTraces, ['member:' + member.id]: Boolean(state.expandedTasksByMember && state.expandedTasksByMember[member.id]), highlightedMember: state.highlightedMemberId, ['edit:' + member.id]: state.editingMemberId === member.id }, state.openTraceIds, {});
 }
 
 export function renderTeamTabHtml(state) {
 	const activeMembers = getActiveTurnMembers(state);
 	const rowsHtml = activeMembers.map((m) => renderMemberRowHtml(m, state)).join('');
-	const editingMember = state.editingMemberId
-		? (state.members || []).find((m) => m.id === state.editingMemberId)
-		: null;
-	const modalHtml = editingMember ? renderMemberEditModalHtml(editingMember, state) : '';
 	// Same header row and summary as production (#panel-team): no filter, no Save cost tips; counts come from the displayed tasks.
 	const now = state.now || 1_700_000_000_000;
 	const tasks = activeMembers.flatMap((m) => (m.tasks || []).map((task) => toSharedWorkerRecord(task, now)));
@@ -682,7 +623,6 @@ export function renderTeamTabHtml(state) {
 		headerHtml +
 		getWorkersKit().workersSummaryHtml({ generatedAt: now }, tasks) +
 		`<div class="team-member-list" role="list">${rowsHtml}</div>` +
-		modalHtml +
 	`</div>`;
 }
 
@@ -1085,13 +1025,7 @@ export function createTeamController(options = {}) {
 		if (!m) return null;
 		state.editingMemberId = m.id;
 		state.modelDropdownOpen = Boolean(modelDropdownOpen);
-		state.editDraft = {
-			name: m.name,
-			role: m.role,
-			model: m.model,
-			thinking: m.thinking,
-			agentFile: m.agentFile,
-		};
+		state.editDraft = { name: m.name, role: m.role, status: memberStatusInfo(m).text };
 		notify();
 		return state.editDraft;
 	}
@@ -1113,6 +1047,7 @@ export function createTeamController(options = {}) {
 			setMemberThinking(memberId, synced.thinking);
 			return state.editDraft;
 		}
+		if (field === 'status') { state.editDraft.status = String(value ?? ''); return state.editDraft; }
 		if (field === 'name' || field === 'role') {
 			state.editDraft[field] = String(value ?? '');
 			const m = findMember(memberId);
@@ -1132,6 +1067,8 @@ export function createTeamController(options = {}) {
 		if (m) {
 			if (state.editDraft.name?.trim()) m.name = state.editDraft.name.trim();
 			if (state.editDraft.role?.trim()) m.role = state.editDraft.role.trim();
+			// Same as the product's Edit form: one status line for working and idle.
+			if (state.editDraft.status?.trim()) { m.workingStatus = state.editDraft.status.trim(); m.idleStatus = m.workingStatus; }
 			m.initials = computeInitials(m.name);
 			syncTalkRoster();
 		}
@@ -1429,7 +1366,7 @@ export function createTeamController(options = {}) {
 		stepTo(initialStep);
 	} else if (scenario === 'member-edit') {
 		stepTo(options.initialStep !== undefined ? options.initialStep : 4);
-		openMemberEdit(options.editingMemberId || 'diego', { modelDropdownOpen: true });
+		openMemberEdit(options.editingMemberId || 'diego');
 	} else if (scenario === 'name-click') {
 		state.activeTab = 'aitalk';
 		stepTo(options.initialStep !== undefined ? options.initialStep : 4);
@@ -1520,7 +1457,12 @@ export function mountTeamStory(options = {}) {
 		if (message.type === 'teamTasksToggle') controller.toggleMemberTasks(message.memberId);
 		if (message.type === 'setMemberModel') { controller.setMemberModel(message.memberId, message.model); controller.setMemberThinking(message.memberId, message.thinking); }
 		if (message.type === 'openAgentFile') controller.openAgentFile(message.memberId);
-		if (message.type === 'editTeamMember') controller.openMemberEdit(message.memberId, { modelDropdownOpen: true });
+		if (message.type === 'teamEditToggle') { if (message.open) controller.openMemberEdit(message.memberId); else controller.closeMemberEdit(); }
+		if (message.type === 'saveMemberProfile') {
+			if (controller.state.editingMemberId !== message.memberId) controller.openMemberEdit(message.memberId);
+			for (const field of ALLOWED_EDIT_FIELDS) if (typeof message[field] === 'string') controller.updateEditDraft(field, message[field]);
+			controller.saveMemberEdit();
+		}
 		if (message.type === 'teamMemberFocus') controller.selectMemberFromTalk(message.memberId);
 	});
 
@@ -1564,33 +1506,10 @@ export function mountTeamStory(options = {}) {
 			return;
 		}
 
-		const pickEditModel = e.target.closest('[data-pick-edit-model]');
-		if (pickEditModel) {
-			e.preventDefault();
-			controller.updateEditDraft('model', pickEditModel.getAttribute('data-pick-edit-model'));
-			return;
-		}
-
-		const saveEditBtn = e.target.closest('[data-save-edit]');
-		if (saveEditBtn) {
-			e.preventDefault();
-			controller.saveMemberEdit();
-			return;
-		}
-
-		const closeEditBtn = e.target.closest('[data-close-edit]');
-		if (closeEditBtn) {
-			e.preventDefault();
-			controller.closeMemberEdit();
-		}
 	});
 
 	host.addEventListener('change', (e) => {
 		if (e.target.closest('[data-member-model], [data-member-thinking]')) return;
-		const editField = e.target.closest('[data-edit-field]');
-		if (editField) {
-			controller.updateEditDraft(editField.getAttribute('data-edit-field'), editField.value);
-		}
 	});
 
 	host.addEventListener('input', (e) => {

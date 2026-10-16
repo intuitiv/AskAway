@@ -156,7 +156,8 @@ export class CommentaryStore {
             turnId: input.turnId ?? '' };
         state.items.push(item);
         this.write(state);
-        talkPost?.(workspacePath, { text, kind: input.kind });
+        // The AITalk mirror is best effort: a room that refuses the line never fails the commentary post itself.
+        try { talkPost?.(workspacePath, { text, kind: input.kind }); } catch { /* the feed already holds the line */ }
         return { status: 'POSTED', id: item.id };
     }
 

@@ -441,13 +441,15 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
     margin: 4px auto;
     padding: 0;
     border: 0;
+    border-radius: 0;
+    min-width: 0;
     background: transparent;
     box-shadow: none;
     color: var(--tk-pill-fg);
     font-size: 11px;
     text-align: center;
 }
-.aitalk-presence .aitalk-inline-face { width: 14px; height: 14px; margin: 0; }
+.talk-pill-row.aitalk-presence .aitalk-inline-face { width: 14px; height: 14px; margin: 0; flex: 0 0 14px; }
 .team-avatar-badge.aitalk-inline-face,
 .team-avatar-badge.aitalk-bubble-face,
 .team-avatar-badge.aitalk-ac-face {

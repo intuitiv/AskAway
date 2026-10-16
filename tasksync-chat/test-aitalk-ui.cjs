@@ -46,10 +46,12 @@ const vm = require('node:vm');
     }
     const notice = render.systemHtml({ kind: 'system', text: 'Review tests joined' }, snapshot.members);
     assert.doesNotMatch(notice, /aitalk-inline-face|team-avatar-badge|<img/, 'no image means no avatar slot');
+    assert.doesNotMatch(render.systemHtml({ kind: 'system', text: 'Review tests left' }, snapshot.members, { avatarFor: () => '   ' }), /aitalk-inline-face|team-avatar-badge|<img/, 'blank image source creates no avatar slot');
     assert.match(render.systemHtml({ kind: 'system', text: 'Review tests left' }, snapshot.members, { avatarFor: () => 'https://example.invalid/face.png' }), /<img[^>]*src="https:\/\/example.invalid\/face.png"/, 'real notice images remain available');
     const header = render.titleHtml({ members: ['Machs ', 'Priya', 'Bhaskar', 'Tara'].map((displayName, i) => ({ id: `header-${i}`, displayName, presence: 'joined' })) });
     assert.equal(header.match(/class="aitalk-roster"[^>]*>([^]*?)<\/span><\/div>/)?.[1]?.replace(/<[^>]+>/g, ''), 'Machs, Priya, Bhaskar, Tara');
     const talkCss = fs.readFileSync(__dirname + '/media/aitalk/talk.css', 'utf8');
+    assert.match(talkCss, /\.talk-pill-row\.aitalk-presence \.aitalk-inline-face\s*\{[^}]*width:\s*14px;[^}]*height:\s*14px;[^}]*flex:\s*0 0 14px/, 'notice avatar sizing outranks generic badge rules');
     assert.match(talkCss, /\.talk-subtitle\s*\{[^}]*white-space:\s*normal/);
     assert.match(talkCss, /\.talk-subtitle\s*\{[^}]*overflow:\s*visible/);
     assert.match(talkCss, /\.talk-subtitle \.aitalk-roster\s*\{\s*display:\s*inline;/, 'commas use normal inline spacing, not flex gaps');

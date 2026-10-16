@@ -472,8 +472,8 @@ const sampleState = {
     assert(html.includes('aria-expanded="false"'), 'tasks pill starts with aria-expanded="false"');
     assert(!html.includes('data-member-tasks="anika"'), 'collapsed tasks container is not rendered, matching the approved Storybook');
     assert(html.includes('Agent file &#8599;'), 'member row includes Agent file &#8599; link');
-    // Turn is the displayed tasks' spend (Priya's opencode task $0.14; Anika's agy task is free); Month stays the member's.
-    assert(html.includes('data-member-cost="priya" data-turn-cost="$0.14"') && html.includes('data-member-cost="anika" data-turn-cost="$0.00" data-month-cost="$9.10"'), 'renders prototype turn + month cost on member row (one money format)');
+    // Turn is the host's turn spend of the member (the same ledger records turn_budget sums), never the cards' sum.
+    assert(html.includes('data-member-cost="priya" data-turn-cost="$0.14"') && html.includes('data-member-cost="anika" data-turn-cost="$0.25" data-month-cost="$9.10"'), 'renders host turn + month cost on member row (one money format)');
 }
 
 // 3 & 4. Keyed DOM reconciliation: applyWorkersState(s1), applyWorkersState(s2) and 3 timer ticks
@@ -495,7 +495,7 @@ const sampleState = {
 
     const updatedState = JSON.parse(JSON.stringify(sampleState));
     updatedState.generatedAt = now + 5000;
-    updatedState.workers[0].turnCost = 0.75;
+    updatedState.members[0].turnCost = 0.75;
     updatedState.members[1].monthCost = 11.40;
     api.applyWorkersState(updatedState);
 
@@ -568,7 +568,7 @@ const sampleState = {
     assert(openFileMsg, 'clicking agent file link posts openAgentFile');
     assert.strictEqual(openFileMsg.agentFile, '.opencode/agent/askaway-code.md');
     list.querySelector('[data-edit-member="anika"]').dispatchEvent({ type: 'click' });
-    assert(messages.some(message => message.type === 'editTeamMember' && message.memberId === 'anika'));
+    assert(!list.querySelector('[data-member-edit-form="anika"]').hasAttribute('hidden'), 'Edit opens the profile form (R-TEAM-48)');
 
     // 8. focusTeamMember('anika') switches to 'team' and highlights Anika's row
     api.focusTeamMember('anika');
@@ -633,7 +633,8 @@ const sampleState = {
     assert(api.renderWorkersHtml(sampleState, '', {}, false, {}, {}).includes(api.teamMemberRowHtml(member, [sampleState.workers[1]], sampleState, {}, {}, {})), 'production contains shared row output');
 }
 
-// EV-TEAM-RUNTIME-SETTINGS: health messages drive switches and warnings; user actions use host contracts.
+// EV-TEAM-RUNTIME-SETTINGS (R-SETTINGS-15): every integration row has the same switch, one Refresh and "checked";
+// no instruction text; health messages drive switches and the Team warning.
 {
     const { api, doc, root, messages } = createHarness();
     const section = doc.createElement('div');
@@ -641,27 +642,60 @@ const sampleState = {
     root.appendChild(section);
     api.initRuntimeSettings(section);
     api.applyWorkersState(sampleState);
-    const health = { opencode: { enabled: true, ok: true, reason: '', checkedAt: now }, agy: { enabled: false, ok: false, reason: 'off', checkedAt: now, models: [] } };
+    for (const id of ['opencode', 'agy', 'claude']) {
+        assert(doc.querySelector('[data-runtime-toggle="' + id + '"]'), id + ' switch');
+        assert(doc.querySelector('[data-refresh-integration="' + id + '"]'), id + ' refresh');
+        assert(doc.querySelector('[data-runtime-health="' + id + '"]'), id + ' checked line');
+    }
+    assert(!section.innerHTML.includes('data-runtime-recheck') && !section.innerHTML.includes('data-restart-opencode'), 'one Refresh per row, no extra buttons');
+    const health = { opencode: { enabled: true, ok: true, checkedAt: now }, agy: { enabled: false, ok: false, checkedAt: now }, claude: { enabled: true, ok: false, checkedAt: 0 } };
     api.applyRuntimeHealth(health);
-    assert(doc.querySelector('[data-runtime-warning]').textContent.includes('agy is off in Settings: Anika use agy models'));
-    assert(doc.querySelector('[data-runtime-health="opencode"]').textContent.includes('ok · checked'));
-    const toggle = doc.querySelector('[data-runtime-toggle="agy"]');
-    toggle.dispatchEvent({ type: 'click' });
+    assert(doc.querySelector('[data-runtime-warning]').textContent.includes('agy off: Anika'));
+    assert.match(doc.querySelector('[data-runtime-health="opencode"]').textContent, /^Working · checked /);
+    assert.match(doc.querySelector('[data-runtime-health="agy"]').textContent, /^Off · checked /);
+    assert.equal(doc.querySelector('[data-runtime-health="claude"]').textContent, 'Not working · checked not yet');
+    assert(!/sign in|run agy|login/i.test(section.textContent), 'no instruction text');
+    doc.querySelector('[data-runtime-toggle="agy"]').dispatchEvent({ type: 'click' });
     assert.deepEqual(messages.at(-1), { type: 'setRuntimeEnabled', runtime: 'agy', enabled: true });
     doc.querySelector('[data-runtime-toggle="opencode"]').dispatchEvent({ type: 'keydown', key: 'Enter' });
     assert.deepEqual(messages.at(-1), { type: 'setRuntimeEnabled', runtime: 'opencode', enabled: false });
-    doc.querySelector('[data-runtime-recheck]').dispatchEvent({ type: 'click' });
-    assert.deepEqual(messages.at(-1), { type: 'recheckRuntimeHealth' });
-    health.agy = { ...health.agy, enabled: true, reason: 'agy login expired' };
+    for (const id of ['opencode', 'agy', 'claude']) {
+        doc.querySelector('[data-refresh-integration="' + id + '"]').dispatchEvent({ type: 'click' });
+        assert.deepEqual(messages.at(-1), { type: 'refreshIntegration', runtime: id });
+    }
+    health.agy = { ...health.agy, enabled: true };
     api.applyRuntimeHealth(health);
-    assert(doc.querySelector('[data-runtime-warning]').textContent.includes('agy login expired'));
-    health.agy.enabled = false;
-    health.opencode.enabled = false;
+    assert(doc.querySelector('[data-runtime-warning]').textContent.includes('agy not working: Anika'));
+    for (const id of ['opencode', 'agy', 'claude']) health[id].enabled = false;
     api.applyRuntimeHealth(health);
-    assert.equal(doc.querySelector('[data-runtime-warning]').textContent, 'Workers unavailable: enable OpenCode or agy in Settings');
-    health.opencode = { ...health.opencode, enabled: true, ok: false, reason: 'OpenCode server is not up' };
+    assert.equal(doc.querySelector('[data-runtime-warning]').textContent, 'Workers unavailable: turn on an integration in Settings');
+    health.opencode = { ...health.opencode, enabled: true, ok: false };
     api.applyRuntimeHealth(health);
-    assert(doc.querySelector('[data-runtime-warning]').textContent.includes('OpenCode server is not up: Priya'));
+    assert(doc.querySelector('[data-runtime-warning]').textContent.includes('OpenCode not working: Priya'));
+}
+
+// EV-TEAM-EDIT-PROFILE: Edit opens the member's profile form (name, role, status, picture), never the prompt file.
+{
+    const { api, doc, messages } = createHarness();
+    api.applyWorkersState(sampleState);
+    const form = doc.querySelector('[data-member-edit-form="anika"]');
+    assert(form && form.hasAttribute('hidden'), 'form starts closed');
+    doc.querySelector('[data-edit-member="anika"]').dispatchEvent({ type: 'click' });
+    assert(!doc.querySelector('[data-member-edit-form="anika"]').hasAttribute('hidden'), 'Edit opens the form');
+    assert(!messages.some(m => m.type === 'openAgentFile' || m.type === 'editTeamMember'), 'Edit never opens a file');
+    doc.querySelector('[data-member-pick-picture="anika"]').dispatchEvent({ type: 'click' });
+    assert.deepEqual(messages.at(-1), { type: 'pickMemberPicture', memberId: 'anika' });
+    api.applyWorkersState(sampleState);
+    assert(!doc.querySelector('[data-member-edit-form="anika"]').hasAttribute('hidden'), 'an open form survives a repaint');
+    doc.querySelector('[data-member-edit-form="anika"] [data-member-edit-field="name"]').value = 'Ana';
+    doc.querySelector('[data-member-edit-save="anika"]').dispatchEvent({ type: 'click' });
+    const saved = messages.filter(m => m.type === 'saveMemberProfile').at(-1);
+    assert.equal(saved.memberId, 'anika');
+    assert.equal(saved.name, 'Ana');
+    assert('role' in saved && 'status' in saved, 'role and status are sent');
+    assert(doc.querySelector('[data-member-edit-form="anika"]').hasAttribute('hidden'), 'Save closes the form');
+    doc.querySelector('[data-member-row="anika"] [data-open-agent-file]').dispatchEvent({ type: 'click' });
+    assert.equal(messages.at(-1).type, 'openAgentFile', 'Agent file still opens the prompt');
 }
 
 // EV-TEAM-WHOLE-LIST: inserts, reorders and auxiliary sections reconcile together.
@@ -698,7 +732,7 @@ const sampleState = {
     state.memberSettings = { anika: { model: 'agy/gemini-4-argon-high' } };
     api.applyWorkersState(state);
     assert.equal(doc.querySelector('[data-member-model="anika"]').value, 'agy/gemini-4-argon-high');
-    assert(doc.querySelector('[data-runtime-warning]').textContent.includes('Anika use agy models'));
+    assert(doc.querySelector('[data-runtime-warning]').textContent.includes('agy off: Anika'));
     const idle = { ...state, workers: [], memberSettings: {} };
     const fresh = createHarness();
     fresh.api.applyWorkersState(idle);
@@ -717,9 +751,6 @@ const sampleState = {
     assert(doc.querySelector('[data-edit-member="anika"]').classList.contains('form-btn'));
     assert(doc.querySelector('.team-member-profile code').classList.contains('worker-state'));
     assert(!doc.getElementById('workers-list').innerHTML.includes('Shared OpenCode server'));
-    const settings = doc.createElement('div'); settings.innerHTML = api.runtimeSettingsHtml(); root.appendChild(settings); api.initRuntimeSettings(settings);
-    settings.querySelector('[data-restart-opencode]').dispatchEvent({ type: 'click' });
-    assert.equal(messages.at(-1).type, 'restartOpenCodeServer');
     const css = fs.readFileSync(path.join(__dirname, 'media/team/team.css'), 'utf8');
     assert(/min-width:\s*220px/.test(css));
     assert(!/11\.5px|10\.5px|\.widget-tab\.tab-btn/.test(css));

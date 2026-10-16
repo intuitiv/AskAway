@@ -202,7 +202,7 @@ export function systemHtml(item, members = defaultMembers, options = {}) {
             const actorName = match[1];
             const found = (item.memberId && participant(members, item.memberId)) || (item.author && participant(members, item.author)) || participant(members, actorName) || { id: actorName.toLowerCase(), displayName: actorName };
             const id = escapeHtml(item.memberId || memberIdOf(found));
-            const image = found.avatarSrc || found.photo || options.avatarFor?.(memberIdOf(found));
+            const image = String(found.avatarSrc || found.photo || options.avatarFor?.(memberIdOf(found)) || '').trim();
             const face = image ? avatarBadgeHtml({ ...found, avatarSrc: image }, { sizeClass: 'aitalk-inline-face', emptyAlt: true }) : '';
             return `<div class="talk-pill-row aitalk-presence" data-actor="${id}" data-member-id="${id}">${face}<span class="aitalk-presence-label" data-member-id="${id}">${escapeHtml(displayName(found))} ${match[2]}</span></div>`;
         }

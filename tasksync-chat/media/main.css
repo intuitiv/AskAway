@@ -2018,6 +2018,34 @@ button#mic-btn .codicon {
     color: var(--vscode-editorWarning-foreground, #cca700);
 }
 
+.integration-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.integration-refresh {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-icon-foreground, var(--vscode-foreground));
+    cursor: pointer;
+}
+
+.integration-refresh:hover {
+    background: var(--vscode-toolbar-hoverBackground, rgba(127, 127, 127, 0.15));
+}
+
+.integration-refresh.is-busy .codicon {
+    animation: codicon-spin 1s linear infinite;
+}
+
 .webex-status-badge {
     display: inline-block;
     padding: 2px 8px;

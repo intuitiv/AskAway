@@ -283,11 +283,6 @@
             '<div class="toggle-switch" id="workers-keep-warm-toggle" role="switch" aria-checked="true" aria-label="Keep workers warm" tabindex="0"></div>' +
             '</div>';
         modalContent.appendChild(workersKeepWarmSection);
-        var runtimeSection = document.createElement('div');
-        runtimeSection.className = 'settings-section';
-        runtimeSection.innerHTML = runtimeSettingsHtml();
-        modalContent.appendChild(runtimeSection);
-        initRuntimeSettings(runtimeSection);
         var approvalSection = document.createElement('div');
         approvalSection.className = 'settings-section';
         approvalSection.innerHTML = '<div class="settings-section-header">' +
@@ -448,6 +443,13 @@
             '</div>' +
             '<div class="settings-status" id="telegram-status"></div>';
         modalContent.appendChild(telegramSection);
+
+        // OpenCode, agy and Claude: the worker integrations (askaway.workers.<name>.enabled).
+        var runtimeSection = document.createElement('div');
+        runtimeSection.className = 'integrations-runtimes';
+        runtimeSection.innerHTML = runtimeSettingsHtml();
+        modalContent.appendChild(runtimeSection);
+        initRuntimeSettings(runtimeSection);
 
         // Reusable Prompts section - plus button next to title
         var promptsSection = document.createElement('div');
@@ -735,6 +737,12 @@
             case 'runtimeHealth':
                 applyRuntimeHealth(message.health);
                 break;
+            case 'memberPicturePicked': {
+                workersExpanded['picture:' + message.memberId] = message.name;
+                var pictureName = document.querySelector('[data-member-picture-name="' + message.memberId + '"]');
+                if (pictureName) pictureName.textContent = message.name;
+                break;
+            }
             case 'workerTrace':
                 if (message.data && message.data.workerId) { workersTraces[message.data.workerId] = message.data; paintWorkers(); }
                 break;
@@ -3052,28 +3060,30 @@
     function teamTaskActive(w) { return w.state === 'RUNNING' || w.state === 'STARTING' || w.state === 'WAITING_APPROVAL'; }
     function teamTaskQueuedRuns(w) { return (w.runs || []).filter(function (r) { return r.queuePosition > 0 && r.state === 'STARTING'; }).length; }
     function teamTaskDone(w) { return ['COMPLETED', 'FAILED', 'CANCELLED', 'RETIRED', 'ORPHANED'].indexOf(w.state) !== -1 || !!w.expired; }
-    // This turn's spend of one task: the ledger's checkpoints since the turn started (projectWorkersState turnCost); agy is free.
+    // This turn's spend of one task: the ledger's checkpoints since the turn started (projectWorkersState turnCost, the
+    // same records turn_budget sums); never the task's lifetime cost.
     function teamTaskTurnCost(w) {
-        if (w.adapter === 'agy' || w.cloud) return 0;
-        return typeof w.turnCost === 'number' ? w.turnCost : (Number(w.usage && w.usage.cost) || 0);
+        if (w.cloud) return 0;
+        return Number(w.turnCost) || 0;
     }
     // The one Team money format (summary, member Turn/Month, cost summaries): $0.00, or 4 decimals below a cent.
     function teamMoney(value) {
         var n = Math.max(0, Number(value) || 0);
         return '$' + n.toFixed(n > 0 && n < 0.01 ? 4 : 2);
     }
-    // Headline for "how many are there": counted from the same task list the member rows display.
-    function workersSummaryHtml(state, tasks) {
+    // Headline for "how many are there": counted from the same task list the member rows display. Its $ is the turn's
+    // spend: main agent + every member's Turn (turnDollars), so it always equals the rows; without members, the tasks'.
+    function workersSummaryHtml(state, tasks, turnDollars) {
         var now = state.generatedAt;
         var list = tasks || state.workers || [];
         var running = list.filter(teamTaskActive).length;
         var warm = list.filter(function (w) { return workerIsWarm(w, now); }).length;
         var queued = list.reduce(function (n, w) { return n + teamTaskQueuedRuns(w); }, 0);
         var completed = list.filter(teamTaskDone).length;
-        var dollars = list.reduce(function (n, w) { return n + teamTaskTurnCost(w); }, 0);
+        var dollars = typeof turnDollars === 'number' ? turnDollars : list.reduce(function (n, w) { return n + teamTaskTurnCost(w); }, 0);
         return '<div class="workers-summary"><strong>' + list.length + '</strong> task' + (list.length === 1 ? '' : 's') + ' this turn' +
             ' &middot; ' + running + ' running &middot; ' + queued + ' queued &middot; ' + warm + ' warm &middot; ' + completed + ' completed' +
-            (list.some(function (w) { return !w.cloud; }) ? ' &middot; <strong class="health-cost">' + teamMoney(dollars) + '</strong> this turn' : '') + '</div>';
+            (typeof turnDollars === 'number' || list.some(function (w) { return !w.cloud; }) ? ' &middot; <strong class="health-cost">' + teamMoney(dollars) + '</strong> this turn' : '') + '</div>';
     }
     var TEAM_DEFAULT_VALIDATOR = {
         id: 'priya', name: 'Priya', role: 'Validator', pinned: true, initials: 'PR', avatarSrc: '', avatar: '',
@@ -3173,7 +3183,7 @@
             creativeStatus: 'Running tasks', agentFile: '.opencode/agent/askaway-' + raw + '.md',
             model: (w && w.model) || 'github-copilot/gpt-5.6-luna',
             thinking: (w && w.thinking) || 'medium',
-            turnCost: (w && w.adapter === 'agy') ? 0 : Number(w && w.usage && w.usage.cost) || 0,
+            turnCost: teamTaskTurnCost(w),
             monthCost: (w && w.adapter === 'agy') ? 0 : Number(w && w.usage && w.usage.cost) || 0,
             taskIds: wid ? [wid] : []
         });
@@ -3197,15 +3207,13 @@
         }
         return key;
     }
-    // Turn = the displayed tasks' spend since the turn started; a row without tasks (main agent, Priya between runs)
-    // shows its own turn spend from the host.
+    // Turn = the host's turn spend of the member, from the same sources as turn_budget: the main agent's Copilot AIU of
+    // this turn ÷ 100, a worker member's ledger checkpoints since the turn started across all its tasks (shown or not).
     function memberCostAmounts(member, memberWorkers) {
         var workerSum = (memberWorkers || []).reduce(function (n, w) {
             return n + (w.adapter === 'agy' ? 0 : (Number(w && w.usage && w.usage.cost) || 0));
         }, 0);
-        var turn = (memberWorkers && memberWorkers.length)
-            ? memberWorkers.reduce(function (n, w) { return n + teamTaskTurnCost(w); }, 0)
-            : Number(member && member.turnCost) || 0;
+        var turn = Number(member && member.turnCost) || 0;
         var month = (member && typeof member.monthCost === 'number' && !isNaN(member.monthCost) && (member.monthCost > 0 || !workerSum))
             ? member.monthCost : workerSum;
         return { turn: Math.max(0, Number(turn) || 0), month: Math.max(0, Number(month) || 0) };
@@ -3345,6 +3353,26 @@
             (main ? '' : '<div class="team-member-tasks-col"><button type="button" class="team-tasks-pill' + (tasksOpen ? ' expanded' : '') + '" data-member-tasks-toggle="' + workersEsc(member.id) + '" data-toggle-tasks="' + workersEsc(member.id) + '" data-toggle-trace="' + workersEsc(member.id) + '" aria-expanded="' + (tasksOpen ? 'true' : 'false') + '">' + pillLabel + '</button></div>') +
             '</div>' +
             (main ? '' : '<div class="team-member-tasks-panel' + (member.pinned ? ' team-member-trace-panel' : '') + '" data-member-tray="' + workersEsc(member.id) + '"' + (tasksOpen ? ' data-member-tasks="' + workersEsc(member.id) + '"' : ' hidden') + '>' + (member.pinned ? validatorTraceHtml : cardsHtml) + '</div>') +
+            teamMemberEditFormHtml(member, expanded) +
+            '</div>';
+    }
+    // Edit = the member's profile (name, role, status line, picture), saved to ~/.askaway/team/members.json; the
+    // prompt stays behind "Agent file" (reviewer, 2026-10-16).
+    function teamMemberEditFormHtml(member, expanded) {
+        var id = workersEsc(member.id);
+        var open = Boolean(expanded && expanded['edit:' + member.id]);
+        var picked = expanded && expanded['picture:' + member.id];
+        var field = function (key, label, value) {
+            return '<label class="team-edit-field"><span class="team-control-label">' + label + '</span>' +
+                '<input type="text" class="form-input" maxlength="120" data-member-edit-field="' + key + '" value="' + workersEsc(value || '') + '"></label>';
+        };
+        return '<div class="team-member-edit-form" data-member-edit-form="' + id + '"' + (open ? '' : ' hidden') + '>' +
+            field('name', 'Name', member.name) + field('role', 'Role', member.role) + field('status', 'Status line', member.creativeStatus) +
+            '<div class="team-edit-field"><span class="team-control-label">Picture</span>' +
+            '<button type="button" class="form-btn" data-member-pick-picture="' + id + '">Choose picture&hellip;</button>' +
+            '<span class="team-edit-picture-name" data-member-picture-name="' + id + '">' + workersEsc(picked || '') + '</span></div>' +
+            '<div class="form-actions"><button type="button" class="form-btn form-btn-cancel" data-member-edit-cancel="' + id + '">Cancel</button>' +
+            '<button type="button" class="form-btn form-btn-save" data-member-edit-save="' + id + '">Save</button></div>' +
             '</div>';
     }
     // Priya's trace: the Validator events of the turn plus her validator tasks' loaded traces, as shared trace rows.
@@ -3389,16 +3417,28 @@
         var rank = function (m) { return m.pinned ? 0 : m.kind === 'main' ? 1 : 2; };
         return groups.sort(function (a, b) { return rank(a.member) - rank(b.member); });
     }
+    // Settings → Integrations and the Team runtime warning: one name and one status word per integration (reviewer, 2026-10-16).
+    // A function so Settings can render before this line runs (the modal is built at startup).
+    function integrationItems() {
+        return [{ id: 'opencode', label: 'OpenCode', icon: 'server-process' }, { id: 'agy', label: 'agy', icon: 'sparkle' }, { id: 'claude', label: 'Claude', icon: 'hubot' }];
+    }
+    var INTEGRATIONS = integrationItems();
+    function integrationStatus(health) { return health && health.ok ? 'Working' : 'Not working'; }
+    function memberIntegration(model) {
+        var m = String(model || '');
+        return m.indexOf('agy/') === 0 ? 'agy' : m.indexOf('claude/') === 0 ? 'claude' : 'opencode';
+    }
     function teamRuntimeWarning(state, groups) {
         var health = state && state.runtimeHealth || (typeof runtimeHealth !== 'undefined' ? runtimeHealth : null);
         if (!health) return '';
-        if (!health.agy.enabled && !health.opencode.enabled) return 'Workers unavailable: enable OpenCode or agy in Settings';
-        return ['agy', 'opencode'].map(function (name) {
+        if (!INTEGRATIONS.some(function (item) { return health[item.id] && health[item.id].enabled; })) return 'Workers unavailable: turn on an integration in Settings';
+        return INTEGRATIONS.map(function (item) {
+            var h = health[item.id];
+            if (!h || (h.enabled && h.ok)) return '';
             var names = groups.filter(function (g) {
-                return g.member.kind !== 'main' && (effectiveMemberModel(g.member, g.workers, state).indexOf('agy/') === 0 ? 'agy' : 'opencode') === name;
+                return g.member.kind !== 'main' && memberIntegration(effectiveMemberModel(g.member, g.workers, state)) === item.id;
             }).map(function (g) { return g.member.name; });
-            var label = name === 'agy' ? 'agy' : 'OpenCode';
-            return names.length && (!health[name].enabled || !health[name].ok) ? (!health[name].enabled ? label + ' is off in Settings' : health[name].reason) + ': ' + names.join(', ') + ' use ' + label + ' models' : '';
+            return names.length ? item.label + ' ' + (h.enabled ? integrationStatus(h).toLowerCase() : 'off') + ': ' + names.join(', ') : '';
         }).filter(Boolean).join(' · ');
     }
     // The turn's displayed tasks: tasks of this turn that are running, queued or warm (Show completed adds the cold,
@@ -3420,7 +3460,8 @@
         var hasMembers = Array.isArray(state.members) && state.members.length > 0;
         var groups = hasMembers ? groupWorkersByMember(state, shown, filter) : [];
         var warning = teamRuntimeWarning(state, groups);
-        var html = workersSummaryHtml(state, shown) + '<div class="workers-approval-notice" data-runtime-warning' + (warning ? '' : ' hidden') + '>' + workersEsc(warning) + '</div>';
+        var turnDollars = hasMembers ? groups.reduce(function (n, g) { return n + memberCostAmounts(g.member, g.workers).turn; }, 0) : undefined;
+        var html = workersSummaryHtml(state, shown, turnDollars) + '<div class="workers-approval-notice" data-runtime-warning' + (warning ? '' : ' hidden') + '>' + workersEsc(warning) + '</div>';
         var pending = workersPendingApprovals(state);
         if (pending) {
             html += '<div class="workers-approval-notice">' + pending + ' worker' + (pending > 1 ? 's' : '') + ' waiting for approval. Open the session in OpenCode to answer.</div>';
@@ -3520,12 +3561,32 @@
                 return;
             }
             var edit = target.closest('[data-edit-member]');
-            var file = target.closest('[data-open-agent-file]');
-            if (edit || file) {
+            var editClose = target.closest('[data-member-edit-cancel], [data-member-edit-save]');
+            if (edit || editClose) {
                 event.preventDefault();
-                var row = (edit || file).closest('[data-member-row]');
-                var link = file || row.querySelector('[data-open-agent-file]');
-                post({ type: edit ? 'editTeamMember' : 'openAgentFile', memberId: (edit || file).getAttribute(edit ? 'data-edit-member' : 'data-member-id'), profile: link.getAttribute('data-profile'), path: link.getAttribute('data-open-agent-file'), agentFile: link.getAttribute('data-open-agent-file') });
+                var editId = edit ? edit.getAttribute('data-edit-member') : (editClose.getAttribute('data-member-edit-cancel') || editClose.getAttribute('data-member-edit-save'));
+                var form = root.querySelector('[data-member-edit-form="' + editId + '"]');
+                if (!form) return;
+                var show = Boolean(edit) && form.hasAttribute('hidden');
+                if (editClose && editClose.hasAttribute('data-member-edit-save')) {
+                    var saved = { type: 'saveMemberProfile', memberId: editId };
+                    form.querySelectorAll('[data-member-edit-field]').forEach(function (input) { saved[input.getAttribute('data-member-edit-field')] = input.value; });
+                    post(saved);
+                }
+                if (show) form.removeAttribute('hidden'); else form.setAttribute('hidden', '');
+                post({ type: 'teamEditToggle', memberId: editId, open: show });
+                return;
+            }
+            var pick = target.closest('[data-member-pick-picture]');
+            if (pick) {
+                event.preventDefault();
+                post({ type: 'pickMemberPicture', memberId: pick.getAttribute('data-member-pick-picture') });
+                return;
+            }
+            var file = target.closest('[data-open-agent-file]');
+            if (file) {
+                event.preventDefault();
+                post({ type: 'openAgentFile', memberId: file.getAttribute('data-member-id'), profile: file.getAttribute('data-profile'), path: file.getAttribute('data-open-agent-file'), agentFile: file.getAttribute('data-open-agent-file') });
                 return;
             }
             var name = target.closest('.team-member-name, #panel-aitalk [data-member-id]');
@@ -3553,39 +3614,57 @@
 
     var workersState = null;
     var runtimeHealth = null;
+    // Settings → Integrations rows (reviewer, 2026-10-16): the same switch, one Refresh and "last checked" for each;
+    // Refresh restarts the OpenCode server and rechecks agy/Claude. Rendered like the Webex/Telegram rows.
     function runtimeSettingsHtml() {
-        return ['opencode', 'agy'].map(function (name) {
-            var health = runtimeHealth && runtimeHealth[name];
-            var label = name === 'agy' ? 'agy' : 'OpenCode';
-            return '<div class="settings-section-header"><div class="settings-section-title">' + label + '</div><div class="toggle-switch' + (health && health.enabled ? ' active' : '') + '" role="switch" tabindex="0" aria-label="Enable ' + label + '" aria-checked="' + !!(health && health.enabled) + '" data-runtime-toggle="' + name + '"></div></div><div class="settings-description" data-runtime-health="' + name + '">' + workersEsc(runtimeHealthLabel(health)) + '</div>' + (name === 'opencode' ? '<div class="workers-server" data-settings-server>Shared OpenCode server</div><button type="button" data-restart-opencode>Start / Restart OpenCode</button>' : '');
-        }).join('') + '<button type="button" class="form-btn" data-runtime-recheck>Recheck</button>';
+        return integrationItems().map(function (item) {
+            var health = runtimeHealth && runtimeHealth[item.id];
+            var on = !!(health && health.enabled);
+            return '<div class="settings-section integration-section" data-integration="' + item.id + '"><div class="settings-section-header">' +
+                '<div class="settings-section-title"><span class="codicon codicon-' + item.icon + '"></span> ' + item.label + '</div>' +
+                '<div class="integration-actions"><button type="button" class="integration-refresh" data-refresh-integration="' + item.id + '" title="Refresh ' + item.label + '" aria-label="Refresh ' + item.label + '"><span class="codicon codicon-refresh"></span></button>' +
+                '<div class="toggle-switch' + (on ? ' active' : '') + '" role="switch" tabindex="0" aria-label="Enable ' + item.label + '" aria-checked="' + on + '" data-runtime-toggle="' + item.id + '"></div></div></div>' +
+                '<div class="settings-status" data-runtime-health="' + item.id + '">' + workersEsc(runtimeHealthLabel(health)) + '</div></div>';
+        }).join('');
     }
     function runtimeHealthLabel(health) {
-        return health ? (health.ok ? 'ok' : health.reason) + ' · checked ' + (health.checkedAt ? new Date(health.checkedAt).toLocaleString() : 'not yet') : 'not checked yet';
+        if (!health) return 'Not checked yet';
+        var when = health.checkedAt ? new Date(health.checkedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'not yet';
+        return (health.enabled ? (health.ok ? 'Working' : 'Not working') : 'Off') + ' · checked ' + when;
     }
     function initRuntimeSettings(section) {
         function activate(event) {
             if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
-            var name = event.target.getAttribute('data-runtime-toggle');
+            var target = event.target.closest ? event.target.closest('[data-runtime-toggle],[data-refresh-integration]') : event.target;
+            if (!target) return;
+            var name = target.getAttribute('data-runtime-toggle');
+            var refresh = target.getAttribute('data-refresh-integration');
             if (name) {
                 event.preventDefault();
-                vscode.postMessage({ type: 'setRuntimeEnabled', runtime: name, enabled: event.target.getAttribute('aria-checked') !== 'true' });
-            } else if (event.target.hasAttribute('data-restart-opencode')) vscode.postMessage({ type: 'restartOpenCodeServer' });
-            else if (event.target.hasAttribute('data-runtime-recheck')) vscode.postMessage({ type: 'recheckRuntimeHealth' });
+                vscode.postMessage({ type: 'setRuntimeEnabled', runtime: name, enabled: target.getAttribute('aria-checked') !== 'true' });
+            } else if (refresh) {
+                event.preventDefault();
+                target.classList.add('is-busy');
+                vscode.postMessage({ type: 'refreshIntegration', runtime: refresh });
+            }
         }
         section.addEventListener('click', activate);
         section.addEventListener('keydown', activate);
     }
     function applyRuntimeHealth(health) {
         runtimeHealth = health;
-        ['opencode', 'agy'].forEach(function (name) {
-            var toggle = document.querySelector('[data-runtime-toggle="' + name + '"]');
-            var line = document.querySelector('[data-runtime-health="' + name + '"]');
+        integrationItems().forEach(function (item) {
+            var h = health && health[item.id];
+            if (!h) return;
+            var toggle = document.querySelector('[data-runtime-toggle="' + item.id + '"]');
+            var line = document.querySelector('[data-runtime-health="' + item.id + '"]');
+            var refresh = document.querySelector('[data-refresh-integration="' + item.id + '"]');
             if (toggle) {
-                toggle.classList.toggle('active', !!health[name].enabled);
-                if (toggle.getAttribute('aria-checked') !== String(health[name].enabled)) toggle.setAttribute('aria-checked', String(health[name].enabled));
+                toggle.classList.toggle('active', !!h.enabled);
+                if (toggle.getAttribute('aria-checked') !== String(!!h.enabled)) toggle.setAttribute('aria-checked', String(!!h.enabled));
             }
-            if (line && line.textContent !== runtimeHealthLabel(health[name])) line.textContent = runtimeHealthLabel(health[name]);
+            if (refresh) refresh.classList.remove('is-busy');
+            if (line && line.textContent !== runtimeHealthLabel(h)) line.textContent = runtimeHealthLabel(h);
         });
         paintWorkers();
     }
@@ -3775,6 +3854,11 @@
                 if (message.open && toggled && toggled.pinned) requestValidatorTraces(true);
                 return;
             }
+            if (message.type === 'teamEditToggle') {
+                workersExpanded['edit:' + message.memberId] = message.open;
+                if (!message.open) delete workersExpanded['picture:' + message.memberId];
+                return;
+            }
             if (message.type === 'teamMemberFocus') { focusTeamMember(message.memberId); return; }
             if (message.type === 'setMemberModel' && workersState) {
                 workersState.memberSettings = Object.assign({}, workersState.memberSettings || {});
@@ -3793,13 +3877,6 @@
                 if (panel) { if (open) { panel.removeAttribute('hidden'); panel.setAttribute('data-member-tasks', memberId); } else { panel.setAttribute('hidden', ''); panel.removeAttribute('data-member-tasks'); } }
                 toggleBtn.setAttribute('aria-expanded', String(open));
                 toggleBtn.textContent = toggleBtn.textContent.replace(/[▸▾]$/, open ? '▾' : '▸');
-                return;
-            }
-            var editBtn = e.target.closest && e.target.closest('[data-edit-member]');
-            if (editBtn) {
-                var editRow = editBtn.closest('[data-member-row]');
-                var link = editRow.querySelector('[data-open-agent-file]');
-                vscode.postMessage({ type: 'editTeamMember', memberId: editBtn.getAttribute('data-edit-member'), profile: link.getAttribute('data-profile'), path: link.getAttribute('data-open-agent-file') });
                 return;
             }
             var agentFileBtn = e.target.closest && e.target.closest('[data-open-agent-file]');

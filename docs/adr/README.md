@@ -39,3 +39,4 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0022](0022-cloud-change-merged-tested-pushed.md) | A cloud change is merged locally, tested, then pushed; supersedes ADR 0019's no-push rule | G9 | Proposed |
 | [0023](0023-agy-first-team-members.md) | agy runtime before Team; member rows, tasks, assignment-time presence; supersedes 0021 presence rule only | G18, G5, G8 | Proposed |
 | [0024](0024-team-storybook-review-and-model-comparison.md) | Existing Storybook format, simple names/profiles and collapsible tasks; review one prompt before comparing three models | G18, G5, G13 | Proposed |
+| [0025](0025-team-edit-is-profile-and-integrations.md) | Team Edit is the member profile; Integrations (OpenCode, agy, Claude) share switch, Refresh and last-checked | G18, G5 | Proposed |

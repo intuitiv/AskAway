@@ -33,7 +33,7 @@
 
 ## What AskAway Does
 
-**In progress, not shipped:** agy is being enabled as an alternate runtime with Argon model choices for any profile. [Team planning](specs/010-team/spec.md) follows runtime verification, then Storybook approval; the planned Workers→Team and runs→tasks labels are UI-only.
+**Team tab (deployed locally, 2026-10-16):** every member shows in Team with model and thinking dropdowns, an Agent file link to the prompt, and an Edit form for name, role, status line and picture (kept in `~/.askaway/team/`, never in the package). Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked; OpenCode and agy start on. Build has two members: a high-intelligence one (Opus) and a low-intelligence one (Sol). The main agent's progress lines also appear in AITalk.
 
 **Configured defaults, not release proof:** the eight user-level worker profiles and the repo Webex worker profile now default to `agy/gemini-4-argon-high` with high thinking, replacing Sol 6.1 where it was the default; existing Opus assignments remain. `test-worker-profile-refresh.cjs` covers profile parsing and preservation of an existing worker. A live Argon High task and deployment verification remain open. Optional `agy` runtime proof for MCP, shell permissions, reload without OpenCode, token reconciliation and final gate/deploy also remains open. Monetary cost is unreported, not 0/free; no completed runtime release or shipped Team UI is claimed.
 

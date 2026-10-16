@@ -748,3 +748,17 @@ Authorized agy completion, not Team implementation: optional runtime for any pro
 > Lets use Argon high. Instead of sol 6.1 use Argon, if that works, we can use more often as Opus.
 
 Use `agy/gemini-4-argon-high` for work previously assigned to Sol 6.1; retain Opus for its existing design-heavy role until Argon has been evaluated. This supersedes the earlier Medium trial default, not the runtime permission policy or verification gates. The reviewer-owned photo exists at `~/.askaway/profile/avatar.png` (1254 by 1254 pixels verified); use that external file without copying it into the extension or repository. Track the default migration and avatar integration in spec 010; neither is claimed deployed by this entry.
+
+### 2026-10-16, Team Edit, Integrations, profiles and AITalk updates (verbatim)
+
+> Turn cost is not accurate.
+> I am not getting enough updates from main agent in aitalk.
+> Edit is supposed to edit profile, like name, pic and so on, but it is opening agent prompt. We already have Agent file link to open and edit. Edit is to edit profile.
+> What about agy? is it working? Why did we disable it? i dont see agy anymore.
+> Actually we have claude subscription also. So, include a separate section, like Integrations. For each we have few common items. - enable/disable - recheck/refresh: opencode will be restart server, claude and agy will check if the corresponding things will be working or not - last check when. Do not have specific text like run agy and sign in and so on. a simple refresh button should work for all 3.
+> My specific profiles are, devx, authoring(rule authoring), rest of them will be fine. workers or some tool(not sur eabout the name now) should send active(or enabled) profile details.
+> Check if all tools management tools are properly working or not.
+> And mainly for Build, i want to have 2 profiles so that high intelligence will have one member, and low intelligence will be another member.
+> I still see border of `joined` or `left` in aitalk are kind of distorted. theer is lot of blank space before that.
+
+Edit is the member's profile (name, role, status line, picture) and supersedes R-TEAM-20; model and thinking stay on the row and the prompt stays behind Agent file (R-TEAM-48). agy ships enabled again; Integrations (OpenCode, agy, Claude) share one switch, one Refresh and a last-checked time (R-SETTINGS-15). Main-agent commentary reaches AITalk (R-AITALK-31). Profiles and the Build split are R-WTOOL-41/42.

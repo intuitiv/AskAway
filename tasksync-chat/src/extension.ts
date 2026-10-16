@@ -37,9 +37,10 @@ import { ContextManager } from './context';
 import { PlanEditorProvider } from './plan/planEditorProvider';
 import { COWORK_BUNDLE_B64, COWORK_APPLY_B64, COWORK_PROMPT_B64 } from './cowork/coworkAssets';
 import { sharedCommentaryStore, sharedWorkerRuntimeReady, setWorkerPresenceLifecycle } from './workers/workerHost';
-import { runtimeRefusal, runtimeSettingChanged, startRuntimeHealth } from './workers/runtimeHealth';
-import { sharedWorkerRuntime } from './workers/workerHost';
-import { setWorkerRuntimeGate } from './workers/workerTools';
+import { getRuntimeHealth, RUNTIME_NAMES, runtimeRefusal, runtimeSettingChanged, startRuntimeHealth } from './workers/runtimeHealth';
+import { setBuiltinWorkerProfilesDir, sharedWorkerRuntime } from './workers/workerHost';
+import { setWorkerProfileCatalog, setWorkerRuntimeGate } from './workers/workerTools';
+import { USER_PROFILES_DIR } from './team/roster';
 
 // Heavy modules loaded lazily to avoid blocking activation
 // RemoteUiServer imports express + socket.io (expensive)
@@ -978,9 +979,11 @@ export function activate(context: vscode.ExtensionContext) {
         if (e.affectsConfiguration('askaway.subagentModel')) { void writeSubagentModelSentinel(); }
     }));
     // Worker runtimes: Settings toggles + health gate every worker dispatch; checked now and each morning.
+    setBuiltinWorkerProfilesDir(context.asAbsolutePath('worker-profiles'));
     setWorkerRuntimeGate(runtimeRefusal, sharedWorkerRuntime);
+    setWorkerProfileCatalog({ builtinDir: context.asAbsolutePath('worker-profiles'), userDir: USER_PROFILES_DIR, enabled: (runtime) => getRuntimeHealth()[runtime].enabled });
     context.subscriptions.push(startRuntimeHealth(), vscode.workspace.onDidChangeConfiguration(e => {
-        for (const runtime of ['opencode', 'agy'] as const) {
+        for (const runtime of RUNTIME_NAMES) {
             if (e.affectsConfiguration(`askaway.workers.${runtime}.enabled`)) {
                 runtimeSettingChanged(runtime).catch((error) => void vscode.window.showWarningMessage(`AskAway: ${runtime} setting check failed: ${String(error?.message ?? error)}`));
             }

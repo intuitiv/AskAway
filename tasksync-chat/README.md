@@ -13,7 +13,7 @@ You say what you need in plain words. AskAway runs it through Spec Kit, hands th
 
 ## What AskAway Does
 
-**In progress, not shipped:** agy alternate-runtime support with Argon choices for any profile must be verified first. Team/member profiles and UI-only Workers→Team / runs→tasks terminology remain planned, with Storybook approval required before production Team UI.
+**Team tab (deployed locally, 2026-10-16):** every member shows in Team with model and thinking dropdowns, an Agent file link to the prompt, and an Edit form for name, role, status line and picture (kept in `~/.askaway/team/`, never in the package). Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked; OpenCode and agy start on. Build has two members: a high-intelligence one (Opus) and a low-intelligence one (Sol). The main agent's progress lines also appear in AITalk.
 
 **Argon High prototype, not production Team UI:** eight user-level profiles and the Webex profile default to `agy/gemini-4-argon-high`, replacing prior Sol defaults while preserving Opus assignments. With explicit per-run approval, Argon authored the interactive Team/AITalk Storybook prototype, reusing the production chat and usage banner. Focused prototype tests pass; desktop/mobile and animation acceptance are tracked in spec 010. Earlier headless permission failures are historical, not the current authoring status. Live MCP and full post-reload runtime acceptance remain open; monetary cost is unreported, not 0/free.
 

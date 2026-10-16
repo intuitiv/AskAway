@@ -23,6 +23,8 @@ export interface TeamRosterEntry {
 	agentFile: string;
 	workingStatus: string;
 	idleStatus: string;
+	/** The member's picture from the Team Edit form (~/.askaway/profile/avatars/<id>.<ext>); unset shows initials. */
+	avatarFile?: string;
 }
 
 export interface MainAgentIdentity extends TeamRosterEntry {
@@ -149,13 +151,14 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		name: 'Diego',
 		role: 'Developer',
 		kind: 'worker',
-		profile: 'code',
-		profiles: ['code', 'developer'],
-		model: 'agy/gemini-4-argon-high',
-		thinking: 'high',
+		// Build split (reviewer, 2026-10-16): `build` (high) is Anika's, `build-lite` (low) is Diego's.
+		profile: 'build-lite',
+		profiles: ['build-lite', 'code', 'developer'],
+		model: 'github-copilot/gpt-6.1-sol',
+		thinking: 'medium',
 		turnDollars: 0,
 		monthDollars: 0,
-		agentFile: '.github/agents/code.agent.md',
+		agentFile: '.github/agents/build-lite.agent.md',
 		workingStatus: CREATIVE_ROLE_STATUSES.diego.working,
 		idleStatus: CREATIVE_ROLE_STATUSES.diego.idle,
 	},
@@ -251,13 +254,67 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 	},
 ];
 
-/** The user's own worker profiles (~/.askaway/worker-profiles). Members that are specific to one user (e.g. Rhea, the
- *  Pega rules-authoring expert) never ship in the extension; a profile with `member:` and `role:` frontmatter adds them. */
+/** The user's own worker profiles (~/.askaway/worker-profiles). Members that are specific to one user (e.g. the
+ *  authoring and devx profiles) never ship in the extension: a profile no built-in member owns is a member of its own,
+ *  named by its `member:`/`role:` frontmatter or the Team Edit form (members.json); profiles sharing `member:` share one row. */
 export const USER_PROFILES_DIR = path.join(os.homedir(), '.askaway', 'worker-profiles');
+
+/** Team Edit form overrides, keyed by stable member id; outside the repo and the extension (reviewer, 2026-10-16). */
+export const MEMBERS_FILE = path.join(os.homedir(), '.askaway', 'team', 'members.json');
+export const AVATARS_DIR = path.join(os.homedir(), '.askaway', 'profile', 'avatars');
+export interface MemberOverride { name?: string; role?: string; status?: string; avatar?: string }
+const PICTURE_EXT = /^\.(png|jpe?g|gif|webp|svg)$/;
+
+export function readMemberOverrides(file = MEMBERS_FILE): Record<string, MemberOverride> {
+	try {
+		const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+		return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+	} catch { return {}; }
+}
+
+export function applyMemberOverride<T extends TeamRosterEntry>(entry: T, overrides: Record<string, MemberOverride>): T {
+	const override = overrides[entry.id];
+	if (!override) return entry;
+	const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+	const status = text(override.status);
+	const avatar = text(override.avatar);
+	return {
+		...entry, name: text(override.name) || entry.name, role: text(override.role) || entry.role,
+		workingStatus: status || entry.workingStatus, idleStatus: status || entry.idleStatus,
+		avatarFile: avatar && fs.existsSync(avatar) ? avatar : entry.avatarFile,
+	};
+}
+
+/** Saves the Edit form: name, role and status line, and copies a picked picture to avatarsDir/<id>.<ext>. */
+export function saveMemberProfile(id: string, profile: { name?: string; role?: string; status?: string; picture?: string },
+	file = MEMBERS_FILE, avatarsDir = AVATARS_DIR): MemberOverride {
+	if (!/^[a-z0-9][a-z0-9.-]*$/.test(id)) throw new Error(`invalid member id: ${id}`);
+	const overrides = readMemberOverrides(file);
+	const next: MemberOverride = { ...overrides[id] };
+	for (const key of ['name', 'role', 'status'] as const) {
+		const value = profile[key];
+		if (typeof value === 'string') next[key] = value.trim().slice(0, 120);
+	}
+	if (profile.picture) {
+		const ext = path.extname(profile.picture).toLowerCase();
+		if (!PICTURE_EXT.test(ext)) throw new Error('picture must be a png, jpg, gif, webp or svg image');
+		fs.mkdirSync(avatarsDir, { recursive: true });
+		const target = path.join(avatarsDir, id + ext);
+		fs.copyFileSync(profile.picture, target);
+		next.avatar = target;
+	}
+	overrides[id] = next;
+	fs.mkdirSync(path.dirname(file), { recursive: true });
+	fs.writeFileSync(file, JSON.stringify(overrides, null, 2) + '\n');
+	return next;
+}
+
+const slugOf = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 export function userRosterEntries(dir = USER_PROFILES_DIR): TeamRosterEntry[] {
 	let files: string[];
 	try { files = fs.readdirSync(dir).filter((file) => file.endsWith('.md')).sort(); } catch { return []; }
+	const owned = new Set(TEAM_ROSTER.flatMap((m) => [m.id, ...m.profiles.map((p) => p.toLowerCase())]));
 	const byId = new Map<string, TeamRosterEntry>();
 	for (const file of files) {
 		const source = path.join(dir, file);
@@ -267,10 +324,11 @@ export function userRosterEntries(dir = USER_PROFILES_DIR): TeamRosterEntry[] {
 			const kv = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line);
 			if (kv) fields[kv[1]] = kv[2].trim().replace(/^(["'])(.*)\1$/, '$2');
 		}
-		const name = fields.member;
-		if (!name) continue;
-		const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 		const profile = fields.name || file.replace(/\.md$/, '');
+		if (!fields.member && owned.has(profile.toLowerCase())) continue;
+		const id = slugOf(fields.member || profile);
+		if (!id) continue;
+		const name = fields.member || profile.charAt(0).toUpperCase() + profile.slice(1);
 		const existing = byId.get(id);
 		if (existing) { existing.profiles.push(profile); continue; }
 		byId.set(id, {
@@ -282,10 +340,12 @@ export function userRosterEntries(dir = USER_PROFILES_DIR): TeamRosterEntry[] {
 	return [...byId.values()];
 }
 
-/** The Team roster: the extension's members, then the user's own profile members (built-in ids win). */
-export function teamRoster(dir = USER_PROFILES_DIR): TeamRosterEntry[] {
+/** The Team roster: the extension's members, then the user's own profile members (built-in ids win), with the
+ *  Edit form's name, role, status line and picture applied. */
+export function teamRoster(dir = USER_PROFILES_DIR, membersFile = MEMBERS_FILE): TeamRosterEntry[] {
 	const builtIn = new Set(TEAM_ROSTER.map((m) => m.id));
-	return [...TEAM_ROSTER, ...userRosterEntries(dir).filter((m) => !builtIn.has(m.id))];
+	const overrides = readMemberOverrides(membersFile);
+	return [...TEAM_ROSTER, ...userRosterEntries(dir).filter((m) => !builtIn.has(m.id))].map((m) => applyMemberOverride(m, overrides));
 }
 
 export function initialsOf(name: string): string {

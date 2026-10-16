@@ -330,6 +330,43 @@ body.vscode-light #panel-team {
 	margin-left: auto;
 }
 
+.team-member-edit-form {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin: 6px 0 2px 52px;
+	padding: 8px;
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	border-radius: 4px;
+}
+
+.team-member-edit-form[hidden] {
+	display: none;
+}
+
+.team-edit-field {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.team-edit-field .team-control-label {
+	flex: 0 0 72px;
+}
+
+.team-edit-field .form-input {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.team-edit-picture-name {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .team-member-controls {
 	display: flex;
 	flex-direction: column;
@@ -435,112 +472,4 @@ body.vscode-light #panel-team {
 /* A collapsed pill hides its cards: the display rule above would otherwise override [hidden]. */
 .team-member-tasks-panel[hidden] {
 	display: none;
-}
-
-/* ── Member Edit Modal (5 allowed fields + open model dropdown) ──── */
-
-.team-edit-modal {
-	background: var(--team-surface-elevated);
-	border: 1px solid var(--team-accent);
-	border-radius: 8px;
-	padding: 12px 14px;
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
-}
-
-.team-edit-modal-head {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-}
-
-.team-edit-modal-title {
-	font-size: 13px;
-	font-weight: 700;
-}
-
-.team-edit-close-btn {
-	margin-left: auto;
-	appearance: none;
-	border: none;
-	background: transparent;
-	color: var(--vscode-descriptionForeground);
-	cursor: pointer;
-	font-size: 13px;
-}
-
-.team-edit-form {
-	display: grid;
-	grid-template-columns: 1fr;
-	gap: 8px;
-}
-
-.team-edit-label {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	font-size: 11px;
-	font-weight: 600;
-	color: var(--vscode-descriptionForeground);
-}
-
-.team-edit-input {
-	background: var(--vscode-input-background);
-	color: var(--vscode-input-foreground);
-	border: 1px solid var(--vscode-input-border);
-	border-radius: 4px;
-	padding: 4px 8px;
-	font-size: 12px;
-	height: 26px;
-}
-
-.team-edit-model-wrap {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
-
-.team-model-dropdown-list {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	max-height: 150px;
-	overflow-y: auto;
-	background: var(--vscode-input-background);
-	border: 1px solid var(--vscode-input-border);
-	border-radius: 6px;
-	padding: 4px;
-}
-
-.team-model-dropdown-option {
-	padding: 3px 6px;
-	border-radius: 4px;
-	font-family: var(--vscode-editor-font-family);
-	font-size: 11px;
-	color: var(--vscode-foreground);
-	cursor: pointer;
-}
-
-.team-model-dropdown-option.selected {
-	background: var(--team-surface-active);
-	color: var(--team-accent);
-	font-weight: 600;
-}
-
-.team-edit-actions {
-	display: flex;
-	justify-content: flex-end;
-}
-
-.team-edit-save-btn {
-	appearance: none;
-	border: none;
-	background: var(--vscode-button-background);
-	color: var(--vscode-button-foreground);
-	border-radius: 4px;
-	padding: 4px 12px;
-    font-size: var(--team-font-small);
-	font-weight: 600;
-	cursor: pointer;
 }

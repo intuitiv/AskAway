@@ -6,7 +6,7 @@ import { cacheSafeWaitMs } from '../observability/cacheClock';
 import { startKeepWarmTimer } from './keepWarm';
 import { OpenCodeWorkerRuntime, RuntimeOptions } from './openCodeRuntime';
 import { defaultRestartDeps, defaultServerDeps, DEFAULT_OPENCODE_SERVER_URL, ensureSharedOpenCodeServer, restartSharedOpenCodeServer, RestartDeps, ServerStatus } from './sharedServer';
-import { loadWorkerProfiles, syncAgyPermissions, syncOpenCodeAgents } from './workerProfiles';
+import { catalogWorkerProfiles, loadWorkerProfiles, syncAgyPermissions, syncOpenCodeAgents, WorkerProfile } from './workerProfiles';
 import { SessionMessage } from './workersState';
 
 let runtime: OpenCodeWorkerRuntime | undefined;
@@ -52,9 +52,19 @@ export function agyCommand(home = os.homedir(), env: NodeJS.ProcessEnv = process
     return exists(wrapper) ? wrapper : 'agy';
 }
 
+let builtinProfilesDir: string | undefined;
+/** The extension's own profiles (e.g. build, build-lite); set at activation before the runtime is created. */
+export function setBuiltinWorkerProfilesDir(dir: string | undefined): void { builtinProfilesDir = dir; }
+
+/** The profiles a worker can run: the same catalog `action: "profiles"` lists (built-in plus the user's, the user's file wins). */
+export function hostWorkerProfiles(): WorkerProfile[] {
+    const userDir = path.join(os.homedir(), '.askaway', 'worker-profiles');
+    return builtinProfilesDir ? catalogWorkerProfiles(builtinProfilesDir, userDir) : loadWorkerProfiles(userDir);
+}
+
 /** One runtime per extension host, shared by the MCP surface, the VS Code LM tools, and the Workers tab. */
 export function sharedWorkerRuntime(): OpenCodeWorkerRuntime {
-    runtime ??= new OpenCodeWorkerRuntime(loadWorkerProfiles(path.join(os.homedir(), '.askaway', 'worker-profiles')), {
+    runtime ??= new OpenCodeWorkerRuntime(hostWorkerProfiles(), {
         onPresence: (workspace, worker, present) => presenceLifecycle?.(workspace, worker, present),
         agyCommand: agyCommand(),
     });
@@ -69,7 +79,7 @@ export function workerSpendSince(workspacePath: string | undefined, sinceMs: num
 
 /** The runtime once it is attached to the shared OpenCode server (started on first worker use, not at activation). */
 export async function sharedWorkerRuntimeReady(workspacePath?: string): Promise<OpenCodeWorkerRuntime> {
-    const profiles = loadWorkerProfiles(path.join(os.homedir(), '.askaway', 'worker-profiles'));
+    const profiles = hostWorkerProfiles();
     syncOpenCodeAgents(profiles,
         path.join(os.homedir(), '.config', 'opencode', 'agents'), workspacePath ? path.join(workspacePath, '.opencode', 'agents') : undefined);
     syncAgyPermissions(profiles,

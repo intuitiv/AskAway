@@ -544,36 +544,26 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 
 	// ── 10. Member Edit view has only the 5 allowed fields & live updates AITalk ──
 	{
-		assert.deepStrictEqual(
-			ALLOWED_EDIT_FIELDS,
-			['name', 'role', 'model', 'thinking', 'agentFile'],
-			'ALLOWED_EDIT_FIELDS must be exactly name, role, model, thinking, agentFile'
-		);
-		const editCtrl = createTeamController({
-			scenario: 'member-edit',
-			editingMemberId: 'diego',
-			modelDropdownOpen: true,
-		});
+		assert.deepStrictEqual(ALLOWED_EDIT_FIELDS, ['name', 'role', 'status'], 'Edit is the profile: name, role and status line (plus picture)');
+		const editCtrl = createTeamController({ scenario: 'member-edit', editingMemberId: 'diego' });
 		const editHtml = editCtrl.renderHtml();
-		const editFieldsInDom = [...editHtml.matchAll(/data-edit-field="([^"]+)"/g)].map((m) => m[1]);
-		assert.deepStrictEqual(
-			editFieldsInDom,
-			['name', 'role', 'model', 'thinking', 'agentFile'],
-			'Rendered MemberEdit view contains only the 5 allowed fields'
-		);
-		assert.ok(editHtml.includes('class="team-model-dropdown-list"'), 'MemberEdit shows open model dropdown');
-		assert.ok(editHtml.includes('github-copilot/claude-opus-5.5'), 'Open model dropdown lists github-copilot models');
-		assert.ok(editHtml.includes('agy/gemini-4-argon-high'), 'Open model dropdown lists agy models');
-		assert.ok(!/temperature|permissions|tool checkboxes|system prompt/i.test(editHtml), 'MemberEdit does not expose forbidden fields');
+		const form = /<div class="team-member-edit-form" data-member-edit-form="diego">[\s\S]*?<\/div><\/div>/.exec(editHtml);
+		assert.ok(form, 'Edit opens the shared inline profile form under the row (no modal)');
+		assert.deepStrictEqual([...form[0].matchAll(/data-member-edit-field="([^"]+)"/g)].map((m) => m[1]), ['name', 'role', 'status'], 'form fields');
+		assert.ok(form[0].includes('data-member-pick-picture="diego"'), 'form picks a picture');
+		assert.ok(!/team-edit-modal|data-edit-field|agentFile/.test(editHtml), 'no Storybook-only modal');
+		assert.ok(!/temperature|permissions|tool checkboxes|system prompt/i.test(form[0]), 'MemberEdit does not expose forbidden fields');
 
 		// Live edit of display name updates AITalk roster and bubbles
 		editCtrl.updateEditDraft('name', 'DiegoV');
+		editCtrl.updateEditDraft('status', 'Pairing on the parser');
 		editCtrl.saveMemberEdit();
 		const updatedHtml = editCtrl.renderHtml();
 		const [updatedTalkHtml, updatedTeamHtml] = updatedHtml.split('id="panel-team"');
 		assert.ok(updatedTalkHtml.includes('DiegoV'), 'Editing member name updates AITalk pane live');
 		assert.ok(updatedTeamHtml.includes('DiegoV'), 'Editing member name updates Team pane live');
-		pass('10. Member edit view exposes only the 5 allowed fields, shows open model dropdown, and updates AITalk live');
+		assert.ok(updatedTeamHtml.includes('Pairing on the parser'), 'Editing the status line shows on the row');
+		pass('10. Member Edit is the shared inline profile form (name, role, status, picture) and updates AITalk live');
 	}
 
 	// ── 11. All 6 stories exist, show one active tab panel at a time, and ActiveTurn timeline covers full multi-agent flow ──

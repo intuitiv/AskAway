@@ -69,8 +69,9 @@ function machine(answersAfterSpawn) {
     const webview = fs.readFileSync(path.join(__dirname, 'media', 'webview.js'), 'utf8');
     assert.match(webview, /type: 'restartOpenCodeServer'/);
     const providerText = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
-    // Reviewer 2026-10-16: the restart control moved from the Team header to Settings.
-    assert.match(webview, /data-restart-opencode/);
+    // Reviewer 2026-10-16: OpenCode's restart is the Refresh button of its Settings → Integrations row.
+    assert.match(webview, /data-refresh-integration/);
+    assert.match(providerText, /message\.runtime === 'opencode'\) \{ void this\._restartOpenCodeServer\(\)/, 'OpenCode Refresh is the confirmed restart');
     assert.match(providerText, /\{ modal: true \}, 'Restart'/, 'restarting a live server asks first');
     console.log('EV-036b SharedServerRestart: PASS stopsOnlyOpencode=true startsWhenDown=true squatterUntouched=true confirmFirst=true');
 

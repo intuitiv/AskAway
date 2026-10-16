@@ -118,6 +118,21 @@ export function loadWorkerProfiles(dir: string): WorkerProfile[] {
         .map((file) => parseWorkerProfile(fs.readFileSync(path.join(dir, file), 'utf8'), path.join(dir, file)));
 }
 
+/**
+ * Every loaded profile: the extension's built-in ones plus the user's own (~/.askaway/worker-profiles), where a user
+ * file of the same name wins. `source` says whether the extension ships that name (reviewer, 2026-10-16: devx and
+ * authoring are his own profiles, never shipped). A missing directory contributes nothing.
+ */
+export function catalogWorkerProfiles(builtinDir: string, userDir: string): Array<WorkerProfile & { origin: 'builtin' | 'user' }> {
+    const load = (dir: string) => fs.existsSync(dir) ? loadWorkerProfiles(dir) : [];
+    const builtin = load(builtinDir);
+    const shipped = new Set(builtin.map((profile) => profile.name));
+    const byName = new Map(builtin.map((profile) => [profile.name, profile]));
+    for (const profile of load(userDir)) { byName.set(profile.name, profile); }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
+        .map((profile) => ({ ...profile, origin: shipped.has(profile.name) ? 'builtin' as const : 'user' as const }));
+}
+
 /** Selection-time refresh for file-backed profiles; in-memory fixture profiles stay unchanged. */
 export function workerProfileRefresh(profiles: WorkerProfile[]): () => WorkerProfile[] | undefined {
     const dirs = [...new Set(profiles.filter(p => p.source).map(p => path.dirname(p.source)))];

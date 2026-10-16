@@ -48,7 +48,7 @@ export interface WorkerRow {
     /** Same fields as the chat banner, for the worker's current (or last) run: requests, $ (null: runtime reports no cost), last in / run out, cache hit, age. */
     banner: { requests: number; dollars: number | null; lastIn: number; lastCached: number; turnOut: number; lastActivityAt: number };
     usage: RunUsage;
-    /** Spend since the current chat turn started: the same ledger checkpoints turn_budget counts; agy is free. */
+    /** Spend since the current chat turn started: exactly the ledger checkpoints turn_budget (usageSince) counts. */
     turnCost: number;
     runs: WorkerRunTrace[];
 }
@@ -63,6 +63,8 @@ export interface TeamMemberState {
     avatarSrc: string;
     creativeStatus: string;
     agentFile: string;
+    /** The Edit form's saved picture (absolute path); the provider turns it into a webview URI. */
+    avatarFile?: string;
     model: string;
     thinking: string;
     adapter: 'opencode' | 'agy' | 'copilot';
@@ -226,7 +228,7 @@ function matchRosterEntry(worker: WorkerRow, allEntries: TeamRosterEntry[]): Tea
             return entry;
         }
     }
-    const aliases: Record<string, string> = { authoring: 'anika', devx: 'diego', test: 'tara', pipeline: 'paolo', performance: 'pavel' };
+    const aliases: Record<string, string> = { test: 'tara', pipeline: 'paolo', performance: 'pavel' };
     return roster.find(entry => entry.id === aliases[prof]) ?? roster.find(entry => entry.id === 'diego')!;
 }
 
@@ -259,6 +261,7 @@ export function projectTeamMembers(workers: WorkerRow[], roster: TeamRosterEntry
             avatarSrc: '',
             creativeStatus: active ? entry.workingStatus : entry.idleStatus,
             agentFile: entry.agentFile,
+            avatarFile: entry.avatarFile ?? '',
             model,
             thinking,
             adapter,
@@ -319,7 +322,7 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
             track: [...runs].reverse().find((run) => run.track)?.track ?? '',
             banner: { requests: current.usage.steps, dollars: agy ? null : current.usage.cost, lastIn: current.lastPromptTokens, lastCached: current.lastCachedTokens,
                 turnOut: current.usage.output, lastActivityAt: Math.max(current.updatedAt, lastPingAt) },
-            usage: sumUsage(traces), turnCost: agy ? 0 : (turnSpend.get(workerId) ?? 0), runs: traces,
+            usage: sumUsage(traces), turnCost: turnSpend.get(workerId) ?? 0, runs: traces,
         });
     }
     workers.sort((a, b) => Number(b.track === 'validator' || b.profile === 'validator') - Number(a.track === 'validator' || a.profile === 'validator') || b.lastUpdateAt - a.lastUpdateAt);
