@@ -155,7 +155,7 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
     }, async (args) => (await runtime()).start(packetOf(args)));
 
     register('worker_submit', {
-        description: 'Queue a packet on an existing warm worker (reuses its OpenCode session). If that worker is busy for more than ~30s the session is forked into a new parallel worker instead (status FORKED, forkedFrom). Refuses explicitly if the worker is retired or ineligible, or CWD_MISMATCH when the packet run directory (workspacePath) differs from the worker one: a session is never reused across directories.',
+        description: 'Queue a packet on an existing warm worker (reuses its OpenCode session). If that worker is busy for more than ~30s the session is forked into a new parallel worker instead (status FORKED, forkedFrom). Refuses explicitly if the worker is retired, REMOVED (the reviewer took it out of rotation: start a fresh one) or ineligible, or CWD_MISMATCH when the packet run directory (workspacePath) differs from the worker one: a session is never reused across directories.',
         inputSchema: z.object({ workerId: z.string(), ...packetShape }),
     }, async (args) => (await runtime()).submitForking(args.workerId, packetOf(args)));
 

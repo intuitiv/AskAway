@@ -52,7 +52,7 @@ provider._benchmarkRows = () => [];
 provider._broadcast = message => { pushed.push(message.data); ui.apply(message.data); };
 provider.refreshWorkersState = () => provider._refreshWorkersState();
 provider.setWorkersStateSource = source => { provider._workersStateSource = source; };
-for (const name of ['setWorkerTraceSource', 'setWorkerCancelSource', 'setWorkerArchiveSource', 'setServerRestartSource']) provider[name] = () => {};
+for (const name of ['setWorkerTraceSource', 'setWorkerCancelSource', 'setWorkerArchiveSource', 'setWorkerRemoveSource', 'setServerRestartSource']) provider[name] = () => {};
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setTimeout(resolve, 5)); };
 const server = http.createServer((req, res) => { assert.equal(req.url, '/config'); res.end('{}'); });
 (async () => {

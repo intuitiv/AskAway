@@ -231,6 +231,44 @@ const replay = () => {
 };
 assert.deepEqual(replay(), replay());
 
+// agy workers never expire from cache age (reviewer, 2026-10-16); OpenCode expiry is unchanged.
+{
+    const agy = { model: 'agy/gemini-4-argon-medium' };
+    router = newRouter();
+    const lane = router.route(req(agy));
+    const second = router.route(req(agy));
+    assert.deepEqual([second.status, second.workerId === lane.workerId], ['CREATED', false], 'a busy agy worker is not reused');
+    router = newRouter();
+    const idle = router.route(req(agy));
+    router.complete(idle.workerId, idle.runId, { contextTokens: 150000 });
+    clock += 3600000;
+    const again = router.route(req(agy));
+    assert.deepEqual([again.status, again.workerId], ['REUSED', idle.workerId], 'idle agy worker older than the OpenCode TTL is reused by start');
+    router.complete(again.workerId, again.runId, { contextTokens: 150000 });
+    clock += 3600000;
+    assert.equal(router.worker(idle.workerId).state, 'IDLE');
+    assert.equal(router.cacheExpiresAt(router.worker(idle.workerId)), 0, 'agy list shows no cache expiry');
+    assert.equal(router.submitTo(idle.workerId, 'named', 30).status, 'REUSED', 'submit to an agy worker is never refused for cache expiry');
+    router.complete(idle.workerId, router.worker(idle.workerId).active.runId, { contextTokens: 200001 });
+    assert.equal(router.route(req(agy)).status, 'CREATED', 'the 200K start reuse limit still applies to agy');
+    router = newRouter();
+    const old = router.route(req(agy));
+    router.complete(old.workerId, old.runId, { contextTokens: 1000 });
+    clock += 4 * 3600000;
+    assert.equal(router.tooOldReason(router.worker(old.workerId)), '', 'agy has no 3-hour idle cap');
+    assert.deepEqual([router.route(req(agy)).status, router.submitTo(old.workerId, 'n', 30).status], ['REUSED', 'REUSED'], 'agy idle 4h is still reusable by start and submit');
+    const open = newRouter();
+    const oc = open.route(req());
+    open.complete(oc.workerId, oc.runId, { contextTokens: 150000 });
+    clock += 301000;
+    assert.equal(open.route(req()).status, 'CREATED', 'OpenCode expired cache above 100K still starts fresh');
+    const ocSubmit = newRouter();
+    const oc2 = ocSubmit.route(req());
+    ocSubmit.complete(oc2.workerId, oc2.runId, { contextTokens: 10 });
+    clock += 301000;
+    assert.equal(ocSubmit.submitTo(oc2.workerId, 'n', 30).status, 'RETIRED', 'OpenCode submit after expiry is still refused');
+    console.log('EV-AGY-REUSE: PASS idle agy reused past TTL; busy not; 200K skip kept; submit allowed; no 3h cap; OpenCode expiry unchanged');
+}
 console.log('EV-008 BoundedReuseSelection: PASS startWhileBusy=CREATED submitQueues=REUSED submitPastBound=INELIGIBLE unavailable=SELECTION_UNAVAILABLE fallbackDispatches=0 cacheBoundaryWorkers=2');
 console.log('EV-009 SelectionBehavior: PASS scenarios=9 effectiveSelectionExact=true workspaceIsolation=true queueCancelBeforeStartOnly=true deterministic=true');
 console.log('CAC-CY-003 WorkspaceBoundDispatchReady: PASS');

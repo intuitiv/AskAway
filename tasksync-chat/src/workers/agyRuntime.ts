@@ -18,12 +18,14 @@ export const VERIFY_FACT_TAIL_CHARS = 1500;
  * added only for a run whose packet explicitly opted in (`agyPermissions: 'skip'`). `--flag=value` keeps a message from
  * ever being read as a flag.
  */
-export function agyArgs(options: { model: string; thinking: string; conversationId?: string; message: string; skipPermissions?: boolean }): string[] {
+export function agyArgs(options: { model: string; thinking: string; conversationId?: string; addDir?: string; message: string; skipPermissions?: boolean }): string[] {
     const model = options.model.slice(AGY_PREFIX.length);
     const args = [`--print=${options.message}`, '--output-format=stream-json', `--model=${model}`, '--mode=accept-edits', '--disable-slash-commands'];
     // A model whose name carries its effort (gemini-4-argon-high) keeps it; otherwise the profile thinking maps to --effort.
     if (EFFORTS.includes(options.thinking) && !/-(low|medium|high)$/.test(model)) { args.push(`--effort=${options.thinking}`); }
     if (options.conversationId) { args.push(`--conversation=${options.conversationId}`); }
+    // Without a workspace agy reports "initialized without an active workspace" and cannot use its file tools.
+    if (options.addDir) { args.push(`--add-dir=${options.addDir}`); }
     if (options.skipPermissions) { args.push('--dangerously-skip-permissions'); }
     return args;
 }

@@ -265,7 +265,7 @@ const packet = (overrides = {}) => ({
     assert.deepEqual([ageAt(0), ageAt(7000), ageAt(65_000)], ['0:00', '0:07', '1:05'], 'Age advances as time passes');
     assert.match(webview, /generatedAt: Date\.now\(\) - workersClockSkew/, 'the tab re-renders with the current clock every second');
     const actions = [...openA.matchAll(/data-worker-action="([^"]+)"/g)].map((m) => m[1]);
-    assert.deepEqual([...new Set(actions)].sort(), ['cancel-run', 'open', 'open-external', 'trace'], 'no approval or conversation controls');
+    assert.deepEqual([...new Set(actions)].sort(), ['cancel-run', 'open', 'open-external', 'remove', 'trace'], 'no approval or conversation controls');
     // Cancel-before-start from the tab: only the queued run offers it, and only this workspace's queued run is cancelled.
     assert.deepEqual([...openA.matchAll(/data-worker-action="cancel-run" data-run-id="([^"]+)"/g)].map((m) => m[1]), [run3.runId]);
     assert.match(webview, /type: 'cancelQueuedWorkerRun', runId: btn\.getAttribute\('data-run-id'\)/);

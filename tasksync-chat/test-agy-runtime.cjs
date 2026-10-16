@@ -103,6 +103,7 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
     const first = calls()[0];
     assert.equal(first.cwd, workspace, 'agy runs in the authorized workspace');
     assert.ok(first.args.includes('--model=gemini-4-argon-medium') && first.args.includes('--output-format=stream-json'));
+    assert.ok(first.args.includes(`--add-dir=${workspace}`), 'the first call gives agy the run directory: ' + JSON.stringify(first.args));
     assert.ok(!first.args.includes('--dangerously-skip-permissions'), 'review mode is the default: no hidden permission bypass');
     assert.ok(!first.args.some((a) => a.startsWith('--effort')), 'a model named with its effort keeps it');
     assert.match(prompt(first), /BUILD-PROFILE-BODY[\s\S]*Worker basics[\s\S]*Objective: Write the fixture/, 'a fresh agy conversation gets the profile instructions');
@@ -145,6 +146,7 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
     const submitted = await call('submit', { ...packet, workerId: started.workerId, objective: 'Read the fixture' });
     assert.equal((await call('wait', { runId: submitted.runId, timeoutSeconds: 20 })).status, 'COMPLETED');
     assert.ok(calls()[1].args.includes('--conversation=conv-1'), JSON.stringify(calls()[1].args));
+    assert.ok(calls()[1].args.includes(`--add-dir=${workspace}`), 'a resumed call still passes --add-dir');
     assert.doesNotMatch(prompt(calls()[1]), /BUILD-PROFILE-BODY/);
 
     // error: a failed agy turn is FAILED with its reason; resume continues the same conversation and completes.
@@ -218,6 +220,32 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
     await reloadedCall('cancel', { runId: hanging.runId });
     await reloadedCall('wait', { runId: hanging.runId, timeoutSeconds: 20 });
 
+    // EV-AGY-RESUME-GUARD: a conversation whose start fact has no addDir (older ledger rows) was created without a workspace;
+    // the next submit starts a fresh conversation instead of resuming it.
+    const guardLedger = path.join(tmp, 'ledger-guard');
+    const guardRuntime = new OpenCodeWorkerRuntime([profile, readOnly], { ledgerDir: guardLedger, agyCommand: fakeAgy });
+    const guardCall = toolOf(guardRuntime);
+    const guardStart = await guardCall('start', { ...packet, model: 'gemini-4-argon-low', objective: 'Legacy conversation' });
+    assert.equal((await guardCall('wait', { runId: guardStart.runId, timeoutSeconds: 20 })).status, 'COMPLETED');
+    for (const file of fs.readdirSync(guardLedger)) {
+        const rows = fs.readFileSync(path.join(guardLedger, file), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+        fs.writeFileSync(path.join(guardLedger, file), rows.map((row) => { delete row.addDir; return JSON.stringify(row); }).join('\n') + '\n');
+    }
+    const guardReloaded = new OpenCodeWorkerRuntime([profile, readOnly], { ledgerDir: guardLedger, agyCommand: fakeAgy });
+    guardReloaded.rehydrate(workspace, false);
+    const guardReloadedCall = toolOf(guardReloaded);
+    const beforeGuard = calls().length;
+    const guardSubmit = await guardReloadedCall('submit', { ...packet, workerId: guardStart.workerId, model: 'gemini-4-argon-low', objective: 'Continue the legacy work' });
+    assert.equal((await guardReloadedCall('wait', { runId: guardSubmit.runId, timeoutSeconds: 20 })).status, 'COMPLETED', JSON.stringify(guardSubmit));
+    const guardCalls = calls().slice(beforeGuard);
+    assert.ok(!guardCalls[0].args.some((a) => a.startsWith('--conversation=')), 'a legacy conversation is not resumed: ' + JSON.stringify(guardCalls[0].args));
+    assert.ok(guardCalls[0].args.includes(`--add-dir=${workspace}`));
+    assert.match(prompt(guardCalls[0]), /BUILD-PROFILE-BODY/, 'the fresh conversation gets the profile instructions again');
+    const guardNext = await guardReloadedCall('submit', { ...packet, workerId: guardStart.workerId, model: 'gemini-4-argon-low', objective: 'Second after the guard' });
+    await guardReloadedCall('wait', { runId: guardNext.runId, timeoutSeconds: 20 });
+    assert.ok(calls().at(-1).args.includes('--conversation=conv-1'), 'the fresh conversation (created with --add-dir) resumes normally');
+    console.log('PASS EV-AGY-RESUME-GUARD legacy agy conversation (no addDir) => fresh conversation, then resumes normally');
+
     // Explicit runtime needs a model; runtime opencode refuses an agy model; no runtime keeps OpenCode the default.
     assert.equal((await call('start', { ...packet, model: undefined })).status, 'INELIGIBLE');
     assert.equal((await call('start', { ...packet, runtime: 'opencode', model: 'agy/gemini-4-argon-medium' })).status, 'INELIGIBLE');
@@ -244,8 +272,13 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
         'state.lastCwd = process.cwd();',
         'state.lastArg = process.argv[3] || "";',
         'fs.writeFileSync(stateFile, JSON.stringify(state));',
-        'if (mode === "fail-then-pass" && state.count === 1) {',
-        '  process.stdout.write("X".repeat(4500) + "\\nFAIL-ROUND-1-TAIL\\n");',
+        // Call 1 is the baseline run before agy starts; calls 2 fails with new lines, call 3 passes.
+        'if (mode === "fail-then-pass" && state.count <= 2) {',
+        '  process.stdout.write("X".repeat(4500) + "\\nFAIL-ROUND-" + state.count + "-TAIL\\n");',
+        '  process.exit(1);',
+        '}',
+        'if (mode === "same-fail") {',
+        '  process.stdout.write("FAIL same.test.js\\n    at /repo/same.test.js:10:2\\n");',
         '  process.exit(1);',
         '}',
         'if (mode === "always-fail") {',
@@ -264,24 +297,24 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
     });
     const verifyPassDone = await verifyCall('wait', { runId: verifyPass.runId, timeoutSeconds: 20 });
     assert.equal(verifyPassDone.status, 'COMPLETED', JSON.stringify(verifyPassDone));
-    assert.ok(verifyPassDone.evidence.some((line) => line.includes('PASS-ROUND-2-TAIL')), JSON.stringify(verifyPassDone.evidence));
+    assert.ok(verifyPassDone.evidence.some((line) => line.includes('PASS-ROUND-3-TAIL')), JSON.stringify(verifyPassDone.evidence));
     const checkState = JSON.parse(fs.readFileSync(checkStateFile, 'utf8'));
-    assert.equal(checkState.count, 2);
+    assert.equal(checkState.count, 3, 'one baseline run before agy plus two verify rounds');
     assert.equal(checkState.lastCwd, workspace, 'verify command runs in the task workspace');
     assert.equal(checkState.lastArg, 'quoted arg', 'verify command splits argv with quotes respected and no shell');
     assert.equal(calls().length, beforeVerifyPass + 2, 'failed verify round resumes the conversation once');
     assert.ok(calls()[beforeVerifyPass + 1].args.includes('--conversation=conv-1'));
     const verifyResumePrompt = prompt(calls()[beforeVerifyPass + 1]);
-    assert.match(verifyResumePrompt, /FAIL-ROUND-1-TAIL[\s\S]*This check failed; fix it with file tools and report\./);
+    assert.match(verifyResumePrompt, /FAIL-ROUND-2-TAIL[\s\S]*This check failed; fix it with file tools and report\./);
     assert.ok(verifyResumePrompt.length <= 4100, `verify prompt tail bounded (~4000 chars): got ${verifyResumePrompt.length}`);
     const verifyPassRounds = (await verifyCall('logs', { runId: verifyPass.runId })).filter((fact) => fact.type === 'verify_round');
     assert.equal(verifyPassRounds.length, 2);
     assert.equal(verifyPassRounds[0].round, 1);
     assert.equal(verifyPassRounds[0].exitCode, 1);
-    assert.ok(verifyPassRounds[0].tail.length <= 1500 && verifyPassRounds[0].tail.includes('FAIL-ROUND-1-TAIL'));
+    assert.ok(verifyPassRounds[0].tail.length <= 1500 && verifyPassRounds[0].tail.includes('FAIL-ROUND-2-TAIL'));
     assert.equal(verifyPassRounds[1].round, 2);
     assert.equal(verifyPassRounds[1].exitCode, 0);
-    assert.match(verifyPassRounds[1].tail, /PASS-ROUND-2-TAIL/);
+    assert.match(verifyPassRounds[1].tail, /PASS-ROUND-3-TAIL/);
 
     // 3 failures end FAILED with the last output tail.
     fs.rmSync(checkStateFile, { force: true });
@@ -292,10 +325,22 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
     });
     const verifyFailDone = await verifyCall('wait', { runId: verifyFail.runId, timeoutSeconds: 20 });
     assert.equal(verifyFailDone.status, 'FAILED', JSON.stringify(verifyFailDone));
-    assert.match(verifyFailDone.reason, /ALWAYS-FAIL-ROUND-3/);
+    assert.match(verifyFailDone.reason, /ALWAYS-FAIL-ROUND-4/);
     assert.equal(calls().length, beforeVerifyFail + 3, '3 agy rounds for 3 verify rounds');
     const verifyFailRounds = (await verifyCall('logs', { runId: verifyFail.runId })).filter((fact) => fact.type === 'verify_round');
     assert.deepEqual(verifyFailRounds.map((fact) => [fact.round, fact.exitCode]), [[1, 2], [2, 2], [3, 2]]);
+
+    // EV-AGY-PRE-EXISTING: a check failing identically before and after the worker is not the worker's doing.
+    fs.rmSync(checkStateFile, { force: true });
+    const beforeSame = calls().length;
+    const sameFail = await verifyCall('start', { ...packet, model: 'gemini-flash', objective: 'Verify loop pre-existing failure', command: `"${process.execPath}" "${fakeCheck}" same-fail` });
+    const sameDone = await verifyCall('wait', { runId: sameFail.runId, timeoutSeconds: 20 });
+    assert.equal(sameDone.status, 'FAILED', JSON.stringify(sameDone));
+    assert.match(sameDone.reason, /^pre-existing failure:/);
+    assert.equal(calls().length, beforeSame + 1, 'a pre-existing failure never resumes the worker');
+    assert.equal((await verifyCall('logs', { runId: sameFail.runId })).filter((fact) => fact.type === 'verify_round').length, 1);
+    assert.equal(JSON.parse(fs.readFileSync(checkStateFile, 'utf8')).count, 2, 'baseline before agy plus one verify round');
+    console.log('PASS EV-AGY-PRE-EXISTING identical failing lines before/after => one verify round, no resume, reason pre-existing');
 
     // OpenCode path untouched: never runs verify_round even when command would fail.
     fs.rmSync(checkStateFile, { force: true });

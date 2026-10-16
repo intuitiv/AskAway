@@ -23,6 +23,11 @@ function realDir(dir: string): string {
     try { return fs.realpathSync(dir); } catch { return dir; }
 }
 
+/** agy conversations have no provider prompt cache and no timeout: they never expire from cache age or the idle cap (reviewer, 2026-10-16). */
+function isAgyWorker(worker: { model: string }): boolean {
+    return worker.model.startsWith('agy/');
+}
+
 export type RoutedWorkerState = 'IDLE' | 'RUNNING' | 'RETIRED' | 'ORPHANED';
 
 export interface QueueEntry {
@@ -88,6 +93,8 @@ export interface RouterOptions {
 /** Routes packets to workspace-bound serial workers, reusing a warm worker only when every eligibility rule holds. */
 export class WorkerRouter {
     private readonly workersById = new Map<string, RoutedWorker>();
+    /** Workers the reviewer removed from rotation: never routed to again; submit says so explicitly. */
+    private readonly removedIds = new Set<string>();
     private readonly profiles: Map<string, WorkerProfile>;
     private readonly refreshProfiles: () => WorkerProfile[] | undefined;
     private readonly now: () => number;
@@ -178,7 +185,8 @@ export class WorkerRouter {
     }
 
     /** Queues work on one named worker, refusing explicitly when that worker is no longer eligible or runs in another directory. */
-    submitTo(workerId: string, packetId: string, estimatedSeconds: number, cwd?: string): RouteResult | { status: 'RETIRED' | 'INELIGIBLE' | 'CWD_MISMATCH' | 'WORKER_TOO_OLD'; workerId: string; reason: string } {
+    submitTo(workerId: string, packetId: string, estimatedSeconds: number, cwd?: string): RouteResult | { status: 'RETIRED' | 'INELIGIBLE' | 'CWD_MISMATCH' | 'WORKER_TOO_OLD' | 'REMOVED'; workerId: string; reason: string } {
+        if (this.removedIds.has(workerId)) { return { status: 'REMOVED', workerId, reason: 'removed from rotation by the reviewer; start a fresh worker (action start)' }; }
         const worker = this.workersById.get(workerId);
         if (!worker) { return { status: 'INELIGIBLE', workerId, reason: 'unknown worker' }; }
         if (worker.state === 'RETIRED') { return { status: 'RETIRED', workerId, reason: worker.retiredReason || 'retired' }; }
@@ -325,6 +333,12 @@ export class WorkerRouter {
         return this.workersById.get(workerId);
     }
 
+    /** Takes a worker out of rotation for good: it is no longer routed, listed or submitted to (submit answers REMOVED). */
+    markRemoved(workerId: string): void {
+        this.removedIds.add(workerId);
+        this.workersById.delete(workerId);
+    }
+
     /** Drops an archived worker from routing; it can never be selected or submitted to again. */
     forget(workerId: string): void {
         this.workersById.delete(workerId);
@@ -332,7 +346,7 @@ export class WorkerRouter {
 
     /** When an idle worker's prompt cache goes cold and it stops being reusable; 0 while running or when never reusable. */
     cacheExpiresAt(worker: RoutedWorker): number {
-        if (worker.active || worker.state === 'RETIRED' || worker.state === 'ORPHANED') { return 0; }
+        if (worker.active || worker.state === 'RETIRED' || worker.state === 'ORPHANED' || isAgyWorker(worker)) { return 0; }
         return worker.lastActivityAt + this.cacheTtlMs;
     }
 
@@ -356,7 +370,7 @@ export class WorkerRouter {
      * status, logs and list for audit. Empty when the worker is running or recent enough.
      */
     tooOldReason(worker: RoutedWorker): string {
-        if (worker.active || this.now() - worker.lastActivityAt <= WORKER_MAX_IDLE_MS) { return ''; }
+        if (worker.active || isAgyWorker(worker) || this.now() - worker.lastActivityAt <= WORKER_MAX_IDLE_MS) { return ''; }
         return `idle more than ${WORKER_MAX_IDLE_MS / 3_600_000} hours; read it with status/logs but start a fresh worker for new work`;
     }
 
@@ -369,7 +383,7 @@ export class WorkerRouter {
     }
 
     private isExpired(worker: RoutedWorker): boolean {
-        return !worker.active && this.now() - worker.lastActivityAt > this.cacheTtlMs;
+        return !isAgyWorker(worker) && !worker.active && this.now() - worker.lastActivityAt > this.cacheTtlMs;
     }
 
     private ineligibility(worker: RoutedWorker, checkWait = true, allowExpired = false): string {
@@ -377,7 +391,7 @@ export class WorkerRouter {
         if (worker.contextTokens > MAX_CONTEXT_TOKENS) { return `context ${worker.contextTokens} > ${MAX_CONTEXT_TOKENS}`; }
         const tooOld = this.tooOldReason(worker);
         if (tooOld) { return tooOld; }
-        if (!worker.active && this.now() - worker.lastActivityAt > this.cacheTtlMs
+        if (!isAgyWorker(worker) && !worker.active && this.now() - worker.lastActivityAt > this.cacheTtlMs
             && !(allowExpired && worker.contextTokens < EXPIRED_REUSE_MAX_CONTEXT_TOKENS)) { return 'cache expired'; }
         if (!checkWait) { return ''; }
         if (worker.busyElsewhere) { return 'running in another window'; }

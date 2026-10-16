@@ -141,6 +141,7 @@ export class McpServerManager {
             loadWorkerTrace(this.getWorkerRuntime(), workspacePath, workerId, fetchSessionMessages));
         provider.setWorkerCancelSource((workspacePath, runId) => cancelQueuedRun(this.getWorkerRuntime(), workspacePath, runId));
         provider.setWorkerArchiveSource((workspacePath) => this.getWorkerRuntime().archive(workspacePath));
+        provider.setWorkerRemoveSource((workspacePath, workerId) => this.getWorkerRuntime().remove(workspacePath, workerId));
         provider.setServerRestartSource((workspacePath) => restartSharedServer(workspacePath));
         onSharedServerAttached(republish);
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;

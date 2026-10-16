@@ -485,6 +485,7 @@ type FromWebviewMessage =
     | { type: 'requestWorkerTrace'; workerId: string }
     | { type: 'cancelQueuedWorkerRun'; runId: string }
     | { type: 'archiveWorkers' }
+    | { type: 'removeWorker'; workerId: string }
     | { type: 'restartOpenCodeServer' }
     | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
     | { type: 'requestCommentary' }
@@ -1409,6 +1410,21 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         if (!root || !this._workerArchiveSource) { return; }
         const result = this._workerArchiveSource(root);
         void vscode.window.showInformationMessage(`Archived ${result.archived.length} worker(s); kept ${result.kept.length} still running, queued, or reusable.`);
+        this._refreshWorkersState();
+    }
+
+    private _workerRemoveSource: ((workspacePath: string, workerId: string) => { status: string; workerId: string }) | undefined;
+
+    public setWorkerRemoveSource(source: (workspacePath: string, workerId: string) => { status: string; workerId: string }): void {
+        this._workerRemoveSource = source;
+    }
+
+    /** The card's Remove button (after its inline confirm): cancels the worker if running and takes it out of rotation. */
+    private _removeWorker(workerId: string): void {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root || !this._workerRemoveSource || typeof workerId !== 'string') { return; }
+        const result = this._workerRemoveSource(root, workerId);
+        if (result.status !== 'REMOVED') { void vscode.window.showWarningMessage(`Not removed: ${result.status}`); }
         this._refreshWorkersState();
     }
 
@@ -4227,6 +4243,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'cancelQueuedWorkerRun':
                 this._cancelQueuedWorkerRun(message.runId);
+                break;
+            case 'removeWorker':
+                this._removeWorker(message.workerId);
                 break;
             case 'archiveWorkers':
                 this._archiveWorkers();

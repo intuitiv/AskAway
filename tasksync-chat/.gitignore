@@ -4,6 +4,7 @@
 .env
 *.py
 !tools/agy-approve.py
+.test-fixtures/
 **/*instructions.md
 dist/**
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.

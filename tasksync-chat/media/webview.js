@@ -3169,6 +3169,17 @@
         var workerSum = (memberWorkers || []).reduce(function (n, w) { return n + ((w.usage && w.usage.cost) || 0); }, 0);
         return { dollars: workerSum, requests: null };
     }
+    // Inline Remove confirm (one line in the card, no modal): worker ids whose Remove button was clicked once.
+    var workersRemoveConfirm = {};
+    function workerRemoveHtml(w) {
+        var id = workersEsc(w.workerId);
+        if (workersRemoveConfirm[w.workerId]) {
+            return '<span class="worker-remove-confirm">Remove this worker from rotation? Its past cost stays in the totals. ' +
+                '<button class="worker-remove-btn" data-worker-action="remove-confirm" data-worker-id="' + id + '">Remove</button>' +
+                '<button class="worker-trace-btn" data-worker-action="remove-cancel" data-worker-id="' + id + '">Keep</button></span>';
+        }
+        return '<button class="worker-remove-btn" data-worker-action="remove" data-worker-id="' + id + '" title="Take this worker out of rotation: cancels it if running; start and submit never use it again">Remove</button>';
+    }
     function workerCardHtml(w, open, now, openIds, traces) {
         var html = '<div class="worker-card" data-worker-id="' + workersEsc(w.workerId) + '">' +
             '<div class="worker-card-head">' +
@@ -3185,6 +3196,7 @@
             (w.sessionId && w.adapter !== 'agy' ? '<button class="worker-open-btn" data-worker-action="open" data-session-id="' + workersEsc(w.sessionId) + '" title="' + workersEsc(w.sessionOpenAction) + '">Open in VS Code</button>' +
                 '<button class="worker-open-ext-btn" data-worker-action="open-external" data-session-id="' + workersEsc(w.sessionId) + '" title="Open in your default terminal app">Terminal app</button>' : '') +
             '<button class="worker-trace-btn" data-worker-action="trace" data-worker-id="' + workersEsc(w.workerId) + '">' + (open ? 'Hide' : 'Trace') + ' (' + (w.runs || []).length + ')</button>' +
+            (w.cloud ? '' : workerRemoveHtml(w)) +
             '</div>';
         if (open) {
             html += workerTraceHtml(w, openIds || {}, now, w.trace || (traces && traces[w.workerId]));
@@ -3512,6 +3524,12 @@
                 vscode.postMessage({ type: 'openWorkerSession', sessionId: btn.getAttribute('data-session-id'), external: action === 'open-external' });
             } else if (action === 'cancel-run') {
                 vscode.postMessage({ type: 'cancelQueuedWorkerRun', runId: btn.getAttribute('data-run-id') });
+            } else if (action === 'remove' || action === 'remove-cancel' || action === 'remove-confirm') {
+                var removeId = btn.getAttribute('data-worker-id');
+                if (action === 'remove') workersRemoveConfirm[removeId] = true;
+                else delete workersRemoveConfirm[removeId];
+                if (action === 'remove-confirm') vscode.postMessage({ type: 'removeWorker', workerId: removeId });
+                paintWorkers();
             } else {
                 var id = btn.getAttribute('data-worker-id');
                 workersExpanded[id] = !workersExpanded[id];

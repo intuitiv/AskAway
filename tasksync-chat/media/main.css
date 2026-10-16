@@ -2452,6 +2452,9 @@ body[class*="avail-"]::before, .availability-frame::before {
     background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
 }
 .worker-actions .worker-open-btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.worker-actions { flex-wrap: wrap; align-items: center; }
+.worker-actions .worker-remove-btn { margin-left: auto; color: var(--vscode-errorForeground); }
+.worker-remove-confirm { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; font-size: 11px; }
 /* The worker trace IS the Metrics timeline table; only the per-run partition row is its own. */
 .worker-run-partition td {
     font-size: 11px; padding: 4px 4px 2px; font-family: var(--vscode-editor-font-family);
