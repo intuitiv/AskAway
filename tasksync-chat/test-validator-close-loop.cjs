@@ -4,6 +4,7 @@ const path = require('node:path');
 const ts = require('./node_modules/typescript');
 fs.mkdirSync(path.join(__dirname, 'build'), { recursive: true });
 const root = fs.mkdtempSync(path.join(__dirname, 'build/validator-close-loop-'));
+require('./tools/transpile-src.cjs').transpileSrc(root);
 for (const name of ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools',
     'commentary/commentary', 'specs/specCostLedger', 'validator/profile', 'validator/redact', 'validator/records', 'validator/observer']) {
     const file = path.join(root, `${name}.js`);

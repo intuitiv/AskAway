@@ -2,7 +2,7 @@ import { talkHtml } from './talk.js';
 import { createSimulatedRoom } from './simulatedActors.js';
 import { createTalkController } from '../../media/aitalk/talkController.js';
 import { selectReply, replyMessage } from '../../media/aitalk/talkRules.js';
-import { VSCODE_DARK_THEME } from '../kit.js';
+import { VSCODE_DARK_THEME, SIDEBAR_WIDTH } from '../kit.js';
 import {
 	AVATAR_FIXTURES,
 	USER_PROFILE_FIXTURE,
@@ -69,8 +69,9 @@ export function getWorkersKit() {
 	const banner = sliceBetween(webviewSource, '// ── Usage banner', '// ── end Usage banner ──');
 	const trace = sliceBetween(webviewSource, '// ── Turn trace rows', '// ── end Turn trace rows ──');
 	const workers = sliceBetween(webviewSource, '// ── Workers tab: pure render', '// ── end Workers pure render ──');
+	const patch = sliceBetween(webviewSource, '    function patchTeamNode(', "    var workersExpanded =");
 	cachedWorkersKit = new Function(
-		`${banner}\n${trace}\n${workers}\nreturn { usageBannerHtml, chatBannerHtml, cacheAgeLabel, efficiencyScore, turnTotalsLead, traceRowsHtml, traceGroupsHtml, TRACE_HEAD, workerBannerHtml, workerTraceHtml, workersSummaryHtml, renderWorkersHtml, workersScoreboardHtml, workersBenchmarkHtml, workerCostTips };`
+		`${banner}\n${trace}\n${workers}\n${patch}\nreturn { wireTeamEvents, patchTeamHtml, teamMemberRowHtml, normalizeTeamMember, usageBannerHtml, chatBannerHtml, cacheAgeLabel, efficiencyScore, turnTotalsLead, traceRowsHtml, traceGroupsHtml, TRACE_HEAD, workerBannerHtml, workerTraceHtml, workersSummaryHtml, renderWorkersHtml, workersScoreboardHtml, workersBenchmarkHtml };`
 	)();
 	return cachedWorkersKit;
 }
@@ -83,8 +84,8 @@ export const PRODUCTION_TABS = [
 	{ id: 'settings', label: 'Settings', icon: 'codicon-settings-gear', title: 'Settings' },
 ];
 
-export const TEAM_WIDGET_WIDTH_PX = 420;
-export const TEAM_WIDGET_WIDTH = '420px';
+export const TEAM_WIDGET_WIDTH_PX = SIDEBAR_WIDTH;
+export const TEAM_WIDGET_WIDTH = `${SIDEBAR_WIDTH}px`;
 
 export const AVAILABLE_TEAM_MODELS = [
 	{ id: 'github-copilot/claude-opus-5.5', adapter: 'opencode', efforts: ['high', 'medium', 'low'] },
@@ -225,7 +226,7 @@ export const TEAM_ROSTER_FIXTURES = [
 		role: 'Architect',
 		kind: 'worker',
 		profile: 'build',
-		profiles: ['build'],
+		profiles: ['build', 'plan', 'architect'],
 		model: 'github-copilot/claude-opus-5.5',
 		thinking: 'high',
 		turnDollars: 0.024,
@@ -239,8 +240,8 @@ export const TEAM_ROSTER_FIXTURES = [
 		name: 'Diego',
 		role: 'Developer',
 		kind: 'worker',
-		profile: 'build',
-		profiles: ['build', 'code'],
+		profile: 'code',
+		profiles: ['code', 'developer'],
 		model: 'agy/gemini-4-argon-high',
 		thinking: 'high',
 		turnDollars: 0,
@@ -531,6 +532,8 @@ export function toSharedWorkerRecord(task, now = 1_700_000_000_000) {
 		cacheExpiresAt: agy ? 0 : Number(task.cacheExpiresAt ?? (now + 240_000)),
 		lastPingAt: agy ? 0 : Number(task.lastPingAt ?? (now - 60_000)),
 		knowledge: task.objective || task.knowledge || '',
+		usage: { cost: agy ? 0 : (dollars || 0), steps: requests },
+		turnCost: agy ? 0 : (dollars || 0),
 		banner: {
 			requests,
 			dollars,
@@ -576,60 +579,6 @@ export function toSharedWorkerRecord(task, now = 1_700_000_000_000) {
 	};
 }
 
-function replaceUserVisibleWorkerWording(html, isAgy) {
-	let out = String(html || '').replace(
-		/(title="[^"]*")|(&gt;[^<]*&lt;)|(>[^<]+<)/g,
-		(segment) => segment
-			.replace(/\bWorkers\b/g, 'Tasks')
-			.replace(/\bworkers\b/g, 'tasks')
-			.replace(/\bWorker\b/g, 'Task')
-			.replace(/\bworker\b/g, 'task')
-	);
-	if (isAgy) {
-		out = out
-			.replace(/cost=unreported/gi, 'cost=$0')
-			.replace(/cost unreported/gi, '$0')
-			.replace(/\$0\.0+/g, '$0');
-	}
-	return out;
-}
-
-export function renderMemberTaskCardHtml(task, { now = 1_700_000_000_000, expandedTraces = {}, openIds = {} } = {}) {
-	const kit = getWorkersKit();
-	const record = toSharedWorkerRecord(task, now);
-	const fullWorkersHtml = kit.renderWorkersHtml(
-		{
-			generatedAt: now,
-			server: { state: 'ATTACHED', endpoint: 'http://127.0.0.1:4096' },
-			workers: [record],
-			turnWorkerIds: [record.workerId],
-		},
-		'',
-		expandedTraces,
-		true,
-		openIds,
-		{ [record.workerId]: record.trace }
-	);
-	const cardStart = fullWorkersHtml.indexOf('<div class="worker-card"');
-	const cardHtml = cardStart >= 0 ? fullWorkersHtml.slice(cardStart) : fullWorkersHtml;
-	return replaceUserVisibleWorkerWording(cardHtml, record.adapter === 'agy');
-}
-
-export function renderValidatorTracePanelHtml(member, state) {
-	const kit = getWorkersKit();
-	const traceEvents = Array.isArray(member?.traceEvents) && member.traceEvents.length
-		? member.traceEvents
-		: VALIDATOR_TRACE_FIXTURES;
-	const rowsHtml = kit.traceRowsHtml(traceEvents, {
-		openIds: state?.openTraceIds || {},
-		now: state?.now || 1_700_000_000_000,
-	});
-	const tableHtml = `<div class="team-member-tasks-panel team-member-trace-panel" data-member-tasks="${esc(member.id)}" data-member-trace="${esc(member.id)}">` +
-		`<table class="observability-table obs-timeline-table team-validator-trace" data-validator-trace="${esc(member.id)}">${kit.TRACE_HEAD}<tbody>${rowsHtml}</tbody></table>` +
-		`</div>`;
-	return replaceUserVisibleWorkerWording(tableHtml, isAgyModel(member?.model));
-}
-
 export function renderProductionTabBarHtml(activeTab = 'team') {
 	const btns = PRODUCTION_TABS.map((t) => {
 		const isActive = t.id === activeTab;
@@ -669,70 +618,10 @@ export function memberStatusInfo(member) {
 }
 
 export function renderMemberRowHtml(member, state) {
-	const status = memberStatusInfo(member);
-	const cost = memberCostSummary(member);
-	const isValidator = member.kind === 'validator' || member.id === 'priya';
-	const traceEvents = isValidator
-		? (Array.isArray(member.traceEvents) && member.traceEvents.length ? member.traceEvents : VALIDATOR_TRACE_FIXTURES)
-		: [];
-	const tasks = member.tasks || [];
-	const taskCount = tasks.length;
-	const isTasksExpanded = Boolean(state.expandedTasksByMember && state.expandedTasksByMember[member.id]);
-	const isHighlighted = state.highlightedMemberId === member.id;
-	const supportedEfforts = effortsForModel(member.model);
-	const modelOptionsHtml = AVAILABLE_TEAM_MODELS.map((m) => (
-		`<option value="${esc(m.id)}"${m.id === member.model ? ' selected' : ''}>${esc(m.id)}</option>`
-	)).join('');
-	const effortOptionsHtml = supportedEfforts.map((eff) => (
-		`<option value="${esc(eff)}"${eff === member.thinking ? ' selected' : ''}>${esc(eff)}</option>`
-	)).join('');
-
-	const pillLabel = isValidator
-		? `Trace (${traceEvents.length}) ${isTasksExpanded ? '▾' : '▸'}`
-		: `${taskCount} ${taskCount === 1 ? 'task' : 'tasks'} ${isTasksExpanded ? '▾' : '▸'}`;
-	const tasksTrayHtml = isTasksExpanded
-		? (isValidator
-			? renderValidatorTracePanelHtml(member, state)
-			: `<div class="team-member-tasks-panel" data-member-tasks="${esc(member.id)}">` +
-				(tasks.length
-					? tasks.map((t) => renderMemberTaskCardHtml(t, {
-						now: state.now || 1_700_000_000_000,
-						expandedTraces: state.expandedTraces || {},
-						openIds: state.openTraceIds || {},
-					})).join('')
-					: `<div class="team-tasks-empty">No tasks in this turn.</div>`) +
-			  `</div>`)
-		: '';
-
-	return `<div class="team-member-row${isHighlighted ? ' team-member-row-highlighted is-highlighted' : ''}${status.state === 'working' ? ' is-working' : ''}" data-member-id="${esc(member.id)}" data-pinned="${member.pinnedFirst ? 'true' : 'false'}" data-highlighted="${isHighlighted ? 'true' : 'false'}">` +
-		`<div class="team-member-row-main">` +
-			`<div class="team-member-portrait" data-member-id="${esc(member.id)}">` +
-				avatarMarkup(member, { sizeClass: 'team-portrait-72', avatarOverrides: state.avatarOverrides }) +
-			`</div>` +
-			`<div class="team-member-body">` +
-				`<div class="team-member-headline">` +
-					`<span class="team-member-identity"><strong class="team-member-name">${esc(member.name)}</strong> &middot; <span class="team-member-role">${esc(member.role)}</span></span>` +
-					`<span class="team-member-status team-status-${esc(status.state)}" data-status-state="${esc(status.state)}">● ${esc(status.text)}</span>` +
-					`<span class="team-member-cost" data-member-cost="${esc(member.id)}" data-turn-cost="${esc(cost.turnCostText)}" data-month-cost="${esc(cost.monthCostText)}">Turn <strong class="team-cost-turn">${esc(cost.turnCostText)}</strong> &middot; Month <strong class="team-cost-month">${esc(cost.monthCostText)}</strong></span>` +
-					`<button type="button" class="team-edit-member-btn" data-edit-member="${esc(member.id)}" title="Edit ${esc(member.name)}">Edit</button>` +
-				`</div>` +
-				`<div class="team-member-controls">` +
-					`<span class="team-member-profile">Profile: <code>${esc(member.profile)}</code></span>` +
-					`<label class="team-control-field">Model ` +
-						`<select class="team-model-select" data-member-id="${esc(member.id)}" aria-label="${esc(member.name)} Model">${modelOptionsHtml}</select>` +
-					`</label>` +
-					`<label class="team-control-field">Thinking ` +
-						`<select class="team-thinking-select" data-member-id="${esc(member.id)}" aria-label="${esc(member.name)} Thinking">${effortOptionsHtml}</select>` +
-					`</label>` +
-					`<a href="#" class="team-agent-file-link" data-agent-file="${esc(member.agentFile)}" data-member-id="${esc(member.id)}">Agent file ↗</a>` +
-				`</div>` +
-			`</div>` +
-			`<div class="team-member-tasks-col">` +
-				`<button type="button" class="team-tasks-pill${isTasksExpanded ? ' expanded' : ''}" data-toggle-tasks="${esc(member.id)}" data-toggle-trace="${esc(member.id)}" aria-expanded="${isTasksExpanded ? 'true' : 'false'}">${esc(pillLabel)}</button>` +
-			`</div>` +
-		`</div>` +
-		tasksTrayHtml +
-	`</div>`;
+	const kit = getWorkersKit();
+	const workers = (member.tasks || []).map((task) => toSharedWorkerRecord(task, state.now || 1_700_000_000_000));
+	const normalized = kit.normalizeTeamMember({ ...member, pinned: member.pinnedFirst, active: memberStatusInfo(member).state === 'working', avatarSrc: avatarFor(member.id, state.avatarOverrides), turnCost: member.turnDollars, monthCost: member.monthDollars, creativeStatus: memberStatusInfo(member).text });
+	return kit.teamMemberRowHtml(normalized, workers, { generatedAt: state.now, memberSettings: { [member.id]: { model: member.model } }, validatorTrace: member.traceEvents || (member.id === 'priya' ? VALIDATOR_TRACE_FIXTURES : []) }, { ...state.expandedTraces, ['member:' + member.id]: Boolean(state.expandedTasksByMember && state.expandedTasksByMember[member.id]), highlightedMember: state.highlightedMemberId }, state.openTraceIds, {});
 }
 
 export function renderMemberEditModalHtml(member, state) {
@@ -799,8 +688,18 @@ export function renderTeamTabHtml(state) {
 		? (state.members || []).find((m) => m.id === state.editingMemberId)
 		: null;
 	const modalHtml = editingMember ? renderMemberEditModalHtml(editingMember, state) : '';
+	// Same header row and summary as production (#panel-team): no filter, no Save cost tips; counts come from the displayed tasks.
+	const now = state.now || 1_700_000_000_000;
+	const tasks = activeMembers.flatMap((m) => (m.tasks || []).map((task) => toSharedWorkerRecord(task, now)));
+	const headerHtml = `<div class="workers-header">` +
+		`<div class="specs-toggle" title="Include workers whose cache went cold or that retired"><span>Show completed</span><div class="toggle-switch specs-toggle-switch" id="workers-show-expired" role="switch" aria-checked="false" tabindex="0"></div></div>` +
+		`<button class="specs-refresh-btn" id="workers-archive-btn" title="Archive completed workers"><span class="codicon codicon-archive"></span></button>` +
+		`<button class="specs-refresh-btn" id="workers-refresh-btn" title="Refresh workers"><span class="codicon codicon-refresh"></span></button>` +
+	`</div>`;
 
 	return `<div class="team-tab-panel" data-active-member-count="${activeMembers.length}">` +
+		headerHtml +
+		getWorkersKit().workersSummaryHtml({ generatedAt: now }, tasks) +
 		`<div class="team-member-list" role="list">${rowsHtml}</div>` +
 		modalHtml +
 	`</div>`;
@@ -813,200 +712,8 @@ export function renderTeamTabHtml(state) {
  * - Every participant name and avatar carries data-member-id for click-to-Team-row navigation
  * - Duplicate first names in @autocomplete show their role to choose and route by member id
  */
-export function decorateTalkHtml(rawTalkHtml, state, roomSnapshot = null) {
-	const memberById = new Map();
-	const memberByName = new Map();
-	for (const m of state.members || []) {
-		memberById.set(m.id, m);
-		memberByName.set(String(m.name || '').toLowerCase(), m);
-	}
-	const machsMember = {
-		id: 'machs',
-		name: USER_PROFILE_FIXTURE.name,
-		role: '',
-		kind: 'user',
-		initials: 'MA',
-	};
-	memberById.set('machs', machsMember);
-	memberById.set('user', machsMember);
-	memberById.set('you', machsMember);
-	memberByName.set('machs', machsMember);
-	memberByName.set('you', machsMember);
-
-	let html = String(rawTalkHtml || '');
-
-	// 1. Decorate header subtitle roster: plain list of present names ("Machs, Priya, Bhaskar, ...") with clickable data-member-id, no images
-	const presentAiMembers = (state.members || [])
-		.filter((m) => m.present)
-		.slice()
-		.sort((a, b) => {
-			const aPinned = Boolean(a.pinnedFirst || a.id === 'priya' || a.kind === 'validator');
-			const bPinned = Boolean(b.pinnedFirst || b.id === 'priya' || b.kind === 'validator');
-			if (aPinned !== bPinned) return aPinned ? -1 : 1;
-			return 0;
-		});
-	const presentParticipants = [machsMember, ...presentAiMembers];
-	if (presentParticipants.length) {
-		const rosterInner = presentParticipants.map((m) => (
-			`<span class="aitalk-roster-member" data-member-id="${esc(m.id)}"><span class="aitalk-roster-name" data-member-id="${esc(m.id)}">${esc(m.name)}</span></span>`
-		)).join(', ');
-		const typingSuffix = roomSnapshot?.typing
-			? ` <span class="talk-typing-inline">${esc(roomSnapshot.typing)}</span>`
-			: '';
-		html = html.replace(
-			/<div class="talk-subtitle">[\s\S]*?<\/div>/,
-			`<div class="talk-subtitle"><span class="aitalk-roster" title="In this room">${rosterInner}</span>${typingSuffix}</div>`
-		);
-	}
-
-	// Ensure user presence avatar in header also carries fixture fallback
-	html = html.replace(
-		/<span class="presence-avatar" aria-hidden="true"><img src="([^"]+)" alt=""><\/span>/g,
-		(_, src) => `<span class="presence-avatar" aria-hidden="true"><img src="${src}" alt="" data-fixture-path="${esc(USER_PROFILE_FIXTURE.fixturePath)}" data-fallback-src="${esc(USER_PROFILE_FIXTURE.fallbackAvatar)}" onerror="if(this.dataset.fallbackSrc&&this.src!==this.dataset.fallbackSrc){this.src=this.dataset.fallbackSrc;}"></span>`
-	);
-
-	// 2. Decorate join and leave notices: keep exact text ("Bhaskar joined", "Diego left") while adding face + clickable data-member-id
-	html = html.replace(
-		/<div class="talk-pill-row"><span class="talk-pill system\s*">([^<]+)<\/span><\/div>/g,
-		(full, noticeText) => {
-			const trimmed = noticeText.trim();
-			const match = /^(.+?)\s+(joined|left)$/.exec(trimmed);
-			if (!match) return full;
-			const actorName = match[1];
-			const m = memberByName.get(actorName.toLowerCase()) || memberById.get(actorName.toLowerCase()) || { id: actorName.toLowerCase(), name: actorName };
-			const face = avatarMarkup(m, {
-				sizeClass: 'aitalk-inline-face',
-				avatarOverrides: state.avatarOverrides,
-				emptyAlt: true,
-				hideInitialsText: true,
-			});
-			return `<div class="talk-pill-row aitalk-presence" data-actor="${esc(m.id)}" data-member-id="${esc(m.id)}">${face}<span class="aitalk-presence-label" data-member-id="${esc(m.id)}">${esc(trimmed)}</span></div>`;
-		}
-	);
-
-	// 3. Decorate message bubbles by matching each message id from roomSnapshot.messages
-	const messages = roomSnapshot?.messages || [];
-	for (const msg of messages) {
-		if (!msg || !msg.id || msg.kind === 'system' || msg.kind === 'day' || msg.kind === 'memory') continue;
-		const resolvedId = (msg.author === 'user' || msg.author === 'you') ? 'machs' : msg.author;
-		const m = memberById.get(resolvedId) || memberByName.get(String(resolvedId).toLowerCase()) || {
-			id: resolvedId,
-			name: resolvedId,
-			kind: 'worker',
-			initials: computeInitials(resolvedId),
-		};
-		const faceHtml = avatarMarkup(m, {
-			sizeClass: 'aitalk-bubble-face',
-			avatarOverrides: state.avatarOverrides,
-			emptyAlt: true,
-		});
-		const rowToken = `id="talk-${esc(msg.id)}"`;
-		const rowIdx = html.indexOf(rowToken);
-		if (rowIdx < 0) continue;
-
-		const rowStart = html.lastIndexOf('<div', rowIdx);
-		const searchFrom = rowIdx + rowToken.length;
-		const boundaryTokens = [
-			'<div class="talk-row',
-			'<div data-primary="true" class="talk-row',
-			'<div class="talk-pill-row',
-			'<div id="talk-bottom">',
-		];
-		let sliceEnd = html.length;
-		for (const tok of boundaryTokens) {
-			const idx = html.indexOf(tok, searchFrom);
-			if (idx > rowStart && idx < sliceEnd) {
-				sliceEnd = idx;
-			}
-		}
-		let rowHtml = html.slice(rowStart, sliceEnd);
-
-		rowHtml = rowHtml.replace(
-			/^<div([^>]*?)class="talk-row ([^"]+)" id="([^"]+)">/,
-			`<div$1class="talk-row $2 aitalk-msg" id="$3" data-id="${esc(msg.id)}" data-actor="${esc(m.id)}" data-member-id="${esc(m.id)}">`
-		);
-
-		if (rowHtml.includes('<span class="talk-avatar ')) {
-			rowHtml = rowHtml.replace(
-				/<span class="talk-avatar ([^"]*)"(?: data-member="[^"]*")? aria-hidden="true">[\s\S]*?<\/span>/,
-				`<span class="talk-avatar $1 aitalk-avatar" data-member-id="${esc(m.id)}" aria-hidden="true">${faceHtml}</span>`
-			);
-		} else if (m.id === 'machs') {
-			rowHtml = rowHtml.replace(
-				/<div class="talk-bubble/,
-				`<span class="talk-avatar who-you aitalk-avatar" data-member-id="machs" aria-hidden="true">${faceHtml}</span><div class="talk-bubble`
-			);
-		}
-
-		if (rowHtml.includes('<span class="talk-sender ')) {
-			rowHtml = rowHtml.replace(
-				/<span class="talk-sender ([^"]*)"(?: data-member="[^"]*")?>([^<]*)<\/span>/,
-				`<span class="talk-sender $1 aitalk-who" data-member-id="${esc(m.id)}">${esc(m.name)}</span>`
-			);
-		} else if (m.id === 'machs') {
-			rowHtml = rowHtml.replace(
-				/(<div class="talk-bubble[^"]*">)/,
-				`$1<span class="talk-sender who-you aitalk-who" data-member-id="machs">${esc(m.name)}</span>`
-			);
-		}
-
-		html = html.slice(0, rowStart) + rowHtml + html.slice(sliceEnd);
-	}
-
-	// Decorate quote authors and inline @mentions with data-member-id
-	html = html.replace(
-		/<b class="talk-quote-who">([^<]+)<\/b>/g,
-		(_, qWho) => {
-			const qName = (qWho === 'You' || qWho === 'user') ? USER_PROFILE_FIXTURE.name : qWho;
-			const qMember = memberByName.get(String(qName).toLowerCase()) || memberById.get(String(qName).toLowerCase());
-			const qIdAttr = qMember ? ` data-member-id="${esc(qMember.id)}"` : '';
-			return `<b class="talk-quote-who aitalk-quote-who"${qIdAttr}>${esc(qName)}</b>`;
-		}
-	);
-
-	html = html.replace(
-		/<b class="talk-mention">@([^<]+)<\/b>/g,
-		(full, mentioned) => {
-			const target = memberByName.get(String(mentioned).toLowerCase()) || memberById.get(String(mentioned).toLowerCase());
-			if (!target) return full;
-			return `<b class="talk-mention" data-member-id="${esc(target.id)}">@${esc(mentioned)}</b>`;
-		}
-	);
-
-	// 4. Decorate @mention autocomplete popup with faces, role disambiguation, and data-member-id
-	const candidates = state.autocompleteCandidates || [];
-	if (candidates.length) {
-		const nameCounts = new Map();
-		for (const c of candidates) {
-			const key = String(c.name || '').toLowerCase();
-			nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
-		}
-		const acItemsHtml = candidates.map((m, i) => {
-			const isDup = (nameCounts.get(String(m.name || '').toLowerCase()) || 0) > 1;
-			const face = avatarMarkup(m, {
-				sizeClass: 'aitalk-ac-face',
-				avatarOverrides: state.avatarOverrides,
-				emptyAlt: true,
-			});
-			return `<button type="button" role="option" class="talk-mention-option aitalk-ac-item${i === (state.acIndex || 0) ? ' active' : ''}" data-member-id="${esc(m.id)}" data-mention="${esc(m.name)}" data-role="${esc(m.role || '')}" data-disambiguated="${isDup ? 'true' : 'false'}" aria-selected="${i === (state.acIndex || 0) ? 'true' : 'false'}">` +
-				`<span class="talk-avatar small" data-member-id="${esc(m.id)}" aria-hidden="true">${face}</span>` +
-				`<span class="talk-mention-name"><b class="aitalk-ac-name">${esc(m.name)}</b><small class="aitalk-ac-role">${esc(m.role || '')}</small></span>` +
-			`</button>`;
-		}).join('');
-		const customAc = `<div class="talk-mentions aitalk-ac" role="listbox" aria-label="Mention a participant">${acItemsHtml}</div>`;
-		if (html.includes('<div class="talk-mentions"')) {
-			html = html.replace(/<div class="talk-mentions" role="listbox" aria-label="Mention a participant">[\s\S]*?<\/div>/, customAc);
-		} else {
-			html = html.replace('<div class="talk-composer">', `<div class="talk-composer">${customAc}`);
-		}
-	}
-
-	const mainIdentity = resolveMainAgentIdentity(state.selectedAgent || 'AskAway Build');
-	if (!mainIdentity.isUnknownAgent) {
-		html = html.replace(/AA\.Orchestrator/g, 'Mahesh').replace(/AskAway Build/g, 'Bhaskar');
-	}
-
-	return html;
+export function decorateTalkHtml(rawTalkHtml) {
+	return String(rawTalkHtml || '');
 }
 
 export function renderTeamShellHtml(state, rawTalkHtml = '', roomSnapshot = null) {
@@ -1119,9 +826,14 @@ export function createTeamController(options = {}) {
 		const list = [
 			{
 				id: 'machs',
+				memberId: 'machs',
 				kind: 'user',
 				displayName: USER_PROFILE_FIXTURE.name,
 				name: USER_PROFILE_FIXTURE.name,
+				initials: 'MA',
+				avatarSrc: avatarFor('machs', state.avatarOverrides),
+				fixturePath: USER_PROFILE_FIXTURE.fixturePath,
+				fallbackAvatar: USER_PROFILE_FIXTURE.fallbackAvatar,
 				colour: 'who-you',
 				rank: 400,
 				presencePolicy: 'alwaysPresent',
@@ -1138,10 +850,14 @@ export function createTeamController(options = {}) {
 		for (const m of orderedAiMembers) {
 			list.push({
 				id: m.id,
+				memberId: m.id,
 				kind: m.kind === 'validator' ? 'validator' : (m.kind === 'main' ? 'agent' : 'worker'),
 				displayName: m.name,
 				name: m.name,
 				role: m.role,
+				initials: m.initials || computeInitials(m.name),
+				avatarSrc: avatarFor(m.id, state.avatarOverrides),
+				pinnedFirst: Boolean(m.pinnedFirst || m.id === 'priya' || m.kind === 'validator'),
 				colour: m.kind === 'validator' ? 'who-validator' : (m.kind === 'main' ? 'who-agent' : 'who-worker'),
 				rank: m.kind === 'validator' ? 300 : (m.kind === 'main' ? 200 : 100),
 				presencePolicy: m.pinnedFirst ? 'alwaysPresent' : 'joinsPerTurn',
@@ -1178,25 +894,44 @@ export function createTeamController(options = {}) {
 	function syncTalkRoster() {
 		const snap = room.snapshot();
 		for (const m of state.members) {
-			const rm = snap.members.find((x) => x.id === m.id);
-			if (rm) {
-				const oldName = rm.displayName || rm.name;
-				if (oldName && oldName !== m.name) {
-					for (const msg of snap.messages || []) {
-						if (msg && msg.kind === 'system' && typeof msg.text === 'string') {
-							if (msg.text === `${oldName} joined`) msg.text = `${m.name} joined`;
-							if (msg.text === `${oldName} left`) msg.text = `${m.name} left`;
-						}
-					}
-					if (snap.typing === `${oldName} is typing…`) {
-						room.act({ do: 'typing', who: `${m.name} is typing…` });
+			let rm = snap.members.find((x) => x.id === m.id);
+			if (!rm) {
+				rm = {
+					id: m.id,
+					memberId: m.id,
+					kind: m.kind === 'validator' ? 'validator' : (m.kind === 'main' ? 'agent' : 'worker'),
+					displayName: m.name,
+					name: m.name,
+					role: m.role,
+					initials: m.initials || computeInitials(m.name),
+					avatarSrc: avatarFor(m.id, state.avatarOverrides),
+					pinnedFirst: Boolean(m.pinnedFirst || m.id === 'priya' || m.kind === 'validator'),
+					colour: m.kind === 'validator' ? 'who-validator' : (m.kind === 'main' ? 'who-agent' : 'who-worker'),
+					rank: m.kind === 'validator' ? 300 : (m.kind === 'main' ? 200 : 100),
+					presencePolicy: m.pinnedFirst ? 'alwaysPresent' : 'joinsPerTurn',
+					canProxyWhenAway: Boolean(m.kind === 'validator'),
+					presence: (m.present || m.activeInTurn) ? 'online' : 'left',
+				};
+				snap.members.push(rm);
+			}
+			const oldName = rm.displayName || rm.name;
+			if (oldName && oldName !== m.name) {
+				for (const msg of snap.messages || []) {
+					if (msg && msg.kind === 'system' && typeof msg.text === 'string') {
+						if (msg.text === `${oldName} joined`) msg.text = `${m.name} joined`;
+						if (msg.text === `${oldName} left`) msg.text = `${m.name} left`;
 					}
 				}
-				rm.displayName = m.name;
-				rm.name = m.name;
-				rm.role = m.role;
-				rm.presence = m.present ? 'online' : 'left';
+				if (snap.typing === `${oldName} is typing…`) {
+					room.act({ do: 'typing', who: `${m.name} is typing…` });
+				}
 			}
+			rm.displayName = m.name;
+			rm.name = m.name;
+			rm.role = m.role;
+			rm.initials = m.initials || computeInitials(m.name);
+			rm.avatarSrc = avatarFor(m.id, state.avatarOverrides);
+			rm.presence = m.present ? 'online' : 'left';
 		}
 		latestRoomSnapshot = room.snapshot();
 	}
@@ -1582,7 +1317,7 @@ export function createTeamController(options = {}) {
 			assignTask('diego', {
 				workerId: 'worker-diego-1',
 				runId: 'run-diego-1',
-				profile: 'build',
+				profile: 'code',
 				model: 'agy/gemini-4-argon-high',
 				thinking: 'high',
 				state: 'RUNNING',
@@ -1679,6 +1414,7 @@ export function createTeamController(options = {}) {
 	}
 
 	function renderRawTalkHtml() {
+		syncTalkRoster();
 		const snap = room.snapshot();
 		return talkHtml(snap.messages, {
 			embedded: true,
@@ -1688,10 +1424,15 @@ export function createTeamController(options = {}) {
 			unread: snap.unread,
 			draft: state.draft,
 			popover: state.autocompleteCandidates.length > 0,
+			activeMentionIndex: state.acIndex || 0,
+			autocompleteCandidates: state.autocompleteCandidates.map((member) => ({ ...member, memberId: member.id })),
+			avatarFor: (id) => avatarFor(id, state.avatarOverrides),
 			presence: {
 				mode: 'here',
 				name: USER_PROFILE_FIXTURE.name,
 				photo: avatarFor('machs', state.avatarOverrides),
+				fixturePath: USER_PROFILE_FIXTURE.fixturePath,
+				fallbackAvatar: USER_PROFILE_FIXTURE.fallbackAvatar,
 			},
 		});
 	}
@@ -1781,7 +1522,8 @@ export function mountTeamStory(options = {}) {
 	host.append(styleEl, contentEl);
 
 	function paint() {
-		contentEl.innerHTML = controller.renderHtml();
+		contentEl.style.setProperty('--team-widget-width', TEAM_WIDGET_WIDTH);
+		getWorkersKit().patchTeamHtml(contentEl, `<div>${controller.renderHtml()}</div>`);
 		if (controller.state.highlightedMemberId) {
 			const row = contentEl.querySelector(`.team-member-row[data-member-id="${controller.state.highlightedMemberId}"]`);
 			if (row && typeof row.scrollIntoView === 'function') {
@@ -1792,8 +1534,16 @@ export function mountTeamStory(options = {}) {
 
 	paint();
 	controller.onChange(paint);
+	getWorkersKit().wireTeamEvents(host, message => {
+		if (message.type === 'teamTasksToggle') controller.toggleMemberTasks(message.memberId);
+		if (message.type === 'setMemberModel') { controller.setMemberModel(message.memberId, message.model); controller.setMemberThinking(message.memberId, message.thinking); }
+		if (message.type === 'openAgentFile') controller.openAgentFile(message.memberId);
+		if (message.type === 'editTeamMember') controller.openMemberEdit(message.memberId, { modelDropdownOpen: true });
+		if (message.type === 'teamMemberFocus') controller.selectMemberFromTalk(message.memberId);
+	});
 
 	host.addEventListener('click', (e) => {
+		if (e.target.closest('[data-member-tasks-toggle], [data-edit-member], [data-open-agent-file], #panel-aitalk [data-member-id], .team-member-name')) return;
 		const tabBtn = e.target.closest('.tab-btn[data-tab]');
 		if (tabBtn) {
 			e.preventDefault();
@@ -1825,31 +1575,10 @@ export function mountTeamStory(options = {}) {
 			return;
 		}
 
-		const toggleTasksBtn = e.target.closest('[data-toggle-tasks]');
-		if (toggleTasksBtn) {
-			e.preventDefault();
-			controller.toggleMemberTasks(toggleTasksBtn.getAttribute('data-toggle-tasks'));
-			return;
-		}
-
 		const traceBtn = e.target.closest('[data-worker-action="trace"]');
 		if (traceBtn) {
 			e.preventDefault();
 			controller.toggleTaskTrace(traceBtn.getAttribute('data-worker-id'));
-			return;
-		}
-
-		const agentFileLink = e.target.closest('.team-agent-file-link[data-member-id]');
-		if (agentFileLink) {
-			e.preventDefault();
-			controller.openAgentFile(agentFileLink.getAttribute('data-member-id'));
-			return;
-		}
-
-		const editBtn = e.target.closest('[data-edit-member]');
-		if (editBtn) {
-			e.preventDefault();
-			controller.openMemberEdit(editBtn.getAttribute('data-edit-member'), { modelDropdownOpen: true });
 			return;
 		}
 
@@ -1875,18 +1604,7 @@ export function mountTeamStory(options = {}) {
 	});
 
 	host.addEventListener('change', (e) => {
-		const modelSelect = e.target.closest('.team-model-select[data-member-id]');
-		if (modelSelect) {
-			controller.setMemberModel(modelSelect.getAttribute('data-member-id'), modelSelect.value);
-			return;
-		}
-
-		const thinkingSelect = e.target.closest('.team-thinking-select[data-member-id]');
-		if (thinkingSelect) {
-			controller.setMemberThinking(thinkingSelect.getAttribute('data-member-id'), thinkingSelect.value);
-			return;
-		}
-
+		if (e.target.closest('[data-member-model], [data-member-thinking]')) return;
 		const editField = e.target.closest('[data-edit-field]');
 		if (editField) {
 			controller.updateEditDraft(editField.getAttribute('data-edit-field'), editField.value);

@@ -11,7 +11,9 @@ function loadDefinitions() {
     // Built inside the package so `zod` resolves from node_modules; layout mirrors src/.
     const buildDir = path.join(root, '.lm-manifest-build');
     fs.rmSync(buildDir, { recursive: true, force: true });
-    const files = ['agents/sharedVoice', 'workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary', 'aitalk/store', 'services/webexTools'];
+    // Transpile the whole src tree so any relative import resolves.
+    const files = fs.readdirSync(path.join(root, 'src'), { recursive: true })
+        .filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts')).map(f => f.replace(/\\/g, '/').slice(0, -3));
     for (const name of files) {
         const out = path.join(buildDir, `${name}.js`);
         fs.mkdirSync(path.dirname(out), { recursive: true });

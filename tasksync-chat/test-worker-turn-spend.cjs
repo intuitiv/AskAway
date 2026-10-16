@@ -9,9 +9,19 @@ const buildDir = path.join(__dirname, '.worker-turn-spend-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(path.join(buildDir, 'workers'), { recursive: true });
 fs.mkdirSync(path.join(buildDir, 'commentary'));
-const compile = (dir, name) => fs.writeFileSync(path.join(buildDir, dir, `${name}.js`), ts.transpileModule(
-    fs.readFileSync(path.join(__dirname, 'src', dir, `${name}.ts`), 'utf8'),
-    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
+function transpile(rel) {
+    const out = path.join(buildDir, rel.replace(/\.ts$/, '.js'));
+    if (fs.existsSync(out)) return;
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    const js = ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', rel), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
+    fs.writeFileSync(out, js);
+    for (const [, spec] of js.matchAll(/require\(["'](\.{1,2}\/[^"']+)["']\)/g)) {
+        const next = path.join(path.dirname(rel), spec);
+        if (fs.existsSync(path.join(__dirname, 'src', `${next}.ts`))) transpile(`${next}.ts`);
+        else if (fs.existsSync(path.join(__dirname, 'src', next, 'index.ts'))) transpile(path.join(next, 'index.ts'));
+    }
+}
+const compile = (dir, name) => transpile(`${dir}/${name}.ts`);
 for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) { compile('workers', name); }
 for (const name of ['commentary', 'telegramLive']) { compile('commentary', name); }
 const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'workers', 'openCodeRuntime.js'));

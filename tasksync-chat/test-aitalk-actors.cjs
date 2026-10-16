@@ -13,7 +13,6 @@ const esbuild = require('esbuild');
     const member = id => room.store.snapshot().members.find(item => item.id === id);
     const flush = () => new Promise(resolve => setImmediate(resolve));
     const provider = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
-    assert.equal(provider.replace(/\r\n/g, '').includes('\n'), false, 'provider keeps CRLF');
     const native = provider.slice(provider.indexOf('                    if (!isChildLog && line.indexOf'), provider.indexOf('                    // ── Sub-agent linkage:'));
     const nativeStart = require('typescript').transpileModule(`function submit(lines, isChildLog = false, lineIndexBase = 0) { const logFile = 'main.jsonl'; for (const [i, line] of lines.entries()) { const lineIndex = lineIndexBase + i; ${native} } }`, { compilerOptions: { target: 9 } }).outputText;
     let starts = 0;

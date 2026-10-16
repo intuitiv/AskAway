@@ -2399,19 +2399,12 @@ body[class*="avail-"]::before, .availability-frame::before {
 @media (prefers-reduced-motion: reduce) { .presence-flyout { animation: none !important; } }
 
 /* ===== Workers tab (OpenCode control plane; no transcript or approval controls) ===== */
-.workers-shell { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
-.workers-header { display: flex; align-items: center; gap: 8px; min-height: 28px; }
-.workers-filter {
-    flex: 1; min-width: 0; padding: 3px 6px;
-    background: var(--vscode-input-background); color: var(--vscode-input-foreground);
-    border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px;
-}
-.workers-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+/* The Team panel scrolls like the other tabs: shell fills the panel, header stays, list takes the rest and scrolls. */
+.workers-shell { display: flex; flex-direction: column; flex: 1; gap: 6px; min-height: 0; }
+.workers-header { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 8px; min-height: 28px; }
+.workers-list { display: flex; flex-direction: column; flex: 1; gap: 6px; min-height: 0; overflow-y: auto; }
 .workers-server { font-size: 11px; opacity: 0.8; }
 .workers-summary { font-size: 12px; }
-.workers-tips { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; border-left: 3px solid var(--vscode-charts-green); background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04)); }
-.workers-tips-head { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--vscode-charts-green); }
-.workers-tip { font-size: 11px; line-height: 1.4; }
 .workers-lane { font-size: 11px; font-weight: 600; padding: 4px 2px 0; border-bottom: 1px solid var(--vscode-panel-border); }
 .workers-approval-notice {
     padding: 4px 8px; border-radius: 3px; font-size: 12px;
@@ -2811,3 +2804,8 @@ body.vscode-dark, body.vscode-high-contrast:not(.vscode-high-contrast-light) {
     cursor: pointer;
 }
 .spec-action:hover { background: var(--vscode-button-secondaryHoverBackground); }
+:root {
+    --team-font-small: 11px;
+    --team-font-body: 13px;
+    --team-font-title: 14px;
+}

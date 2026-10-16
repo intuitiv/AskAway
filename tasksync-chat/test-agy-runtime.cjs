@@ -17,15 +17,19 @@ require('node:module').Module._initPaths();
 let buildDir = path.join(__dirname, '.agy-runtime-test-build');
 try { fs.rmSync(buildDir, { recursive: true, force: true }); fs.mkdirSync(buildDir); }
 catch { buildDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-runtime-test-build-')); }
-for (const name of ['agyRuntime', 'workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) {
-    fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
-        fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
+// The build mirrors src/ (workers/ and team/) so relative imports such as '../team/roster' resolve.
+const transpile = (dir, name) => {
+    fs.mkdirSync(path.join(buildDir, dir), { recursive: true });
+    fs.writeFileSync(path.join(buildDir, dir, `${name}.js`), ts.transpileModule(
+        fs.readFileSync(path.join(__dirname, 'src', dir, `${name}.ts`), 'utf8'),
         { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
-}
-const { parseWorkerProfile } = require(path.join(buildDir, 'workerProfiles.js'));
-const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'openCodeRuntime.js'));
-const { registerWorkerTools } = require(path.join(buildDir, 'workerTools.js'));
-const { projectWorkersState, loadWorkerTrace } = require(path.join(buildDir, 'workersState.js'));
+};
+for (const name of ['agyRuntime', 'workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) { transpile('workers', name); }
+if (fs.existsSync(path.join(__dirname, 'src', 'team', 'roster.ts'))) { transpile('team', 'roster'); }
+const { parseWorkerProfile } = require(path.join(buildDir, 'workers', 'workerProfiles.js'));
+const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'workers', 'openCodeRuntime.js'));
+const { registerWorkerTools } = require(path.join(buildDir, 'workers', 'workerTools.js'));
+const { projectWorkersState, loadWorkerTrace } = require(path.join(buildDir, 'workers', 'workersState.js'));
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-agy-'));
 const workspace = fs.realpathSync(fs.mkdtempSync(path.join(tmp, 'ws-')));
@@ -42,8 +46,22 @@ const skip = args.includes('--dangerously-skip-permissions');
 const conv = resumed || 'conv-1';
 const out = (e) => process.stdout.write(JSON.stringify(e) + '\\n');
 const step = (s) => out({ event: 'step_update', step_update: { conversation_id: conv, ...s } });
+const model = (args.find((a) => a.startsWith('--model=')) || '').slice(8);
+// Fatal agy output arrives on stderr before any event; the process then hangs like the real CLI.
+if (/BADMODEL/.test(prompt)) { process.stderr.write('Error: model ' + model + ' is not recognized\\n'); setInterval(() => {}, 1000); return; }
+if (/LOGINEXPIRED/.test(prompt)) { process.stderr.write('Error: authentication failed: login expired, please sign in again\\n'); setInterval(() => {}, 1000); return; }
+// Benign agy log lines on stderr that mention a model, a login or 429 without agy's error marker.
+if (/BENIGNERR/.test(prompt)) { process.stderr.write('debug: model list not found in cache, refreshing\\ninfo: oauth token expired soon, refreshed; wrote 429 bytes\\n'); }
+// agy writes files without emitting any event.
+if (/SILENTWRITE/.test(prompt)) { setTimeout(() => fs.writeFileSync(require('path').join(process.cwd(), 'fixture.txt'), 'silent ' + Date.now()), 200); setInterval(() => {}, 1000); return; }
 out({ event: 'init', conversation_id: conv, init: { model: 'x', cwd: process.cwd(), permission_mode: 'request-review' } });
 if (/SLEEP/.test(prompt)) { setInterval(() => {}, 1000); return; }
+// Live run-y43m36-15: a 429 mid-run, then a Result line and exit 0.
+if ((/CAP429/.test(prompt) && !resumed) || process.env.FAKE_AGY_429 === 'always') {
+    out({ event: 'error', error: { message: 'RESOURCE_EXHAUSTED (code 429): model capacity exhausted' } });
+    out({ event: 'result', result: { conversation_id: conv, status: 'SUCCESS', response: 'Result: PASS\\nEvidence: capacity' } });
+    process.exit(0);
+}
 if (/BREAK/.test(prompt) && !resumed) { out({ event: 'result', result: { conversation_id: conv, status: 'ERROR', error: { message: 'quota exhausted' } } }); process.exit(1); }
 step({ step_index: 0, state: 'DONE', step_type: 'user_input' });
 step({ step_index: 1, state: 'DONE', step_type: 'agent_response', usage: { input_tokens: 15000, output_tokens: 40, thinking_tokens: 12, cache_read_tokens: 0, total_tokens: 15040 } });
@@ -62,6 +80,8 @@ if (/MCPDENY/.test(prompt)) {
     out({ event: 'result', result: { conversation_id: conv, status: 'SUCCESS', response: '', denied_actions: [{ action: 'mcp', display_name: 'CallMcpTool' }] } });
     process.exit(0);
 }
+// A normal worker edits its allowed file; NOEDIT reads only (and still reports PASS).
+if (!/NOEDIT/.test(prompt)) { fs.writeFileSync(require('path').join(process.cwd(), 'fixture.txt'), process.pid + ' ' + Date.now() + ' ' + Math.random()); }
 step({ step_index: 2, state: 'DONE', step_type: 'system_message' });
 step({ step_index: 2, state: 'ACTIVE', step_type: 'tool', tool_name: 'call_mcp_tool', tool_info: mcp });
 step({ step_index: 2, state: 'DONE', step_type: 'tool', tool_name: 'call_mcp_tool', duration_seconds: 0.5, tool_info: { ...mcp, output: '3 results' } });
@@ -344,7 +364,7 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
     console.log('PASS EV-AGY-PRE-EXISTING identical failing lines before/after => one verify round, no resume, reason pre-existing');
     {
         // A packet's own unfinished test or a missing check file is never "pre-existing" (2026-10-16 Lane A/B runs).
-        const { failingLines, failureOwnedByPacket } = require(path.join(buildDir, 'openCodeRuntime.js'));
+        const { failingLines, failureOwnedByPacket } = require(path.join(buildDir, 'workers', 'openCodeRuntime.js'));
         const packetText = 'Allowed files: tasksync-chat/media/webview.js, tasksync-chat/test-new.cjs';
         assert.equal(failureOwnedByPacket(['at between (/repo/tasksync-chat/test-new.cjs:19:5)'], packetText, ''), true);
         assert.equal(failureOwnedByPacket(['at x (/repo/tasksync-chat/test-other.cjs:3:1)'], packetText, 'Error: Cannot find module'), true);
@@ -396,7 +416,7 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
     console.log('PASS EV-AGY-VERIFY-LOOP fail->resume->pass=COMPLETED 3xFail=FAILED opencode=untouched settingFalse=legacy');
 
     // EV-AGY-READONLY-MODE: read-only profile (edit: deny) omits --mode=accept-edits on start and when resumed after reload.
-    const { agyArgs, runVerifyCommand } = require(path.join(buildDir, 'agyRuntime.js'));
+    const { agyArgs, runVerifyCommand } = require(path.join(buildDir, 'workers', 'agyRuntime.js'));
     assert.ok(!agyArgs({ model: 'agy/gemini-4-argon-medium', thinking: 'medium', message: 'ro', edit: 'deny' }).some((arg) => arg.includes('accept-edits')));
     assert.ok(agyArgs({ model: 'agy/gemini-4-argon-medium', thinking: 'medium', message: 'rw', edit: 'allow' }).includes('--mode=accept-edits'));
     const roBefore = calls().length;
@@ -443,6 +463,106 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
         cp.spawn = origSpawn;
     }
     console.log('PASS EV-AGY-READONLY-MODE readOnly=noAcceptEdits editAllow=acceptEdits spawnThrow=FAILED+noReferenceError');
+
+    // EV-AGY-CAPACITY-429: a 429 mid-run is retried in the same conversation after 30 s then 90 s; never COMPLETED with the error.
+    const delays = [];
+    const capRuntime = new OpenCodeWorkerRuntime([profile, readOnly], { ledgerDir: path.join(tmp, 'ledger-cap'), agyCommand: fakeAgy,
+        setTimer: (fire, ms) => { if (ms === 60000) { return () => {}; } delays.push(ms); const t = setTimeout(fire, 0); return () => clearTimeout(t); } });
+    const capCall = toolOf(capRuntime);
+    const beforeOnce = calls().length;
+    const capOnce = await capCall('start', { ...packet, objective: 'CAP429 once then recover' });
+    const capOnceDone = await capCall('wait', { runId: capOnce.runId, timeoutSeconds: 20 });
+    assert.equal(capOnceDone.status, 'COMPLETED', JSON.stringify(capOnceDone));
+    assert.deepEqual(delays, [30000]);
+    assert.equal(calls().length, beforeOnce + 2);
+    assert.ok(calls().at(-1).args.includes('--conversation=conv-1'), 'the retry resumes the same agy conversation');
+    delays.length = 0;
+    process.env.FAKE_AGY_429 = 'always';
+    const beforeAlways = calls().length;
+    const capAlways = await capCall('start', { ...packet, objective: 'Capacity stays exhausted' });
+    const capAlwaysDone = await capCall('wait', { runId: capAlways.runId, timeoutSeconds: 20 });
+    delete process.env.FAKE_AGY_429;
+    assert.equal(capAlwaysDone.status, 'FAILED', JSON.stringify(capAlwaysDone));
+    assert.equal(capAlwaysDone.reason, 'agy capacity (429), retried 2x');
+    assert.deepEqual(delays, [30000, 90000]);
+    assert.equal(calls().length, beforeAlways + 3, 'one run plus exactly two retries');
+    // Cancel during the backoff: the pending retry timer is cleared and the run ends CANCELLED at once, never relaunched.
+    let retryCleared = false;
+    let pendingRetry;
+    const waitRuntime = new OpenCodeWorkerRuntime([profile, readOnly], { ledgerDir: path.join(tmp, 'ledger-cap-cancel'), agyCommand: fakeAgy,
+        setTimer: (fire, ms) => { if (ms === 60000) { return () => {}; } pendingRetry = fire; return () => { retryCleared = true; }; } });
+    const waitCall = toolOf(waitRuntime);
+    const capWait = await waitCall('start', { ...packet, objective: 'CAP429 cancel during backoff' });
+    for (let i = 0; i < 100 && !pendingRetry; i++) { await new Promise((resolve) => setTimeout(resolve, 50)); }
+    assert.ok(pendingRetry, 'a capacity retry is pending');
+    const beforeCancel = calls().length;
+    await waitCall('cancel', { runId: capWait.runId });
+    assert.equal(waitRuntime.status(capWait.runId).state, 'CANCELLED');
+    assert.ok(retryCleared, 'cancel clears the backoff timer');
+    assert.equal(calls().length, beforeCancel, 'no relaunch after cancel');
+    console.log('PASS EV-AGY-CAPACITY-429 once=retried+COMPLETED always=retried 2x (30s,90s)+FAILED');
+
+    // EV-AGY-CHECK-MISSING (T041): a verify command whose check file does not exist is FAILED, never COMPLETED, and never loops.
+    const beforeMissing = calls().length;
+    const missingRun = await call('start', { ...packet, objective: 'Edit with a missing check', command: 'node tasksync-chat/test-missing-check.cjs' });
+    const missingDone = await call('wait', { runId: missingRun.runId, timeoutSeconds: 20 });
+    assert.equal(missingDone.status, 'FAILED', JSON.stringify(missingDone));
+    assert.equal(missingDone.reason, 'check file missing: tasksync-chat/test-missing-check.cjs');
+    assert.equal(calls().length, beforeMissing + 1, 'a missing check never resumes the worker');
+    assert.ok(!(await call('logs', { runId: missingRun.runId })).some((fact) => fact.type === 'verify_round'));
+    console.log('PASS EV-AGY-CHECK-MISSING missing check file => FAILED "check file missing: <path>"');
+
+    // EV-AGY-FAIL-FAST: an unavailable model or expired login ends FAILED at once with the plain reason, never STALLED.
+    const badModel = await call('start', { ...packet, model: 'gemini-nope', objective: 'BADMODEL run' });
+    const badModelDone = await call('wait', { runId: badModel.runId, timeoutSeconds: 20 });
+    assert.equal(badModelDone.status, 'FAILED', JSON.stringify(badModelDone));
+    assert.equal(badModelDone.reason, 'agy model gemini-nope not available on this login');
+    const login = await call('start', { ...packet, model: 'gemini-login', objective: 'LOGINEXPIRED run' });
+    const loginDone = await call('wait', { runId: login.runId, timeoutSeconds: 20 });
+    assert.equal(loginDone.status, 'FAILED', JSON.stringify(loginDone));
+    assert.equal(loginDone.reason, 'agy login expired: run agy and sign in');
+    const benign = await call('start', { ...packet, objective: 'BENIGNERR logs on stderr' });
+    const benignDone = await call('wait', { runId: benign.runId, timeoutSeconds: 20 });
+    assert.equal(benignDone.status, 'COMPLETED', `benign stderr lines never end a run: ${JSON.stringify(benignDone)}`);
+    const { isCapacityError, isAgyErrorLine } = require(path.join(buildDir, 'workers', 'agyRuntime.js'));
+    assert.deepEqual(['RESOURCE_EXHAUSTED', 'HTTP 429', 'status: 429', 'status=429', '429 Too Many Requests', 'wrote 429 bytes', 'line 429'].map(isCapacityError),
+        [true, true, true, true, true, false, false]);
+    assert.deepEqual(['Error: x', 'fatal: x', '[ERROR]: x', 'debug: error x', 'model not found'].map(isAgyErrorLine), [true, true, true, false, false]);
+    console.log('PASS EV-AGY-FAIL-FAST bad model / expired login => FAILED with plain reason, no 60 s stall; benign stderr => COMPLETED; 429 matched narrowly');
+
+    // EV-AGY-EDIT-LIVENESS: an allowed file written while agy is silent refreshes updatedAt and defers the stall once.
+    const stallTimers = [];
+    const liveRuntime = new OpenCodeWorkerRuntime([profile, readOnly], { ledgerDir: path.join(tmp, 'ledger-live'), agyCommand: fakeAgy, agyVerifyLoop: false,
+        setTimer: (fire, ms) => { stallTimers.push({ fire, ms }); return () => {}; } });
+    const liveCall = toolOf(liveRuntime);
+    const silent = await liveCall('start', { ...packet, objective: 'SILENTWRITE the fixture' });
+    const fixtureFile = path.join(workspace, 'fixture.txt');
+    for (let i = 0; i < 50 && !fs.readFileSync(fixtureFile, 'utf8').startsWith('silent'); i++) { await new Promise((resolve) => setTimeout(resolve, 100)); }
+    const edited = fs.statSync(fixtureFile).mtimeMs;
+    assert.ok(liveRuntime.status(silent.runId).updatedAt >= Math.floor(edited), 'an allowed-file write refreshes updatedAt');
+    assert.equal(stallTimers.length, 1);
+    stallTimers[0].fire();
+    assert.notEqual(liveRuntime.status(silent.runId).state, 'STALLED', 'a recent edit is liveness, not a stall');
+    assert.equal(stallTimers.length, 2, 'the stall detector is re-armed');
+    assert.equal(stallTimers[1].ms, 60000);
+    stallTimers[1].fire();
+    assert.equal(liveRuntime.status(silent.runId).state, 'STALLED', 'no new edit since the last check is a stall');
+    await liveCall('cancel', { runId: silent.runId });
+    for (let i = 0; i < 50 && liveRuntime.status(silent.runId).state === 'STALLED'; i++) { await new Promise((resolve) => setTimeout(resolve, 100)); }
+    assert.equal(liveRuntime.status(silent.runId).state, 'CANCELLED');
+    console.log('PASS EV-AGY-EDIT-LIVENESS allowed-file mtime => updatedAt refreshed, stall deferred, then STALLED without edits');
+
+    // EV-AGY-NO-EDITS: an editing packet that changed none of its allowed files is FAILED even with a passing check and a PASS report.
+    const noEdit = await call('start', { ...packet, objective: 'NOEDIT read only' });
+    const noEditDone = await call('wait', { runId: noEdit.runId, timeoutSeconds: 20 });
+    assert.equal(noEditDone.status, 'FAILED', JSON.stringify(noEditDone));
+    assert.equal(noEditDone.reason, 'no edits made');
+    const looseNoOp = await call('start', { ...packet, objective: 'NOEDIT; a no-op is acceptable if already correct' });
+    const looseDone = await call('wait', { runId: looseNoOp.runId, timeoutSeconds: 20 });
+    assert.deepEqual([looseDone.status, looseDone.reason], ['FAILED', 'no edits made'], 'a passing mention of no-op is not the opt-in line');
+    const noOp = await call('start', { ...packet, objective: 'NOEDIT read only\nNo-op acceptable: yes' });
+    assert.equal((await call('wait', { runId: noOp.runId, timeoutSeconds: 20 })).status, 'COMPLETED', 'a passing check with an allowed no-op completes');
+    console.log('PASS EV-AGY-NO-EDITS unchanged allowed files => FAILED "no edits made"; only a `No-op acceptable: yes` line + passing check => COMPLETED');
 
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log('PASS EV-WORKER-AGY fake-cli start/status/wait/logs/list/submit/resume/cancel deny=FAILED+noLoop optIn=explicit instructions=fresh reload=noServer+noDuplicate usage=raw+once cost=unreported viewer=none');

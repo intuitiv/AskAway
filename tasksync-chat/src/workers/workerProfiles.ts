@@ -136,9 +136,17 @@ export function workerProfileRefresh(profiles: WorkerProfile[]): () => WorkerPro
     };
 }
 
+/** Interim default while agy is not fully working (reviewer, 2026-10-16: "Use Sol in between, till we make agy fully working."). */
+export const INTERIM_DEFAULT_MODEL = 'github-copilot/gpt-6.1-sol';
+
+/** The model a packet without an explicit model runs on: the profile default, except that agy is only ever chosen explicitly. */
+export function defaultModel(profile: Pick<WorkerProfile, 'model'>): string {
+    return profile.model.startsWith('agy/') ? INTERIM_DEFAULT_MODEL : profile.model;
+}
+
 /** Resolves the requested selection exactly. There is no fallback to another model or thinking level. */
 export function resolveSelection(profile: WorkerProfile, request: WorkerSelection = {}): SelectionResult {
-    const model = request.model ?? profile.model;
+    const model = request.model ?? defaultModel(profile);
     const thinking = request.thinking ?? profile.thinking;
     // agy is a runtime, not a persona: every profile may run any agy model (`agy/<name>`); agy itself rejects an unknown one.
     if (!profile.models.includes(model) && !/^agy\/[a-z0-9][a-z0-9.-]*$/.test(model)) {
@@ -187,7 +195,7 @@ export function toOpenCodeAgent(profile: WorkerProfile): string {
         '---',
         `description: ${JSON.stringify(profile.description)}`,
         'mode: primary',
-        `model: ${profile.model}`,
+        `model: ${defaultModel(profile)}`,
         `steps: ${profile.steps}`,
         ...(permission.length ? ['permission:', ...permission] : []),
         '---',

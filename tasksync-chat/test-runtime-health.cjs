@@ -1,0 +1,217 @@
+// EV-RUNTIME-HEALTH: Settings toggles + health gate for worker runtimes (reviewer, 2026-10-16). Through the one `worker` tool and
+// the webview message glue, with a fake agy (PATH, login token, `agy models`), a fake OpenCode probe and a fake clock: defaults,
+// refusal reasons, at least one runtime stays on, the daily recheck after 06:00 and the `runtimeHealth` message.
+// Run: node test-runtime-health.cjs
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
+
+process.env.NODE_PATH = path.join(__dirname, 'node_modules');
+require('node:module').Module._initPaths();
+const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-health-test-build-'));
+const src = path.join(__dirname, 'src');
+// Transpiles the modules reachable through relative requires, mirroring src/ so `../team/...` paths resolve.
+function transpile(rel) {
+    const out = path.join(buildDir, rel.replace(/\.ts$/, '.js'));
+    if (fs.existsSync(out)) { return; }
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    const js = ts.transpileModule(fs.readFileSync(path.join(src, rel), 'utf8'),
+        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
+    fs.writeFileSync(out, js);
+    for (const [, spec] of js.matchAll(/require\(["'](\.{1,2}\/[^"']+)["']\)/g)) {
+        const next = path.join(path.dirname(rel), spec);
+        if (fs.existsSync(path.join(src, `${next}.ts`))) { transpile(`${next}.ts`); }
+        else if (fs.existsSync(path.join(src, next, 'index.ts'))) { transpile(path.join(next, 'index.ts')); }
+    }
+}
+transpile('workers/runtimeHealth.ts');
+transpile('workers/workerTools.ts');
+transpile('workers/workerRouter.ts');
+const health = require(path.join(buildDir, 'workers', 'runtimeHealth.js'));
+const { workerTool, setWorkerRuntimeGate } = require(path.join(buildDir, 'workers', 'workerTools.js'));
+const { parseWorkerProfile, resolveSelection, toOpenCodeAgent } = require(path.join(buildDir, 'workers', 'workerProfiles.js'));
+const { WorkerRouter } = require(path.join(buildDir, 'workers', 'workerRouter.js'));
+const SOL = 'github-copilot/gpt-6.1-sol';
+// A profile whose file still says agy by default, as the reviewer's ~/.askaway/worker-profiles did on 2026-10-16.
+const agyDefaultProfile = parseWorkerProfile(`---\nname: build\ndescription: "b"\ntier: mid\nmodel: agy/gemini-4-argon-high\nthinking: high\nmodels: [${SOL}, agy/gemini-4-argon-high]\nthinkingOptions: [high]\nedit: allow\nbash: allow\n---\nBuild.\n`);
+let unhandled = 0;
+process.on('unhandledRejection', () => { unhandled++; });
+
+const HOME = '/home/u';
+const TOKEN = `${HOME}/.gemini/antigravity-cli/antigravity-oauth-token`;
+const SIGNED_IN = 'Fetching available models...\ngemini-4-argon-high\tGemini 4 Argon (High)\ngemini-3.8-flash-low\tGemini 3.8 Flash (Low)\n';
+const FALLBACK = 'Fetching available models...\ngemini-3.1-pro-low\tGemini 3.1 Pro (Low)\n';
+
+function fakeHost() {
+    const host = { settings: { opencode: true, agy: false }, files: new Set(['/fake/bin/agy', TOKEN]), models: SIGNED_IN, server: true,
+        clock: new Date(2026, 9, 15, 10, 0).getTime(), warnings: [], modelCalls: 0, probes: 0, started: [] };
+    health.configureRuntimeHealth({
+        enabled: (runtime) => host.settings[runtime],
+        setEnabled: async (runtime, value) => { host.settings[runtime] = value; },
+        warn: (message) => host.warnings.push(message),
+        home: () => HOME,
+        pathDirs: () => ['/fake/bin'],
+        exists: (file) => host.files.has(file),
+        agyModels: async (binary) => { assert.equal(binary, '/fake/bin/agy'); host.modelCalls++; if (host.modelsError) { throw new Error(host.modelsError); } return host.models; },
+        probeOpenCode: async () => { host.probes++; return host.server; },
+        now: () => host.clock,
+    });
+    return host;
+}
+
+const packet = { profile: 'build', dispatchTurnId: 't1', baseRevision: 'HEAD', objective: 'o', allowedFiles: [], acceptance: 'a', expected: 'e', command: 'npm test' };
+function tool(host, workers = {}, runs = {}) {
+    host.sourceCalls = 0;
+    const live = { router: { worker: (id) => workers[id], profile: (name) => name === 'build' ? agyDefaultProfile : undefined }, now: () => host.clock,
+        status: (runId) => runs[runId],
+        start: async (p) => { host.started.push(p); return { status: 'QUEUED', runId: 'run-1' }; },
+        resume: async (runId) => { host.started.push({ runId }); return { status: 'RUNNING', runId }; },
+        submitForking: async (id, p) => { host.started.push(p); return { status: 'QUEUED', runId: 'run-2' }; } };
+    // `source` is the starting getter (it would start the shared OpenCode server); the inspector never starts anything.
+    const source = () => { host.sourceCalls++; return live; };
+    setWorkerRuntimeGate(health.runtimeRefusal, () => live);
+    return (input) => workerTool(source, '/ws').run(input);
+}
+
+(async () => {
+    // Defaults: package.json declares OpenCode on and agy off; outside VS Code the same defaults apply.
+    const props = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).contributes.configuration.properties;
+    assert.equal(props['askaway.workers.opencode.enabled'].default, true);
+    assert.equal(props['askaway.workers.agy.enabled'].default, false);
+    health.configureRuntimeHealth({ probeOpenCode: async () => true });
+    const defaults = health.getRuntimeHealth();
+    assert.equal(defaults.opencode.enabled, true);
+    assert.equal(defaults.agy.enabled, false);
+    console.log('EV-RUNTIME-HEALTH defaults: PASS');
+
+    // Refusal reasons, from the worker tool's caller.
+    let host = fakeHost();
+    let call = tool(host);
+    assert.equal((await call({ action: 'start', ...packet, runtime: 'agy', model: 'gemini-4-argon-high' })).reason, 'agy is off in Settings');
+    host.settings.agy = true;
+    host.files.delete(TOKEN);
+    assert.equal((await call({ action: 'start', ...packet, runtime: 'agy', model: 'gemini-4-argon-high' })).reason, 'agy login expired: run agy and sign in');
+    host.files.add(TOKEN);
+    host.models = FALLBACK;
+    const fallback = await call({ action: 'start', ...packet, runtime: 'agy', model: 'gemini-4-argon-high' });
+    assert.deepEqual([fallback.status, fallback.reason], ['RUNTIME_UNHEALTHY', 'agy login expired: run agy and sign in']);
+    host.models = SIGNED_IN;
+    assert.equal((await call({ action: 'start', ...packet, runtime: 'agy', model: 'gemini-4-argon-high' })).status, 'QUEUED');
+    assert.deepEqual(health.getRuntimeHealth().agy.models, ['gemini-4-argon-high', 'gemini-3.8-flash-low']);
+    // A submit without a model follows the warm worker's agy model.
+    call = tool(host, { 'w-agy': { model: 'agy/gemini-4-argon-high' } });
+    host.settings.agy = false;
+    assert.equal((await call({ action: 'submit', workerId: 'w-agy', ...packet })).reason, 'agy is off in Settings');
+    host.server = false;
+    assert.equal((await call({ action: 'start', ...packet })).reason, 'OpenCode server is not up');
+    host.server = true;
+    assert.equal((await call({ action: 'start', ...packet })).status, 'QUEUED');
+    host.settings.agy = true;
+    host.settings.opencode = false;
+    assert.equal((await call({ action: 'start', ...packet })).reason, 'OpenCode is off in Settings');
+    host.settings.agy = false;
+    const off = await call({ action: 'start', ...packet });
+    assert.deepEqual([off.status, off.reason], ['WORKERS_DISABLED', 'WORKERS_DISABLED: enable OpenCode or agy in Settings']);
+    assert.equal(host.started.length, 2, 'only the two healthy dispatches reached the runtime');
+
+    // The gate uses the effective model: an agy-default profile without a model runs on Sol (OpenCode); resume follows its run.
+    host = fakeHost();
+    call = tool(host, {}, { 'run-agy': { model: 'agy/gemini-4-argon-high' }, 'run-oc': { model: SOL } });
+    assert.equal((await call({ action: 'start', ...packet })).status, 'QUEUED', 'agy off never blocks the Sol default');
+    host.sourceCalls = 0;
+    assert.equal((await call({ action: 'resume', runId: 'run-agy' })).reason, 'agy is off in Settings');
+    assert.equal(host.sourceCalls, 0, 'a refused dispatch never starts the OpenCode server');
+    host.server = false;
+    assert.equal((await call({ action: 'resume', runId: 'run-oc' })).reason, 'OpenCode server is not up');
+    host.settings.agy = true;
+    host.sourceCalls = 0;
+    assert.equal((await call({ action: 'start', ...packet, runtime: 'agy', model: 'gemini-4-argon-high' })).status, 'QUEUED');
+    assert.equal(host.sourceCalls, 1, 'an agy dispatch is gated without starting the OpenCode server first');
+    host.modelsError = 'timed out after 30s';
+    host.clock += 24 * 3600_000;
+    assert.equal((await call({ action: 'start', ...packet, runtime: 'agy', model: 'gemini-4-argon-high' })).reason, 'agy models check failed: timed out after 30s');
+    console.log('EV-RUNTIME-HEALTH effective model, resume, no server start before refusal, models-check failure: PASS');
+
+    // Interim Sol default (reviewer 2026-10-16): an omitted model never selects agy, so `start` never reuses an idle agy worker.
+    assert.equal(resolveSelection(agyDefaultProfile).model, SOL);
+    assert.equal(resolveSelection(agyDefaultProfile, { model: 'agy/gemini-4-argon-high' }).model, 'agy/gemini-4-argon-high');
+    assert.match(toOpenCodeAgent(agyDefaultProfile), new RegExp(`^model: ${SOL}$`, 'm'));
+    const router = new WorkerRouter([agyDefaultProfile]);
+    const route = (model) => router.route({ workspacePath: os.tmpdir(), profile: 'build', model, packetId: 'p', estimatedSeconds: 60 });
+    const agyRun = route('agy/gemini-4-argon-high');
+    router.complete(agyRun.workerId, agyRun.runId, { contextTokens: 1000 });
+    const plain = route(undefined);
+    assert.deepEqual([plain.status, plain.model], ['CREATED', SOL]);
+    assert.notEqual(plain.workerId, agyRun.workerId, 'start without a model does not reuse the idle agy worker');
+    assert.equal(route('agy/gemini-4-argon-high').workerId, agyRun.workerId, 'an explicit agy start still reuses it');
+    console.log('EV-RUNTIME-HEALTH interim Sol default, no agy reuse without explicit model: PASS');
+
+    // A check that throws is reported as a warning, never an unhandled rejection.
+    host = fakeHost();
+    health.configureRuntimeHealth({ enabled: () => { throw new Error('settings unreadable'); }, warn: (message) => host.warnings.push(message) });
+    health.startRuntimeHealth(1e9).dispose();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.match(host.warnings.pop() ?? '', /Worker runtime check failed: settings unreadable/);
+    assert.equal(unhandled, 0);
+    console.log('EV-RUNTIME-HEALTH failed check warns, no unhandled rejection: PASS');
+    console.log('EV-RUNTIME-HEALTH refusal reasons: PASS');
+
+    // At least one runtime stays on: the last enabled toggle is refused with a warning, from the webview and settings.json.
+    host = fakeHost();
+    await health.handleRuntimeHealthMessage({ type: 'setRuntimeEnabled', runtime: 'opencode', enabled: false });
+    assert.equal(host.settings.opencode, true);
+    assert.match(host.warnings.pop(), /at least one worker runtime/);
+    await health.handleRuntimeHealthMessage({ type: 'setRuntimeEnabled', runtime: 'agy', enabled: true });
+    await health.handleRuntimeHealthMessage({ type: 'setRuntimeEnabled', runtime: 'opencode', enabled: false });
+    assert.deepEqual(host.settings, { opencode: false, agy: true });
+    host.settings.agy = false;
+    await health.runtimeSettingChanged('agy');
+    assert.equal(host.settings.agy, true);
+    assert.match(host.warnings.pop(), /agy stays on/);
+    console.log('EV-RUNTIME-HEALTH last runtime refused: PASS');
+
+    // Daily recheck: once per day after 06:00 local, and before an agy task whose last ok check predates 06:00 today.
+    host = fakeHost();
+    host.settings.agy = true;
+    await health.recheckRuntimeHealth();
+    assert.equal(host.modelCalls, 1);
+    host.clock = new Date(2026, 9, 16, 5, 0).getTime();
+    assert.equal(await health.runtimeHealthTick(), false);
+    host.clock = new Date(2026, 9, 16, 7, 0).getTime();
+    assert.equal(await health.runtimeHealthTick(), true);
+    assert.equal(host.modelCalls, 2);
+    host.clock = new Date(2026, 9, 16, 8, 0).getTime();
+    assert.equal(await health.runtimeHealthTick(), false);
+    call = tool(host);
+    assert.equal((await call({ action: 'start', ...packet, runtime: 'agy', model: 'gemini-4-argon-high' })).status, 'QUEUED');
+    assert.equal(host.modelCalls, 2, 'a check from this morning is reused');
+    host.clock = new Date(2026, 9, 17, 6, 30).getTime();
+    host.models = FALLBACK;
+    assert.equal((await call({ action: 'start', ...packet, runtime: 'agy', model: 'gemini-4-argon-high' })).reason, 'agy login expired: run agy and sign in');
+    assert.equal(host.modelCalls, 3, 'yesterday\'s ok check is rechecked before the agy task');
+    console.log('EV-RUNTIME-HEALTH daily recheck: PASS');
+
+    // The webview gets `runtimeHealth` at once and on every change, including a recheck request.
+    host = fakeHost();
+    const posted = [];
+    const view = health.bindRuntimeHealthView((message) => posted.push(message));
+    assert.equal(posted[0].type, 'runtimeHealth');
+    assert.equal(posted[0].health.agy.enabled, false);
+    await health.handleRuntimeHealthMessage({ type: 'setRuntimeEnabled', runtime: 'agy', enabled: true });
+    const last = posted.at(-1);
+    assert.deepEqual([last.type, last.health.agy.enabled, last.health.agy.ok], ['runtimeHealth', true, true]);
+    host.server = false;
+    await health.handleRuntimeHealthMessage({ type: 'recheckRuntimeHealth' });
+    assert.deepEqual([posted.at(-1).health.opencode.ok, posted.at(-1).health.opencode.reason], [false, 'OpenCode server is not up']);
+    view.dispose();
+    const count = posted.length;
+    await health.recheckRuntimeHealth();
+    assert.equal(posted.length, count, 'a disposed view gets no more messages');
+    const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
+    assert.match(provider, /case 'setRuntimeEnabled':\s*case 'recheckRuntimeHealth':\s*void handleRuntimeHealthMessage\(message\)/);
+    assert.match(provider, /onDidChangeRuntimeHealth\(\(health\) => this\._broadcast\(\{ type: 'runtimeHealth', health \}\)\)/);
+    console.log('EV-RUNTIME-HEALTH runtimeHealth message: PASS');
+    fs.rmSync(buildDir, { recursive: true, force: true });
+})().catch((error) => { console.error(error); process.exit(1); });

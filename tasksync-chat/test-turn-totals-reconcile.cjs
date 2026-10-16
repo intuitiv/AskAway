@@ -71,6 +71,8 @@ for (const [field, value] of Object.entries(expected)) assert.deepEqual(plain(ac
 let workerMessage;
 provider.setWorkersStateSource(() => ({ workers: [{ workerId: 'w1', expired: true }, { workerId: 'w2' }, { workerId: 'foreign', expired: true }] }));
 provider._broadcast = (message) => { workerMessage = message; };
+// The main-agent Team row reads the AITalk room and VS Code storage; this fixture checks the task identity only.
+provider._mainAgentMember = () => ({ id: 'bhaskar', kind: 'main', taskIds: [] });
 provider._refreshWorkersState();
 assert.deepEqual(plain(workerMessage.data.turnWorkerIds), expected.workerIds);
 

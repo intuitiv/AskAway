@@ -11,8 +11,12 @@ const { pathToFileURL } = require('node:url');
     const presence = await import('./media/aitalk/presence.js');
     const { createTalkController } = await import('./media/aitalk/talkController.js');
     const mod = { exports: {} };
+    const names = { exports: {} };
+    vm.runInNewContext(require('esbuild').buildSync({ entryPoints: [path.join(__dirname, 'src/aitalk/names.ts')], bundle: true, platform: 'node', format: 'cjs', write: false }).outputFiles[0].text, {
+        module: names, exports: names.exports, require
+    });
     vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src/aitalk/store.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
-        module: mod, exports: mod.exports, require: id => id.includes('talkRules') ? rules : require(id)
+        module: mod, exports: mod.exports, require: id => id.includes('talkRules') ? rules : id === './names' ? names.exports : require(id)
     });
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aitalk-extension-'));
     const store = new mod.exports.AITalkStore(root);
@@ -28,8 +32,8 @@ const { pathToFileURL } = require('node:url');
     assert.deepEqual(registryContract(store.snapshot().members), registryContract(rules.defaultMembers));
     const provider = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
     const tabs = provider.slice(provider.indexOf('<div class="widget-tabs"'), provider.indexOf('<div class="conversation-health"'));
-    // Commentary stays until agent progress lines move into AITalk (A5); Chat goes in A3.
-    assert.deepEqual([...tabs.matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['aitalk', 'specs', 'observability', 'workers', 'settings']);
+    // R-TEAM-02 renames the visible Workers tab to Team without changing worker contracts.
+    assert.deepEqual([...tabs.matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['aitalk', 'specs', 'observability', 'team', 'settings']);
     assert.doesNotMatch(provider, /id="panel-chat"|id="chat-input"/);
     assert.ok(!require('./package.json').contributes.languageModelTools.some(tool => tool.name === 'ask_user'));
     assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'src/tools.ts'), 'utf8'), /register(?:AITalkTool|Tool)\('ask_user'/);

@@ -2,18 +2,14 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
+const { transpileSrc } = require('./tools/transpile-src.cjs');
 
 const buildDir = path.join(__dirname, '.turn-budget-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(buildDir, { recursive: true });
-for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools', 'turnBudget']) {
-    fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
-        fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
-        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
-}
-const { turnBudget } = require(path.join(buildDir, 'turnBudget.js'));
-const { workerTool } = require(path.join(buildDir, 'workerTools.js'));
+transpileSrc(buildDir);
+const { turnBudget } = require(path.join(buildDir, 'workers', 'turnBudget.js'));
+const { workerTool } = require(path.join(buildDir, 'workers', 'workerTools.js'));
 
 const packet = {
     profile: 'build', dispatchTurnId: 't', baseRevision: 'abc', objective: 'o', allowedFiles: [], acceptance: 'a', expected: 'e', command: 'rtk npm test',

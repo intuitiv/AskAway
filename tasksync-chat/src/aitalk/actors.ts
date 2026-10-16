@@ -1,12 +1,15 @@
 import * as path from 'path';
 import { AITalkStore } from './store';
+import { rosterIdentity } from './names';
+import { resolveMainAgentIdentity, type MainAgentIdentity } from '../team/roster';
+export { resolveMainAgentIdentity } from '../team/roster';
 const rules = require('../../media/aitalk/talkRules.js');
 
 /** One AITalk message as actors see it. */
 export interface TalkMessage { id: string; author: string; text: string; replyTo?: string; details?: string; recipients?: string[]; attachments?: Array<{ name: string; path: string }> }
 /** Returned for every routed message; the receiving actor drives it: sent → delivered → read. */
 export interface Tracker { readonly messageId: string; readonly recipient: string; delivered(): void; read(): void }
-export interface ActorIdentity { id: string; displayName: string; kind: string; rank: number; colour?: string }
+export interface ActorIdentity { id: string; displayName: string; kind: string; rank: number; colour?: string; memberId?: string; name?: string; role?: string }
 /** A participant. Push actors implement the receive methods; pull actors (Agent, workers) take messages on their next tool call. */
 export interface Actor extends ActorIdentity {
     /** Workers leave once every message they posted is answered. */
@@ -27,19 +30,46 @@ export interface ActorHandle {
 
 const member = (name: string) => rules.defaultMembers.find((item: any) => item.kind === name);
 
+export function mainAgentActor(selectedAgent = 'AskAway Build'): Actor {
+    const base = member('agent');
+    const persona = resolveMainAgentIdentity(selectedAgent);
+    return {
+        ...identity(base),
+        id: persona.id,
+        memberId: persona.id,
+        displayName: persona.name,
+        name: persona.name,
+        role: persona.role,
+    };
+}
+
 /** The AITalk room: registry of actors, routing of messages to them, trackers and typing. */
 export class Room {
     readonly store: AITalkStore;
+    selectedAgent?: string;
     private readonly actors = new Map<string, Actor>();
     private readonly workerNames = new Map<string, string>();
     private readonly reactionWatchers = new Set<(message: TalkMessage, emoji: string, by: string) => void>();
-    constructor(readonly workspace: string) { this.store = new AITalkStore(workspace); }
+    constructor(readonly workspace: string, selectedAgent?: string) {
+        this.store = new AITalkStore(workspace);
+        this.selectedAgent = selectedAgent;
+    }
+
+    setSelectedAgent(selectedAgent: string): MainAgentIdentity {
+        this.selectedAgent = selectedAgent;
+        return resolveMainAgentIdentity(selectedAgent);
+    }
+
+    mainAgentIdentity(selectedAgent = this.selectedAgent || 'AskAway Build'): MainAgentIdentity {
+        return resolveMainAgentIdentity(selectedAgent);
+    }
 
     /** At activation nobody but the user is registered; actors register themselves again. */
     activate(): void {
         for (const item of this.store.snapshot().members) if (item.kind !== 'user' && item.presence === 'joined' && !this.actors.has(item.id)) this.store.setPresence(item, false);
     }
     register(actor: Actor): ActorHandle {
+        actor = rosterIdentity(actor, this.selectedAgent);
         this.actors.set(actor.id, actor);
         const { leaveWhenAnswered: _leave, receive: _r, receiveReply: _rr, receiveReaction: _rx, ...identity } = actor;
         this.store.setPresence({ presencePolicy: actor.leaveWhenAnswered ? 'leavesWhenAnswered' : 'registered', ...identity }, true);
@@ -97,18 +127,31 @@ export class Room {
         return () => { this.reactionWatchers.delete(watch); };
     }
     typing(id: string, on: boolean): void { this.store.setTyping(id, on && this.actors.has(id)); }
-    typingText(): string {
+    typingText(rosterNames = false): string {
         const members = this.store.snapshot().members;
-        const names = this.store.typingIds().filter(id => members.some(item => item.id === id && item.presence === 'joined')).map(id => members.find(item => item.id === id)?.displayName ?? id);
+        const names = this.store.typingIds().filter(id => members.some(item => item.id === id && item.presence === 'joined')).map(id => { const member = members.find(item => item.id === id); return rosterNames ? rules.displayName(member || { id }) : member?.displayName ?? id; });
         return names.length ? `${names.join(', ')} ${names.length > 1 ? 'are' : 'is'} typing…` : '';
     }
-    snapshot() { return { ...this.store.snapshot(), typing: this.typingText() }; }
+    snapshot() { return { ...this.store.snapshot(), typing: this.typingText(true) }; }
     tracker(messageId: string, recipient: string): Tracker {
         return { messageId, recipient, delivered: () => this.store.track('delivered', recipient, [messageId]), read: () => this.store.track('read', recipient, [messageId]) };
     }
 
     /** The main agent registers when its turn starts (or its first tool call of the turn) and leaves at turn end. */
-    registerAgent(): void { const agent = member('agent'); if (!this.actors.has(agent.id) || !this.isRegistered(agent.id)) this.register(identity(agent)); }
+    registerAgent(selectedAgent?: string): ActorHandle {
+        if (selectedAgent) this.selectedAgent = selectedAgent;
+        const agent = member('agent');
+        const persona = resolveMainAgentIdentity(this.selectedAgent || 'AskAway Build');
+        const actor: Actor = {
+            ...identity(agent),
+            memberId: persona.id,
+            name: persona.name,
+            role: persona.role,
+            displayName: this.selectedAgent ? persona.name : agent.displayName,
+        };
+        if (!this.actors.has(agent.id) || !this.isRegistered(agent.id) || this.actors.get(agent.id)?.memberId !== actor.memberId) return this.register(actor);
+        return this.handle(agent.id);
+    }
     unregisterAgent(): void { this.unregister(member('agent').id); }
     /** Workers are only known while they run; they register when they post and leave once all their messages are answered. */
     workerLifecycle(worker: { id: string; displayName: string }, running: boolean): void {
@@ -137,9 +180,10 @@ const identity = (item: any): Actor => ({ id: item.id, displayName: item.display
 
 const rooms = new Map<string, Room>();
 /** One room per workspace, keyed by its resolved path so every caller meets the same actors. */
-export function roomFor(workspace: string): Room {
+export function roomFor(workspace: string, selectedAgent?: string): Room {
     const key = path.resolve(workspace);
     let room = rooms.get(key);
-    if (!room) { room = new Room(key); rooms.set(key, room); }
+    if (!room) { room = new Room(key, selectedAgent); rooms.set(key, room); }
+    else if (selectedAgent) room.setSelectedAgent(selectedAgent);
     return room;
 }

@@ -11,14 +11,25 @@ const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 const buildDir = path.join(__dirname, '.worker-tools-test-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(buildDir);
-for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) {
-    fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
-        fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
-        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
+const src = path.join(__dirname, 'src');
+// Transpiles the modules reachable through relative requires, mirroring src/ so `../team/...` paths resolve.
+function transpile(rel) {
+    const out = path.join(buildDir, rel.replace(/\.ts$/, '.js'));
+    if (fs.existsSync(out)) { return; }
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    const js = ts.transpileModule(fs.readFileSync(path.join(src, rel), 'utf8'),
+        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
+    fs.writeFileSync(out, js);
+    for (const [, spec] of js.matchAll(/require\(["'](\.{1,2}\/[^"']+)["']\)/g)) {
+        const next = path.join(path.dirname(rel), spec);
+        if (fs.existsSync(path.join(src, `${next}.ts`))) { transpile(`${next}.ts`); }
+        else if (fs.existsSync(path.join(src, next, 'index.ts'))) { transpile(path.join(next, 'index.ts')); }
+    }
 }
-const { parseWorkerProfile } = require(path.join(buildDir, 'workerProfiles.js'));
-const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'openCodeRuntime.js'));
-const { registerWorkerTools, WORKER_TOOL_NAMES, WORKER_ACTIONS } = require(path.join(buildDir, 'workerTools.js'));
+for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) { transpile(`workers/${name}.ts`); }
+const { parseWorkerProfile } = require(path.join(buildDir, 'workers', 'workerProfiles.js'));
+const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'workers', 'openCodeRuntime.js'));
+const { registerWorkerTools, WORKER_TOOL_NAMES, WORKER_ACTIONS } = require(path.join(buildDir, 'workers', 'workerTools.js'));
 
 const profile = parseWorkerProfile('---\nname: verify\ndescription: "v"\ntier: light\nmodel: github-copilot/gpt-5.6-luna\nthinking: low\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [low]\nedit: deny\n---\nBody.\n');
 const children = [];
@@ -126,7 +137,7 @@ const call = viaWorkerTool(tools);
     const tooBig = await agedCall('worker_submit', { workerId: big.workerId, ...packet });
     assert.equal(tooBig.status, 'RETIRED');
     assert.match(tooBig.reason, /context 300006/);
-    const { projectWorkersState } = require(path.join(buildDir, 'workersState.js'));
+    const { projectWorkersState } = require(path.join(buildDir, 'workers', 'workersState.js'));
     const shown = projectWorkersState(aged, workspace, () => clock).workers.find((w) => w.workerId === cold.workerId);
     assert.deepEqual([shown.state, shown.blocker, shown.expired], ['RETIRED', 'retired: cache expired', true], 'the tab shows why, under Show completed');
     console.log('EV-019 RetirementBoundary: PASS coldCache=RETIRED context300k=RETIRED reuseRefused=true freshStart=newWorker');

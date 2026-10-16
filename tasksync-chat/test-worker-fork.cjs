@@ -14,15 +14,13 @@ const buildDir = path.join(__dirname, '.worker-fork-test-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(buildDir);
 for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) {
-    fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
-        fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
-        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
+    require('./test-fixture-transpile.cjs')(buildDir, `workers/${name}.ts`);
 }
-const { parseWorkerProfile } = require(path.join(buildDir, 'workerProfiles.js'));
-const { OpenCodeWorkerRuntime, forkSessionViaServer } = require(path.join(buildDir, 'openCodeRuntime.js'));
-const { registerWorkerTools } = require(path.join(buildDir, 'workerTools.js'));
-const { projectWorkersState } = require(path.join(buildDir, 'workersState.js'));
-const { FORK_AFTER_SECONDS } = require(path.join(buildDir, 'workerRouter.js'));
+const { parseWorkerProfile } = require(path.join(buildDir, 'workers/workerProfiles.js'));
+const { OpenCodeWorkerRuntime, forkSessionViaServer } = require(path.join(buildDir, 'workers/openCodeRuntime.js'));
+const { registerWorkerTools } = require(path.join(buildDir, 'workers/workerTools.js'));
+const { projectWorkersState } = require(path.join(buildDir, 'workers/workersState.js'));
+const { FORK_AFTER_SECONDS } = require(path.join(buildDir, 'workers/workerRouter.js'));
 
 const profile = parseWorkerProfile('---\nname: verify\ndescription: "v"\ntier: light\nmodel: github-copilot/gpt-5.6-luna\nthinking: low\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [low]\nedit: deny\n---\nBody.\n');
 const ledgerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-fork-ledger-'));

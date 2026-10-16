@@ -9,13 +9,11 @@ const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 
 const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-workers-state-'));
 for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'evalScoreboard']) {
-    fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
-        fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
-        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText);
+    require('./test-fixture-transpile.cjs')(buildDir, `workers/${name}.ts`);
 }
-const { parseWorkerProfile } = require(path.join(buildDir, 'workerProfiles.js'));
-const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'openCodeRuntime.js'));
-const { projectWorkersState } = require(path.join(buildDir, 'workersState.js'));
+const { parseWorkerProfile } = require(path.join(buildDir, 'workers/workerProfiles.js'));
+const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'workers/openCodeRuntime.js'));
+const { projectWorkersState } = require(path.join(buildDir, 'workers/workersState.js'));
 
 const profile = (name, model) => parseWorkerProfile(`---
 name: ${name}
@@ -139,7 +137,7 @@ const packet = (overrides = {}) => ({
     console.log(`EV-014 WorkersStateProjection: PASS workers=${state.workers.length} runs=${a.runs.length + c.runs.length + d.runs.length} filteredOut=1 transcriptKeys=0 approvalKeys=0`);
 
     // Session open: only a projected worker's session, never an arbitrary string reaching the terminal.
-    const { sessionOpenCommand } = require(path.join(buildDir, 'workersState.js'));
+    const { sessionOpenCommand } = require(path.join(buildDir, 'workers/workersState.js'));
     assert.equal(sessionOpenCommand(state, 'ses_A'), 'opencode --session ses_A');
     assert.equal(sessionOpenCommand(state, 'ses_unknown'), undefined);
     assert.equal(sessionOpenCommand(state, 'ses_A; rm -rf ~'), undefined);
@@ -165,10 +163,12 @@ const packet = (overrides = {}) => ({
     assert.match(webview, /workerRefBadge\(workerRefsFromPreview\(ev\.outputPreview\)\)/, 'turn-trace tool rows carry the badge');
     assert.match(webview, /eventTbody\.innerHTML = traceRowsHtml\(events, /, 'the Metrics timeline renders through the shared trace block');
 
-    const all = ui.render(state, '', {});
+    // R-TEAM-22: task cards live inside collapsed member pills; expand them to inspect filtering.
+    const expandedMembers = Object.fromEntries(state.members.map(member => ['member:' + member.id, true]));
+    const all = ui.render(state, '', expandedMembers);
     assert.equal((all.match(/class="worker-card"/g) || []).length, 2, 'the retired worker is hidden');
     assert.doesNotMatch(all, /expired worker|toggle-expired/, 'no inline expired button; the header switch controls it');
-    const withExpired = ui.render(state, '', {}, true);
+    const withExpired = ui.render(state, '', expandedMembers, true);
     assert.equal((withExpired.match(/class="worker-card"/g) || []).length, 3, 'the toggle reveals the retired worker');
     const currentBanner = ui.chatBanner({ ...a.banner, cacheInput: t2.usage.input + t2.usage.cacheRead + t2.usage.cacheWrite,
         lastCached: t2.usage.cacheRead, averagePrompt: (t2.usage.input + t2.usage.cacheRead + t2.usage.cacheWrite) / a.banner.requests, flagContext: true });
@@ -178,16 +178,17 @@ const packet = (overrides = {}) => ({
     assert.ok(all.includes(currentBanner), 'the card uses exactly the chat banner template');
     assert.match(all, /0 reqs &middot; <strong class="health-cost">\$0\.00<\/strong> &middot; 0 last in \/ 0 turn out &middot; – cache/, 'idle worker with no requests');
     assert.match(all, /1 worker waiting for approval\. Open the session in OpenCode/);
-    assert.match(all, /Shared OpenCode server not running · starts with the first worker/);
-    assert.match(ui.render({ ...state, server: { state: 'ATTACHED', endpoint: 'http://127.0.0.1:4096' } }, '', {}), /Shared OpenCode server · http:\/\/127\.0\.0\.1:4096/);
+    // Reviewer 2026-10-16: the OpenCode server line and restart live in Settings, not Team.
+    assert.doesNotMatch(all, /Shared OpenCode server/);
+    assert.doesNotMatch(ui.render({ ...state, server: { state: 'ATTACHED', endpoint: 'http://127.0.0.1:4096' } }, '', {}), /Shared OpenCode server/);
     assert.equal(ui.pending(state), 1);
-    const onlyVerify = ui.render(state, 'verify', {});
+    const onlyVerify = ui.render(state, 'verify', expandedMembers);
     assert.equal((onlyVerify.match(/class="worker-card"/g) || []).length, 1, 'filter by mode');
     assert.doesNotMatch(onlyVerify, new RegExp(run1.workerId));
     assert.match(ui.render(state, 'nothing-matches', {}), /No worker matches the filter/);
     assert.match(ui.render({ ...state, workers: [] }, '', {}), /No live workers in this workspace\./);
 
-    const openA = ui.render(state, '', { [run1.workerId]: true });
+    const openA = ui.render(state, '', { ...expandedMembers, [run1.workerId]: true });
     const openButtons = openA.match(/data-worker-action="open" data-session-id="[^"]*"/g) || [];
     assert.deepEqual(openButtons.sort(), ['ses_A', 'ses_C'].map((id) => `data-worker-action="open" data-session-id="${id}"`));
     assert.equal((openA.match(/<tr class="worker-run-partition" data-run-id=/g) || []).length, 3, 'one partition per run in the worker conversation');
@@ -197,7 +198,7 @@ const packet = (overrides = {}) => ({
     assert.match(openA, /<thead><tr><th>ID<\/th><th>Model \/ Tool<\/th><th>Credits<\/th><th>Input<\/th><th>Output<\/th><th>Cached<\/th><th title="cached \/ input">Hit%<\/th><\/tr><\/thead>/, 'same columns as Metrics');
 
     // Expanding a trace reads the worker's OpenCode session (shape of GET /session/:id/message) for real tool input and output.
-    const { loadWorkerTrace } = require(path.join(buildDir, 'workersState.js'));
+    const { loadWorkerTrace } = require(path.join(buildDir, 'workers/workersState.js'));
     const at = (ms) => a.runs[0].startedAt + ms;
     const session = [
         { info: { role: 'user', time: { created: at(1) } }, parts: [{ type: 'text', text: 'packet' }] },
@@ -216,11 +217,11 @@ const packet = (overrides = {}) => ({
     assert.deepEqual(trace.runs[run1.runId].map((e) => [e.kind, e.id, e.tool || e.model]), [['request', 'PQJY9', 'gpt-5.6-terra'], ['tool', 'TATGE', 'bash']]);
     assert.deepEqual(trace.runs[run2.runId].map((e) => e.id), ['Y3TCU'], 'a message belongs to the run that was active when it was written');
     assert.deepEqual(trace.runs[run3.runId], [], 'a queued run owns no messages');
-    const withSession = ui.render(state, '', { [run1.workerId]: true }, false, {}, { [run1.workerId]: trace });
+    const withSession = ui.render(state, '', { ...expandedMembers, [run1.workerId]: true }, false, {}, { [run1.workerId]: trace });
     assert.ok(withSession.includes(ui.trace(trace.runs[run1.runId], { openIds: {} })), 'session rows are the Metrics trace rows');
     assert.match(withSession, /<pre class="obs-tl-pre">\{&quot;command&quot;:&quot;ls \/tmp\/aa-evals\/sim&quot;\}<\/pre>[\s\S]*?<pre class="obs-tl-pre">wordcount\.js\nwordcount\.test\.js<\/pre>/, 'tool input and output are shown');
     const down = JSON.parse(JSON.stringify(await loadWorkerTrace(runtime, wsA, run1.workerId, async () => { throw new Error('ECONNREFUSED'); })));
-    const downView = ui.render(state, '', { [run1.workerId]: true }, false, {}, { [run1.workerId]: down });
+    const downView = ui.render(state, '', { ...expandedMembers, [run1.workerId]: true }, false, {}, { [run1.workerId]: down });
     assert.match(downView, /Tool input and output unavailable: OpenCode server did not answer \(ECONNREFUSED\)/);
     // Without the session, the ledger's facts fill the same Metrics rows: each request row leads the tools it decided.
     const t1Rows = down.runs[run1.runId];
@@ -246,7 +247,7 @@ const packet = (overrides = {}) => ({
     assert.match(ui.chatBanner({ requests: 34, dollars: 1.95, lastIn: 100, lastCached: 50, turnOut: 7, workers: { workers: 3, runs: 4, dollars: 0.42 } }), /^<span title="[^"]+">Score –<\/span> &middot; 34 reqs &middot; <strong class="health-cost">\$1\.95<\/strong> <span class="health-workers"[^>]*>\(3 workers &middot; \$0\.42\)<\/span> &middot;/);
     assert.doesNotMatch(all, /\d workers? &middot;/, 'worker cards keep the plain banner without a worker part');
     assert.match(downView, /<span class="obs-req-id">STEP1<\/span><\/td><td class="obs-scope">gpt-5\.6-terra<\/td><td>0\.21<\/td><td>1\.25K<\/td><td>340<\/td><td>50<\/td><td class="obs-cache-risk">4%<\/td>/);
-    const kept = ui.render(state, '', { [run1.workerId]: true }, false, { 't:EDIT1': true }, { [run1.workerId]: down });
+    const kept = ui.render(state, '', { ...expandedMembers, [run1.workerId]: true }, false, { 't:EDIT1': true }, { [run1.workerId]: down });
     assert.match(kept, /data-eid="t:EDIT1" open>/, 'an expanded row stays open across the 1s re-render');
     const other = JSON.parse(JSON.stringify(await loadWorkerTrace(runtime, wsB, run1.workerId, async () => session)));
     assert.deepEqual([other.source, other.runs], ['ledger', {}], 'another workspace cannot load this worker');
@@ -258,10 +259,10 @@ const packet = (overrides = {}) => ({
     clock += 301_000;
     const later = JSON.parse(JSON.stringify(projectWorkersState(runtime, wsA, now)));
     assert.deepEqual(later.workers.filter((w) => !w.expired).map((w) => w.workerId), [run1.workerId], 'after 5 min idle the failed worker expires; the running one stays');
-    assert.match(ui.render(later, '', {}), /class="worker-card"/);
-    assert.equal((ui.render(later, '', {}).match(/class="worker-card"/g) || []).length, 1, 'two expired workers are hidden');
+    assert.match(ui.render(later, '', expandedMembers), /class="worker-card"/);
+    assert.equal((ui.render(later, '', expandedMembers).match(/class="worker-card"/g) || []).length, 1, 'two expired workers are hidden');
     // Age counts up with the clock, not only when a new state arrives.
-    const ageAt = (ms) => (ui.render({ ...state, generatedAt: state.generatedAt + ms }, '', {}).match(/Age: (\d:\d\d) (warm|cold)/) || [])[1];
+    const ageAt = (ms) => (ui.render({ ...state, generatedAt: state.generatedAt + ms }, '', expandedMembers).match(/Age: (\d:\d\d) (warm|cold)/) || [])[1];
     assert.deepEqual([ageAt(0), ageAt(7000), ageAt(65_000)], ['0:00', '0:07', '1:05'], 'Age advances as time passes');
     assert.match(webview, /generatedAt: Date\.now\(\) - workersClockSkew/, 'the tab re-renders with the current clock every second');
     const actions = [...openA.matchAll(/data-worker-action="([^"]+)"/g)].map((m) => m[1]);
@@ -269,7 +270,7 @@ const packet = (overrides = {}) => ({
     // Cancel-before-start from the tab: only the queued run offers it, and only this workspace's queued run is cancelled.
     assert.deepEqual([...openA.matchAll(/data-worker-action="cancel-run" data-run-id="([^"]+)"/g)].map((m) => m[1]), [run3.runId]);
     assert.match(webview, /type: 'cancelQueuedWorkerRun', runId: btn\.getAttribute\('data-run-id'\)/);
-    const { cancelQueuedRun } = require(path.join(buildDir, 'workersState.js'));
+    const { cancelQueuedRun } = require(path.join(buildDir, 'workers/workersState.js'));
     assert.equal(cancelQueuedRun(runtime, wsA, run1.runId).status, 'NOT_CANCELLABLE', 'a finished run cannot be cancelled');
     assert.equal(cancelQueuedRun(runtime, wsA, run2.runId).status, 'NOT_CANCELLABLE', 'a started run is not cancelled from the tab');
     const otherWs = runtime.list(wsB)[0].runId;
@@ -279,7 +280,7 @@ const packet = (overrides = {}) => ({
     assert.deepEqual([afterCancel.state, afterCancel.runs.find((r) => r.runId === run3.runId).state], ['WAITING_APPROVAL', 'CANCELLED'], 'the queued run is cancelled; the worker keeps its state');
 
     // Eval scoreboard: results ledger → mode × model rows in the Metrics table, collapsed until opened.
-    const { loadEvalScoreboard } = require(path.join(buildDir, 'evalScoreboard.js'));
+    const { loadEvalScoreboard } = require(path.join(buildDir, 'workers/evalScoreboard.js'));
     const resultsFile = path.join(ledgerDir, 'results.jsonl');
     const result = (mode, model, verdict, cost, durationMs, ts) => JSON.stringify({ ts, suite: 'workers', mode, model, variant: 'low', verdict, usage: { cost }, durationMs });
     fs.writeFileSync(resultsFile, [
@@ -300,27 +301,27 @@ const packet = (overrides = {}) => ({
     assert.doesNotMatch(ui.render(state, '', {}), /Eval scoreboard/, 'hidden when there are no results');
     console.log(`EV-015b WorkersQueueAndEvals: PASS cancelQueued=true refused=3 scoreboardRows=${board.length} malformedSkipped=1`);
 
-    // The tab answers "how many are there" and "how do I spend less" before any card.
-    assert.match(all, /^<div class="workers-summary"><strong>2<\/strong> live workers &middot; 1 running &middot; 1 queued &middot; 1 warm &middot; 1 completed &middot; <strong class="health-cost">\$0\.0025<\/strong> spent<\/div>/);
+    // The tab answers "how many are there" from the displayed tasks (R-TEAM-38); no Save cost tips (R-TEAM-40).
+    assert.match(all, /^<div class="workers-summary"><strong>2<\/strong> tasks this turn &middot; 1 running &middot; 1 queued &middot; 1 warm &middot; 1 completed &middot; <strong class="health-cost">\$0\.00<\/strong> this turn<\/div>/, 'no turn started in this projection, so no turn spend');
     assert.doesNotMatch(all, /Reuse \w+ worker/, 'no reuse tip: each card shows its cache age and warm-for');
     assert.doesNotMatch(all, /workers-tips/, 'no tips block when nothing needs attention');
     const tipsWithBoard = ui.render({ ...state, scoreboard: [
         { mode: 'code', model: 'gpt-5.6-terra', variant: 'high', runs: 3, passed: 2, avgCost: 0.01, avgMs: 1 },
         { mode: 'code', model: 'gpt-5.6-luna', variant: 'low', runs: 4, passed: 4, avgCost: 0.002, avgMs: 1 },
     ] }, '', {});
-    assert.match(tipsWithBoard, /<div class="workers-tip">code: gpt-5\.6-luna passes 4\/4 at \$0\.0020 vs gpt-5\.6-terra \$0\.0100 \u2014 try it first\.<\/div>/, 'the scoreboard points at a cheaper model that passes as often');
+    assert.doesNotMatch(tipsWithBoard, /workers-tips?|Save cost/, 'no Save cost tips in Team, even with a cheaper scoreboard model');
     const bloated = { ...state, workers: state.workers.map((w) => w.workerId === run1.workerId ? { ...w, nextInputTokens: 250000, banner: { ...w.banner, requests: 3, lastIn: 1000, lastCached: 100 } } : w) };
-    assert.match(ui.render(bloated, '', {}), new RegExp(`${run1.workerId}: 250K context per request \u2014 start fresh for unrelated work\.`));
-    assert.match(ui.render(bloated, '', {}), /: 10% cache hit \u2014 send its packets within 5 min\./);
-    // Swimlanes appear only when packets name a track; untracked workers go last.
+    assert.doesNotMatch(ui.render(bloated, '', {}), /workers-tips?|Save cost/, 'no Save cost tips for context bloat or cache misses');
+    // R-TEAM-22 groups task cards by member rather than packet track.
     assert.doesNotMatch(all, /workers-lane/, 'no lanes without tracks');
     const tracked = { ...state, workers: state.workers.map((w) => w.workerId === runC.workerId ? { ...w, track: 'B' } : w.workerId === run1.workerId ? { ...w, track: 'A' } : w) };
-    const lanes = [...ui.render(tracked, '', {}, true).matchAll(/<div class="workers-lane" data-track="([^"]*)">([^<]*)/g)].map((m) => m[2]);
-    assert.deepEqual(lanes, ['Track A &middot; 1 worker &middot; ', 'Track B &middot; 1 worker &middot; ', 'No track &middot; 1 worker &middot; ']);
+    const trackedHtml = ui.render(tracked, '', expandedMembers, true);
+    assert.doesNotMatch(trackedHtml, /workers-lane/, 'tracks do not split member rows');
+    assert.equal((trackedHtml.match(/class="worker-card"/g) || []).length, 3, 'tracked and untracked tasks remain available within members');
     const trackRuntime = new OpenCodeWorkerRuntime(profiles, { ledgerDir: fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-track-')), spawner, now });
     trackRuntime.start(packet({ track: 'A' }));
     assert.equal(projectWorkersState(trackRuntime, wsA, now).workers[0].track, 'A', 'the packet track reaches the tab');
-    console.log('EV-015c WorkersSummaryTipsLanes: PASS summary=counts+spend tips=bloat,cacheMiss,cheaperModel reuseTip=none lanes=byTrack');
+    console.log('EV-015c WorkersSummaryTipsLanes: PASS summary=displayedTasks+turnSpend tips=none reuseTip=none lanes=byMember');
     assert.equal((openA.match(/data-worker-action="open-external" data-session-id="ses_A"/g) || []).length, 1, 'terminal-app open targets the same session');
     assert.doesNotMatch(openA, /SECRET-OBJECTIVE|TRANSCRIPT-TEXT|<textarea/);
     const hostile = { ...state, workers: [{ ...state.workers[0], profile: '<img src=x onerror=alert(1)>' }] };
@@ -328,14 +329,17 @@ const packet = (overrides = {}) => ({
     console.log(`EV-015 WorkersViewInteraction: PASS cards=2 hiddenExpired=1 banner=sharedTemplate trace=metricsRows partitions=3 filtered=1 openTargets=${openButtons.length} pendingApproval=1`);
 
     const css = fs.readFileSync(path.join(__dirname, 'media', 'main.css'), 'utf8');
-    for (const selector of ['.workers-filter', '.worker-state-waiting_approval', '.worker-state-failed', '.worker-run-partition', '.workers-approval-notice', '.worker-open-btn']) {
+    // R-TEAM-37: no Team filter input, so no filter style.
+    assert.ok(!css.includes('.workers-filter'), 'no filter style');
+    for (const selector of ['.worker-state-waiting_approval', '.worker-state-failed', '.worker-run-partition', '.workers-approval-notice', '.worker-open-btn']) {
         assert.ok(css.includes(selector), `style for ${selector}`);
     }
-    console.log('EV-016 WorkersControlPlanePresentation: PASS selectors=6');
+    console.log('EV-016 WorkersControlPlanePresentation: PASS selectors=5 filter=none');
 
     const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
-    assert.match(provider, /data-tab="workers"/);
-    assert.match(provider, /id="panel-workers"/);
+    // R-TEAM-02 renames the visible tab and panel, not internal worker controls.
+    assert.match(provider, /data-tab="team"/);
+    assert.match(provider, /id="panel-team"/);
     assert.match(provider, /<span>Show completed<\/span>\s*<div class="toggle-switch specs-toggle-switch" id="workers-show-expired" role="switch"/, 'the same switch as the Specs tab');
     assert.match(provider, /sessionOpenCommand\(this\._workersStateSource\(root\), sessionId\)/, 'open-session goes through the allowlist');
     assert.match(provider, /if \(external\) \{ openInTerminalApp\(command, root\); return; \}/, 'terminal-app open uses the same allowlisted command');

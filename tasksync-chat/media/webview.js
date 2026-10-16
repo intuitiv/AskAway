@@ -283,6 +283,11 @@
             '<div class="toggle-switch" id="workers-keep-warm-toggle" role="switch" aria-checked="true" aria-label="Keep workers warm" tabindex="0"></div>' +
             '</div>';
         modalContent.appendChild(workersKeepWarmSection);
+        var runtimeSection = document.createElement('div');
+        runtimeSection.className = 'settings-section';
+        runtimeSection.innerHTML = runtimeSettingsHtml();
+        modalContent.appendChild(runtimeSection);
+        initRuntimeSettings(runtimeSection);
         var approvalSection = document.createElement('div');
         approvalSection.className = 'settings-section';
         approvalSection.innerHTML = '<div class="settings-section-header">' +
@@ -726,6 +731,9 @@
                 break;
             case 'workersState':
                 applyWorkersState(message.data);
+                break;
+            case 'runtimeHealth':
+                applyRuntimeHealth(message.health);
                 break;
             case 'workerTrace':
                 if (message.data && message.data.workerId) { workersTraces[message.data.workerId] = message.data; paintWorkers(); }
@@ -1301,8 +1309,6 @@
     // b: { requests, dollars, lastIn (full prompt of the last request), lastCached, turnOut, workers?: { runs, dollars } }
     // `workers` (chat banner only) shows what the worker part of the totals is; worker cards omit it.
     function bannerDollars(dollars) {
-        // null: the runtime reports no billed cost (agy); never shown as $0.
-        if (dollars === null) return '<span title="This runtime reports no billed cost">cost unreported</span>';
         dollars = Number(dollars) || 0;
         return '$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2);
     }
@@ -1330,7 +1336,7 @@
             '; output=' + (Number(b.turnOut) || 0) + '; requests=' + (Number(b.requests) || 0) +
             '; ' + (b.mainContext ? 'main context' : 'worker context') + ' (average prompt)=' + (Number(b.averagePrompt) || 0);
         var requests = Number(b.requests) || 0;
-        var dollars = b.dollars === null ? null : Number(b.dollars) || 0;
+        var dollars = Number(b.dollars) || 0;
         var lastIn = Number(b.lastIn) || 0;
         var cacheInput = b.cacheInput === undefined ? lastIn : Number(b.cacheInput) || 0;
         var hit = cacheInput > 0 ? Math.round((Number(b.lastCached) || 0) / cacheInput * 100) + '%' : '\u2013';
@@ -1340,8 +1346,7 @@
         var workerRequests = Number(w.requests) || 0;
         var workerReqPart = w.requests === undefined ? '' : ' &middot; ' + workerRequests + ' req' + (workerRequests === 1 ? '' : 's');
         var workerPart = workerRuns > 0
-            ? ' <span class="health-workers" title="Distinct workers that ran this turn, their requests and cost (included in the total)">(' + workerRuns + ' worker' + (workerRuns === 1 ? '' : 's') + workerReqPart + ' &middot; ' + bannerDollars(workerDollars) +
-                (Number(w.unreportedCostRequests) > 0 ? ' + agy unreported' : '') + ')</span>'
+            ? ' <span class="health-workers" title="Distinct workers that ran this turn, their requests and cost (included in the total)">(' + workerRuns + ' worker' + (workerRuns === 1 ? '' : 's') + workerReqPart + ' &middot; ' + bannerDollars(workerDollars) + ')</span>'
             : '';
         var flag = b.flagContext ? workerContextFlag(lastIn) : { over: false };
         var lastInHtml = flag.over
@@ -1688,8 +1693,6 @@
             });
             paintWorkers();
         }
-        var categories = document.getElementById('obs-cost-categories');
-        if (categories) categories.innerHTML = monthlyCostTableHtml(observabilityMetrics.monthCredits);
         var monthLine = document.getElementById('obs-workspace-month');
         var month = observabilityMetrics.monthCredits;
         if (monthLine && month) {
@@ -2974,11 +2977,6 @@
     }
 
     // ── Workers tab: pure render (tested in test-workers-control-plane.cjs) ──
-    function monthlyCostTableHtml(month) {
-        if (!month || !month.categories) return '';
-        return '<table class="observability-table observability-model-table"><thead><tr><th>Category</th><th>Cost ($)</th><th>Requests</th></tr></thead><tbody>' +
-            month.categories.map(function (row) { return '<tr><td>' + workersEsc(row.category) + '</td><td><span class="obs-month-amount">$' + Number(row.dollars).toFixed(2) + '</span></td><td>' + (row.requests == null ? '\u2013' : row.requests) + '</td></tr>'; }).join('') + '</tbody></table>';
-    }
     function workersEsc(value) {
         return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -3051,65 +3049,46 @@
     }
     function workerShortModel(model) { return String(model || '').split('/').pop(); }
     function workerIsWarm(w, now) { return w.adapter !== 'agy' && !w.expired && w.state !== 'RUNNING' && w.state !== 'STARTING' && w.state !== 'WAITING_APPROVAL' && w.cacheExpiresAt > now; }
-    // Headline for "how many are there": live workers by state, queued runs, and the workspace's worker spend.
-    function workersSummaryHtml(state) {
+    function teamTaskActive(w) { return w.state === 'RUNNING' || w.state === 'STARTING' || w.state === 'WAITING_APPROVAL'; }
+    function teamTaskQueuedRuns(w) { return (w.runs || []).filter(function (r) { return r.queuePosition > 0 && r.state === 'STARTING'; }).length; }
+    function teamTaskDone(w) { return ['COMPLETED', 'FAILED', 'CANCELLED', 'RETIRED', 'ORPHANED'].indexOf(w.state) !== -1 || !!w.expired; }
+    // This turn's spend of one task: the ledger's checkpoints since the turn started (projectWorkersState turnCost); agy is free.
+    function teamTaskTurnCost(w) {
+        if (w.adapter === 'agy' || w.cloud) return 0;
+        return typeof w.turnCost === 'number' ? w.turnCost : (Number(w.usage && w.usage.cost) || 0);
+    }
+    // Headline for "how many are there": counted from the same task list the member rows display.
+    function workersSummaryHtml(state, tasks) {
         var now = state.generatedAt;
-        var all = state.workers || [];
-        var live = all.filter(function (w) { return !w.expired; });
-        var running = live.filter(function (w) { return w.state === 'RUNNING' || w.state === 'STARTING' || w.state === 'WAITING_APPROVAL'; }).length;
-        var warm = live.filter(function (w) { return workerIsWarm(w, now); }).length;
-        var queued = all.reduce(function (n, w) { return n + (w.runs || []).filter(function (r) { return r.queuePosition > 0 && r.state === 'STARTING'; }).length; }, 0);
-        var dollars = all.reduce(function (n, w) { return n + ((w.usage && w.usage.cost) || 0); }, 0);
-        var unreported = all.some(function (w) { return w.adapter === 'agy'; }) ? ' <span title="agy reports no billed cost">+ agy unreported</span>' : '';
-        return '<div class="workers-summary"><strong>' + live.length + '</strong> live worker' + (live.length === 1 ? '' : 's') +
-            ' &middot; ' + running + ' running &middot; ' + queued + ' queued &middot; ' + warm + ' warm &middot; ' + (all.length - live.length) + ' completed' +
-            (all.some(function (w) { return !w.cloud; }) ? ' &middot; <strong class="health-cost">$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2) + '</strong>' + unreported + ' spent' : '') + '</div>';
+        var list = tasks || state.workers || [];
+        var running = list.filter(teamTaskActive).length;
+        var warm = list.filter(function (w) { return workerIsWarm(w, now); }).length;
+        var queued = list.reduce(function (n, w) { return n + teamTaskQueuedRuns(w); }, 0);
+        var completed = list.filter(teamTaskDone).length;
+        var dollars = list.reduce(function (n, w) { return n + teamTaskTurnCost(w); }, 0);
+        return '<div class="workers-summary"><strong>' + list.length + '</strong> task' + (list.length === 1 ? '' : 's') + ' this turn' +
+            ' &middot; ' + running + ' running &middot; ' + queued + ' queued &middot; ' + warm + ' warm &middot; ' + completed + ' completed' +
+            (list.some(function (w) { return !w.cloud; }) ? ' &middot; <strong class="health-cost">$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2) + '</strong> this turn' : '') + '</div>';
     }
-    // Only what the cards cannot show: context bloat, cache misses, and a cheaper model per the eval scoreboard.
-    function workerCostTips(state) {
-        var tips = [];
-        var live = (state.workers || []).filter(function (w) { return !w.expired; });
-        live.forEach(function (w) {
-            var b = w.banner || {};
-            if (w.nextInputTokens > 200000) {
-                tips.push(w.workerId + ': ' + formatObservabilityCompact(w.nextInputTokens) + ' context per request \u2014 start fresh for unrelated work.');
-            }
-            if (w.adapter !== 'agy' && (b.requests || 0) > 1 && b.lastIn > 0 && (b.lastCached || 0) / b.lastIn < 0.5) {
-                tips.push(w.workerId + ': ' + Math.round((b.lastCached || 0) / b.lastIn * 100) + '% cache hit \u2014 send its packets within 5 min.');
-            }
-        });
-        var board = state.scoreboard || [];
-        var modes = {};
-        live.forEach(function (w) { modes[w.profile + '\u0000' + workerShortModel(w.model)] = { mode: w.profile, model: workerShortModel(w.model) }; });
-        Object.keys(modes).forEach(function (key) {
-            var m = modes[key];
-            var mine = board.filter(function (r) { return r.mode === m.mode && r.model === m.model; })[0];
-            if (!mine) return;
-            var cheaper = board.filter(function (r) {
-                return r.mode === m.mode && r.model !== m.model && r.runs >= 2 && r.avgCost < mine.avgCost * 0.7 && r.passed / r.runs >= mine.passed / mine.runs;
-            }).sort(function (a, b) { return a.avgCost - b.avgCost; })[0];
-            if (cheaper) {
-                tips.push(m.mode + ': ' + cheaper.model + ' passes ' + cheaper.passed + '/' + cheaper.runs + ' at $' + cheaper.avgCost.toFixed(4) +
-                    ' vs ' + m.model + ' $' + mine.avgCost.toFixed(4) + ' \u2014 try it first.');
-            }
-        });
-        return tips;
-    }
-    function workerCostTipsHtml(state) {
-        var tips = workerCostTips(state);
-        if (!tips.length) return '';
-        return '<div class="workers-tips"><div class="workers-tips-head">Save cost</div>' +
-            tips.map(function (t) { return '<div class="workers-tip">' + workersEsc(t) + '</div>'; }).join('') + '</div>';
-    }
-    var TEAM_ROSTER = [
-        { id: 'validator', memberId: 'priya', name: 'Priya', role: 'Validator', profile: 'validator', profiles: ['validator'], category: 'Validator', pinned: true, avatar: 'priya-validator.png', creativeStatus: 'Guardrails warm \u00b7 reviewing spec compliance', agentFile: '.github/agents/validator.agent.md', defaultModel: 'github-copilot/claude-sonnet-4.6', defaultThinking: 'medium' },
-        { id: 'bhaskar', memberId: 'bhaskar', name: 'Bhaskar', role: 'Build', profile: 'build', profiles: ['build', 'code'], category: 'Build', pinned: false, avatar: 'bhaskar-build.png', creativeStatus: 'Shipping packets \u00b7 keeping tests green', agentFile: '.opencode/agent/askaway-code.md', defaultModel: 'agy/gemini-4-argon-high', defaultThinking: 'high' },
-        { id: 'arjun', memberId: 'arjun', name: 'Arjun', role: 'Verify', profile: 'verify', profiles: ['verify', 'tester'], category: 'Verify', pinned: false, avatar: 'arjun-verify.png', creativeStatus: 'Probing edge cases \u00b7 caller-view checks', agentFile: '.opencode/agent/askaway-verify.md', defaultModel: 'github-copilot/gpt-5.6-luna', defaultThinking: 'low' },
-        { id: 'maya', memberId: 'maya', name: 'Maya', role: 'Explore', profile: 'explore', profiles: ['explore'], category: 'Explore', pinned: false, avatar: 'maya-explore.png', creativeStatus: 'Mapping files and call graphs', agentFile: '.opencode/agent/askaway-explore.md', defaultModel: 'github-copilot/gpt-5.6-luna', defaultThinking: 'low' },
-        { id: 'kavya', memberId: 'kavya', name: 'Kavya', role: 'Architect', profile: 'architect', profiles: ['architect', 'plan'], category: 'Architect', pinned: false, avatar: 'kavya-architect.png', creativeStatus: 'Shaping ADRs and boundaries', agentFile: '.github/agents/plan.agent.md', defaultModel: 'github-copilot/claude-opus-4.6', defaultThinking: 'high' },
-        { id: 'dev', memberId: 'dev', name: 'Dev', role: 'Review', profile: 'review', profiles: ['review'], category: 'Review', pinned: false, avatar: 'dev-review.png', creativeStatus: 'Auditing diffs against requirements', agentFile: '.opencode/agent/askaway-review.md', defaultModel: 'github-copilot/claude-sonnet-4.6', defaultThinking: 'medium' }
-    ];
+    var TEAM_DEFAULT_VALIDATOR = {
+        id: 'priya', name: 'Priya', role: 'Validator', pinned: true, initials: 'PR', avatarSrc: '', avatar: '',
+        creativeStatus: 'Reviewing spec compliance', agentFile: '.github/agents/validator.agent.md',
+        model: 'github-copilot/claude-sonnet-4.6', defaultModel: 'github-copilot/claude-sonnet-4.6',
+        thinking: 'medium', defaultThinking: 'medium',
+        turnCost: 0, monthCost: 0, taskIds: [], workerIds: []
+    };
     var TEAM_MODELS = [
+        { id: 'github-copilot/claude-opus-5.5', label: 'github-copilot/claude-opus-5.5', efforts: ['high', 'medium', 'low'] },
+        { id: 'github-copilot/claude-sonnet-5.5', label: 'github-copilot/claude-sonnet-5.5', efforts: ['high', 'medium', 'low'] },
+        { id: 'github-copilot/gpt-6.1-sol', label: 'github-copilot/gpt-6.1-sol', efforts: ['high', 'medium', 'low'] },
+        { id: 'github-copilot/gpt-6-luna', label: 'github-copilot/gpt-6-luna', efforts: ['high', 'medium', 'low'] },
+        { id: 'agy/gemini-4-argon-medium', label: 'agy/gemini-4-argon-medium', efforts: ['high', 'medium', 'low'] },
+        { id: 'agy/gemini-4-argon-low', label: 'agy/gemini-4-argon-low', efforts: ['high', 'medium', 'low'] },
+        { id: 'agy/gemini-3.8-flash-high', label: 'agy/gemini-3.8-flash-high', efforts: ['high', 'medium', 'low'] },
+        { id: 'agy/gemini-3.8-flash-medium', label: 'agy/gemini-3.8-flash-medium', efforts: ['high', 'medium', 'low'] },
+        { id: 'agy/gemini-3.8-flash-low', label: 'agy/gemini-3.8-flash-low', efforts: ['high', 'medium', 'low'] },
+        { id: 'agy/gemini-3.1-pro-high', label: 'agy/gemini-3.1-pro-high', efforts: ['high', 'low'] },
+        { id: 'agy/gemini-3.1-pro-low', label: 'agy/gemini-3.1-pro-low', efforts: ['high', 'low'] },
         { id: 'agy/gemini-4-argon-high', label: 'Gemini 4 Argon High (agy)', efforts: ['medium', 'high'] },
         { id: 'github-copilot/claude-opus-4.6', label: 'Claude Opus 4.6', efforts: ['low', 'medium', 'high'] },
         { id: 'github-copilot/claude-sonnet-4.6', label: 'Claude Sonnet 4.6', efforts: ['low', 'medium', 'high'] },
@@ -3123,80 +3102,151 @@
     function isValidatorWorker(w) {
         return !!(w && (w.kind === 'validator' || w.profile === 'validator' || w.track === 'validator'));
     }
-    function memberForWorker(w) {
-        if (isValidatorWorker(w)) return TEAM_ROSTER[0];
-        var p = String((w && w.profile) || '').toLowerCase();
-        for (var i = 1; i < TEAM_ROSTER.length; i++) {
-            var m = TEAM_ROSTER[i];
-            if (m.profile === p || (m.profiles && m.profiles.indexOf(p) !== -1) || m.id === p) return m;
-        }
-        var raw = String((w && w.profile) || 'worker');
+    function memberInitials(name, id) {
+        var parts = String(name || id || '?').trim().split(/\s+/).filter(Boolean);
+        if (!parts.length) return '?';
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    function normalizeTeamMember(m) {
+        var id = String((m && m.id) || 'priya');
+        var pinned = !!(m && m.pinned) || id === 'priya' || id === 'validator';
+        var role = (m && m.role) || (pinned ? 'Validator' : id);
+        var name = (m && m.name) || (pinned ? 'Priya' : id);
+        var rawAvatar = (m && m.avatarSrc !== undefined) ? m.avatarSrc : (m && m.avatar !== undefined ? m.avatar : '');
+        var avatarSrc = String(rawAvatar || '');
+        var model = (m && (m.model || m.defaultModel)) || 'github-copilot/claude-sonnet-4.6';
+        var thinking = (m && (m.thinking || m.defaultThinking)) || 'medium';
+        var rawIds = Array.isArray(m && m.taskIds) ? m.taskIds : (Array.isArray(m && m.workerIds) ? m.workerIds : []);
+        var kind = (m && m.kind) || (pinned ? 'validator' : 'worker');
         return {
-            id: raw, memberId: raw, name: raw, role: 'Worker', profile: raw, profiles: [raw],
-            category: raw, pinned: false, avatar: '', creativeStatus: 'Running worker tasks',
-            agentFile: '.opencode/agent/askaway-' + raw + '.md',
-            defaultModel: (w && w.model) || 'github-copilot/gpt-5.6-luna',
-            defaultThinking: (w && w.thinking) || 'medium'
+            id: id,
+            name: name,
+            role: role,
+            kind: kind,
+            active: !!(m && m.active),
+            profile: (m && m.profile) || String(role).toLowerCase(),
+            pinned: pinned,
+            initials: (m && m.initials) || memberInitials(name, id),
+            avatarSrc: avatarSrc,
+            avatar: avatarSrc,
+            creativeStatus: (m && m.creativeStatus) || (pinned ? 'Reviewing spec compliance' : 'Ready for next packet'),
+            agentFile: (m && m.agentFile) || (pinned ? '.github/agents/validator.agent.md' : '.opencode/agent/askaway-' + String(role).toLowerCase() + '.md'),
+            model: model,
+            defaultModel: model,
+            thinking: thinking,
+            defaultThinking: thinking,
+            turnCost: Number(m && m.turnCost) || 0,
+            monthCost: Number(m && m.monthCost) || 0,
+            taskIds: rawIds.slice(),
+            workerIds: rawIds.slice()
         };
+    }
+    function stateMembersList(state) {
+        var raw = (state && Array.isArray(state.members) && state.members.length) ? state.members : [TEAM_DEFAULT_VALIDATOR];
+        var list = raw.map(normalizeTeamMember);
+        if (!list.some(function (m) { return m.pinned; })) list.unshift(normalizeTeamMember(TEAM_DEFAULT_VALIDATOR));
+        return list.sort(function (a, b) { return Number(b.pinned) - Number(a.pinned); });
+    }
+    function matchWorkerMember(w, members) {
+        // The main agent (chat mode) never owns worker tasks; a `build` task belongs to its roster worker member.
+        var list = (members || [ normalizeTeamMember(TEAM_DEFAULT_VALIDATOR) ]).filter(function (m) { return m.kind !== 'main'; });
+        var wid = w && w.workerId;
+        if (wid) {
+            var byWorkerId = list.find(function (m) { return m.workerIds.indexOf(wid) !== -1 || m.taskIds.indexOf(wid) !== -1; });
+            if (byWorkerId) return byWorkerId;
+        }
+        if (isValidatorWorker(w)) return list.find(function (m) { return m.pinned; }) || list[0];
+        var p = String((w && w.profile) || '').toLowerCase();
+        var byRole = list.find(function (m) {
+            return !m.pinned && (String(m.role || '').toLowerCase() === p || String(m.profile || '').toLowerCase() === p || String(m.id || '').toLowerCase() === p);
+        });
+        if (byRole) return byRole;
+        var raw = String((w && (w.profile || w.workerId)) || 'member');
+        return normalizeTeamMember({
+            id: raw, name: raw, role: (w && w.profile) || 'Member', profile: raw, pinned: false, avatarSrc: '',
+            creativeStatus: 'Running tasks', agentFile: '.opencode/agent/askaway-' + raw + '.md',
+            model: (w && w.model) || 'github-copilot/gpt-5.6-luna',
+            thinking: (w && w.thinking) || 'medium',
+            turnCost: (w && w.adapter === 'agy') ? 0 : Number(w && w.usage && w.usage.cost) || 0,
+            monthCost: (w && w.adapter === 'agy') ? 0 : Number(w && w.usage && w.usage.cost) || 0,
+            taskIds: wid ? [wid] : []
+        });
     }
     function resolveTeamMemberId(raw, state) {
         var key = String(raw || '').trim().toLowerCase();
         if (!key) return '';
-        if (key === 'validator' || key === 'priya' || key === 'review-po') return 'validator';
-        for (var i = 0; i < TEAM_ROSTER.length; i++) {
-            var m = TEAM_ROSTER[i];
-            if (m.id === key || m.memberId === key || m.name.toLowerCase() === key || m.role.toLowerCase() === key || m.profile === key || (m.profiles && m.profiles.indexOf(key) !== -1)) {
+        var list = stateMembersList(state);
+        var pinned = list.find(function (m) { return m.pinned; }) || list[0];
+        if (key === 'validator' || key === 'priya' || key === 'review-po') return pinned.id;
+        for (var i = 0; i < list.length; i++) {
+            var m = list[i];
+            if (m.id.toLowerCase() === key || m.name.toLowerCase() === key || m.role.toLowerCase() === key || m.profile.toLowerCase() === key ||
+                m.workerIds.some(function (wid) { return String(wid).toLowerCase() === key; })) {
                 return m.id;
             }
         }
         var workers = (state && state.workers) || [];
         for (var j = 0; j < workers.length; j++) {
-            if (String(workers[j].workerId || '').toLowerCase() === key) return memberForWorker(workers[j]).id;
+            if (String(workers[j].workerId || '').toLowerCase() === key) return matchWorkerMember(workers[j], list).id;
         }
-        if (key === 'review') return 'validator';
         return key;
     }
-    function memberMonthCost(member, state, memberWorkers) {
-        var cats = (state && state.monthCredits && state.monthCredits.categories) || [];
-        var match = cats.find(function (c) {
-            var cat = String(c.category || '').toLowerCase();
-            return cat === String(member.category || '').toLowerCase() ||
-                cat === String(member.role || '').toLowerCase() ||
-                cat === String(member.profile || '').toLowerCase() ||
-                cat === String(member.id || '').toLowerCase();
-        });
-        if (match) return { dollars: Number(match.dollars) || 0, requests: match.requests };
-        var workerSum = (memberWorkers || []).reduce(function (n, w) { return n + ((w.usage && w.usage.cost) || 0); }, 0);
-        return { dollars: workerSum, requests: null };
+    // Turn = the displayed tasks' spend since the turn started; a row without tasks (main agent, Priya between runs)
+    // shows its own turn spend from the host.
+    function memberCostAmounts(member, memberWorkers) {
+        var workerSum = (memberWorkers || []).reduce(function (n, w) {
+            return n + (w.adapter === 'agy' ? 0 : (Number(w && w.usage && w.usage.cost) || 0));
+        }, 0);
+        var turn = (memberWorkers && memberWorkers.length)
+            ? memberWorkers.reduce(function (n, w) { return n + teamTaskTurnCost(w); }, 0)
+            : Number(member && member.turnCost) || 0;
+        var month = (member && typeof member.monthCost === 'number' && !isNaN(member.monthCost) && (member.monthCost > 0 || !workerSum))
+            ? member.monthCost : workerSum;
+        return { turn: Math.max(0, Number(turn) || 0), month: Math.max(0, Number(month) || 0) };
+    }
+    function memberCostSummaryHtml(costs) {
+        var turnText = '$' + costs.turn.toFixed(2);
+        var monthText = '$' + costs.month.toFixed(2);
+        return '<span class="team-cost-turn">' + turnText + ' turn</span> &middot; <span class="team-cost-month"><span class="obs-month-amount">' + monthText + '</span> month</span>';
+    }
+    function memberDisplayStatus(member, memberWorkers) {
+        var active = (memberWorkers || []).find(function (w) { return w.state === 'RUNNING' || w.state === 'STARTING' || w.state === 'WAITING_APPROVAL'; });
+        var stateKey = active ? active.state : ((memberWorkers && memberWorkers.length) ? memberWorkers[0].state : 'IDLE');
+        var dotState = (stateKey === 'RUNNING' || stateKey === 'STARTING' || stateKey === 'WAITING_APPROVAL' || (member.kind === 'main' && member.active)) ? 'running' : 'idle';
+        var label = member.creativeStatus || (dotState === 'running' ? 'Running task' : 'Idle');
+        return { stateKey: stateKey, dotState: dotState, label: label };
     }
     // Inline Remove confirm (one line in the card, no modal): worker ids whose Remove button was clicked once.
     var workersRemoveConfirm = {};
-    function workerRemoveHtml(w) {
+    function workerRemoveHtml(w, labels) {
+        var one = labels ? labels.one : 'worker';
         var id = workersEsc(w.workerId);
         if (workersRemoveConfirm[w.workerId]) {
-            return '<span class="worker-remove-confirm">Remove this worker from rotation? Its past cost stays in the totals. ' +
+            return '<span class="worker-remove-confirm">Remove this ' + one + ' from rotation? Its past cost stays in the totals. ' +
                 '<button class="worker-remove-btn" data-worker-action="remove-confirm" data-worker-id="' + id + '">Remove</button>' +
                 '<button class="worker-trace-btn" data-worker-action="remove-cancel" data-worker-id="' + id + '">Keep</button></span>';
         }
-        return '<button class="worker-remove-btn" data-worker-action="remove" data-worker-id="' + id + '" title="Take this worker out of rotation: cancels it if running; start and submit never use it again">Remove</button>';
+        return '<button class="worker-remove-btn" data-worker-action="remove" data-worker-id="' + id + '" title="Take this ' + one + ' out of rotation: cancels it if running; start and submit never use it again">Remove</button>';
     }
-    function workerCardHtml(w, open, now, openIds, traces) {
+    function workerCardHtml(w, open, now, openIds, traces, labels) {
+        var label = labels || { one: 'worker', many: 'workers' };
         var html = '<div class="worker-card" data-worker-id="' + workersEsc(w.workerId) + '">' +
             '<div class="worker-card-head">' +
             '<span class="worker-state worker-state-' + workersEsc(w.state).toLowerCase() + '">' + workersEsc(w.state) + '</span>' +
             '<span class="worker-mode">' + workersEsc(w.profile) + '</span>' +
-            '<span class="worker-id">' + workersEsc(w.workerId) + '</span>' +
+            '<span class="worker-id">' + workersEsc(labels && w.workerId.indexOf('worker-') === 0 ? label.one + w.workerId.slice(6) : w.workerId) + '</span>' +
             '</div>' +
             '<div class="worker-selection">' + workersEsc(w.adapter) + ' · ' + workersEsc(w.model) + ' · ' + workersEsc(w.thinking) + '</div>' +
             (w.cloud ? '' : workerBannerHtml(w, now)) +
-            (w.knowledge ? '<div class="worker-knowledge" title="What this worker says it knows; the orchestrator uses it to pick a worker to reuse">' + workersEsc(w.knowledge) + '</div>' : '') +
+            (w.knowledge ? '<div class="worker-knowledge" title="What this ' + label.one + ' says it knows; the orchestrator uses it to pick a ' + label.one + ' to reuse">' + workersEsc(w.knowledge) + '</div>' : '') +
             (w.blocker ? '<div class="worker-blocker">' + workersEsc(w.blocker) + '</div>' : '') +
             '<div class="worker-actions">' +
             (w.sessionId && w.adapter === 'agy' ? '<span class="worker-open-note" title="agy owns its conversation; AskAway shows it through Trace">agy conversation: no viewer</span>' : '') +
             (w.sessionId && w.adapter !== 'agy' ? '<button class="worker-open-btn" data-worker-action="open" data-session-id="' + workersEsc(w.sessionId) + '" title="' + workersEsc(w.sessionOpenAction) + '">Open in VS Code</button>' +
                 '<button class="worker-open-ext-btn" data-worker-action="open-external" data-session-id="' + workersEsc(w.sessionId) + '" title="Open in your default terminal app">Terminal app</button>' : '') +
             '<button class="worker-trace-btn" data-worker-action="trace" data-worker-id="' + workersEsc(w.workerId) + '">' + (open ? 'Hide' : 'Trace') + ' (' + (w.runs || []).length + ')</button>' +
-            (w.cloud ? '' : workerRemoveHtml(w)) +
+            (w.cloud ? '' : workerRemoveHtml(w, label)) +
             '</div>';
         if (open) {
             html += workerTraceHtml(w, openIds || {}, now, w.trace || (traces && traces[w.workerId]));
@@ -3207,133 +3257,179 @@
     function teamPortraitHtml(member, state) {
         var unsafe = ((state && state.workers) || []).some(function (w) { return String(w.profile || '').indexOf('<') !== -1; });
         var base = (state && state.avatarBase) ? state.avatarBase.replace(/\/$/, '') : 'avatars';
-        var src = member.avatar ? (base + '/' + member.avatar) : '';
+        var rawAvatar = String(member.avatarSrc || member.avatar || '');
+        var src = !rawAvatar ? '' : (/^(https?:|vscode-[a-z-]+:|data:|\/)/i.test(rawAvatar) ? rawAvatar : (base + '/' + rawAvatar));
+        var initials = member.initials || memberInitials(member.name, member.id);
+        var altText = member.name + ' (' + member.role + ') portrait';
         if (unsafe || !src) {
-            return '<span class="team-portrait" role="img" aria-label="' + workersEsc(member.name) + '" data-avatar="' + workersEsc(src) + '"></span>';
+            return '<div class="team-member-portrait" data-member-id="' + workersEsc(member.id) + '">' +
+                '<span class="team-avatar-badge team-portrait-72 has-initials" data-initials="' + workersEsc(initials) + '"><span class="team-avatar-initials team-portrait-initials" role="img" aria-label="' + workersEsc(altText) + '">' + workersEsc(initials) + '</span></span></div>';
         }
-        return '<img class="team-portrait" src="' + workersEsc(src) + '" alt="' + workersEsc(member.name) + '" width="72" height="72" />';
+        return '<div class="team-member-portrait" data-member-id="' + workersEsc(member.id) + '">' +
+            '<span class="team-avatar-badge team-portrait-72 has-image" data-member-id="' + workersEsc(member.id) + '" data-initials="' + workersEsc(initials) + '"><img class="team-avatar-img" src="' + workersEsc(src) + '" alt="' + workersEsc(altText) + '" width="72" height="72" loading="eager" decoding="sync" /></span></div>';
+    }
+    function effectiveMemberModel(member, memberWorkers, state) {
+        var settings = state && state.memberSettings && state.memberSettings[member.id] || {};
+        return settings.model || (memberWorkers[0] || {}).model || 'github-copilot/gpt-6.1-sol';
     }
     function teamMemberRowHtml(member, memberWorkers, state, expanded, openIds, traces) {
         var settings = (state && state.memberSettings && state.memberSettings[member.id]) || {};
         var firstWorker = memberWorkers[0] || {};
-        var selectedModel = settings.model || firstWorker.model || member.defaultModel || TEAM_MODELS[0].id;
+        var selectedModel = effectiveMemberModel(member, memberWorkers, state);
         var efforts = effortsForModel(selectedModel);
-        var rawThinking = settings.thinking || firstWorker.thinking || member.defaultThinking || efforts[0];
+        var rawThinking = settings.thinking || member.thinking || member.defaultThinking || firstWorker.thinking || efforts[0];
         var selectedThinking = efforts.indexOf(rawThinking) !== -1 ? rawThinking : (efforts[efforts.length - 1] || 'medium');
         var modelList = TEAM_MODELS.slice();
         if (selectedModel && !modelList.some(function (m) { return m.id === selectedModel; })) {
             modelList.unshift({ id: selectedModel, label: workerShortModel(selectedModel), efforts: efforts });
         }
         var modelOptions = modelList.map(function (m) {
-            return '<option value="' + workersEsc(m.id) + '"' + (m.id === selectedModel ? ' selected' : '') + '>' + workersEsc(m.label) + '</option>';
+            var label = m.label.replace(/^github-copilot\//, '').replace(/^agy\//, '').replace(/^claude-opus-/, 'Claude Opus ').replace(/^claude-sonnet-/, 'Claude Sonnet ').replace(/^gpt-6.1-sol$/, 'Sol 6.1').replace(/^gpt-6-luna$/, 'GPT-6 Luna').replace(/^gemini-4-argon-/, 'Argon ').replace(/^gemini-/, 'Gemini ').replace(/-/g, ' ');
+            if (m.id.indexOf('agy/') === 0 && label.indexOf('(agy)') === -1) label += ' (agy)';
+            return '<option value="' + workersEsc(m.id) + '"' + (m.id === selectedModel ? ' selected' : '') + '>' + workersEsc(label) + '</option>';
         }).join('');
         var thinkingOptions = efforts.map(function (ef) {
             return '<option value="' + workersEsc(ef) + '"' + (ef === selectedThinking ? ' selected' : '') + '>' + workersEsc(ef) + '</option>';
         }).join('');
-        var activeWorker = memberWorkers.find(function (w) { return w.state === 'RUNNING' || w.state === 'STARTING' || w.state === 'WAITING_APPROVAL'; });
-        var memberState = activeWorker ? activeWorker.state : (memberWorkers.length ? memberWorkers[0].state : 'IDLE');
-        var cost = memberMonthCost(member, state, memberWorkers);
+        var status = memberDisplayStatus(member, memberWorkers);
+        var costs = memberCostAmounts(member, memberWorkers);
         var memberKey = 'member:' + member.id;
-        var hasExplicitToggle = expanded && typeof expanded[memberKey] === 'boolean';
-        var hasExpandedChild = memberWorkers.some(function (w) { return !!(expanded && expanded[w.workerId]); });
-        var tasksOpen = hasExplicitToggle ? expanded[memberKey] : hasExpandedChild;
+        var tasksOpen = Boolean(expanded && (expanded[memberKey] === true || expanded[member.id] === true));
         var taskCount = memberWorkers.length;
+        var validator = member.pinned ? validatorTraceEvents(memberWorkers, state, traces) : { events: [], loading: false };
+        var validatorEvents = validator.events;
+        var pillLabel = (member.pinned ? 'Trace (' + validatorEvents.length + ')' : taskCount + ' ' + (taskCount === 1 ? 'task' : 'tasks')) + ' ' + (tasksOpen ? '\u25be' : '\u25b8');
         var highlighted = (expanded && expanded.highlightedMember === member.id) || (state && state.highlightedMember === member.id);
         var cardsHtml = memberWorkers.map(function (w) {
-            return workerCardHtml(w, expanded && expanded[w.workerId], state.generatedAt, openIds, traces);
+            return workerCardHtml(w, expanded && expanded[w.workerId], state.generatedAt, openIds, traces, { one: 'task', many: 'tasks' });
         }).join('');
-        var validatorEvents = (member.id === 'validator' && state && Array.isArray(state.validatorTrace)) ? state.validatorTrace : [];
+        var turnCostText = costs.turn ? '$' + costs.turn.toFixed(2) : '$0';
+        var monthCostText = costs.month ? '$' + costs.month.toFixed(2) : '$0';
         var validatorTraceHtml = validatorEvents.length
-            ? '<div class="team-validator-trace" data-validator-trace="true"><table class="observability-table observability-model-table obs-timeline-table">' +
-                TRACE_HEAD + '<tbody>' + traceRowsHtml(validatorEvents, { openIds: openIds || {}, now: state.generatedAt }) + '</tbody></table></div>'
-            : '';
-        return '<div class="team-member-row' + (highlighted ? ' team-member-highlighted' : '') + '" data-member-row="' + workersEsc(member.id) + '"' +
-            (member.pinned ? ' data-pinned="true"' : ' data-active-member-row="' + workersEsc(member.id) + '"') +
+            ? '<table class="observability-table obs-timeline-table team-validator-trace" data-validator-trace="' + workersEsc(member.id) + '">' +
+                TRACE_HEAD + '<tbody>' + traceRowsHtml(validatorEvents, { openIds: openIds || {}, now: state.generatedAt }) + '</tbody></table>'
+            : '<div class="workers-empty" data-validator-trace-empty="' + workersEsc(member.id) + '">' + (validator.loading ? 'Loading trace\u2026' : 'No Validator trace this turn.') + '</div>';
+        var main = member.kind === 'main';
+        var controlsHtml = main
+            ? '<span class="team-member-profile">Chat agent: <code class="worker-state">' + workersEsc(member.profile) + '</code></span>' +
+                '<span class="team-member-profile" data-main-model="' + workersEsc(member.id) + '">Model: ' + workersEsc(member.model ? workerShortModel(member.model) : 'chat model') + '</span>' +
+                '<a href="#" class="team-agent-file-link" data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-member-kind="main" data-profile="" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>'
+            : '<span class="team-member-profile">Profile: <code class="worker-state">' + workersEsc(member.profile) + '</code></span>' +
+                '<label class="team-control-field"><span class="team-control-label">Model</span>' +
+                '<select class="team-model-select" data-member-id="' + workersEsc(member.id) + '" data-member-model="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' model">' + modelOptions + '</select></label>' +
+                '<label class="team-control-field"><span class="team-control-label">Thinking</span>' +
+                '<select class="team-thinking-select" data-member-id="' + workersEsc(member.id) + '" data-member-thinking="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' thinking effort">' + thinkingOptions + '</select></label>' +
+                '<a href="#" class="team-agent-file-link" data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>';
+        return '<div class="team-member-row' + (highlighted ? ' team-member-row-highlighted is-highlighted' : '') + (status.dotState === 'running' ? ' is-working' : '') + '" data-member-id="' + workersEsc(member.id) + '" data-member-row="' + workersEsc(member.id) + '"' +
+            (member.pinned ? ' data-pinned="true"' : main ? ' data-main-agent="true"' : ' data-active-member-row="' + workersEsc(member.id) + '"') +
             (highlighted ? ' data-highlighted="true"' : '') + '>' +
+            '<div class="team-member-row-main">' +
             teamPortraitHtml(member, state) +
             '<div class="team-member-body">' +
-            '<div class="team-member-head">' +
-            '<span class="team-member-identity"><strong class="team-member-name" data-member-name="' + workersEsc(member.id) + '">' + workersEsc(member.name) + '</strong> &middot; <span class="team-member-role">' + workersEsc(member.role) + '</span></span>' +
-            (member.pinned ? ' <span class="team-pinned-badge">Pinned PO</span>' : '') +
-            '<span class="team-member-cost" data-member-cost="' + workersEsc(member.id) + '"><span class="obs-month-amount">$' + cost.dollars.toFixed(2) + '</span> this month</span>' +
-            '<button type="button" class="team-tasks-pill" data-member-tasks-toggle="' + workersEsc(member.id) + '" data-member-task-count="' + workersEsc(member.id) + '" aria-expanded="' + (tasksOpen ? 'true' : 'false') + '">' + taskCount + ' ' + (taskCount === 1 ? 'task' : 'tasks') + '</button>' +
+            '<div class="team-member-headline">' +
+            '<span class="team-member-identity">' +
+            '<strong class="team-member-name">' + workersEsc(member.name) + '</strong> &middot; ' +
+            '<span class="team-member-role">' + workersEsc(member.role) + '</span>' +
+            '</span>' +
+            '<span class="team-member-status team-status-' + (status.dotState === 'running' ? 'working' : 'idle') + '" data-status-state="' + (status.dotState === 'running' ? 'working' : 'idle') + '">● ' + workersEsc(status.label) + '</span>' +
+            '<span class="team-member-cost" data-member-cost="' + workersEsc(member.id) + '" data-turn-cost="' + turnCostText + '" data-month-cost="' + monthCostText + '">Turn <strong class="team-cost-turn">' + turnCostText + '</strong> &middot; Month <strong class="team-cost-month">' + monthCostText + '</strong></span>' +
+            '<button type="button" class="form-btn team-edit-member-btn" data-edit-member="' + workersEsc(member.id) + '" title="Edit ' + workersEsc(member.name) + '">Edit</button>' +
             '</div>' +
-            '<div class="team-member-status">' +
-            '<span class="worker-state worker-state-' + workersEsc(memberState).toLowerCase() + '">' + workersEsc(memberState) + '</span> ' +
-            '<span class="team-creative-status">' + workersEsc(member.creativeStatus) + '</span> ' +
-            '<span class="team-member-profile">(' + workersEsc(member.profile) + ')</span>' +
+            '<div class="team-member-controls">' + controlsHtml + '</div>' +
             '</div>' +
-            '<div class="team-member-controls">' +
-            '<label class="team-control-label">Model <select class="team-select team-model-select" data-member-model="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' model">' + modelOptions + '</select></label>' +
-            '<label class="team-control-label">Thinking <select class="team-select team-thinking-select" data-member-thinking="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' thinking effort">' + thinkingOptions + '</select></label>' +
-            '<button type="button" class="team-agent-file-link" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '">Agent file</button>' +
+            (main ? '' : '<div class="team-member-tasks-col"><button type="button" class="team-tasks-pill' + (tasksOpen ? ' expanded' : '') + '" data-member-tasks-toggle="' + workersEsc(member.id) + '" data-toggle-tasks="' + workersEsc(member.id) + '" data-toggle-trace="' + workersEsc(member.id) + '" aria-expanded="' + (tasksOpen ? 'true' : 'false') + '">' + pillLabel + '</button></div>') +
             '</div>' +
-            validatorTraceHtml +
-            '<div class="team-member-tasks' + (tasksOpen ? ' is-open' : ' is-collapsed') + '" data-member-tasks="' + workersEsc(member.id) + '"' + (tasksOpen ? '' : ' hidden') + '>' +
-            cardsHtml +
-            '</div>' +
-            '</div>' +
+            (main ? '' : '<div class="team-member-tasks-panel' + (member.pinned ? ' team-member-trace-panel' : '') + '" data-member-tray="' + workersEsc(member.id) + '"' + (tasksOpen ? ' data-member-tasks="' + workersEsc(member.id) + '"' : ' hidden') + '>' + (member.pinned ? validatorTraceHtml : cardsHtml) + '</div>') +
             '</div>';
     }
-    function groupWorkersByMember(shown) {
-        var groups = [{ member: TEAM_ROSTER[0], workers: [] }];
-        var byId = { validator: groups[0] };
-        shown.forEach(function (w) {
-            var m = memberForWorker(w);
+    // Priya's trace: the Validator events of the turn plus her validator tasks' loaded traces, as shared trace rows.
+    function validatorTraceEvents(memberWorkers, state, traces) {
+        var events = Array.isArray(state && state.validatorTrace) ? state.validatorTrace.slice() : [];
+        var loading = false;
+        (memberWorkers || []).forEach(function (w) {
+            var t = w.trace || (traces && traces[w.workerId]);
+            if (!t) { loading = true; return; }
+            (w.runs || []).forEach(function (r) { events = events.concat((t.runs && t.runs[r.runId]) || []); });
+        });
+        return { events: events, loading: loading };
+    }
+    function groupWorkersByMember(state, shown, filter) {
+        var explicitMembers = state && Array.isArray(state.members) && state.members.length > 0;
+        var baseList = stateMembersList(state);
+        var groups = [];
+        var byId = {};
+        baseList.forEach(function (m) {
+            if (!explicitMembers && !m.pinned) return;
+            byId[m.id] = { member: m, workers: [] };
+            groups.push(byId[m.id]);
+        });
+        (shown || []).forEach(function (w) {
+            var m = matchWorkerMember(w, baseList);
             if (!byId[m.id]) {
                 byId[m.id] = { member: m, workers: [] };
                 groups.push(byId[m.id]);
             }
             byId[m.id].workers.push(w);
         });
-        return groups;
+        var needle = String(filter || '').trim().toLowerCase();
+        if (needle) {
+            groups = groups.filter(function (g) {
+                if (g.workers.length > 0) return true;
+                var m = g.member;
+                return [m.id, m.name, m.role, m.profile, m.creativeStatus].join(' ').toLowerCase().indexOf(needle) >= 0;
+            });
+        }
+        // Visible: Priya always (with her Trace), the main agent while its turn is active, others only with a displayed task.
+        return groups.filter(function (g) { return g.member.pinned || (g.member.kind === 'main' && g.member.active) || g.workers.length > 0; }).sort(function (a, b) { return Number(b.member.pinned) - Number(a.member.pinned); });
+    }
+    function teamRuntimeWarning(state, groups) {
+        var health = state && state.runtimeHealth || (typeof runtimeHealth !== 'undefined' ? runtimeHealth : null);
+        if (!health) return '';
+        if (!health.agy.enabled && !health.opencode.enabled) return 'Workers unavailable: enable OpenCode or agy in Settings';
+        return ['agy', 'opencode'].map(function (name) {
+            var names = groups.filter(function (g) {
+                return g.member.kind !== 'main' && (effectiveMemberModel(g.member, g.workers, state).indexOf('agy/') === 0 ? 'agy' : 'opencode') === name;
+            }).map(function (g) { return g.member.name; });
+            var label = name === 'agy' ? 'agy' : 'OpenCode';
+            return names.length && (!health[name].enabled || !health[name].ok) ? (!health[name].enabled ? label + ' is off in Settings' : health[name].reason) + ': ' + names.join(', ') + ' use ' + label + ' models' : '';
+        }).filter(Boolean).join(' · ');
+    }
+    // The turn's displayed tasks: tasks of this turn that are running, queued or warm (Show completed adds the cold,
+    // retired and finished ones). Validator tasks always count: they are Priya's trace.
+    function teamDisplayedTasks(state, filter, showExpired) {
+        var turnIds = Array.isArray(state.turnWorkerIds) ? state.turnWorkerIds : null;
+        var now = state.generatedAt;
+        return (state.workers || []).filter(function (w) {
+            if (turnIds && turnIds.indexOf(w.workerId) === -1) return false;
+            // Cloud tasks have no cache warmth: they stay until they expire.
+            var live = isValidatorWorker(w) || teamTaskActive(w) || teamTaskQueuedRuns(w) > 0 || workerIsWarm(w, now) || (w.cloud && !w.expired);
+            return (showExpired || live) && workersMatch(w, filter);
+        }).sort(function (a, b) { return Number(isValidatorWorker(b)) - Number(isValidatorWorker(a)); });
     }
     function renderWorkersHtml(state, filter, expanded, showExpired, openIds, traces) {
         if (!state) return '<div class="workers-empty">Worker runtime not available.</div>';
         state = Object.assign({}, state, { workers: (state.workers || []).concat(state.cloudWorkers || []) });
-        var server = state.server || { state: 'NOT_ATTACHED', endpoint: '' };
-        var html = workersSummaryHtml(state) + '<div class="workers-server workers-server-' + workersEsc(server.state).toLowerCase() + '">' +
-            (server.state === 'ATTACHED' ? 'Shared OpenCode server · ' + workersEsc(server.endpoint) : 'Shared OpenCode server not running · starts with the first worker') + '</div>' +
-            workerCostTipsHtml(state) +
-            '<div id="obs-cost-categories">' + monthlyCostTableHtml(state.monthCredits) + '</div>';
+        var shown = teamDisplayedTasks(state, filter, showExpired);
+        var hasMembers = Array.isArray(state.members) && state.members.length > 0;
+        var groups = hasMembers ? groupWorkersByMember(state, shown, filter) : [];
+        var warning = teamRuntimeWarning(state, groups);
+        var html = workersSummaryHtml(state, shown) + '<div class="workers-approval-notice" data-runtime-warning' + (warning ? '' : ' hidden') + '>' + workersEsc(warning) + '</div>';
         var pending = workersPendingApprovals(state);
         if (pending) {
             html += '<div class="workers-approval-notice">' + pending + ' worker' + (pending > 1 ? 's' : '') + ' waiting for approval. Open the session in OpenCode to answer.</div>';
         }
-        var turnWorkerIds = state.turnWorkerIds || [];
-        var shown = (state.workers || []).filter(function (w) { return (showExpired || !w.expired || turnWorkerIds.indexOf(w.workerId) !== -1) && workersMatch(w, filter); });
-        var hidden = (state.workers || []).filter(function (w) { return w.expired && turnWorkerIds.indexOf(w.workerId) === -1; }).length;
-        var hasValidatorTrace = Array.isArray(state.validatorTrace) && state.validatorTrace.length > 0;
-        if (!shown.length && !hasValidatorTrace) {
-            var emptyRoster = !filter ? '<div class="team-members-list">' + teamMemberRowHtml(TEAM_ROSTER[0], [], state, expanded, openIds, traces) + '</div>' : '';
-            return html + emptyRoster + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>' + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
+        if (!hasMembers) {
+            return html + shown.map(function (w) {
+                return workerCardHtml(w, expanded && expanded[w.workerId], state.generatedAt, openIds, traces);
+            }).join('') + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
         }
-        // Swimlanes: one lane per orchestrator track, only when packets carry tracks.
-        var laned = shown.some(function (w) { return w.track; });
-        if (laned) {
-            var byTrack = shown.slice().sort(function (a, b) {
-                return (a.track ? 0 : 1) - (b.track ? 0 : 1) || String(a.track).localeCompare(String(b.track));
-            });
-            var lane = null;
-            byTrack.forEach(function (w) {
-                if (w.track !== lane) {
-                    lane = w.track;
-                    var inLane = byTrack.filter(function (x) { return x.track === lane; });
-                    var laneCost = inLane.reduce(function (n, x) { return n + ((x.usage && x.usage.cost) || 0); }, 0);
-                    html += '<div class="workers-lane" data-track="' + workersEsc(lane) + '">' + (lane ? 'Track ' + workersEsc(lane) : 'No track') +
-                        ' &middot; ' + inLane.length + ' worker' + (inLane.length === 1 ? '' : 's') + ' &middot; <strong class="health-cost">$' + laneCost.toFixed(4) + '</strong>' +
-                        (inLane.some(function (x) { return x.adapter === 'agy'; }) ? ' + agy unreported' : '') + '</div>';
-                }
-            });
-        }
-        shown = shown.slice().sort(function (a, b) {
-            return Number(isValidatorWorker(b)) - Number(isValidatorWorker(a));
-        });
-        var groups = groupWorkersByMember(shown);
-        html += '<div class="team-members-list">' + groups.map(function (g) {
+        var rows = '<div class="team-members-list team-member-list">' + groups.map(function (g) {
             return teamMemberRowHtml(g.member, g.workers, state, expanded, openIds, traces);
         }).join('') + '</div>';
-        return html + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
+        if (!shown.length) {
+            rows += '<div class="workers-empty">' + ((state.workers || []).length && String(filter || '').trim() ? 'No worker matches the filter.' : (state.workers || []).length ? 'No active tasks this turn.' : 'No live workers in this workspace.') + '</div>';
+        }
+        return html + rows + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
     }
     // Eval results by mode × model: the evidence for picking a worker tier. Same expander and table as Metrics.
     function workersScoreboardHtml(rows, openIds) {
@@ -3402,10 +3498,125 @@
             '<summary class="obs-tl-head"><span class="obs-tl-kind">benchmark</span><span class="obs-tl-name">Benchmark</span><span class="obs-tl-metric">' + rows.length + ' run' + (rows.length === 1 ? '' : 's') + '</span></summary>' +
             body + '</details>';
     }
+    function wireTeamEvents(root, post) {
+        root.addEventListener('click', function (event) {
+            var target = event.target;
+            var pill = target.closest('[data-member-tasks-toggle]');
+            if (pill) {
+                var id = pill.getAttribute('data-member-tasks-toggle');
+                var open = pill.getAttribute('aria-expanded') !== 'true';
+                var tray = root.querySelector('[data-member-tray="' + id + '"]');
+                if (tray) { if (open) { tray.removeAttribute('hidden'); tray.setAttribute('data-member-tasks', id); } else { tray.setAttribute('hidden', ''); tray.removeAttribute('data-member-tasks'); } }
+                pill.setAttribute('aria-expanded', String(open));
+                pill.textContent = pill.textContent.replace(/[▸▾]$/, open ? '▾' : '▸');
+                post({ type: 'teamTasksToggle', memberId: id, open: open });
+                return;
+            }
+            var edit = target.closest('[data-edit-member]');
+            var file = target.closest('[data-open-agent-file]');
+            if (edit || file) {
+                event.preventDefault();
+                var row = (edit || file).closest('[data-member-row]');
+                var link = file || row.querySelector('[data-open-agent-file]');
+                post({ type: edit ? 'editTeamMember' : 'openAgentFile', memberId: (edit || file).getAttribute(edit ? 'data-edit-member' : 'data-member-id'), profile: link.getAttribute('data-profile'), path: link.getAttribute('data-open-agent-file'), agentFile: link.getAttribute('data-open-agent-file') });
+                return;
+            }
+            var name = target.closest('.team-member-name, #panel-aitalk [data-member-id]');
+            if (name && !target.closest('.talk-mentions')) {
+                var member = name.closest('[data-member-row]') || name;
+                post({ type: 'teamMemberFocus', memberId: member.getAttribute('data-member-id') });
+            }
+        });
+        root.addEventListener('change', function (event) {
+            var model = event.target.closest('[data-member-model]');
+            var thinking = event.target.closest('[data-member-thinking]');
+            var select = model || thinking;
+            if (!select) return;
+            var row = select.closest('[data-member-row]');
+            var modelSelect = row.querySelector('[data-member-model]');
+            var effortSelect = row.querySelector('[data-member-thinking]');
+            var efforts = effortsForModel(modelSelect.value);
+            var effort = effortSelect.value;
+            if (efforts.indexOf(effort) === -1) effort = efforts[efforts.length - 1];
+            if (model) { effortSelect.innerHTML = efforts.map(function (value) { return '<option value="' + value + '"' + (value === effort ? ' selected' : '') + '>' + value + '</option>'; }).join(''); effortSelect.value = effort; }
+            post({ type: 'setMemberModel', memberId: select.getAttribute('data-member-id'), profile: select.getAttribute('data-profile'), model: modelSelect.value, thinking: effort });
+        });
+    }
     // ── end Workers pure render ──
 
     var workersState = null;
-    var workersFilterText = '';
+    var runtimeHealth = null;
+    function runtimeSettingsHtml() {
+        return ['opencode', 'agy'].map(function (name) {
+            var health = runtimeHealth && runtimeHealth[name];
+            var label = name === 'agy' ? 'agy' : 'OpenCode';
+            return '<div class="settings-section-header"><div class="settings-section-title">' + label + '</div><div class="toggle-switch' + (health && health.enabled ? ' active' : '') + '" role="switch" tabindex="0" aria-label="Enable ' + label + '" aria-checked="' + !!(health && health.enabled) + '" data-runtime-toggle="' + name + '"></div></div><div class="settings-description" data-runtime-health="' + name + '">' + workersEsc(runtimeHealthLabel(health)) + '</div>' + (name === 'opencode' ? '<div class="workers-server" data-settings-server>Shared OpenCode server</div><button type="button" data-restart-opencode>Start / Restart OpenCode</button>' : '');
+        }).join('') + '<button type="button" class="form-btn" data-runtime-recheck>Recheck</button>';
+    }
+    function runtimeHealthLabel(health) {
+        return health ? (health.ok ? 'ok' : health.reason) + ' · checked ' + (health.checkedAt ? new Date(health.checkedAt).toLocaleString() : 'not yet') : 'not checked yet';
+    }
+    function initRuntimeSettings(section) {
+        function activate(event) {
+            if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+            var name = event.target.getAttribute('data-runtime-toggle');
+            if (name) {
+                event.preventDefault();
+                vscode.postMessage({ type: 'setRuntimeEnabled', runtime: name, enabled: event.target.getAttribute('aria-checked') !== 'true' });
+            } else if (event.target.hasAttribute('data-restart-opencode')) vscode.postMessage({ type: 'restartOpenCodeServer' });
+            else if (event.target.hasAttribute('data-runtime-recheck')) vscode.postMessage({ type: 'recheckRuntimeHealth' });
+        }
+        section.addEventListener('click', activate);
+        section.addEventListener('keydown', activate);
+    }
+    function applyRuntimeHealth(health) {
+        runtimeHealth = health;
+        ['opencode', 'agy'].forEach(function (name) {
+            var toggle = document.querySelector('[data-runtime-toggle="' + name + '"]');
+            var line = document.querySelector('[data-runtime-health="' + name + '"]');
+            if (toggle) {
+                toggle.classList.toggle('active', !!health[name].enabled);
+                if (toggle.getAttribute('aria-checked') !== String(health[name].enabled)) toggle.setAttribute('aria-checked', String(health[name].enabled));
+            }
+            if (line && line.textContent !== runtimeHealthLabel(health[name])) line.textContent = runtimeHealthLabel(health[name]);
+        });
+        paintWorkers();
+    }
+    function patchTeamNode(node, fresh) {
+        // Text nodes first: a browser Text node has no outerHTML, so comparing it would skip every count change.
+        if (!node.tagName) {
+            if (node.textContent !== fresh.textContent) node.textContent = fresh.textContent;
+            return;
+        }
+        if (node.outerHTML === fresh.outerHTML) return;
+        var attrs = node.attributes ? Array.from(node.attributes).map(function (a) { return a.name; }) : Object.keys(node._attrs || {});
+        var nextAttrs = fresh.attributes ? Array.from(fresh.attributes).map(function (a) { return a.name; }) : Object.keys(fresh._attrs || {});
+        attrs.forEach(function (name) { if (!fresh.hasAttribute(name)) node.removeAttribute(name); });
+        nextAttrs.forEach(function (name) { if (node.getAttribute(name) !== fresh.getAttribute(name)) node.setAttribute(name, fresh.getAttribute(name)); });
+        if (node.tagName === 'SELECT' && document.activeElement === node) return;
+        var children = Array.from(node.childNodes || node.children);
+        var next = Array.from(fresh.childNodes || fresh.children);
+        function key(child) {
+            return child.getAttribute && (child.getAttribute('data-member-row') || (child.classList.contains('worker-card') && child.getAttribute('data-worker-id')));
+        }
+        next.forEach(function (child, index) {
+            var current = Array.from(node.childNodes || node.children);
+            var old = key(child) ? current.find(function (candidate) { return key(candidate) === key(child); }) : current[index];
+            if (old && old !== current[index]) node.insertBefore(old, current[index] || null);
+            if (!old) node.insertBefore(child, current[index] || null);
+            else if (old.tagName === child.tagName) patchTeamNode(old, child);
+            else { node.insertBefore(child, old); node.removeChild(old); }
+        });
+        Array.from(node.childNodes || node.children).slice(next.length).forEach(function (child) { node.removeChild(child); });
+        if (node.tagName === 'SELECT' && node.value !== fresh.value) node.value = fresh.value;
+    }
+    function patchTeamHtml(node, html) {
+        if (node._teamHtml === html || node.outerHTML === html) { node._teamHtml = html; return; }
+        var wrap = document.createElement('div');
+        wrap.innerHTML = html;
+        if (wrap.firstChild) patchTeamNode(node, wrap.firstChild);
+        node._teamHtml = html;
+    }
     var workersExpanded = {};
     var workersPointerDown = false;
     var workersTraces = {};
@@ -3417,7 +3628,7 @@
         var targetId = resolveTeamMemberId(rawMember, workersState);
         if (!targetId) return;
         workersExpanded.highlightedMember = targetId;
-        switchTab('workers');
+        switchTab('team');
         paintWorkers();
         var list = document.getElementById('workers-list');
         var row = list && list.querySelector ? list.querySelector('[data-member-row="' + targetId + '"]') : null;
@@ -3427,6 +3638,36 @@
     }
     if (typeof window !== 'undefined') window.focusTeamMember = focusTeamMember;
 
+    function patchTeam(list, state, filter, expanded, showExpired, openIds, traces) {
+        if (!list) return;
+        var rendered = renderWorkersHtml(state, filter, expanded, showExpired, openIds, traces);
+        if (list._teamRendered === rendered) return;
+        list._teamRendered = rendered;
+        if (!state || typeof list.querySelectorAll !== 'function' || typeof document === 'undefined' || typeof document.createElement !== 'function') {
+            list.innerHTML = renderWorkersHtml(state, filter, expanded, showExpired, openIds, traces);
+            return;
+        }
+        patchTeamHtml(list, '<div id="workers-list">' + rendered + '</div>');
+    }
+
+    function tickTeamAges() {
+        var list = document.getElementById('workers-list');
+        if (!list || !workersState || typeof list.querySelector !== 'function') return;
+        var now = Date.now() - workersClockSkew;
+        var all = (workersState.workers || []).concat(workersState.cloudWorkers || []);
+        all.forEach(function (w) {
+            if (w.adapter === 'agy' || w.cloud) return;
+            var card = list.querySelector('[data-worker-id="' + w.workerId + '"]');
+            if (!card || !card.querySelector) return;
+            var cacheEl = card.querySelector('.health-cache');
+            if (!cacheEl) return;
+            var b = w.banner || {};
+            var age = cacheAgeLabel(Math.floor((now - (b.lastActivityAt || now)) / 1000));
+            if (cacheEl.className !== 'health-cache ' + age.state) cacheEl.className = 'health-cache ' + age.state;
+            if (cacheEl.textContent !== age.text) cacheEl.textContent = age.text;
+        });
+    }
+
     function paintWorkers() {
         var list = document.getElementById('workers-list');
         if (!list || !workersState) return;
@@ -3434,7 +3675,7 @@
         var ticking = Object.assign({}, workersState, { generatedAt: Date.now() - workersClockSkew });
         // Re-rendering between pointerdown and click drops the click, so the row never toggles.
         if (workersPointerDown) return;
-        list.innerHTML = renderWorkersHtml(ticking, workersFilterText, workersExpanded, workersShowExpired, traceOpenIds(list), workersTraces);
+        patchTeam(list, ticking, '', workersExpanded, workersShowExpired, traceOpenIds(list), workersTraces);
         var toggle = document.getElementById('workers-show-expired');
         if (toggle) {
             toggle.setAttribute('aria-checked', workersShowExpired ? 'true' : 'false');
@@ -3451,16 +3692,17 @@
 
     function applyWorkersState(data) {
         var prevSettings = workersState && workersState.memberSettings;
-        var prevMonth = (data && data.monthCredits) || (observabilityMetrics && observabilityMetrics.monthCredits) || (workersState && workersState.monthCredits);
         var prevValTrace = (data && data.validatorTrace) || (workersState && workersState.validatorTrace);
+        var prevMembers = (data && data.members) || (workersState && workersState.members);
         workersState = Object.assign({}, data || {}, {
             memberSettings: Object.assign({}, prevSettings || {}, (data && data.memberSettings) || {}),
-            monthCredits: prevMonth,
-            validatorTrace: prevValTrace
+            validatorTrace: prevValTrace,
+            members: prevMembers
         });
         if (data && data.generatedAt) workersClockSkew = Date.now() - data.generatedAt;
         paintWorkers();
-        var badge = document.getElementById('tab-badge-workers');
+        requestValidatorTraces(false);
+        var badge = document.getElementById('tab-badge-team') || document.getElementById('tab-badge-workers');
         if (badge) {
             var pending = workersPendingApprovals(workersState);
             badge.textContent = String(pending);
@@ -3468,18 +3710,29 @@
         }
     }
 
+    // Priya's Trace reads her validator tasks of this turn; load each once per change so Trace (n) counts real events.
+    var workersTraceStamp = {};
+    function requestValidatorTraces(force) {
+        if (!workersState) return;
+        var turnIds = Array.isArray(workersState.turnWorkerIds) ? workersState.turnWorkerIds : null;
+        (workersState.workers || []).forEach(function (w) {
+            if (!isValidatorWorker(w) || (turnIds && turnIds.indexOf(w.workerId) === -1)) return;
+            var stamp = String(w.lastUpdateAt || 0) + ':' + (w.runs || []).length;
+            if (!force && workersTraceStamp[w.workerId] === stamp) return;
+            workersTraceStamp[w.workerId] = stamp;
+            vscode.postMessage({ type: 'requestWorkerTrace', workerId: w.workerId });
+        });
+    }
+
     function initWorkersTab() {
         document.addEventListener('click', function (e) {
             var tag = e.target.closest && e.target.closest('[data-worker-ref]');
             if (!tag) return;
             e.preventDefault();
-            var box = document.getElementById('workers-filter');
-            workersFilterText = tag.getAttribute('data-worker-ref');
-            if (box) box.value = workersFilterText;
-            switchTab('workers');
+            var ref = tag.getAttribute('data-worker-ref');
+            workersExpanded['member:' + resolveTeamMemberId(ref, workersState)] = true;
+            focusTeamMember(ref);
         });
-        var filter = document.getElementById('workers-filter');
-        if (filter) filter.addEventListener('input', function () { workersFilterText = filter.value; paintWorkers(); });
         var refresh = document.getElementById('workers-refresh-btn');
         if (refresh) refresh.addEventListener('click', function () { vscode.postMessage({ type: 'requestWorkersState' }); });
         var archive = document.getElementById('workers-archive-btn');
@@ -3498,17 +3751,53 @@
         if (list) {
             list.addEventListener('pointerdown', function () { workersPointerDown = true; });
             document.addEventListener('pointerup', function () { setTimeout(function () { workersPointerDown = false; }, 0); });
+            list.addEventListener('error', function (e) {
+                var img = e && e.target;
+                if (!img || String(img.tagName || '').toUpperCase() !== 'IMG' || !img.classList || !img.classList.contains('team-avatar-img')) return;
+                var parent = img.parentNode;
+                if (!parent) return;
+                var initials = (img.getAttribute && img.getAttribute('data-initials')) || (parent.getAttribute && parent.getAttribute('data-initials')) || '?';
+                var label = (img.getAttribute && img.getAttribute('alt')) || 'Member portrait';
+                parent.innerHTML = '<span class="team-avatar-initials team-portrait-initials" role="img" aria-label="' + workersEsc(label) + '">' + workersEsc(initials) + '</span>';
+            }, true);
         }
+        if (list) wireTeamEvents(list, function (message) {
+            if (message.type === 'teamTasksToggle') {
+                workersExpanded['member:' + message.memberId] = message.open;
+                var toggled = workersState && stateMembersList(workersState).find(function (m) { return m.id === message.memberId; });
+                if (message.open && toggled && toggled.pinned) requestValidatorTraces(true);
+                return;
+            }
+            if (message.type === 'teamMemberFocus') { focusTeamMember(message.memberId); return; }
+            if (message.type === 'setMemberModel' && workersState) {
+                workersState.memberSettings = Object.assign({}, workersState.memberSettings || {});
+                workersState.memberSettings[message.memberId] = { model: message.model, thinking: message.thinking };
+            }
+            vscode.postMessage(message);
+        });
         if (list) list.addEventListener('click', function (e) {
+            if (e.target.closest('[data-member-tasks-toggle], [data-edit-member], [data-open-agent-file]')) return;
             var toggleBtn = e.target.closest && e.target.closest('[data-member-tasks-toggle]');
             if (toggleBtn) {
                 var memberId = toggleBtn.getAttribute('data-member-tasks-toggle');
                 workersExpanded['member:' + memberId] = !workersExpanded['member:' + memberId];
-                paintWorkers();
+                var open = workersExpanded['member:' + memberId];
+                var panel = list.querySelector('[data-member-tray="' + memberId + '"]');
+                if (panel) { if (open) { panel.removeAttribute('hidden'); panel.setAttribute('data-member-tasks', memberId); } else { panel.setAttribute('hidden', ''); panel.removeAttribute('data-member-tasks'); } }
+                toggleBtn.setAttribute('aria-expanded', String(open));
+                toggleBtn.textContent = toggleBtn.textContent.replace(/[▸▾]$/, open ? '▾' : '▸');
+                return;
+            }
+            var editBtn = e.target.closest && e.target.closest('[data-edit-member]');
+            if (editBtn) {
+                var editRow = editBtn.closest('[data-member-row]');
+                var link = editRow.querySelector('[data-open-agent-file]');
+                vscode.postMessage({ type: 'editTeamMember', memberId: editBtn.getAttribute('data-edit-member'), profile: link.getAttribute('data-profile'), path: link.getAttribute('data-open-agent-file') });
                 return;
             }
             var agentFileBtn = e.target.closest && e.target.closest('[data-open-agent-file]');
             if (agentFileBtn) {
+                e.preventDefault();
                 vscode.postMessage({
                     type: 'openAgentFile',
                     memberId: agentFileBtn.getAttribute('data-member-id') || '',
@@ -3538,6 +3827,7 @@
             }
         });
         if (list && list.addEventListener) list.addEventListener('change', function (e) {
+            return;
             var modelSel = e.target.closest && e.target.closest('[data-member-model]');
             var thinkSel = e.target.closest && e.target.closest('[data-member-thinking]');
             if (!modelSel && !thinkSel) return;
@@ -3551,6 +3841,12 @@
             var efforts = effortsForModel(model);
             var thinking = thinkSel ? thinkSel.value : (tSelect ? tSelect.value : efforts[0]);
             if (efforts.indexOf(thinking) === -1) thinking = efforts[efforts.length - 1] || 'medium';
+            if (mSelect && modelSel && tSelect) {
+                tSelect.innerHTML = efforts.map(function (ef) {
+                    return '<option value="' + workersEsc(ef) + '"' + (ef === thinking ? ' selected' : '') + '>' + workersEsc(ef) + '</option>';
+                }).join('');
+                tSelect.value = thinking;
+            }
             if (workersState) {
                 workersState.memberSettings = Object.assign({}, workersState.memberSettings || {});
                 workersState.memberSettings[memberId] = { model: model, thinking: thinking };
@@ -3560,9 +3856,9 @@
         });
         // Runs whenever the panel is visible, however it became visible (click, restore, badge link).
         setInterval(function () {
-            var panel = document.getElementById('panel-workers');
+            var panel = document.getElementById('panel-team') || document.getElementById('panel-workers');
             if (!panel || !panel.classList.contains('active')) return;
-            paintWorkers();
+            tickTeamAges();
             if (++workersTicks % 3 === 0) {
                 vscode.postMessage({ type: 'requestWorkersState' });
                 Object.keys(workersExpanded).forEach(function (id) { if (workersExpanded[id] && id.indexOf('member:') !== 0 && id !== 'highlightedMember') vscode.postMessage({ type: 'requestWorkerTrace', workerId: id }); });
@@ -3943,11 +4239,13 @@
     function switchTab(tab) {
         if (tab === 'aitalk') vscode.postMessage({ type: 'requestAITalk' });
         currentTab = tab;
+        var isTeam = tab === 'team' || tab === 'workers';
         document.querySelectorAll('.widget-tab').forEach(function(btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+            var dt = btn.getAttribute('data-tab');
+            btn.classList.toggle('active', dt === tab || (isTeam && (dt === 'team' || dt === 'workers')));
         });
         document.querySelectorAll('.tab-panel').forEach(function(panel) {
-            panel.classList.toggle('active', panel.id === 'panel-' + tab);
+            panel.classList.toggle('active', panel.id === 'panel-' + tab || (isTeam && (panel.id === 'panel-team' || panel.id === 'panel-workers')));
         });
         if (tab === 'subagents') {
             populateModelSelect('subagent-model-select');
@@ -3964,7 +4262,7 @@
         } else if (tab === 'specs') {
             vscode.postMessage({ type: 'requestSpecs' });
         }
-        if (tab === 'workers') {
+        if (isTeam) {
             vscode.postMessage({ type: 'requestWorkersState' });
         }
         if (tab === 'settings') {

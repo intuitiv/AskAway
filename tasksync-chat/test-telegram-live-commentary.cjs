@@ -133,6 +133,7 @@ if (process.env.ASKAWAY_TELEGRAM_LIVE === '1') {
 } else {
 const buildDir = path.join(__dirname, '.telegram-live-test-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
+require('./tools/transpile-src.cjs').transpileSrc(buildDir);
 for (const name of ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary', 'commentary/telegramLive']) {
     const out = path.join(buildDir, `${name}.js`);
     fs.mkdirSync(path.dirname(out), { recursive: true });

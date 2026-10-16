@@ -18,9 +18,9 @@ export function badgeHtml(state) {
     return `<span class="presence-badge" style="--badge:${escapeHtml(state.colour)}" role="img" aria-label="${escapeHtml(state.label)}">${escapeHtml(state.icon)}</span>`;
 }
 
-export function createPresence({ states = presenceStates, mode = states[0].id, reset = 'never', now = Date.now, name = '', photo = '', open = false, theme = 'dark', until } = {}) {
+export function createPresence({ states = presenceStates, mode = states[0].id, reset = 'never', now = Date.now, name = '', photo = '', fixturePath = '', fallbackAvatar = '', open = false, theme = 'dark', until } = {}) {
     if (!states.some(state => state.id === mode)) throw new Error('Unknown presence state');
-    let value = { mode, reset, expiresAt: null, open, focusIndex: states.findIndex(state => state.id === mode), name, photo, theme };
+    let value = { mode, reset, expiresAt: null, open, focusIndex: states.findIndex(state => state.id === mode), name, photo, fixturePath, fallbackAvatar, theme };
     const expiry = id => {
         const option = resetOptions.find(item => item.id === id);
         if (!option) throw new Error('Unknown reset option');
@@ -61,7 +61,8 @@ export function createPresence({ states = presenceStates, mode = states[0].id, r
 export function presenceHtml(value, states = presenceStates) {
     const current = states.find(state => state.id === value.mode);
     const initials = value.name.split(/\s+/).map(part => part[0]).slice(0, 2).join('');
-    const avatar = `<span class="presence-avatar" aria-hidden="true">${value.photo ? `<img src="${escapeHtml(value.photo)}" alt="">` : escapeHtml(initials.toUpperCase())}</span>`;
+    const extraImg = `${value.fixturePath ? ` data-fixture-path="${escapeHtml(value.fixturePath)}"` : ''}${value.fallbackAvatar ? ` data-fallback-src="${escapeHtml(value.fallbackAvatar)}"` : ''}`;
+    const avatar = `<span class="presence-avatar" aria-hidden="true">${value.photo ? `<img src="${escapeHtml(value.photo)}" alt=""${extraImg}>` : escapeHtml(initials.toUpperCase())}</span>`;
     const flyout = value.open ? `<section class="presence-flyout" aria-label="Your availability">
         <div class="presence-profile">${avatar}<div><strong>${escapeHtml(value.name)}</strong></div></div>
         <div class="presence-current">${badgeHtml(current)}<strong>${escapeHtml(current.label)}</strong></div>

@@ -9,18 +9,14 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { PassThrough } = require('node:stream');
-const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
+const { transpileSrc } = require('./tools/transpile-src.cjs');
 
 const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), 'worker-keep-warm-build-'));
-for (const name of ['agyRuntime', 'workerProfiles', 'workerRouter', 'openCodeRuntime', 'keepWarm', 'workersState']) {
-    fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
-        fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
-        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
-}
-const { parseWorkerProfile } = require(path.join(buildDir, 'workerProfiles.js'));
-const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'openCodeRuntime.js'));
-const { workersToPing, keepWarmTick, startKeepWarmTimer, KEEP_WARM_PROMPT } = require(path.join(buildDir, 'keepWarm.js'));
-const { projectWorkersState } = require(path.join(buildDir, 'workersState.js'));
+transpileSrc(buildDir);
+const { parseWorkerProfile } = require(path.join(buildDir, 'workers', 'workerProfiles.js'));
+const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'workers', 'openCodeRuntime.js'));
+const { workersToPing, keepWarmTick, startKeepWarmTimer, KEEP_WARM_PROMPT } = require(path.join(buildDir, 'workers', 'keepWarm.js'));
+const { projectWorkersState } = require(path.join(buildDir, 'workers', 'workersState.js'));
 const browser = { acquireVsCodeApi: () => ({ getState: () => ({}), setState() {}, postMessage() {} }), document: { readyState: 'loading', addEventListener() {}, querySelectorAll: () => [], getElementById: () => null }, window: {}, console, setTimeout() {}, setInterval() {} };
 require('node:vm').runInNewContext(fs.readFileSync(__dirname + '/media/webview.js', 'utf8').replace(/\}\(\)\);\s*$/, 'globalThis.render = renderWorkersHtml; }());'), browser);
 
@@ -128,17 +124,19 @@ assert.deepEqual(decide({ model: 'agy/gemini-4-argon-high' }), [], 'agy model: n
     assert.equal(ocProjected.cacheExpiresAt - clock, 300000);
     assert.deepEqual([agyProjected.adapter, agyProjected.cacheExpiresAt, agyProjected.lastPingAt, agyProjected.expired, agyProjected.banner.dollars],
         ['agy', 0, 0, false, null], 'agy worker has no cache TTL or ping state and keeps cost unreported');
-    const card = browser.render(projected, '', { [agyWorkerId]: true }, false);
+    // R-TEAM-41: a finished agy task (no cache warmth) shows under Show completed.
+    const card = browser.render(projected, '', { [agyWorkerId]: true }, true);
     const ocCard = browser.render(projected, workerId, {}, false);
-    const agyCard = browser.render(projected, agyWorkerId, { [agyWorkerId]: true }, false);
+    const agyCard = browser.render(projected, agyWorkerId, { [agyWorkerId]: true }, true);
+    assert.doesNotMatch(browser.render(projected, agyWorkerId, { [agyWorkerId]: true }, false), /class="worker-card"/, 'finished agy task is hidden by default');
     assert.match(ocCard, /pinged 0m ago/);
     assert.match(ocCard, /warm for 5m0s/);
     assert.match(ocCard, /Age: 0:00 warm/);
     assert.doesNotMatch(ocCard, /4:10/);
     assert.doesNotMatch(agyCard, /Age:|warm for|pinged|within 5 min|cache is cold after 5:00/, 'agy card hides cache-age, warm countdown, and ping UI');
-    assert.match(agyCard, /1 req &middot; <strong class="health-cost">[\s\S]*?cost unreported[\s\S]*?<\/strong> &middot; 2K last in \/ 20 turn out &middot; 80% cache/, 'agy card preserves usage, unreported cost, and cache-token telemetry');
+    assert.match(agyCard, /1 req &middot; <strong class="health-cost">\$0\.00<\/strong> &middot; 2K last in \/ 20 turn out &middot; 80% cache/, 'agy card preserves usage and cache-token telemetry with reviewer-decided free display cost');
     assert.match(agyCard, /worker-state-completed">COMPLETED<\/span>[\s\S]*?agy-k[\s\S]*? · turn turn-1 · 5s/, 'agy card preserves status, knowledge, and actual task execution age');
-    assert.match(card, /<strong>2<\/strong> live workers &middot; 0 running &middot; 0 queued &middot; 1 warm/, 'summary counts only OpenCode as warm');
+    assert.match(card, /<strong>2<\/strong> tasks this turn &middot; 0 running &middot; 0 queued &middot; 1 warm/, 'summary counts only OpenCode as warm');
     assert.equal(pings().length, 1, 'exactly ONE message');
     assert.equal(pings()[0].url, '/session/ses_W1/message');
     assert.equal(pings()[0].body.agent, 'aa-verify', 'same agent');

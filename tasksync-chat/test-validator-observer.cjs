@@ -6,6 +6,7 @@ const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 
 const buildDir = path.join(__dirname, '.validator-observer-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
+require('./tools/transpile-src.cjs').transpileSrc(buildDir);
 for (const name of ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools',
     'commentary/commentary', 'specs/specCostLedger', 'validator/profile', 'validator/redact', 'validator/records', 'validator/observer']) {
     const out = path.join(buildDir, `${name}.js`);

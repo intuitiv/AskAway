@@ -4,16 +4,50 @@ export const defaultMembers = [
     { id: 'validator', kind: 'validator', displayName: 'Validator', colour: 'who-validator', rank: 300, presencePolicy: 'alwaysPresent', canProxyWhenAway: true },
 ].map(member => ({ ...member, name: member.displayName, presence: 'online' }));
 
+export function resolveRosterMember(idOrName, members = defaultMembers) {
+    if (!idOrName) return undefined;
+    const raw = typeof idOrName === 'string' ? idOrName : (idOrName.memberId || idOrName.id || idOrName.displayName || idOrName.name || '');
+    const key = String(raw).trim().toLowerCase();
+    if (!key) return undefined;
+    return members.find(m => [m.id, m.memberId, m.name, m.displayName, m.nativeAgent].some(v => v && v.toLowerCase() === key));
+}
+
+export function memberIdOf(member) {
+    if (!member) return '';
+    if (typeof member === 'string') return member;
+    if (member.memberId) return member.memberId;
+    return member.id || '';
+}
+
 export const deliveryEvents = { sent: 'posted', delivered: 'delivered', sessionStart: 'delivered', read: 'read', firstResponse: 'read', firstToolCall: 'read' };
 export function participant(registry, id) {
-    return registry.find(p => [p.id, p.displayName, p.name].some(value => value?.toLowerCase() === String(id).toLowerCase()));
+    if (id === undefined || id === null) return undefined;
+    const key = String(id).toLowerCase();
+    return registry.find(p => [p.id, p.memberId, p.displayName, p.name, memberIdOf(p)].some(value => value?.toLowerCase() === key))
+        || registry.find(p => (['you', 'cpo', 'reviewer'].includes(key) && p.kind === 'user') || (key === 'validator' && p.kind === 'validator') || (['agent', 'build', 'askaway build', 'aa.orchestrator'].includes(key) && p.kind === 'agent'));
 }
-export const displayName = p => p.displayName || p.name || p.id;
+export const displayName = p => p.name || p.displayName || p.id;
 export const owner = registry => [...registry].sort((a, b) => b.rank - a.rank)[0];
 export const primaryReply = (messages, registry) => [...messages].sort((a, b) => (participant(registry, b.author)?.rank || 0) - (participant(registry, a.author)?.rank || 0))[0];
+
+export function mentionCandidates(members = defaultMembers, draft = '') {
+    const match = /(?:^|\s)@([^\s@]*)$/.exec(String(draft || ''));
+    const query = match ? match[1].toLowerCase() : '';
+    const modId = owner(members)?.id;
+    return members.filter(m => m && m.presence !== 'left' && m.kind !== 'user' && m.id !== modId).filter(m => {
+        if (!query) return true;
+        const roster = resolveRosterMember(m, members);
+        const role = m.role || roster?.role || m.kind || '';
+        return [displayName(m), m.name, m.id, m.memberId, memberIdOf(m), role].some(v => v && String(v).toLowerCase().includes(query));
+    });
+}
+
 export function routeMessage(message, messages, registry) {
-    const targets = registry.filter(p => {
-        const names = (p.kind === 'worker' ? [p.id] : [p.id, displayName(p)]).filter(Boolean).map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const explicitId = message.mentionMemberId || message.toActorId;
+    const explicit = explicitId ? participant(registry, explicitId) : undefined;
+    const targets = explicit ? [explicit.id] : registry.filter(p => {
+        const roster = resolveRosterMember(p, registry);
+        const names = [p.id, p.memberId, p.name, displayName(p), roster?.name, roster?.id].filter(Boolean).map(name => String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         return names.some(name => new RegExp(`@${name}(?![\\w-])`, 'i').test(message.text));
     }).map(p => p.id);
     const parent = messages.find(m => m.id === message.replyTo);
@@ -31,14 +65,14 @@ export function presenceChange(registry, id, present) {
     const member = participant(registry, id);
     if (!member || member.presencePolicy === 'alwaysPresent' || (member.presence !== 'left') === present) return { registry, notices: [] };
     return { registry: registry.map(p => p === member ? { ...p, presence: present ? 'online' : 'left' } : p),
-        notices: [{ kind: 'system', text: `${displayName(member)} ${present ? 'joined' : 'left'}` }] };
+        notices: [{ kind: 'system', memberId: memberIdOf(member), author: member.id, text: `${displayName(member)} ${present ? 'joined' : 'left'}` }] };
 }
 export function postMessage(message, messages, registry) {
     if (!String(message.text || '').trim()) throw new Error('Crisp text is mandatory');
     if (message.questions || message.answers) throw new Error('Each answer must be its own message');
     // Registration is the actor's job: routing never makes a recipient join.
     const recipients = routeMessage(message, messages, registry);
-    return { registry, messages: [...messages, { ...message, recipients, delivery: 'posted' }] };
+    return { registry, messages: [...messages, { ...message, recipients, ...(message.mentionMemberId || message.toActorId ? { toActorId: message.mentionMemberId || message.toActorId } : {}), delivery: 'posted' }] };
 }
 export function reactMessage(message, emoji, reactor, messages, registry, id) {
     const route = reactionRoute(message, emoji, reactor, messages, registry);

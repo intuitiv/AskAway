@@ -170,6 +170,15 @@ interface RunRecord extends RunView {
     verifyRounds?: number;
     /** Failing lines the packet verify command already printed before the agy worker started; undefined until measured. */
     baseline?: string[];
+    /** agy capacity (429) retries used by this run. */
+    capacityRetries?: number;
+    /** Clears the pending capacity-retry backoff timer; set only while a retry waits. */
+    cancelCapacityRetry?: () => void;
+    /** agy: each allowed file's `mtime:size` (or `missing`) before the run's first launch, for the no-edits check. */
+    filesAtStart?: Record<string, string>;
+    /** agy: newest allowed-file mtime seen, and when the stall detector last looked. */
+    lastEditMs?: number;
+    stallCheckAt?: number;
 }
 
 interface ServerMessage { info: { id: string; role: string; parentID?: string; time?: { completed?: number } } }
@@ -285,10 +294,24 @@ export function failingLines(output: string): string[] {
         .filter((line) => (/^FAIL\b/.test(line) || /^at\s.+:\d+/.test(line)) && !line.includes('node:internal')))];
 }
 
+/** The packet's allowed files, read from its rendered `Allowed files:` line. */
+function packetAllowedFiles(packet: string): string[] {
+    return (/^Allowed files: (.*)$/m.exec(packet)?.[1] ?? '').split(',').map((f) => f.trim()).filter((f) => f && !f.startsWith('none'));
+}
+
+/** Each allowed file of a run as `mtime:size`, or `missing`. */
+function fileStates(run: { packet: string; cwd: string }): Record<string, string> {
+    const states: Record<string, string> = {};
+    for (const file of packetAllowedFiles(run.packet)) {
+        try { const stat = fs.statSync(path.resolve(run.cwd, file)); states[file] = `${stat.mtimeMs}:${stat.size}`; } catch { states[file] = 'missing'; }
+    }
+    return states;
+}
+
 /** A failure inside a file the packet may edit (or a missing check file) is the packet's job, never "pre-existing". */
 export function failureOwnedByPacket(failing: string[], packet: string, output: string): boolean {
     if (/Cannot find module|MODULE_NOT_FOUND/.test(output)) { return true; }
-    const allowed = (/^Allowed files: (.*)$/m.exec(packet)?.[1] ?? '').split(',').map((f) => f.trim()).filter((f) => f && !f.startsWith('none'));
+    const allowed = packetAllowedFiles(packet);
     return failing.some((line) => allowed.some((file) => line.includes(file)));
 }
 
@@ -544,6 +567,12 @@ export class OpenCodeWorkerRuntime {
         if (run.queuePosition > 0) {
             this.router.cancelQueued(run.workerId, runId);
             this.finish(run, 'CANCELLED', 'cancelled before start');
+        } else if (run.cancelCapacityRetry) {
+            // A run waiting out a capacity backoff has no process: stop the timer and end it now.
+            run.cancelCapacityRetry();
+            run.cancelCapacityRetry = undefined;
+            run.reason = 'cancelled by caller';
+            this.finalizeRun(run, 'CANCELLED', -1);
         } else {
             run.reason = 'cancelled by caller';
             run.child?.kill('SIGTERM');
@@ -575,6 +604,7 @@ export class OpenCodeWorkerRuntime {
         run.reason = undefined;
         run.deniedContinued = undefined;
         run.verifyRounds = undefined;
+        run.capacityRetries = undefined;
         this.launch(run, 'Continue the previous packet from where it stopped and finish it.');
         return this.view(run);
     }
@@ -899,6 +929,8 @@ export class OpenCodeWorkerRuntime {
      */
     private launch(run: RunRecord, message: string): void {
         run.queuePosition = 0;
+        // The no-edits check compares against the allowed files as they were before the run's first launch.
+        if (isAgyModel(run.model) && !run.filesAtStart) { run.filesAtStart = fileStates(run); }
         if (!isAgyModel(run.model) || run.baseline !== undefined || !run.command || !this.agyVerifyLoop()) { this.launchProcess(run, message); return; }
         const { runVerifyCommand, VERIFY_TIMEOUT_MS } = require('./agyRuntime') as typeof import('./agyRuntime');
         run.baseline = [];
@@ -931,8 +963,11 @@ export class OpenCodeWorkerRuntime {
             run.sessionId = '';
             this.sessionsByWorker.delete(run.workerId);
         }
-        const { agyArgs, agyEventNormalizer, deniedContinueMessage, verifyFailureMessage, runVerifyCommand, MAX_VERIFY_ROUNDS, VERIFY_TIMEOUT_MS, VERIFY_FACT_TAIL_CHARS } = agy
+        const { agyArgs, agyEventNormalizer, deniedContinueMessage, verifyFailureMessage, runVerifyCommand, MAX_VERIFY_ROUNDS, VERIFY_TIMEOUT_MS, VERIFY_FACT_TAIL_CHARS,
+            isCapacityError, agyFatalReason, isAgyErrorLine, missingCheckFile, CAPACITY_RETRY_DELAYS_MS, CAPACITY_RETRY_MESSAGE } = agy
             ? require('./agyRuntime') as typeof import('./agyRuntime') : {} as Partial<typeof import('./agyRuntime')>;
+        // An error from an earlier launch of this run never decides this launch's outcome.
+        if (agy && run.reason !== 'cancelled by caller') { run.reason = undefined; }
         // OpenCode reads the profile instructions from its agent file; agy gets the same text at the start of its conversation.
         const profile = agy ? this.router.profile(run.profile) : undefined;
         // --print-logs is required: without it `opencode run` is SIGKILLed after ~14s.
@@ -965,12 +1000,25 @@ export class OpenCodeWorkerRuntime {
         // Headless agy auto-denies an action no allow-rule grants and ends its turn; asking it again only repeats the denial.
         const denied: string[] = [];
         let outOfPolicy = false;
+        let capacity = false;
+        let fatal = '';
+        // agy output naming an unavailable model or expired login ends the run at once; a 429 is retried at exit.
+        const scanAgy = (text: string) => {
+            if (!agy || fatal || !isCapacityError || !agyFatalReason) { return; }
+            if (isCapacityError(text)) { capacity = true; return; }
+            fatal = agyFatalReason(text, run.model);
+            if (fatal) { cancelStall(); child.kill('SIGTERM'); }
+        };
+        // An editing packet whose allowed files are all unchanged since the run started made no edits, whatever its report says.
+        const noEdits = () => agy && !!run.filesAtStart && Object.keys(run.filesAtStart).length > 0
+            && Object.entries(fileStates(run)).every(([file, state]) => run.filesAtStart?.[file] === state);
         let errBuffer = '';
         child.stderr?.on('data', (chunk: Buffer) => {
             errBuffer += chunk.toString();
             const lines = errBuffer.split('\n');
             errBuffer = lines.pop() ?? '';
             for (const line of lines) {
+                if (isAgyErrorLine?.(line)) { scanAgy(line); }
                 const match = /permission requested:\s*(.+?);\s*auto-rejecting/i.exec(line);
                 if (match && !rejected.includes(match[1])) { rejected.push(match[1]); }
             }
@@ -1015,6 +1063,7 @@ export class OpenCodeWorkerRuntime {
                     const detail = String(event.error?.data?.message ?? event.error?.message ?? event.error?.name ?? event.message ?? 'provider or tool error');
                     run.reason = CREDENTIAL.test(detail) ? 'provider or tool error (credential omitted)' : detail.replace(/\s+/g, ' ').slice(0, 240);
                     this.record(run, { type: 'error', reason: run.reason });
+                    scanAgy(detail);
                 } else if (part.tool) {
                     const status = String(part.state?.status ?? '');
                     const callId = String(part.callID ?? part.id ?? '');
@@ -1037,6 +1086,22 @@ export class OpenCodeWorkerRuntime {
             const knowledge = [...run.evidence].reverse().find((line) => /^\W*Knowledge:/i.test(line));
             if (knowledge) { run.knowledge = knowledge.replace(/^\W*Knowledge:\s*/i, '').slice(0, 200); }
             const finalize = (state: RunState, exitCode: number) => this.finalizeRun(run, state, exitCode);
+            if (fatal) { run.reason = fatal; finalize('FAILED', code ?? -1); return; }
+            // A capacity error (429) is retried in the same conversation after a backoff; it never ends COMPLETED.
+            if (capacity && run.reason !== 'cancelled by caller' && CAPACITY_RETRY_DELAYS_MS && CAPACITY_RETRY_MESSAGE) {
+                const retry = run.capacityRetries ?? 0;
+                if (retry >= CAPACITY_RETRY_DELAYS_MS.length) { run.reason = `agy capacity (429), retried ${retry}x`; finalize('FAILED', code ?? -1); return; }
+                const delay = CAPACITY_RETRY_DELAYS_MS[retry];
+                run.capacityRetries = retry + 1;
+                run.reason = undefined;
+                this.record(run, { type: 'approval', reason: `agy capacity (429); retry ${retry + 1} in ${delay / 1000}s` });
+                run.cancelCapacityRetry = this.setTimer(() => {
+                    run.cancelCapacityRetry = undefined;
+                    if (run.reason === 'cancelled by caller') { finalize('CANCELLED', -1); return; }
+                    this.launch(run, run.sessionId ? CAPACITY_RETRY_MESSAGE : run.packet);
+                }, delay);
+                return;
+            }
             if (agy && this.agyVerifyLoop() && code === 0 && !signal && !run.reason && !outOfPolicy && !denied.includes('mcp')) {
                 if (denied.includes('command') && !run.deniedContinued && run.sessionId && deniedContinueMessage) {
                     run.deniedContinued = true;
@@ -1045,6 +1110,9 @@ export class OpenCodeWorkerRuntime {
                     return;
                 }
                 if (runVerifyCommand && verifyFailureMessage && run.command) {
+                    // A check that cannot run proves nothing: its missing script fails the run instead of passing or looping.
+                    const missing = missingCheckFile?.(run.command, run.cwd);
+                    if (missing) { run.reason = `check file missing: ${missing}`; finalize('FAILED', code ?? -1); return; }
                     void runVerifyCommand(run.command, run.cwd, VERIFY_TIMEOUT_MS, (verifyChild) => { run.child = verifyChild; }).then((verify) => {
                         if (run.reason === 'cancelled by caller') { finalize('CANCELLED', code ?? -1); return; }
                         const round = (run.verifyRounds ?? 0) + 1;
@@ -1054,7 +1122,8 @@ export class OpenCodeWorkerRuntime {
                         if (tail) { run.evidence = [...run.evidence, ...tail.split('\n')].slice(-MAX_EVIDENCE_LINES); }
                         const failing = failingLines(verify.output);
                         if (verify.exitCode === 0) {
-                            finalize('COMPLETED', 0);
+                            // A passing check after no edits is a completion only when the packet says a no-op is acceptable.
+                            if (noEdits() && !/^\W*No-op acceptable:\s*yes\W*$/im.test(run.packet)) { run.reason = 'no edits made'; finalize('FAILED', 0); } else { finalize('COMPLETED', 0); }
                         } else if (failing.length && run.baseline && failing.every((line) => run.baseline?.includes(line))
                             && !failureOwnedByPacket(failing, run.packet, verify.output)) {
                             run.reason = `pre-existing failure: every failing line was already failing before the worker started (${failing.slice(0, 3).join(' | ')}); not caused by this packet`;
@@ -1090,7 +1159,13 @@ export class OpenCodeWorkerRuntime {
                     ? `permission auto-rejected: ${rejected.join(', ')} (not allowed for this worker; allow it in the OpenCode config or change the packet)`
                     : run.evidence.join('').trim() === '' ? 'worker ended without a report (no Result/Evidence text)' : 'worker stopped without a Result line';
             }
-            const state: RunState = cancelled ? 'CANCELLED' : code === 0 && !signal && !silent && !outOfPolicy ? 'COMPLETED' : 'FAILED';
+            let state: RunState = cancelled ? 'CANCELLED' : code === 0 && !signal && !silent && !outOfPolicy ? 'COMPLETED' : 'FAILED';
+            // agy completes only through a passed check and real edits: an API error or a skipped check is never a completion.
+            if (state === 'COMPLETED' && agy) {
+                if (run.reason) { state = 'FAILED'; }
+                else if (this.agyVerifyLoop()) { state = 'FAILED'; run.reason = `verify command did not run${denied.length ? ` (agy auto-denied ${denied.join(', ')})` : ''}`; }
+                else if (noEdits()) { state = 'FAILED'; run.reason = 'no edits made'; }
+            }
             if (state === 'FAILED' && !run.reason) { run.reason = signal ? `terminated by ${signal}` : `exit code ${code}`; }
             finalize(state, code ?? -1);
         });
@@ -1099,6 +1174,16 @@ export class OpenCodeWorkerRuntime {
     /** No stdout event STALL_AFTER_SECONDS after spawn: surface it at once. The process is never killed automatically. */
     private stall(run: RunRecord, sessionId: string): void {
         if (run.state !== 'STARTING') { return; }
+        // agy emits nothing while it writes files: an allowed file edited since the last check re-arms the detector instead.
+        if (isAgyModel(run.model)) {
+            const since = Math.max(run.stallCheckAt ?? 0, run.startedAt);
+            const launchedAt = run.startedAt;
+            run.stallCheckAt = this.now();
+            if (this.touchFromEdits(run) > since) {
+                this.setTimer(() => { if (run.startedAt === launchedAt) { this.stall(run, sessionId); } }, STALL_AFTER_SECONDS * 1000);
+                return;
+            }
+        }
         run.state = 'STALLED';
         run.reason = `no event ${STALL_AFTER_SECONDS} s after spawn (session ${sessionId || run.sessionId || 'none'}, dir ${run.cwd})`;
         this.record(run, { type: 'error', state: 'STALLED', reason: run.reason });
@@ -1114,11 +1199,22 @@ export class OpenCodeWorkerRuntime {
         for (const waiter of run.waiters.splice(0)) { waiter(); }
     }
 
+    /** An allowed file modified during this launch counts as agy activity: refreshes updatedAt, returns the newest edit time. */
+    private touchFromEdits(run: RunRecord): number {
+        let latest = run.lastEditMs ?? 0;
+        for (const file of packetAllowedFiles(run.packet)) {
+            try { latest = Math.max(latest, fs.statSync(path.resolve(run.cwd, file)).mtimeMs); } catch { /* not created yet */ }
+        }
+        if (latest > run.startedAt) { run.lastEditMs = latest; run.updatedAt = Math.max(run.updatedAt, Math.floor(latest)); }
+        return run.lastEditMs ?? 0;
+    }
+
     private terminal(state: RunState): boolean {
         return state === 'COMPLETED' || state === 'FAILED' || state === 'CANCELLED';
     }
 
     private view(run: RunRecord): RunView {
+        if (isAgyModel(run.model) && !this.terminal(run.state)) { this.touchFromEdits(run); }
         const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens, forkedFrom, thinkingNote, agyPermissions } = run;
         return { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens,
             elapsedMs: (endedAt ?? this.now()) - startedAt, usage: { ...usage }, queuePosition, reason, ...(forkedFrom ? { forkedFrom } : {}), ...(thinkingNote ? { thinkingNote } : {}),

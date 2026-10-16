@@ -15,7 +15,8 @@ import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
 import { CloudSpecsController, shouldPollCloud } from '../cloud/cloudSpecs';
 import { defaultIO } from '../cloud/cloudQueue';
 import { PacketTask } from '../cloud/packet';
-import { projectWorkersState, sessionOpenCommand, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
+import { projectWorkersState, sessionOpenCommand, TeamMemberState, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
+import { getRuntimeHealth, handleRuntimeHealthMessage, onDidChangeRuntimeHealth, RuntimeHealth, RuntimeHealthMessage } from '../workers/runtimeHealth';
 import { AITalkStore } from '../aitalk/store'; import { roomFor } from '../aitalk/actors';
 import { approveDraft } from '../services/webexDrafts';
 import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
@@ -409,6 +410,7 @@ type ToWebviewMessage =
     | { type: 'specsData'; data: SpecScanResult }
     | { type: 'workersState'; data: (WorkersState & { cloudWorkers?: Awaited<ReturnType<CloudSpecsController['workers']>>; benchmark?: unknown[] }) | null }
     | { type: 'workerTrace'; data: WorkerTrace }
+    | { type: 'runtimeHealth'; health: RuntimeHealth }
     | { type: 'commentaryState'; data: CommentaryView | null }
     | { type: 'availabilityState'; data: AvailabilityState | null; states: typeof presenceStates }
     | { type: 'openPresence' }
@@ -462,6 +464,7 @@ type ToWebviewMessage =
     | { type: 'clear' };
 
 type FromWebviewMessage =
+    | { type: 'openAgentFile' | 'editTeamMember'; memberId?: string; profile?: string; path?: string; agentFile?: string }
     | { type: 'requestAITalk' }
     | { type: 'aitalkPost' | 'aitalkReply'; text: string; replyTo?: string; attachments?: Array<{ name: string; path: string }> }
     | { type: 'aitalkAttach' }
@@ -487,6 +490,7 @@ type FromWebviewMessage =
     | { type: 'archiveWorkers' }
     | { type: 'removeWorker'; workerId: string }
     | { type: 'restartOpenCodeServer' }
+    | RuntimeHealthMessage
     | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
     | { type: 'requestCommentary' }
     | { type: 'setAvailability'; mode: string; until: string; note: string }
@@ -770,6 +774,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         // Listen for settings changes
         this._disposables.push(
+            onDidChangeRuntimeHealth((health) => this._broadcast({ type: 'runtimeHealth', health })),
             vscode.workspace.onDidChangeConfiguration(e => {
                 // Skip reload if we're the ones updating config (prevents race condition)
                 if (this._isUpdatingConfig) {
@@ -1335,12 +1340,36 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     public refreshWorkersState(): void { this._refreshWorkersState(); }
 
+    // R-TEAM-02: Team tab (data-tab="team", id="panel-team") replaces legacy workers tab and panel.
+    private readonly _memberAvatarUris = new Map<string, string>();
     private _refreshWorkersState(): void {
+        const enrichMembers = (state: WorkersState | null): WorkersState | null => {
+            if (!state) { return null; }
+            const webview = this._view?.webview;
+            const extUri = this._extensionUri;
+            if (!webview || !extUri?.fsPath) { return state; }
+            const members = state.members.map(member => {
+                if (this._memberAvatarUris.has(member.id)) { return { ...member, avatarSrc: this._memberAvatarUris.get(member.id) || member.avatarSrc }; }
+                for (const ext of ['png', 'svg']) {
+                    const avatarUri = vscode.Uri.joinPath(extUri, 'media', 'team', 'avatars', `${member.id}.${ext}`);
+                    if (fs.existsSync(avatarUri.fsPath)) {
+                        const avatarSrc = String(webview.asWebviewUri(avatarUri));
+                        this._memberAvatarUris.set(member.id, avatarSrc);
+                        return { ...member, avatarSrc };
+                    }
+                }
+                this._memberAvatarUris.set(member.id, '');
+                return { ...member };
+            });
+            return { ...state, members };
+        };
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const data = root ? (this._workersStateSource ? this._workersStateSource(root) : projectWorkersState(sharedWorkerRuntime(), root)) : null;
+        // Team rows: worker members own worker tasks; the main agent row is the selected chat agent, never a worker profile.
+        const withMainAgent = (state: WorkersState): WorkersState => ({ ...state, members: [...(state.members ?? []).filter(member => member.kind !== 'main'), this._mainAgentMember(root ?? '')] });
+        const data = enrichMembers(root ? withMainAgent(this._workersStateSource ? this._workersStateSource(root) : projectWorkersState(sharedWorkerRuntime(), root, Date.now, this._lastSubmitTs)) : null);
         if (root && !this._workersStateSource) {
             void observeWorkers(root).then(() => {
-                const observed = projectWorkersState(sharedWorkerRuntime(), root);
+                const observed = enrichMembers(withMainAgent(projectWorkersState(sharedWorkerRuntime(), root, Date.now, this._lastSubmitTs)))!;
                 observed.turnWorkerIds = this._workerSpend().workerIds;
                 this._broadcast({ type: 'workersState', data: { ...observed, cloudWorkers: this._cloudWorkers ?? [], benchmark: this._benchmarkRows() } });
             }).catch(error => console.warn('[AskAway] Worker server observation failed:', error));
@@ -1942,6 +1971,28 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     private _workerSpend(): ReturnType<typeof workerSpendSince> {
         return workerSpendSince(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, this._lastSubmitTs);
+    }
+
+    /** VS Code's user prompts folder, where the AskAway Build chat agent file is installed. */
+    private _userPromptsDir(): string {
+        return path.join(path.dirname(path.dirname(this._context.globalStorageUri.fsPath)), 'prompts');
+    }
+
+    /** The Team row of the selected chat agent (AskAway Build → Bhaskar, AA.Orchestrator → Mahesh): its own .agent.md, chat model and spend. */
+    private _mainAgentMember(root: string): TeamMemberState {
+        const room = roomFor(root);
+        const persona = room.mainAgentIdentity();
+        const active = room.snapshot().members.some((item: { kind?: string; presence?: string }) => item.kind === 'agent' && item.presence === 'joined');
+        const agentFile = [path.resolve(root, persona.agentFile), path.join(this._userPromptsDir(), path.basename(persona.agentFile))]
+            .find(candidate => fs.existsSync(candidate)) ?? persona.agentFile;
+        const requests = this._turnRequests.filter(request => !request.subagent);
+        return {
+            id: persona.id, name: persona.name, role: persona.role, profile: persona.nativeAgent || persona.profile, kind: 'main', active,
+            pinned: false, initials: persona.initials, avatarSrc: '', creativeStatus: active ? persona.workingStatus : persona.idleStatus,
+            agentFile, model: requests[requests.length - 1]?.model ?? '', thinking: '', adapter: 'copilot', taskIds: [],
+            turnCost: requests.reduce((sum, request) => sum + request.nanoAiu, 0) / 1e11,
+            monthCost: (this._observabilityCache.monthCredits?.aiu ?? 0) / 100,
+        };
     }
 
     public async getTurnMetricsSnapshot(): Promise<import('../services/handoffNotifier').TurnMetricsSnapshot> {
@@ -4253,6 +4304,37 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'restartOpenCodeServer':
                 void this._restartOpenCodeServer();
                 break;
+            case 'openAgentFile':
+            case 'editTeamMember': {
+                const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (!root) break;
+                const profiles = path.join(os.homedir(), '.askaway', 'worker-profiles');
+                // The main agent's chat-mode file (AskAway Build) lives in VS Code's user prompts folder.
+                const prompts = this._userPromptsDir();
+                const profile = typeof message.profile === 'string' && /^[\w.-]+$/.test(message.profile) ? message.profile : '';
+                const requested = message.path || message.agentFile;
+                const promptFile = requested && path.join(prompts, path.basename(requested));
+                const candidates = message.type === 'editTeamMember'
+                    ? [profile && path.join(profiles, profile + '.md'), requested && path.resolve(root, requested), promptFile]
+                    : [requested && path.resolve(root, requested), promptFile, profile && path.join(profiles, profile + '.md')];
+                for (const candidate of candidates) {
+                    if (!candidate || !fs.existsSync(candidate)) continue;
+                    const real = fs.realpathSync(candidate);
+                    const allowed = [root, profiles, prompts].some(base => {
+                        if (!fs.existsSync(base)) return false;
+                        const relative = path.relative(fs.realpathSync(base), real);
+                        return relative !== '' && !relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative);
+                    });
+                    if (!allowed || !fs.statSync(real).isFile()) continue;
+                    void vscode.workspace.openTextDocument(vscode.Uri.file(real)).then(document => vscode.window.showTextDocument(document, { selection: new vscode.Range(0, 0, 0, 0) }));
+                    break;
+                }
+                break;
+            }
+            case 'setRuntimeEnabled':
+            case 'recheckRuntimeHealth':
+                void handleRuntimeHealthMessage(message);
+                break;
             case 'openWorkerSession':
                 this._openWorkerSession(message.sessionId, message.external === true);
                 break;
@@ -4487,6 +4569,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         // Send available models and worker queue
         this.broadcastAvailableModels();
         this._broadcastWorkerQueue();
+        this._broadcast({ type: 'runtimeHealth', health: getRuntimeHealth() });
 
         // Send plan state if plan mode is active
         if (this._currentPlan) {
@@ -5216,6 +5299,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'webview.js'));
         const talkScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'aitalk', 'extension.js'));
         const talkStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'aitalk', 'talk.css'));
+        const teamStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'team', 'team.css'));
         const cacheBust = String(Date.now());
         const styleUriWithVersion = `${styleUri}?v=${cacheBust}`;
         const scriptUriWithVersion = `${scriptUri}?v=${cacheBust}`;
@@ -5233,6 +5317,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     <link href="${codiconsUri}" rel="stylesheet">
     <link href="${styleUriWithVersion}" rel="stylesheet">
     <link href="${talkStyleUri}" rel="stylesheet">
+    <link href="${teamStyleUri}" rel="stylesheet">
     <title>AskAway</title>
     <audio id="notification-sound" preload="auto" src="${notificationSoundUri}"></audio>
 </head>
@@ -5242,8 +5327,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         <div class="widget-tabs" id="widget-tabs">
             <button class="widget-tab active" data-tab="aitalk" title="Workspace group chat">AITalk</button>
             <button class="widget-tab hidden" data-tab="specs" id="tab-specs" title="Spec Kit features: progress, next task, active feature">Specs</button>
-            <button class="widget-tab" data-tab="observability" title="Main agent and Validator">Trace</button>
-            <button class="widget-tab" data-tab="workers" title="OpenCode workers in this workspace: state, cost, session links">Workers <span class="tab-badge hidden" id="tab-badge-workers"></span></button>
+            <button class="widget-tab" data-tab="observability" title="Main agent">Trace</button>
+            <button class="widget-tab" data-tab="team" title="Team members in this workspace: state, cost, session links">Team <span class="tab-badge hidden" id="tab-badge-team"></span></button>
             <button class="widget-tab" data-tab="settings" title="Settings">Settings</button>
         </div>
         <div class="conversation-health" title="Conversation cost and cache health">
@@ -5403,18 +5488,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             </div>
         </div><!-- End panel-specs -->
 
-        <!-- Workers Panel (OpenCode worker control plane) -->
-        <div class="tab-panel" id="panel-workers">
+        <!-- Team Panel (OpenCode worker control plane) -->
+        <div class="tab-panel" id="panel-team">
             <div class="workers-shell">
                 <div class="workers-header">
-                    <input class="workers-filter" id="workers-filter" type="text" placeholder="Filter: id, mode, model, state" aria-label="Filter workers">
                     <div class="specs-toggle" title="Include workers whose cache went cold or that retired">
                         <span>Show completed</span>
                         <div class="toggle-switch specs-toggle-switch" id="workers-show-expired" role="switch" aria-checked="false" tabindex="0"></div>
                     </div>
-                    <button class="specs-refresh-btn" id="workers-server-btn" title="Start the shared OpenCode server">
-                        <span class="codicon codicon-play"></span>
-                    </button>
                     <button class="specs-refresh-btn" id="workers-archive-btn" title="Archive completed workers (not running, nothing queued, cache cold or retired). Their cost history is kept.">
                         <span class="codicon codicon-archive"></span>
                     </button>
@@ -5424,7 +5505,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 </div>
                 <div class="workers-list" id="workers-list"></div>
             </div>
-        </div><!-- End panel-workers -->
+        </div><!-- End panel-team -->
 
         <!-- Settings Panel -->
         <div class="tab-panel" id="panel-settings">

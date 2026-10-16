@@ -6,21 +6,17 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { PassThrough } = require('node:stream');
-const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
+const { transpileSrc } = require('./tools/transpile-src.cjs');
 
 const buildDir = path.join(__dirname, '.worker-reuse-policy-test-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(buildDir);
-for (const name of ['workerProfiles', 'workerRouter', 'keepWarm', 'openCodeRuntime', 'workersState', 'workerTools']) {
-    fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
-        fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
-        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
-}
-const { parseWorkerProfile } = require(path.join(buildDir, 'workerProfiles.js'));
-const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'openCodeRuntime.js'));
-const { registerWorkerTools } = require(path.join(buildDir, 'workerTools.js'));
-const { WORKER_MAX_IDLE_MS, EXPIRED_REUSE_MAX_CONTEXT_TOKENS } = require(path.join(buildDir, 'workerRouter.js'));
-const { KEEP_WARM_MAX_UNUSED_PINGS, workersToPing } = require(path.join(buildDir, 'keepWarm.js'));
+transpileSrc(buildDir);
+const { parseWorkerProfile } = require(path.join(buildDir, 'workers', 'workerProfiles.js'));
+const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'workers', 'openCodeRuntime.js'));
+const { registerWorkerTools } = require(path.join(buildDir, 'workers', 'workerTools.js'));
+const { WORKER_MAX_IDLE_MS, EXPIRED_REUSE_MAX_CONTEXT_TOKENS } = require(path.join(buildDir, 'workers', 'workerRouter.js'));
+const { KEEP_WARM_MAX_UNUSED_PINGS, workersToPing } = require(path.join(buildDir, 'workers', 'keepWarm.js'));
 
 const MODEL = 'github-copilot/gpt-5.6-luna';
 const profile = parseWorkerProfile(`---\nname: verify\ndescription: "v"\ntier: light\nmodel: ${MODEL}\nthinking: low\nmodels: [${MODEL}]\nthinkingOptions: [low, high]\nedit: deny\n---\nBody.\n`);

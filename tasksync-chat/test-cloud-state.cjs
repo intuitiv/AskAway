@@ -144,7 +144,7 @@ const view = async () => (await controller.refresh(root, { specs: [{ slug: '006-
     vm.createContext(ctx);
     vm.runInContext(webview.slice(webview.indexOf('var TRACE_HEAD'), webview.indexOf('function traceOpenIds')), ctx);
     vm.runInContext(webview.slice(webview.indexOf('function formatSpecInline(text)'), webview.indexOf('var SPEC_STAGE_COMMAND')), ctx);
-    vm.runInContext(webview.slice(webview.indexOf('function monthlyCostTableHtml(month)'), webview.indexOf('// ── end Workers pure render')), ctx);
+    vm.runInContext(webview.slice(webview.indexOf('// ── Workers tab: pure render'), webview.indexOf('// ── end Workers pure render')), ctx);
     const replayed = structuredClone(stored[0]);
     const later = structuredClone(replayed); later.taskId = 'PROOF-1b'; later.attempt = 2;
     later.queuedAt = new Date(Date.parse(replayed.queuedAt) + minute).toISOString();

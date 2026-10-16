@@ -36,13 +36,13 @@ export function configureAITalkDelivery(root: string): void {
         return room.post(author.id, crisp, { replyTo, details: details || input.details, kind: input.kind }).message;
     });
 }
-export interface AITalkCaller { recipient: string; workspace?: string }
+export interface AITalkCaller { recipient: string; workspace?: string; displayName?: string }
 /** The worker whose MCP tool call is running, if any. */
 export function currentAITalkCaller(): AITalkCaller | undefined { return mcpCaller.getStore(); }
 export function mcpAITalkCaller(extra: any): AITalkCaller | undefined {
     const meta = extra?._meta;
     const recipient = meta?.recipient ?? meta?.workerId ?? meta?.agentId;
-    return typeof recipient === 'string' && recipient ? { recipient, workspace: meta.workspacePath } : undefined;
+    return typeof recipient === 'string' && recipient ? { recipient, workspace: meta.workspacePath, displayName: meta.memberId || meta.profile || meta.displayName } : undefined;
 }
 export function withAITalkMcpDelivery(handler: (args: any, extra: any) => Promise<any>, defaultWorkspace: string) {
     return async (args: any, extra: any) => {
@@ -59,7 +59,8 @@ export function withAITalkMcpDelivery(handler: (args: any, extra: any) => Promis
 export function beginAITalkTool(caller?: AITalkCaller): void {
     const root = caller?.workspace ?? workspace;
     if (!root) return;
-    if (!caller) roomFor(root).registerAgent();
+    if (caller?.displayName) roomFor(root).workerLifecycle({ id: caller.recipient, displayName: caller.displayName }, true);
+    if (!caller || caller.recipient === new AITalkStore(root).agentId()) roomFor(root).registerAgent();
     const store = new AITalkStore(root);
     const recipient = caller?.recipient ?? store.agentId();
     if (recipient) store.markRead(recipient);

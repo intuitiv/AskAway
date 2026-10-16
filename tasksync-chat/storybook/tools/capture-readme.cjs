@@ -10,7 +10,7 @@ const repo = path.resolve(storybook, '../..');
 const output = path.join(repo, 'tasksync-chat/docs/screenshots');
 const captures = [
     { name: 'aitalk-room.png', id: 'aitalk-talk--full-conversation', selector: '.talk-prototype', content: '.talk-bubble' },
-    { name: 'workers-tab.png', id: 'askaway-sample-conversation--turn-one-done', selector: '.aa-sidebar:has(#panel-workers)', content: '#workers-list' },
+    { name: 'workers-tab.png', id: 'askaway-sample-conversation--turn-one-done', selector: '.aa-sidebar:has(#panel-team)', content: '#workers-list' },
     { name: 'trace-tab.png', id: 'aitalk-trace-tab--main-workers-and-validator', selector: '.talk-trace', content: '.talk-trace-session', tab: 'Trace' },
 ];
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };

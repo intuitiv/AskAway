@@ -15,16 +15,27 @@ const tmp = fs.mkdtempSync(path.join(fixturesRoot, 'agy-tools-'));
 const buildDir = path.join(tmp, 'build');
 fs.mkdirSync(buildDir, { recursive: true });
 
-for (const name of ['agyRuntime', 'workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) {
-    fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
-        fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
-        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
+const src = path.join(__dirname, 'src');
+// Transpiles the modules reachable through relative requires, mirroring src/ so `../team/...` paths resolve.
+function transpile(rel) {
+    const out = path.join(buildDir, rel.replace(/\.ts$/, '.js'));
+    if (fs.existsSync(out)) { return; }
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    const js = ts.transpileModule(fs.readFileSync(path.join(src, rel), 'utf8'),
+        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
+    fs.writeFileSync(out, js);
+    for (const [, spec] of js.matchAll(/require\(["'](\.{1,2}\/[^"']+)["']\)/g)) {
+        const next = path.join(path.dirname(rel), spec);
+        if (fs.existsSync(path.join(src, `${next}.ts`))) { transpile(`${next}.ts`); }
+        else if (fs.existsSync(path.join(src, next, 'index.ts'))) { transpile(path.join(next, 'index.ts')); }
+    }
 }
+for (const name of ['agyRuntime', 'workerProfiles', 'openCodeRuntime', 'workerTools']) { transpile(`workers/${name}.ts`); }
 
-const { AGY_MCP_RULE_FORMAT, toAgyPermissions, agyEventNormalizer } = require(path.join(buildDir, 'agyRuntime.js'));
-const { parseWorkerProfile, syncAgyPermissions, workerInstructions } = require(path.join(buildDir, 'workerProfiles.js'));
-const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'openCodeRuntime.js'));
-const { registerWorkerTools } = require(path.join(buildDir, 'workerTools.js'));
+const { AGY_MCP_RULE_FORMAT, toAgyPermissions, agyEventNormalizer } = require(path.join(buildDir, 'workers', 'agyRuntime.js'));
+const { parseWorkerProfile, syncAgyPermissions, workerInstructions } = require(path.join(buildDir, 'workers', 'workerProfiles.js'));
+const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'workers', 'openCodeRuntime.js'));
+const { registerWorkerTools } = require(path.join(buildDir, 'workers', 'workerTools.js'));
 
 const implProfile = parseWorkerProfile(`---
 name: implementer

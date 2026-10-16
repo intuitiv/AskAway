@@ -1,10 +1,31 @@
 import { z } from 'zod';
 import { MAX_WAIT_SECONDS, OpenCodeWorkerRuntime, WorkerPacket } from './openCodeRuntime';
 import { projectWorkersState } from './workersState';
+import { defaultModel } from './workerProfiles';
 import type { TurnBudget } from './turnBudget';
 type Caller = { recipient: string; workspace?: string };
 let delivery: ((result: string, caller?: Caller) => string) | undefined;
 export function setToolResultDelivery(handler: (result: string, caller?: Caller) => string): void { delivery = handler; }
+type RuntimeName = 'opencode' | 'agy';
+/** `before` checks toggles and agy health without starting anything; `ready` also probes the OpenCode server once it was started. */
+type RuntimeGate = (runtimes: RuntimeName[], phase: 'before' | 'ready') => Promise<Record<string, unknown> | null>;
+let runtimeGate: RuntimeGate | undefined;
+let runtimeInspect: (() => OpenCodeWorkerRuntime) | undefined;
+/** The host installs the Settings/health gate and a runtime getter that never starts the OpenCode server; without a gate every runtime is allowed. */
+export function setWorkerRuntimeGate(gate: RuntimeGate | undefined, inspect?: () => OpenCodeWorkerRuntime): void { runtimeGate = gate; runtimeInspect = inspect; }
+
+const runtimeOfModel = (model: string): RuntimeName => model.startsWith('agy/') ? 'agy' : 'opencode';
+/** The runtimes a dispatch uses, by effective model: the packet's runtime or model, else the warm worker's, else the profile default. */
+function dispatchRuntimes(action: string, args: any, live: OpenCodeWorkerRuntime): RuntimeName[] {
+    if (action === 'resume') { return [runtimeOfModel(String(live.status(args.runId)?.model ?? ''))]; }
+    const workerModel = args.workerId ? String(live.router?.worker(args.workerId)?.model ?? '') : '';
+    const packets: any[] = action === 'fanout' ? (Array.isArray(args.packets) ? args.packets : []) : [args];
+    return packets.map((packet): RuntimeName => {
+        if (packet.runtime === 'agy' || packet.runtime === 'opencode') { return packet.runtime; }
+        const profile = typeof packet.profile === 'string' ? live.router?.profile(packet.profile) : undefined;
+        return runtimeOfModel(String(packet.model || workerModel || (profile ? defaultModel(profile) : '')));
+    });
+}
 
 export const WORKER_TOOL_NAMES = ['worker_start', 'worker_submit', 'worker_list', 'worker_status', 'worker_wait', 'worker_cancel', 'worker_resume', 'worker_logs', 'worker_fanout'] as const;
 /** Hosts see ONE `worker` tool; `action` selects the operation, like the `gradle` tool (reviewer, 2026-09-25). */
@@ -131,6 +152,17 @@ export function workerTool(source: () => RuntimeSource, defaultWorkspace: string
             if (operation && options.turnBudget && (action === 'start' || action === 'submit' || action === 'fanout')) {
                 const refusal = workerBudgetRefusal(action, await options.turnBudget());
                 if (refusal) { return refusal; }
+            }
+            if (operation && runtimeGate && (action === 'start' || action === 'submit' || action === 'fanout' || action === 'resume')) {
+                // Refuse before anything starts; the OpenCode server is started (and then probed) only when OpenCode is involved.
+                const runtimes = dispatchRuntimes(action, args, runtimeInspect ? runtimeInspect() : await Promise.resolve(source()));
+                const before = await runtimeGate(runtimes, 'before');
+                if (before) { return before; }
+                if (runtimes.includes('opencode')) {
+                    await Promise.resolve(source());
+                    const ready = await runtimeGate(runtimes, 'ready');
+                    if (ready) { return ready; }
+                }
             }
             return operation ? JSON.parse(await invokeDefinition(operation, args, false)) : { status: 'INVALID_INPUT', reason: `action: one of ${WORKER_ACTIONS.join(', ')}` };
         },

@@ -37,6 +37,9 @@ import { ContextManager } from './context';
 import { PlanEditorProvider } from './plan/planEditorProvider';
 import { COWORK_BUNDLE_B64, COWORK_APPLY_B64, COWORK_PROMPT_B64 } from './cowork/coworkAssets';
 import { sharedCommentaryStore, sharedWorkerRuntimeReady, setWorkerPresenceLifecycle } from './workers/workerHost';
+import { runtimeRefusal, runtimeSettingChanged, startRuntimeHealth } from './workers/runtimeHealth';
+import { sharedWorkerRuntime } from './workers/workerHost';
+import { setWorkerRuntimeGate } from './workers/workerTools';
 
 // Heavy modules loaded lazily to avoid blocking activation
 // RemoteUiServer imports express + socket.io (expensive)
@@ -973,6 +976,15 @@ export function activate(context: vscode.ExtensionContext) {
     void ensureSubagentModelHookInstalled();
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
         if (e.affectsConfiguration('askaway.subagentModel')) { void writeSubagentModelSentinel(); }
+    }));
+    // Worker runtimes: Settings toggles + health gate every worker dispatch; checked now and each morning.
+    setWorkerRuntimeGate(runtimeRefusal, sharedWorkerRuntime);
+    context.subscriptions.push(startRuntimeHealth(), vscode.workspace.onDidChangeConfiguration(e => {
+        for (const runtime of ['opencode', 'agy'] as const) {
+            if (e.affectsConfiguration(`askaway.workers.${runtime}.enabled`)) {
+                runtimeSettingChanged(runtime).catch((error) => void vscode.window.showWarningMessage(`AskAway: ${runtime} setting check failed: ${String(error?.message ?? error)}`));
+            }
+        }
     }));
 
     // Enable debug logging globally on first activation (needed for token telemetry)

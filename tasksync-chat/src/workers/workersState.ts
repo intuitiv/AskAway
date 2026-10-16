@@ -1,5 +1,6 @@
 import { LifecycleRecord, OpenCodeWorkerRuntime, RunState, RunUsage } from './openCodeRuntime';
 import type { ScoreRow } from './evalScoreboard';
+import { TEAM_ROSTER, initialsOf, type TeamRosterEntry } from '../team/roster';
 
 export type ProjectedWorkerState = RunState | 'RETIRED' | 'ORPHANED';
 
@@ -47,7 +48,31 @@ export interface WorkerRow {
     /** Same fields as the chat banner, for the worker's current (or last) run: requests, $ (null: runtime reports no cost), last in / run out, cache hit, age. */
     banner: { requests: number; dollars: number | null; lastIn: number; lastCached: number; turnOut: number; lastActivityAt: number };
     usage: RunUsage;
+    /** Spend since the current chat turn started: the same ledger checkpoints turn_budget counts; agy is free. */
+    turnCost: number;
     runs: WorkerRunTrace[];
+}
+
+export interface TeamMemberState {
+    id: string;
+    name: string;
+    role: string;
+    profile: string;
+    pinned: boolean;
+    initials: string;
+    avatarSrc: string;
+    creativeStatus: string;
+    agentFile: string;
+    model: string;
+    thinking: string;
+    adapter: 'opencode' | 'agy' | 'copilot';
+    /** 'main': the selected chat agent (never owns worker tasks); 'validator': Priya; 'worker': roster experts. */
+    kind?: 'main' | 'validator' | 'worker';
+    /** Main agent only: its chat turn is running. */
+    active?: boolean;
+    taskIds: string[];
+    turnCost: number;
+    monthCost: number;
 }
 
 export interface WorkersState {
@@ -55,6 +80,7 @@ export interface WorkersState {
     generatedAt: number;
     server: { state: 'ATTACHED' | 'NOT_ATTACHED'; endpoint: string };
     workers: WorkerRow[];
+    members: TeamMemberState[];
     /** Distinct workers that actually ran in the current chat turn, including terminal workers. */
     turnWorkerIds?: string[];
     /** Eval results by mode × model, from `~/.askaway/evals/results.jsonl`. */
@@ -183,8 +209,73 @@ export function traceFromSession(messages: SessionMessage[], runs: Array<{ runId
     return byRun;
 }
 
-/** Workers view state for one workspace. Packet, assistant text, and evidence never leave the runtime; trace rows load on expand. */
-export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePath: string, now: () => number = Date.now): WorkersState {
+function matchRosterEntry(worker: WorkerRow, allEntries: TeamRosterEntry[]): TeamRosterEntry {
+    // The main agent (AskAway Build / AA.Orchestrator chat mode) never owns worker tasks.
+    const roster = allEntries.filter((m) => m.kind !== 'main');
+    const priya = roster.find((m) => m.id === 'priya')!;
+    if (worker.track === 'validator' || worker.profile === 'validator') { return priya; }
+    const wid = String(worker.workerId || '').toLowerCase();
+    const prof = String(worker.profile || '').toLowerCase();
+    for (const entry of roster) {
+        if (entry.id === prof || entry.name.toLowerCase() === prof || wid === entry.id || wid.includes(`-${entry.id}-`) || wid.startsWith(`${entry.id}-`)) {
+            return entry;
+        }
+    }
+    for (const entry of roster) {
+        if (entry.profile.toLowerCase() === prof || entry.profiles.some((p) => p.toLowerCase() === prof)) {
+            return entry;
+        }
+    }
+    const aliases: Record<string, string> = { authoring: 'anika', devx: 'diego', quality: 'rhea', test: 'tara', pipeline: 'paolo', performance: 'pavel' };
+    return roster.find(entry => entry.id === (aliases[prof] || 'diego'))!;
+}
+
+export function projectTeamMembers(workers: WorkerRow[]): TeamMemberState[] {
+    const priya = TEAM_ROSTER.find((m) => m.id === 'priya')!;
+    const groups: Array<{ entry: TeamRosterEntry; workers: WorkerRow[] }> = [{ entry: priya, workers: [] }];
+    const byId = new Map<string, { entry: TeamRosterEntry; workers: WorkerRow[] }>([[priya.id, groups[0]]]);
+    for (const worker of workers) {
+        const entry = matchRosterEntry(worker, TEAM_ROSTER);
+        let group = byId.get(entry.id);
+        if (!group) {
+            group = { entry, workers: [] };
+            byId.set(entry.id, group);
+            groups.push(group);
+        }
+        group.workers.push(worker);
+    }
+    return groups.map(({ entry, workers: memberWorkers }) => {
+        const first = memberWorkers[0];
+        const model = first?.model || entry.model;
+        const thinking = first?.thinking || entry.thinking;
+        const adapter: 'opencode' | 'agy' = first?.adapter ? first.adapter : (model.startsWith('agy/') ? 'agy' : 'opencode');
+        const active = memberWorkers.some((w) => w.state === 'RUNNING' || w.state === 'STARTING' || w.state === 'WAITING_APPROVAL');
+        const turnCost = memberWorkers.reduce((sum, w) => sum + w.turnCost, 0);
+        const monthCost = memberWorkers.reduce((sum, w) => sum + (w.adapter === 'agy' ? 0 : w.usage.cost), 0);
+        return {
+            id: entry.id,
+            name: entry.name,
+            role: entry.role,
+            profile: first?.profile || entry.profile,
+            pinned: Boolean(entry.pinnedFirst || entry.id === 'priya' || entry.kind === 'validator'),
+            kind: entry.kind,
+            initials: initialsOf(entry.name),
+            avatarSrc: '',
+            creativeStatus: active ? entry.workingStatus : entry.idleStatus,
+            agentFile: entry.agentFile,
+            model,
+            thinking,
+            adapter,
+            taskIds: memberWorkers.map((w) => w.workerId),
+            turnCost,
+            monthCost,
+        };
+    });
+}
+
+/** Workers view state for one workspace. Packet, assistant text, and evidence never leave the runtime; trace rows load on expand.
+ *  turnStartedAt: the current chat turn's start (the provider's _lastSubmitTs, as turn_budget uses); 0 means no turn yet. */
+export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePath: string, now: () => number = Date.now, turnStartedAt = 0): WorkersState {
     const byWorker = new Map<string, ReturnType<OpenCodeWorkerRuntime['list']>>();
     for (const run of runtime.list(workspacePath)) {
         const runs = byWorker.get(run.workerId) ?? [];
@@ -193,8 +284,12 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
     }
     const workers: WorkerRow[] = [];
     const pings = new Map<string, number>();
+    const turnSpend = new Map<string, number>();
     for (const fact of runtime.facts(workspacePath)) {
         if (fact.ping) pings.set(fact.workerId, Math.max(pings.get(fact.workerId) ?? 0, fact.ts));
+        if (turnStartedAt && fact.ts >= turnStartedAt && fact.type === 'checkpoint' && fact.usage) {
+            turnSpend.set(fact.workerId, (turnSpend.get(fact.workerId) ?? 0) + fact.usage.cost);
+        }
     }
     for (const [workerId, runs] of byWorker) {
         runs.sort((a, b) => a.startedAt - b.startedAt);
@@ -228,10 +323,10 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
             track: [...runs].reverse().find((run) => run.track)?.track ?? '',
             banner: { requests: current.usage.steps, dollars: agy ? null : current.usage.cost, lastIn: current.lastPromptTokens, lastCached: current.lastCachedTokens,
                 turnOut: current.usage.output, lastActivityAt: Math.max(current.updatedAt, lastPingAt) },
-            usage: sumUsage(traces), runs: traces,
+            usage: sumUsage(traces), turnCost: agy ? 0 : (turnSpend.get(workerId) ?? 0), runs: traces,
         });
     }
     workers.sort((a, b) => Number(b.track === 'validator' || b.profile === 'validator') - Number(a.track === 'validator' || a.profile === 'validator') || b.lastUpdateAt - a.lastUpdateAt);
     const endpoint = runtime.serverEndpoint;
-    return { workspacePath, generatedAt: now(), server: { state: endpoint ? 'ATTACHED' : 'NOT_ATTACHED', endpoint }, workers };
+    return { workspacePath, generatedAt: now(), server: { state: endpoint ? 'ATTACHED' : 'NOT_ATTACHED', endpoint }, workers, members: projectTeamMembers(workers) };
 }

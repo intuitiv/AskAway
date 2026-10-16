@@ -8,11 +8,13 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'workers-turn-'));
 const compile = (file) => ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', file), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
 }).outputText;
-for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState']) {
-    fs.writeFileSync(path.join(temp, name + '.js'), compile('workers/' + name + '.ts'));
+// Mirror src/ so ../team/roster resolves.
+for (const name of ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/agyRuntime', 'workers/workersState', 'team/roster']) {
+    fs.mkdirSync(path.join(temp, path.dirname(name)), { recursive: true });
+    fs.writeFileSync(path.join(temp, name + '.js'), compile(name + '.ts'));
 }
-const { OpenCodeWorkerRuntime } = require(path.join(temp, 'openCodeRuntime.js'));
-const { projectWorkersState } = require(path.join(temp, 'workersState.js'));
+const { OpenCodeWorkerRuntime } = require(path.join(temp, 'workers', 'openCodeRuntime.js'));
+const { projectWorkersState } = require(path.join(temp, 'workers', 'workersState.js'));
 const workspace = fs.realpathSync(temp);
 const key = workspace.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
 const facts = [];
@@ -47,15 +49,19 @@ assert.equal(host.exports.workerSpendSince(undefined, 100).workerIds.length, 0);
 const provider = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
 const start = provider.indexOf('    private _refreshWorkersState(): void {');
 const end = provider.indexOf('\n    }', start) + 6;
-const push = provider.slice(start, end).replace('private _refreshWorkersState(): void', '_refreshWorkersState()');
+const push = provider.slice(start, end);
 const bridge = {};
-vm.runInNewContext('out.Provider = class { ' + push + ' };', {
+// The method is TypeScript (typed helpers inside it): transpile the sliced class, never run TS as plain JS.
+const providerClass = ts.transpileModule('out.Provider = class { ' + push + ' };', { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+vm.runInNewContext(providerClass, {
     out: bridge, vscode: { workspace: { workspaceFolders: [{ uri: { fsPath: workspace } }] } }
 });
 const p = new bridge.Provider();
-p._workersStateSource = () => projectWorkersState(runtime, workspace, () => 400000);
+p._workersStateSource = () => projectWorkersState(runtime, workspace, () => 400000, 100);
 p._workerSpend = () => spend;
 p._benchmarkRows = () => [];
+p._mainAgentMember = () => ({ id: 'bhaskar', name: 'Bhaskar', role: 'Tech Lead', kind: 'main', active: false, profile: 'AskAway Build', pinned: false, initials: 'BH', avatarSrc: '',
+    creativeStatus: '', agentFile: 'askaway-build.agent.md', model: '', thinking: '', adapter: 'copilot', taskIds: [], turnCost: 0, monthCost: 0 });
 let state;
 p._broadcast = (message) => { state = message.data; };
 p._refreshWorkersState();
@@ -73,14 +79,17 @@ assert.equal(banner, ui.banner({ requests: 3, dollars: .03, mainContext: true, l
     lastCached: 2600, cacheInput: 3000, turnOut: 30, workers: { workers: 2, requests: 1, dollars: .02 },
     timer: 'Turn 0:00', averagePrompt: 0, cacheMisses: spend.cacheMisses }));
 assert.match(banner, />Score 3<\/span> &middot; 3 reqs/);
-const cards = ui.render(state, '', {}, false);
+// Reviewer 2026-10-16 (R-TEAM-41): cold tasks of the turn hide by default; Show completed reveals exactly the banner's workers.
+assert.ok(state.workers.filter((w) => spend.workerIds.includes(w.workerId)).every((w) => w.expired));
+assert.equal((ui.render(state, '', {}, false).match(/class="worker-card"/g) || []).length, 0);
+const cards = ui.render(state, '', {}, true);
 assert.equal((cards.match(/class="worker-card"/g) || []).length, spend.workers);
 assert.match(cards, /data-worker-id="cancelled"/);
 assert.match(cards, /data-worker-id="failed"/);
 assert.match(cards, /worker-state-cancelled">CANCELLED|worker-state-orphaned">ORPHANED/);
 assert.doesNotMatch(cards, /data-worker-id="old"|data-worker-id="queued"/);
-assert.ok(state.workers.filter((w) => spend.workerIds.includes(w.workerId)).every((w) => w.expired));
-assert.ok((ui.render(state, '', {}, true).match(/class="worker-card"/g) || []).length > spend.workers);
+// R-TEAM-38: the Team summary counts the same tasks and the same turn spend as the banner.
+assert.match(cards, new RegExp(`<strong>${spend.workers}</strong> tasks this turn[\\s\\S]*?\\$${spend.dollars.toFixed(2)}</strong> this turn`));
 assert.match(ui.chat({ lastRequest: { inputTokens: 2000, outputTokens: 0 }, workers: { ...spend, outputTokens: 0 } }, 200), />Score 1<\/span> &middot;/);
 assert.match(ui.chat({ lastRequest: { inputTokens: 4, outputTokens: 3 }, workers: { inputTokens: 4, outputTokens: 0 } }, 200), />Score –<\/span> &middot;/);
 console.log('PASS EV-WORKERS-TURN-CONSISTENCY');

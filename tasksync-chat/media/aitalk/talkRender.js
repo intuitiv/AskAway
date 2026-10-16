@@ -2,11 +2,35 @@
 // Production can adopt these as-is; nothing here touches the DOM.
 
 import { escapeHtml, inlineMarkdown, markdownHtml, hasBlockMarkdown } from './markdown.js';
-import { defaultMembers, participant, displayName, owner, primaryReply } from './talkRules.js';
+import { defaultMembers, participant, displayName, owner, primaryReply, resolveRosterMember, memberIdOf, mentionCandidates } from './talkRules.js';
 export { escapeHtml } from './markdown.js';
 import { presenceHtml } from './presence.js';
 export { defaultMembers } from './talkRules.js';
-const initialsOf = name => (name.match(/[A-Za-z0-9]+/g) || ['?']).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+export const initialsOf = name => {
+    const words = String(name || '').trim().match(/[A-Za-z0-9]+/g) || [];
+    if (!words.length) return '?';
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+};
+
+export function avatarBadgeHtml(member, { sizeClass = '', avatarFor, emptyAlt = true, hideInitialsText = false } = {}) {
+    const rawId = memberIdOf(member) || (typeof member === 'string' ? member : member?.id || '?');
+    const label = typeof member === 'string' ? member : displayName(member || { id: '?' });
+    const initials = escapeHtml(member?.initials || initialsOf(label));
+    const rawSrc = member?.avatarSrc || member?.photo || (typeof avatarFor === 'function' ? avatarFor(rawId) : '') || '';
+    const cls = ['team-avatar-badge', sizeClass, rawSrc ? 'has-image' : 'has-initials'].filter(Boolean).join(' ');
+    const id = escapeHtml(rawId);
+    if (rawSrc) {
+        const extraAttr = [
+            member?.fixturePath ? ` data-fixture-path="${escapeHtml(member.fixturePath)}"` : '',
+            member?.fallbackAvatar ? ` data-fallback-src="${escapeHtml(member.fallbackAvatar)}"` : '',
+        ].join('');
+        const altAttr = emptyAlt ? '' : escapeHtml(label);
+        return `<span class="${cls}" data-member-id="${id}" data-initials="${initials}"><img class="team-avatar-img" src="${escapeHtml(rawSrc)}" alt="${altAttr}" data-alt="${escapeHtml(label)}"${extraAttr} /></span>`;
+    }
+    return `<span class="${cls}" data-member-id="${id}" data-initials="${initials}"><span class="team-avatar-initials">${hideInitialsText ? '' : initials}</span></span>`;
+}
 
 // Stable colour class per participant: named roles first, everyone else hashed.
 export function whoClass(name, members = defaultMembers) {
@@ -18,8 +42,17 @@ export function whoClass(name, members = defaultMembers) {
     return `who-p${hash}`;
 }
 
-const mentionRegex = members => new RegExp(`@(${members.flatMap(m => [displayName(m), m.id]).filter(Boolean).map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?![\\w-])`, 'gi');
-const mentionsOf = members => html => html.replace(mentionRegex(members), '<b class="talk-mention">@$1</b>');
+const mentionRegex = members => {
+    const names = [...new Set([
+        ...members.flatMap(m => [displayName(m), m.name, m.id, m.memberId]),
+    ].filter(Boolean))].sort((a, b) => String(b).length - String(a).length).map(name => String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return new RegExp(`@(${names.join('|')})(?![\\w-])`, 'gi');
+};
+const mentionsOf = members => html => html.replace(mentionRegex(members), (full, mentioned) => {
+    const target = participant(members, mentioned);
+    const id = target ? memberIdOf(target) : '';
+    return `<b class="talk-mention"${id ? ` data-member-id="${escapeHtml(id)}"` : ''}>@${escapeHtml(target ? displayName(target) : mentioned)}</b>`;
+});
 // Inline markdown (code, bold, italic, http links) with @mentions; HTML is always escaped first.
 export const textHtml = (text, members = defaultMembers) => inlineMarkdown(text, mentionsOf(members));
 
@@ -40,8 +73,11 @@ export function ticksHtml(message) {
     return `<span class="talk-ticks ${delivery}" role="img" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}">${tickSvg(delivered)}</span>`;
 }
 
-export function quoteHtml(quote, members) {
-    return `<div class="talk-quote ${whoClass(quote.author, members)}"><b class="talk-quote-who">${escapeHtml(displayName(participant(members || defaultMembers, quote.author) || { id: quote.author }))}</b><span class="talk-quote-text">${textHtml(quote.text, members)}</span></div>`;
+export function quoteHtml(quote, members = defaultMembers) {
+    const qMember = participant(members || defaultMembers, quote.author) || { id: quote.author };
+    const qId = memberIdOf(qMember);
+    const qIdAttr = qId ? ` data-member-id="${escapeHtml(qId)}"` : '';
+    return `<div class="talk-quote ${whoClass(quote.author, members)}"><b class="talk-quote-who aitalk-quote-who"${qIdAttr}>${escapeHtml(displayName(qMember))}</b><span class="talk-quote-text">${textHtml(quote.text, members)}</span></div>`;
 }
 
 export const reactionChoices = ['👍', '👎', '❤️', '😂', '🙏'];
@@ -137,38 +173,73 @@ export function draftCardHtml(message) {
     return `<div class="talk-draft ${state}" data-draft-state="${state}"><div class="talk-draft-head"><span class="talk-draft-badge">${DRAFT_LABELS[state]}</span> Webex message${draft.edited && state === 'pending' ? ' · edited, approve again' : ''}</div><dl class="talk-draft-to">${to.map(([key, value]) => `<dt>${key}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl><div class="talk-draft-text">${escapeHtml(draft.text || '')}</div>${actions}${outcome}</div>`;
 }
 
-export function bubbleHtml(message, { messages = [], members = defaultMembers, first = true } = {}) {
+export function bubbleHtml(message, { messages = [], members = defaultMembers, first = true, avatarFor } = {}) {
+    const authorMember = participant(members, message.author) || { id: message.author, displayName: message.author };
     const mine = participant(members, message.author)?.id === owner(members)?.id;
     const parent = message.replyTo && messages.find(m => m.id === message.replyTo);
     const quote = message.quote || (parent && { author: parent.author, text: parent.text });
-    const reactions = reactionsHtml(message);
-    const label = displayName(participant(members, message.author) || { id: message.author });
-    const name = !mine && first ? `<span class="talk-sender ${whoClass(message.author, members)}" data-member="${escapeHtml(message.author)}">${escapeHtml(label)}</span>` : '';
-    const avatar = mine ? '' : first ? `<span class="talk-avatar ${whoClass(message.author, members)}" data-member="${escapeHtml(message.author)}" aria-hidden="true">${escapeHtml(initialsOf(label))}</span>` : '<span class="talk-avatar-gap" aria-hidden="true"></span>';
+    const namedMessage = { ...message, author: displayName(authorMember), reactions: message.reactions?.map(r => typeof r === 'string' ? r : { ...r, by: r.by?.map(id => displayName(participant(members, id) || { id })) }) };
+    const reactions = reactionsHtml(namedMessage);
+    const memberId = memberIdOf(authorMember);
+    const label = displayName(authorMember);
+    message = { ...message, author: label };
+    const showUserHeader = Boolean(authorMember.avatarSrc || authorMember.photo || memberId === 'machs');
+    const name = (!mine || showUserHeader) && first ? `<span class="talk-sender ${whoClass(message.author, members)} aitalk-who" data-member="${escapeHtml(message.author)}" data-member-id="${escapeHtml(memberId)}">${escapeHtml(label)}</span>` : '';
+    const faceHtml = avatarBadgeHtml(authorMember, { sizeClass: 'aitalk-bubble-face', avatarFor, emptyAlt: true });
+    const avatar = (!mine || showUserHeader)
+        ? (first ? `<span class="talk-avatar ${whoClass(message.author, members)} aitalk-avatar" data-member="${escapeHtml(message.author)}" data-member-id="${escapeHtml(memberId)}" aria-hidden="true">${faceHtml}</span>` : '<span class="talk-avatar-gap" aria-hidden="true"></span>')
+        : '';
     const trace = (message.attachments ?? []).map(file => `<span class="talk-attachment">${escapeHtml(file.name)}</span>`).join('') + (message.trace ? `<a class="talk-trace-link" href="#trace" data-tab="Trace">View trace ↗</a>` : '');
-    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'}" id="talk-${escapeHtml(message.id || '')}">${avatar}<div class="talk-bubble ${first ? 'tail' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${escapeHtml(message.id || '')}" aria-label="${escapeHtml(message.author)}: message. Right-click, long-press or press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${message.webexDraft ? draftCardHtml(message) : bodyHtml(message, members)}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${mine ? ticksHtml(message) : ''}</span>${reactions}</div></div>`;
+    const msgId = escapeHtml(message.id || '');
+    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'} aitalk-msg" id="talk-${msgId}" data-id="${msgId}" data-actor="${escapeHtml(memberId)}" data-member-id="${escapeHtml(memberId)}">${avatar}<div class="talk-bubble ${first ? 'tail' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${msgId}" aria-label="${escapeHtml(message.author)}: message. Right-click, long-press or press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${message.webexDraft ? draftCardHtml(message) : bodyHtml(message, members)}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${mine ? ticksHtml(message) : ''}</span>${reactions}</div></div>`;
 }
 
-export function systemHtml(item) {
+export function systemHtml(item, members = defaultMembers, options = {}) {
+    if (item.kind !== 'day' && item.kind !== 'memory') {
+        const trimmed = String(item.text || '').trim();
+        const match = /^(.+?)\s+(joined|left)$/.exec(trimmed);
+        if (match) {
+            const actorName = match[1];
+            const found = (item.memberId && participant(members, item.memberId)) || (item.author && participant(members, item.author)) || participant(members, actorName) || { id: actorName.toLowerCase(), displayName: actorName };
+            const id = escapeHtml(item.memberId || memberIdOf(found));
+            const face = avatarBadgeHtml(found, { sizeClass: 'aitalk-inline-face', avatarFor: options.avatarFor, emptyAlt: true, hideInitialsText: true });
+            return `<div class="talk-pill-row aitalk-presence" data-actor="${id}" data-member-id="${id}">${face}<span class="aitalk-presence-label" data-member-id="${id}">${escapeHtml(displayName(found))} ${match[2]}</span></div>`;
+        }
+    }
     const cls = item.kind === 'day' ? 'talk-pill day' : `talk-pill system ${item.kind === 'memory' ? 'memory' : ''}`;
     return `<div class="talk-pill-row"><span class="${cls}">${item.kind === 'memory' ? '🧠 ' : ''}${escapeHtml(item.text)}</span></div>`;
 }
 
 // A run = consecutive bubbles from the same author with no pill between them.
-export function threadHtml(messages, members = defaultMembers) {
+export function threadHtml(messages, members = defaultMembers, options = {}) {
     let previous;
     return messages.map(message => {
-        if (message.kind === 'day' || message.kind === 'system' || message.kind === 'memory') { previous = undefined; return systemHtml(message); }
+        if (message.kind === 'day' || message.kind === 'system' || message.kind === 'memory') { previous = undefined; return systemHtml(message, members, options); }
         const first = previous !== message.author;
         previous = message.author;
         const replies = message.replyTo ? messages.filter(m => m.replyTo === message.replyTo) : [];
-        const html = bubbleHtml(message, { messages, members, first });
+        const html = bubbleHtml(message, { messages, members, first, avatarFor: options.avatarFor });
         return replies.length && primaryReply(replies, members)?.id === message.id ? html.replace('class="talk-row', 'data-primary="true" class="talk-row') : html;
     }).join('');
 }
 
-export function mentionsHtml(members = defaultMembers) {
-    return `<div class="talk-mentions" role="listbox" aria-label="Mention a participant">${members.filter(m => m.presence !== 'left' && m.id !== owner(members)?.id).map(m => `<button type="button" role="option" data-mention="${escapeHtml(displayName(m))}"><span class="talk-avatar small ${whoClass(m.id, members)}" aria-hidden="true">${escapeHtml(initialsOf(displayName(m)))}</span><span class="talk-mention-name"><b>${escapeHtml(displayName(m))}</b><small>${escapeHtml(m.kind || 'online')}</small></span></button>`).join('')}</div>`;
+export function mentionsHtml(members = defaultMembers, { draft = '', activeIndex = 0, avatarFor, autocompleteCandidates } = {}) {
+    const candidates = Array.isArray(autocompleteCandidates) && autocompleteCandidates.length ? autocompleteCandidates : mentionCandidates(members, draft);
+    const nameCounts = new Map();
+    for (const c of candidates) {
+        const key = String(c.name || displayName(c) || '').toLowerCase();
+        nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+    }
+    const items = candidates.map((m, i) => {
+        const id = escapeHtml(memberIdOf(m));
+        const name = escapeHtml(m.name || displayName(m));
+        const roster = resolveRosterMember(m, members);
+        const role = escapeHtml(m.role || roster?.role || m.kind || 'online');
+        const isDup = (nameCounts.get(String(m.name || displayName(m) || '').toLowerCase()) || 0) > 1;
+        const face = avatarBadgeHtml(m, { sizeClass: 'aitalk-ac-face', avatarFor, emptyAlt: true });
+        return `<button type="button" role="option" class="talk-mention-option aitalk-ac-item${i === activeIndex ? ' active' : ''}" data-member-id="${id}" data-mention="${name}" data-role="${role}" data-disambiguated="${isDup ? 'true' : 'false'}" aria-selected="${i === activeIndex ? 'true' : 'false'}"><span class="talk-avatar small ${whoClass(m.id, members)}" data-member-id="${id}" aria-hidden="true">${face}</span><span class="talk-mention-name"><b class="aitalk-ac-name">${name}</b><small class="aitalk-ac-role">${role}</small></span></button>`;
+    }).join('');
+    return `<div class="talk-mentions aitalk-ac" role="listbox" aria-label="Mention a participant">${items}</div>`;
 }
 
 export const mentioning = draft => /(?:^|\s)@[^\s@]*$/.test(draft);
@@ -176,18 +247,32 @@ export const mentioning = draft => /(?:^|\s)@[^\s@]*$/.test(draft);
 // Who answers for the user, driven by availability only; Here needs no label because the user is in charge.
 export const inChargeLabels = { here: '', away: 'You answer from your phone', awayValidator: 'Validator in charge', offline: 'Nobody answers; questions wait for you' };
 
-// Registered actors' names on top; typing replaces them while an actor types.
+// Registered actors' names on top: user first, then Priya, then present members, comma-separated, no images.
 export function titleHtml({ name = 'AITalk', members = defaultMembers, typing = '', presence }) {
-    const present = members.filter(member => member.presence !== 'left');
-    const subtitle = typing
-        ? `<span class="talk-typing-line">${escapeHtml(typing)}</span>`
-        : present.map(m => `<span data-member="${escapeHtml(m.id)}">${escapeHtml(displayName(m))}</span>`).join(', ');
-    const label = inChargeLabels[presence?.mode || 'here'] || '';
+    typing = typing.replace(/^(.+?)(\s+(?:is|are)\s+typing.*)$/i, (_, names, suffix) => names.split(',').map(value => displayName(participant(members, value.trim()) || { id: value.trim() })).join(', ') + suffix);
+    const present = members.filter(member => member.presence !== 'left' && member.present !== false).slice().sort((a, b) => {
+        const aUser = a.kind === 'user' || memberIdOf(a) === 'machs';
+        const bUser = b.kind === 'user' || memberIdOf(b) === 'machs';
+        if (aUser !== bUser) return aUser ? -1 : 1;
+        const aPinned = Boolean(a.pinnedFirst || a.kind === 'validator' || memberIdOf(a) === 'priya');
+        const bPinned = Boolean(b.pinnedFirst || b.kind === 'validator' || memberIdOf(b) === 'priya');
+        if (aPinned !== bPinned) return aPinned ? -1 : 1;
+        return 0;
+    });
+    const rosterInner = present.map(m => {
+        const id = escapeHtml(memberIdOf(m));
+        return `<span class="aitalk-roster-member" data-member-id="${id}"><span class="aitalk-roster-name" data-member-id="${id}">${escapeHtml(displayName(m))}</span></span>`;
+    }).join(', ');
+    const typingSuffix = typing ? ` <span class="talk-typing-line talk-typing-inline">${escapeHtml(typing)}</span>` : '';
+    const subtitle = `<span class="aitalk-roster" title="In this room">${rosterInner}</span>${typingSuffix}`;
+    const validator = members.find(m => m.kind === 'validator');
+    const label = presence?.mode === 'awayValidator' && validator ? `${displayName(validator)} in charge` : inChargeLabels[presence?.mode || 'here'] || '';
     return `<div class="talk-title"><h2>${escapeHtml(name)}</h2><div class="talk-subtitle">${subtitle}</div></div>${label ? `<span class="talk-in-charge">${escapeHtml(label)}</span>` : ''}`;
 }
 
 export function headerPresenceHtml({ members = defaultMembers, presence }) {
-    return presenceHtml({ mode: 'here', reset: 'never', open: false, focusIndex: 0, expiresAt: null, name: displayName(members.find(member => member.kind === 'user') || { id: '' }), ...presence, embedded: true });
+    const user = members.find(member => member.kind === 'user') || { id: '' };
+    return presenceHtml({ mode: 'here', reset: 'never', open: false, focusIndex: 0, expiresAt: null, name: displayName(user), fixturePath: user.fixturePath || '', fallbackAvatar: user.fallbackAvatar || '', ...presence, embedded: true });
 }
 
 // Regions are patched independently, so a snapshot update never re-mounts an open menu, focus or scroll.
@@ -195,9 +280,9 @@ const region = (key, html) => `<div class="talk-region" data-talk-region="${key}
 const headerShell = (title, presence) => `<header class="talk-header"><span class="talk-group-avatar" aria-hidden="true">✦</span>${region('title', title)}${region('presence', presence)}</header>`;
 export const headerHtml = options => headerShell(titleHtml(options), headerPresenceHtml(options));
 
-export function composerHtml({ draft = '', reply, members = defaultMembers, popover = false, emoji = false, attachments = [] } = {}) {
+export function composerHtml({ draft = '', reply, members = defaultMembers, popover = false, emoji = false, attachments = [], activeMentionIndex = 0, avatarFor, autocompleteCandidates } = {}) {
     const replyBar = reply ? `<div class="talk-reply-bar">${quoteHtml(reply, members)}<button type="button" data-cancel-reply aria-label="Cancel reply">✕</button></div>` : '';
-    return `<div class="talk-composer">${emoji ? `<div class="talk-emoji-picker">${['👍','🙏','😊','😉','✅'].map(value => `<button type="button" data-insert-emoji="${value}">${value}</button>`).join('')}</div>` : ''}${attachments.map(file => `<span class="talk-attachment">${escapeHtml(file.name)}</span>`).join('')}${popover ? mentionsHtml(members) : ''}${replyBar}<div class="talk-composer-row"><div class="talk-input-wrap"><button type="button" class="talk-icon" data-emoji aria-label="Emoji">😊</button><textarea rows="1" aria-label="Message" placeholder="Message">${escapeHtml(draft)}</textarea><button type="button" class="talk-icon" data-attach aria-label="Attach">📎</button></div><button type="button" class="talk-send" data-send aria-label="Send">➤</button></div></div>`;
+    return `<div class="talk-composer">${emoji ? `<div class="talk-emoji-picker">${['👍','🙏','😊','😉','✅'].map(value => `<button type="button" data-insert-emoji="${value}">${value}</button>`).join('')}</div>` : ''}${attachments.map(file => `<span class="talk-attachment">${escapeHtml(file.name)}</span>`).join('')}${popover ? mentionsHtml(members, { draft, activeIndex: activeMentionIndex, avatarFor, autocompleteCandidates }) : ''}${replyBar}<div class="talk-composer-row"><div class="talk-input-wrap"><button type="button" class="talk-icon" data-emoji aria-label="Emoji">😊</button><textarea rows="1" aria-label="Message" placeholder="Message">${escapeHtml(draft)}</textarea><button type="button" class="talk-icon" data-attach aria-label="Attach">📎</button></div><button type="button" class="talk-send" data-send aria-label="Send">➤</button></div></div>`;
 }
 
 export function traceHtml(sessions, traceRowsHtml) {
@@ -206,15 +291,20 @@ export function traceHtml(sessions, traceRowsHtml) {
 
 // The widget's data → HTML, one string per independently patched region.
 export function talkParts(messages, options = {}) {
-    const { members = defaultMembers, typing = '', unread = 0, draft = '', reply, popover = mentioning(draft) } = options;
+    const { members = defaultMembers, typing = '', unread = 0, draft = '', reply, popover = mentioning(draft), avatarFor, autocompleteCandidates } = options;
     const empty = '<div class="talk-empty"><span class="talk-empty-icon">✦</span><h3>No messages yet</h3><p>Say hi, or use @ to talk to a participant.</p></div>';
-    const typingRow = typing ? `<div class="talk-row in first"><span class="talk-avatar ${whoClass(typing.split(' ')[0])}" aria-hidden="true">${escapeHtml(initialsOf(typing.split(' ')[0]))}</span><div class="talk-bubble tail talk-typing" aria-label="${escapeHtml(typing)}"><i></i><i></i><i></i></div></div>` : '';
+    const namedTyping = typing.replace(/^(.+?)(\s+(?:is|are)\s+typing.*)$/i, (_, names, suffix) => names.split(',').map(value => displayName(participant(members, value.trim()) || { id: value.trim() })).join(', ') + suffix);
+    const typingActorName = namedTyping ? namedTyping.replace(/\s+(?:is|are)\s+typing.*$/i, '').split(',')[0].trim() : '';
+    const typingMember = typingActorName ? (participant(members, typingActorName) || { id: typingActorName, displayName: typingActorName }) : undefined;
+    const typingId = typingMember ? escapeHtml(memberIdOf(typingMember)) : '';
+    const typingFace = typingMember ? avatarBadgeHtml(typingMember, { sizeClass: 'aitalk-bubble-face', avatarFor, emptyAlt: true }) : '';
+    const typingRow = typing ? `<div class="talk-row in first"><span class="talk-avatar ${whoClass(typingMember?.id || typingActorName, members)} aitalk-avatar" data-member-id="${typingId}" aria-hidden="true">${typingFace}</span><div class="talk-bubble tail talk-typing" aria-label="${escapeHtml(namedTyping)}"><i></i><i></i><i></i></div></div>` : '';
     return {
         title: titleHtml({ ...options, members, typing }),
         presence: headerPresenceHtml({ ...options, members }),
-        thread: `${messages.length ? threadHtml(messages, members) : empty}${typingRow}<div id="talk-bottom"></div>`,
+        thread: `${messages.length ? threadHtml(messages, members, { avatarFor }) : empty}${typingRow}<div id="talk-bottom"></div>`,
         unread: unread ? `<button type="button" class="talk-unread" data-bottom>${unread} new messages ↓</button>` : '',
-        composer: composerHtml({ ...options, draft, reply, members, popover }),
+        composer: composerHtml({ ...options, draft, reply, members, popover, avatarFor, autocompleteCandidates }),
     };
 }
 

@@ -26,7 +26,8 @@ function renderAITalk(next = state) {
     const focused = oldComposer && document.activeElement === oldComposer;
     const selection = focused ? [oldComposer.selectionStart, oldComposer.selectionEnd, oldComposer.selectionDirection] : undefined;
     if (oldComposer && refresh) draft = oldComposer.value;
-    const view = { ...options, typing: state.typing, unread: state.unread, members: state.members, reply, draft, emoji, attachments, embedded: options.embedded !== false, presence: { ...availability.snapshot(), name: state.userName || state.members.find(member => member.kind === 'user')?.displayName || '', photo: state.userPhoto || '' } };
+    const viewMembers = state.userPhoto ? state.members.map(m => m.kind === 'user' && !m.avatarSrc && !m.photo ? { ...m, photo: state.userPhoto } : m) : state.members;
+    const view = { ...options, typing: state.typing, unread: state.unread, members: viewMembers, reply, draft, emoji, attachments, embedded: options.embedded !== false, presence: { ...availability.snapshot(), name: state.userName || state.members.find(member => member.kind === 'user')?.displayName || '', photo: state.userPhoto || '' } };
     const parts = talkParts(state.messages, view);
     const changed = painted ? Object.keys(parts).filter(key => parts[key] !== painted[key]) : Object.keys(parts);
     // Patch only changed regions; an unchanged region (an open avatar menu, the composer) is never re-mounted.
@@ -48,18 +49,24 @@ function receive(data) {
     if (data.type === 'openPresence') { if (!availability.snapshot().open) availability.toggle(); renderAITalk(); }
     if (data.type === 'aitalkAttachments') { attachments.push(...data.files); draft = root().querySelector('textarea').value; renderAITalk(); }
 }
+let selectedMentionMemberId;
 // Routing is the room's job: the widget only says what the user wrote and what it replies to.
 function sendMessage() {
     const text = root().querySelector('textarea').value;
     if (!text.trim()) return;
-    post({ type: reply ? 'aitalkReply' : 'aitalkPost', text, replyTo: reply?.id, attachments });
-    reply = undefined; draft = ''; attachments = []; emoji = false; renderAITalk();
+    post({ type: reply ? 'aitalkReply' : 'aitalkPost', text, replyTo: reply?.id, attachments, ...(selectedMentionMemberId ? { mentionMemberId: selectedMentionMemberId } : {}) });
+    reply = undefined; draft = ''; attachments = []; emoji = false; selectedMentionMemberId = undefined; renderAITalk();
 }
 document.addEventListener('click', event => {
     const trace = event.target.closest('a.talk-trace-link[data-tab]');
     if (trace?.dataset?.tab) { event.preventDefault(); post({ type: 'talkTab', tab: trace.dataset.tab }); return; }
-    const memberEl = event.target.closest?.('[data-member]');
-    if (memberEl?.dataset?.member) { post({ type: 'talkMember', member: memberEl.dataset.member }); return; }
+    const memberEl = event.target.closest?.('[data-member-id], .talk-mention, [data-member]');
+    const memberId = !memberEl?.dataset?.mention && (memberEl?.dataset?.memberId || memberEl?.dataset?.member || (memberEl?.classList?.contains?.('talk-mention') ? String(memberEl.textContent || '').replace(/^@/, '').trim().toLowerCase() : ''));
+    if (memberId) {
+        if (typeof window !== 'undefined' && typeof window.focusTeamMember === 'function') window.focusTeamMember(memberId);
+        post({ type: 'talkMember', member: memberId, memberId });
+        return;
+    }
     const button = event.target.closest('button');
     if (!button) return;
     if (button.dataset?.tab) { post({ type: 'talkTab', tab: button.dataset.tab }); root().querySelectorAll?.('[data-panel]').forEach(panel => { panel.hidden = panel.dataset.panel !== button.dataset.tab; }); return; }
@@ -70,7 +77,7 @@ document.addEventListener('click', event => {
     } else if (button.dataset.reply) { reply = selectReply(state.messages, button.dataset.reply); renderAITalk(); }
     else if (button.hasAttribute('data-cancel-reply')) { reply = undefined; renderAITalk(); }
     else if (button.dataset.react) { const message = state.messages.find(item => item.id === button.dataset.msg); post(message?.draftId && button.dataset.react === '👍' ? { type: 'aitalkApproveDraft', draftId: message.draftId } : { type: 'aitalkReact', replyTo: button.dataset.msg, emoji: button.dataset.react }); }
-    else if (button.dataset.mention) { draft = draft.replace(/@[^\s@]*$/, '@' + button.dataset.mention + ' '); renderAITalk(); root().querySelector('textarea').focus(); }
+    else if (button.dataset.mention) { selectedMentionMemberId = button.dataset.memberId || undefined; draft = draft.replace(/@[^\s@]*$/, '@' + button.dataset.mention + ' '); renderAITalk(); root().querySelector('textarea').focus(); }
     else if (button.hasAttribute('data-emoji')) { const input = root().querySelector('textarea'); draft = input.value; caret = [input.selectionStart ?? draft.length, input.selectionEnd ?? draft.length]; emoji = !emoji; renderAITalk(); }
     else if (button.dataset.insertEmoji) { draft = draft.slice(0, caret[0]) + button.dataset.insertEmoji + draft.slice(caret[1]); emoji = false; renderAITalk(); const input = root().querySelector('textarea'); input.focus(); input.setSelectionRange(caret[0] + button.dataset.insertEmoji.length, caret[0] + button.dataset.insertEmoji.length); }
     else if (button.hasAttribute('data-attach')) post({ type: 'aitalkAttach' });
@@ -81,7 +88,7 @@ document.addEventListener('input', event => {
     draft = event.target.value;
     const menu = root().querySelector('.talk-mentions');
     if (!mentioning(draft)) menu?.remove();
-    else if (!menu) root().querySelector('.talk-composer').insertAdjacentHTML('afterbegin', mentionsHtml(state.members));
+    else if (!menu) root().querySelector('.talk-composer').insertAdjacentHTML('afterbegin', mentionsHtml(state.members, { draft }));
 });
 document.addEventListener('contextmenu', event => {
     const bubble = event.target.closest('.talk-bubble[data-msg]');
@@ -94,6 +101,7 @@ document.addEventListener('keydown', event => {
         event.preventDefault();
         if (event.key === 'Escape') { menu.remove(); return; }
         if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { mentionIndex = (mentionIndex + (event.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length; choices.forEach((choice, index) => choice.setAttribute('aria-selected', String(index === mentionIndex))); return; }
+        selectedMentionMemberId = choices[mentionIndex].dataset?.memberId || undefined;
         draft = draft.replace(/@[^\s@]*$/, '@' + choices[mentionIndex].dataset.mention + ' '); renderAITalk(); root().querySelector('textarea').focus(); return;
     }
     if (event.target.matches?.('textarea') && event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); sendMessage(); return; }

@@ -410,3 +410,62 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
     .talk-typing i { animation: none; opacity: .7; }
     .talk-thread { scroll-behavior: auto; }
 }
+
+/* ---- Team AITalk production faces & header roster ---- */
+.aitalk-roster-member,
+.aitalk-roster-name,
+.aitalk-presence,
+.aitalk-presence-label,
+.talk-sender[data-member-id],
+.talk-avatar[data-member-id],
+.talk-quote-who[data-member-id],
+.talk-mention[data-member-id] {
+    cursor: pointer;
+}
+.aitalk-roster-name:hover,
+.aitalk-presence-label:hover,
+.talk-sender[data-member-id]:hover,
+.talk-quote-who[data-member-id]:hover,
+.talk-mention[data-member-id]:hover {
+    text-decoration: underline;
+}
+.talk-pill-row.aitalk-presence {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: fit-content;
+    max-width: 90%;
+    margin: 10px auto;
+    padding: 4px 12px;
+    border: 1px solid var(--tk-border);
+    border-radius: 8px;
+    background: var(--tk-pill);
+    box-shadow: var(--tk-shadow);
+    color: var(--tk-pill-fg);
+    font-size: 12px;
+    text-align: center;
+}
+.team-avatar-badge.aitalk-inline-face,
+.team-avatar-badge.aitalk-bubble-face,
+.team-avatar-badge.aitalk-ac-face {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    overflow: hidden;
+}
+.team-avatar-badge.aitalk-inline-face {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+.team-avatar-badge .team-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    display: block;
+}

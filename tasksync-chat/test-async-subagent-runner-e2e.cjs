@@ -7,11 +7,18 @@ const path = require('node:path');
 const { PassThrough } = require('node:stream');
 const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 
-const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-reload-'));
-for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState']) {
-    fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
-        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText);
+// Mirror src/ so relative imports such as ../team/roster resolve.
+function transpileSrc(outRoot) {
+    for (const dir of ['workers', 'team']) {
+        fs.mkdirSync(path.join(outRoot, dir), { recursive: true });
+        for (const file of fs.readdirSync(path.join(__dirname, 'src', dir)).filter(f => f.endsWith('.ts'))) {
+            fs.writeFileSync(path.join(outRoot, dir, file.replace(/\.ts$/, '.js')), ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', dir, file), 'utf8'),
+                { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
+        }
+    }
+    return path.join(outRoot, 'workers');
 }
+const buildDir = transpileSrc(fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-reload-')));
 const { parseWorkerProfile } = require(path.join(buildDir, 'workerProfiles.js'));
 const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'openCodeRuntime.js'));
 const { projectWorkersState } = require(path.join(buildDir, 'workersState.js'));
@@ -143,13 +150,9 @@ const finish = (id, input, cost) => ({ type: 'step_finish', sessionID: id, part:
 
 // T021 (CY-006): the orchestrator's whole flow through the eight worker tools, with OpenCode faked at the process boundary.
 async function endToEndFlow() {
-    const toolsDir = path.join(__dirname, '.e2e-flow-build');
-    fs.rmSync(toolsDir, { recursive: true, force: true });
-    fs.mkdirSync(toolsDir);
-    for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) {
-        fs.writeFileSync(path.join(toolsDir, `${name}.js`), ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
-            { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
-    }
+    const flowRoot = path.join(__dirname, '.e2e-flow-build');
+    fs.rmSync(flowRoot, { recursive: true, force: true });
+    const toolsDir = transpileSrc(flowRoot);
     const W = (name) => require(path.join(toolsDir, `${name}.js`));
     const { registerWorkerTools, WORKER_TOOL_NAMES, WORKER_ACTIONS } = W('workerTools');
     const { projectWorkersState: project, sessionOpenCommand, loadWorkerTrace } = W('workersState');

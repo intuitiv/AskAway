@@ -67,3 +67,98 @@ Documentation packet: `rtk node tasksync-chat/test-requirements-docs.cjs` and `r
 T006/T008/T013 must cover switching Orchestrator→Build→unknown native agent with consistent name/avatar/join banner/Team profile and configurable overrides, plus CPO photo continuity across two workspaces and an extension upgrade; inspect packaging to prove the private uploaded image is excluded. These tests are planned, not executed in this docs-only clarification; agy-first and Storybook approval gates still apply.
 
 T006/T010 also plan caller-view checks for @Bhaskar selection/routing and equivalent aliases for every other member, label-renaming identity stability, duplicate-name role/ID disambiguation and inactive-member suggestion exclusion. No alias tests are implemented or claimed passed by these documentation guards.
+
+## Production lanes (2026-10-16)
+
+Base 83f6d9b. Sources: ADR 0024; R-TEAM-21/22/27/28/29/30/31/32/35; approved prototype `tasksync-chat/storybook/prototypes/team.js` + `media/team/team.css` (EV-TEAM-STORYBOOK, 12 checks pass).
+
+### Root causes
+- **Flicker.** `media/webview.js:3562-3565` calls `paintWorkers()` every 1 s. `:3437` then runs `list.innerHTML = renderWorkersHtml(...)`, which rebuilds every `<img>`, `<select>`, task card and the category table on every tick and resets images and open dropdowns. R-TEAM-35.
+- **Broken avatars.** `teamPortraitHtml` (`webview.js:3207-3215`) builds `avatars/<file>` from `state.avatarBase`, which the host never sends (no `avatarBase` in `src/`). No member image files exist (`storybook/fixtures/avatars/` has only `machs.svg`, `user.svg`). `localResourceRoots` is the extension folder only (`webviewProvider.ts:3758`). The CSP (`:5232`) blocks inline `onerror` fallbacks like `team.js:865`. Only the user photo works, because `src/aitalk/userName.ts:20-27` sends it as a `data:` image.
+- **team.css missing.** `_getHtmlContent` (`webviewProvider.ts:5214-5236`) links `main.css`, `aitalk/talk.css` and codicons only. `media/team/team.css` is imported only by Storybook (`team.js:38,41`).
+- **Tab label and wording.** Tab button `data-tab="workers"` with text `Workers`: `webviewProvider.ts:5246`. Panel: `:5406`. Badge `tab-badge-workers`: `webview.js:3463`. Old roster (Priya, Bhaskar, Arjun, Maya, Kavya, Dev): `webview.js:3105-3110`. Category table `monthlyCostTableHtml`: `:2980`, used at `:3298`. `Track …` lanes: `:3311-3328`. Run-together `Name · Role Pinned PO $x this month` and the task button: `:3256-3259`.
+- **Old AITalk.** Every AITalk change from the prototype lives in `decorateTalkHtml` (`team.js:816-1010`), which post-processes Storybook HTML only. Production `talkRender.js` still has:
+  - the presence/typing header (`:181`, `:195`);
+  - initials-only avatars on messages, mentions and the typing row (`:147`, `:171`, `:211`);
+  - plain-text join/leave notices (`talkRules.js:32-34`);
+  - no Mahesh/Bhaskar mapping (`team.js:1006`);
+  - no user + Priya + main agent at start (R-TEAM-32);
+  - only a `focusTeamMember` hook (`media/aitalk/extension.js:6`).
+
+### Shared contract (Lane B step 1 lands it; Lanes A and C read it, never edit it)
+- `workersState.members[]`: `{ id, name, role, profile, pinned, initials, avatarSrc, creativeStatus, agentFile, model, thinking, adapter, taskIds[], turnCost, monthCost }`. `avatarSrc` is a webview URI or `''` (`''` means render initials). agy cost is `0` (R-TEAM-30).
+- `aitalkState.members[]` adds `memberId` and `avatarSrc`. The user keeps `userName` and the `userPhoto` `data:` image.
+- Names and ids come from the host roster `src/team/roster.ts`, which mirrors `TEAM_ROSTER_FIXTURES` and `MAIN_AGENT_PERSONAS` (`team.js:119-358`): Mahesh, Bhaskar, Priya, Anika, Diego, Tara, Pavel, Rhea, Paolo, Sana, Shreya, Cathy. `AA.Orchestrator` → Mahesh; `AskAway Build` → Bhaskar; an unknown agent keeps its actual name with initials.
+- No UI lane touches the agy-tools lane's files: `src/workers/agyRuntime.ts`, `workerProfiles.ts`, `workerHost.ts`, `openCodeRuntime.ts`.
+- After every lane, keep `npm run test:workers` and `node tasksync-chat/test-team-storybook.cjs` green.
+
+### Lane A: Team tab render without flicker
+- **Owns:** `tasksync-chat/media/webview.js` only.
+- **Do not touch:** `webviewProvider.ts`, any CSS, `media/aitalk/*`, `storybook/*`, `src/*`.
+- **Behaviour:**
+  1. Delete `TEAM_ROSTER` (`:3105-3110`), `memberForWorker` (`:3126`) and `memberMonthCost` (`:3159`). Read `state.members` instead.
+  2. Port `renderMemberRowHtml`, `memberStatusInfo` and `renderTeamTabHtml` (`team.js:651-815`) into `teamMemberRowHtml` (`:3216`), keeping the prototype's row markup and classes.
+  3. Use separate fields, not one run-together string: name, role, the pinned badge, turn and month cost, a collapsed `[n tasks ▸]` pill, the prototype's model/effort dropdowns, and the agent-file link.
+  4. Avatar: `avatarSrc` gives `<img>`; empty gives an initials `<span>`. The fallback is a delegated `error` listener on the list, never inline `onerror`.
+  5. Keyed rendering. First paint builds one `[data-member-row=id]` per member. After that, `patchTeam(state)`:
+     - updates only `[data-member-cost]`, `[data-member-status]`, the pill count, `aria-expanded`, and dropdown values when not focused;
+     - inserts or removes rows only when a member joins or leaves;
+     - patches task cards per `data-worker-id` using the existing `renderWorkersHtml`/`traceRowsHtml` output.
+  6. The 1 s timer (`:3562`) updates only age/time text nodes, never `innerHTML`. Keep its state request every 3 ticks.
+  7. Rename the tab id to `team`: `switchTab('team')` at `:3420` and `:3479`, `panel-team` at `:3563`, `tab-badge-team` at `:3463`.
+  8. Keep the Storybook slice markers `// ── Workers tab: pure render` … `// ── end Workers pure render ──` and every name returned by `getWorkersKit` (`team.js:67-76`).
+- **Delete:** `monthlyCostTableHtml` at `:3298` and its Trace use at `:2980` (R-TEAM-29: one cost per member; Trace shows the main agent only). Also delete the Track lanes `:3311-3328`.
+- **Reuse:** `renderWorkersHtml` cards, `traceRowsHtml` (Priya's validator trace), the `.obs-month-amount` cost style.
+- **Test:** new `tasksync-chat/test-team-production-render.cjs`, using `vm` with the `between()` slicing style of `test-webview-card-timer-settings.cjs` and a minimal DOM stub. Assert:
+  - after `applyWorkersState(s1)`, `applyWorkersState(s2)` (only cost changed) and 3 timer ticks, the portrait node and the `<select>` for `bhaskar` are the same nodes (`===`), and the cost text shows the s2 value;
+  - output has no `obs-cost-categories`, no `Track `, and none of `>Dev<`, `>Arjun<`, `>Maya<`, `>Kavya<`;
+  - the pill is `aria-expanded="false"` by default and stays `"true"` after a toggle plus a repaint;
+  - an agy task shows `$0.00`, never "cost unreported".
+- **Command:** `node tasksync-chat/test-team-production-render.cjs`
+
+### Lane B: webview shell, styles, roster and data
+- **Owns:** `tasksync-chat/src/webview/webviewProvider.ts`, new `tasksync-chat/src/team/roster.ts`, `tasksync-chat/src/workers/workersState.ts`, `tasksync-chat/media/team/team.css`, `tasksync-chat/media/main.css`.
+- **Do not touch:** `media/webview.js`, `media/aitalk/*`, `src/aitalk/*`, `storybook/*`, the agy-tools files.
+- **Behaviour:**
+  1. Land first: `src/team/roster.ts` exports `TEAM_ROSTER`, `resolveMainAgentIdentity(name)` and `initialsOf`, with values identical to the `team.js` fixtures.
+  2. In `projectWorkersState` (`workersState.ts`), group workers into `members[]` per the contract, with `turnCost`/`monthCost` per member (agy → 0).
+  3. `_refreshWorkersState` (`webviewProvider.ts:1338-1349`) broadcasts `members`. `avatarSrc` = `asWebviewUri(media/team/avatars/<file>)` only when the file exists, else `''`.
+  4. At `:5243-5248`, the tabs read exactly `AITalk, Specs, Trace, Team, Settings`. The Team button is `data-tab="team"`, title "Team members in this workspace: state, cost, session links", badge `tab-badge-team`. The panel at `:5406` becomes `id="panel-team"`.
+  5. After `:5235`, add `<link href="${asWebviewUri(media/team/team.css)}" rel="stylesheet">`.
+  6. Keep the CSP and `localResourceRoots` unchanged; the user photo stays a `data:` image.
+  7. In `team.css`/`main.css`, the Team panel uses the same width rule as the other tabs (R-TEAM-31). Scope `team.css` selectors under `#panel-team` so AITalk and Trace are unaffected.
+- **Delete:** the per-category month payload, once Lane A no longer reads it.
+- **Test:** new `tasksync-chat/test-team-shell.cjs`. Assert:
+  - the `_getHtmlContent` source has tab labels in the exact order `AITalk, Specs, Trace, Team, Settings` and no `>Workers<`;
+  - it joins `'team', 'team.css'` into a stylesheet link;
+  - `TEAM_ROSTER` ids, names and roles deep-equal `TEAM_ROSTER_FIXTURES` from `storybook/prototypes/team.js`;
+  - `resolveMainAgentIdentity('AA.Orchestrator').name === 'Mahesh'`, `('AskAway Build')` → `Bhaskar`, `('Foo Agent')` → `Foo Agent` with initials `FA`;
+  - `projectWorkersState` with an agy build worker yields member `bhaskar` with `monthCost === 0`.
+- **Command:** `node tasksync-chat/test-team-shell.cjs`
+
+### Lane C: AITalk in production
+- **Owns:** `tasksync-chat/media/aitalk/talkRender.js`, `talkController.js`, `talkRules.js`, `extension.js`, `presence.js`, `talk.css`; `tasksync-chat/src/aitalk/actors.ts`; and in `tasksync-chat/storybook/prototypes/team.js` only `decorateTalkHtml`.
+- **Do not touch:** `media/webview.js`, `webviewProvider.ts`, `team.css`, `src/team/roster.ts` (import only), the agy-tools files.
+- **Behaviour** (move the `decorateTalkHtml` rules into the real renderer):
+  1. The header (`talkRender.js:181,195`) lists names only, comma-separated, no `<img>`: user first, then Priya, then present members. Each name is `<span class="aitalk-roster-name" data-member-id>`.
+  2. Message avatars (`:147`), mention choices (`:171`) and the typing row (`:211`) show the face from `avatarSrc`, falling back to initials. A mention choice shows face + name + role.
+  3. Join/leave notices (`talkRules.js:32-34`) keep the exact text "Bhaskar joined" / "Diego left" and add a face plus `data-member-id`.
+  4. `talkController.js:19-20`: the user and Priya are present from startup; the main agent joins at turn start as the first notice (R-TEAM-32).
+  5. Clicking any `[data-member-id]` or `.talk-mention` calls `window.focusTeamMember(id)` (`extension.js:6`): one visible panel, highlighted row (R-TEAM-28).
+  6. `@member` routing and disambiguation (`talkRules.js:16-17`) use roster ids and names (R-TEAM-09).
+  7. `actors.ts` maps the native agent through `resolveMainAgentIdentity`.
+- **Delete:** the prototype-only regex rewrites in `decorateTalkHtml` that production now renders itself.
+- **Test:** extend `tasksync-chat/test-aitalk-ui.cjs`. Assert:
+  - the header HTML has no `<img` and contains `Machs, Priya, Mahesh` in order;
+  - `Bhaskar joined` carries `data-member-id="bhaskar"` and a `talk-avatar`;
+  - a click on `[data-member-id="diego"]` calls the `focusTeamMember` stub with `'diego'`;
+  - `@Diego` selects `diego`;
+  - `@Di` mention choices include Diego with role `Developer`.
+- **Commands:** `node tasksync-chat/test-aitalk-ui.cjs`, then `node tasksync-chat/test-team-storybook.cjs` (must stay at 12/12).
+
+### Order
+Lane B step 1 (`roster.ts` + contract) → Lanes A, B, C in parallel → deploy only after all three lane tests, `test-team-storybook.cjs` and `npm run test:workers` pass.
+
+### Decisions pending reviewer
+- No generated portraits are shipped. Members show initials (`avatarSrc: ''`) until real portraits are approved (R-TEAM-06 open). Pending reviewer.
+- The eval scoreboard and benchmark stay in the Team tab, since no decision removes them. Pending reviewer.

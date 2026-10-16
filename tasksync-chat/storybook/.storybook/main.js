@@ -10,7 +10,7 @@ const hasUserProfileDir = fs.existsSync(USER_PROFILE_DIR);
 /** @type { import('@storybook/html-vite').StorybookConfig } */
 export default {
     framework: '@storybook/html-vite',
-    stories: ['../stories/**/*.stories.js', '!../stories/Commentary.stories.js'],
+    stories: ['../stories/**/*.stories.js'],
     staticDirs: hasUserProfileDir
         ? [{ from: USER_PROFILE_DIR, to: USER_PROFILE_STATIC_MOUNT }]
         : [],

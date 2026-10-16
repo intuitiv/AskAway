@@ -38,6 +38,12 @@ const vm = require('node:vm');
     snapshot.messages.push({ id: 'worker-join', kind: 'system', text: 'Review tests joined' });
     paint();
     assert.ok(host.innerHTML.includes(render.talkHtml(snapshot.messages, { members: snapshot.members, embedded: true })));
+    assert.match(host.innerHTML, /<div class="talk-pill-row aitalk-presence"[^>]*>[^]*?<span class="aitalk-presence-label"[^>]*>Review tests joined<\/span><\/div>/);
+    const noticeCss = fs.readFileSync(__dirname + '/media/aitalk/talk.css', 'utf8').match(/\.talk-pill-row\.aitalk-presence\s*\{([^}]*)\}/)?.[1];
+    assert.ok(noticeCss, 'production talk.css owns the join/leave notice style');
+    for (const declaration of [/border:\s*1px solid var\(--tk-border\)/, /border-radius:\s*8px/, /padding:\s*4px 12px/, /color:\s*var\(--tk-pill-fg\)/, /background:\s*var\(--tk-pill\)/, /width:\s*fit-content/]) {
+        assert.match(noticeCss, declaration, 'presence notices use a compact bordered, rounded, muted pill');
+    }
     for (const kind of ['update', 'heads-up']) {
         const post = { id: 'speech', author: 'main', kind, text: kind === 'update' ? "I've finished routing. I'm checking the tests now." : "Can you pick Workers or Trace? I'd put the scoreboard in Workers." };
         snapshot.messages.push(post); paint();
@@ -67,7 +73,8 @@ const vm = require('node:vm');
     snapshot.messages.push({ id: 'worker-left', kind: 'system', text: 'Review tests left' }); paint();
     menu = undefined;
     type('@'); assert.doesNotMatch(menu.html, /Review tests/);
-    assert.match(host.innerHTML, /Review tests left/);
+    assert.match(host.innerHTML, /<div class="talk-pill-row aitalk-presence"[^>]*>[^]*?<span class="aitalk-presence-label"[^>]*>Review tests left<\/span><\/div>/);
+    console.log('PASS EV-AITALK-NOTICE join/leave markup uses the bordered, rounded, padded, muted production pill');
     assert.ok(host.innerHTML.indexOf('id="talk-question"') < host.innerHTML.indexOf('id="talk-answer"'), 'newest message remains below earlier messages');
     assert.match(render.threadHtml([{ id: 'unsafe', author: 'main', text: '<script>bad</script>' }], snapshot.members), /&lt;script&gt;/);
     assert.match(fs.readFileSync(__dirname + '/storybook/prototypes/talk.js', 'utf8'), /media\/aitalk\/talkRender/);

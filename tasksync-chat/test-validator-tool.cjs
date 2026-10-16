@@ -4,6 +4,7 @@ const path = require('node:path');
 const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 const buildDir = path.join(__dirname, '.validator-tool-build');
 fs.mkdirSync(buildDir, { recursive: true });
+require('./tools/transpile-src.cjs').transpileSrc(buildDir);
 for (const name of ['validator/validatorTool', 'validator/liveDecisions', 'validator/validatorTriggers', 'validator/observer', 'validator/records', 'validator/redact', 'validator/profile',
     'workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary', 'specs/specCostLedger']) {
     const out = path.join(buildDir, `${name}.js`);

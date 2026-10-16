@@ -1,4 +1,6 @@
 import * as childProcess from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { ChildLike } from './openCodeRuntime';
 import type { WorkerProfile } from './workerProfiles';
 
@@ -42,6 +44,32 @@ export function deniedContinueMessage(command: string): string {
 export function verifyFailureMessage(output: string): string {
     const tail = output.slice(-VERIFY_PROMPT_TAIL_CHARS);
     return tail ? `${tail}\n\nThis check failed; fix it with file tools and report.` : 'This check failed; fix it with file tools and report.';
+}
+
+/** Backoff before each same-conversation retry after an agy capacity error (429); after the last one the run is FAILED. */
+export const CAPACITY_RETRY_DELAYS_MS = [30_000, 90_000];
+export const CAPACITY_RETRY_MESSAGE = 'The previous request hit a temporary capacity limit (429). Continue the packet from where you stopped and finish it.';
+
+/** An agy API capacity error (RESOURCE_EXHAUSTED, HTTP 429) in an error message or a stderr line. */
+export function isCapacityError(text: string): boolean {
+    return /RESOURCE_EXHAUSTED|HTTP 429|status[:= ]\s*429|429 Too Many/i.test(text);
+}
+
+/** agy's own error marker on stderr (`Error: ...`, `fatal: ...`); other stderr lines are logs and never end a run. */
+export function isAgyErrorLine(line: string): boolean {
+    return /^\s*\[?(error|fatal)\]?\s*:/i.test(line);
+}
+
+/** The plain reason for an agy failure no wait or retry fixes (model unavailable, login expired), else ''. */
+export function agyFatalReason(text: string, model: string): string {
+    if (/not recognized|unknown model|invalid model|\bmodel\b[^\n]*\bnot (available|found|supported)/i.test(text)) { return `agy model ${model.replace(/^agy\//, '')} not available on this login`; }
+    if (/not (logged|signed) in|unauthenticated|please (log|sign) ?in|\b(login|sign[- ]?in|credentials?|oauth|auth(entication)?)\b[^\n]*\b(expired|required|invalid|failed)\b/i.test(text)) { return 'agy login expired: run agy and sign in'; }
+    return '';
+}
+
+/** The first script the verify command names (e.g. `node test-x.cjs`) that does not exist in `cwd`, else ''. */
+export function missingCheckFile(command: string, cwd: string): string {
+    return splitCommandArgv(command.trim()).find((token) => /^[^-*\s][^*\s]*\.((c|m)?[jt]s|py|sh)$/.test(token) && !fs.existsSync(path.resolve(cwd, token))) ?? '';
 }
 
 /** Splits a simple command string into argv tokens on whitespace, respecting single and double quotes. */

@@ -2,46 +2,18 @@
 
 .team-storybook-shell,
 .team-proto-root {
-	--vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-	--vscode-editor-font-family: "SF Mono", Monaco, Menlo, Consolas, "Courier New", monospace;
-	--vscode-foreground: #d8dee9;
-	--vscode-descriptionForeground: #8b95a7;
-	--vscode-sideBar-background: #14171d;
-	--vscode-editor-background: #191d24;
-	--vscode-editorWidget-background: #1f242d;
-	--vscode-input-background: #12151b;
-	--vscode-input-foreground: #e5e9f0;
-	--vscode-input-border: #2e3440;
-	--vscode-panel-border: #292f3a;
-	--vscode-widget-border: #2c333f;
-	--vscode-focusBorder: #5e81ac;
-	--vscode-textLink-foreground: #88c0d0;
-	--vscode-button-background: #4c6ef5;
-	--vscode-button-foreground: #ffffff;
-	--vscode-button-secondaryBackground: #252b36;
-	--vscode-button-secondaryForeground: #d8dee9;
-	--vscode-badge-background: #2e3440;
-	--vscode-badge-foreground: #e5e9f0;
-	--team-surface: #1b2028;
-	--team-surface-elevated: #212731;
-	--team-surface-active: #252d3a;
-	--team-border: #2c3340;
-	--team-accent: #7aa2f7;
-	--team-working: #4fd6be;
-	--team-idle: #6e7889;
-
-	--team-widget-width: 420px;
 
 	position: relative;
 	display: flex;
 	flex-direction: column;
 	width: 420px;
+	width: var(--team-widget-width);
 	max-width: 100%;
 	height: 760px;
 	background: var(--vscode-sideBar-background);
 	color: var(--vscode-foreground);
 	font-family: var(--vscode-font-family);
-	font-size: 12.5px;
+	font-size: var(--team-font-body);
 	box-sizing: border-box;
 	overflow: hidden;
 	border: 3px solid var(--vscode-focusBorder);
@@ -86,56 +58,44 @@
 
 /* ── Production 5-tab bar ─────────────────────────────────────────── */
 
-.team-storybook-shell .widget-tabs.tab-bar {
-	display: flex;
-	align-items: center;
-	gap: 2px;
-	padding: 0 8px;
-	height: 36px;
-	width: 100%;
-	flex-shrink: 0;
-	background: var(--vscode-editor-background);
-	border-bottom: 1px solid var(--vscode-panel-border);
-}
-
-.team-storybook-shell .widget-tab.tab-btn {
-	appearance: none;
-	border: none;
-	background: transparent;
-	color: var(--vscode-descriptionForeground);
-	font-family: inherit;
-	font-size: 12px;
-	font-weight: 600;
-	padding: 8px 8px;
-	flex: 1;
-	text-align: center;
-	white-space: nowrap;
-	cursor: pointer;
-	border-bottom: 2px solid transparent;
-	transition: color 0.12s ease, border-color 0.12s ease;
-}
-
-.team-storybook-shell .widget-tab.tab-btn:hover {
-	color: var(--vscode-foreground);
-}
-
-.team-storybook-shell .widget-tab.tab-btn.active {
-	color: var(--vscode-foreground);
-	border-bottom-color: var(--team-accent);
-}
 
 /* ── Separate AITalk & Team tab panels (one active panel at a time) ─ */
 
-.team-pane,
-#panel-aitalk,
 #panel-team {
+	--team-surface: var(--vscode-editorWidget-background, #1b2028);
+	--team-surface-elevated: var(--vscode-sideBar-background, #212731);
+	--team-surface-active: var(--vscode-list-activeSelectionBackground, #252d3a);
+	--team-border: var(--vscode-widget-border, var(--vscode-panel-border, #2c3340));
+	--team-accent: var(--vscode-focusBorder, #7aa2f7);
+	--team-working: var(--vscode-terminal-ansiCyan, #4fd6be);
+	--team-idle: var(--vscode-descriptionForeground, #6e7889);
+	width: 100%;
+	max-width: 100%;
+	min-height: 0;
+	box-sizing: border-box;
+}
+
+body.vscode-light #panel-team {
+	--team-surface: var(--vscode-editor-background, #ffffff);
+	--team-surface-elevated: var(--vscode-sideBar-background, #f7f9fc);
+	--team-surface-active: var(--vscode-list-hoverBackground, #eaf0fb);
+	--team-border: var(--vscode-widget-border, var(--vscode-panel-border, #d7deea));
+	--team-accent: var(--vscode-focusBorder, #2b59c3);
+	--team-working: var(--vscode-terminal-ansiGreen, #0e8a72);
+	--team-idle: var(--vscode-descriptionForeground, #768194);
+}
+
+.team-storybook-shell {
+.team-pane, #panel-aitalk, #panel-team {
 	display: none;
 	flex-direction: column;
 	flex: 1;
 	width: 420px;
+	width: var(--team-widget-width);
 	max-width: 100%;
 	min-height: 0;
 	overflow: hidden;
+}
 }
 
 .team-pane.active,
@@ -149,6 +109,7 @@
 
 .team-aitalk-pane {
 	width: 420px;
+	width: var(--team-widget-width);
 	max-width: 100%;
 	background: var(--vscode-sideBar-background);
 }
@@ -169,6 +130,7 @@
 
 .team-directory-pane {
 	width: 420px;
+	width: var(--team-widget-width);
 	max-width: 100%;
 	background: var(--vscode-sideBar-background);
 	overflow-y: auto;
@@ -333,7 +295,7 @@
 }
 
 .team-member-status {
-	font-size: 11.5px;
+    font-size: var(--team-font-small);
 	color: var(--vscode-descriptionForeground);
 }
 
@@ -363,24 +325,11 @@
 .team-validator-trace {
 	width: 100%;
 	border-collapse: collapse;
-	font-size: 11.5px;
+    font-size: var(--team-font-small);
 }
 
 .team-edit-member-btn {
 	margin-left: auto;
-	appearance: none;
-	border: 1px solid var(--vscode-input-border);
-	background: var(--team-surface-elevated);
-	color: var(--vscode-descriptionForeground);
-	border-radius: 4px;
-	padding: 2px 7px;
-	font-size: 11px;
-	cursor: pointer;
-}
-
-.team-edit-member-btn:hover {
-	color: var(--vscode-foreground);
-	border-color: var(--team-accent);
 }
 
 .team-member-controls {
@@ -395,14 +344,6 @@
 	color: var(--vscode-descriptionForeground);
 }
 
-.team-member-profile code {
-	padding: 1px 5px;
-	border-radius: 4px;
-	background: var(--vscode-badge-background);
-	color: var(--vscode-badge-foreground);
-	font-family: var(--vscode-editor-font-family);
-	font-size: 10.5px;
-}
 
 .team-control-field {
 	display: inline-flex;
@@ -428,8 +369,9 @@
 }
 
 .team-model-select {
-	max-width: 165px;
-	width: 100%;
+    min-width: 220px;
+    flex: 1 1 220px;
+    width: 100%;
 }
 
 .team-thinking-select {
@@ -469,7 +411,7 @@
 	color: var(--vscode-foreground);
 	border-radius: 999px;
 	padding: 4px 10px;
-	font-size: 11.5px;
+    font-size: var(--team-font-small);
 	font-weight: 600;
 	cursor: pointer;
 	white-space: nowrap;
@@ -490,6 +432,11 @@
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
+}
+
+/* A collapsed pill hides its cards: the display rule above would otherwise override [hidden]. */
+.team-member-tasks-panel[hidden] {
+	display: none;
 }
 
 /* ── Member Edit Modal (5 allowed fields + open model dropdown) ──── */
@@ -595,7 +542,7 @@
 	color: var(--vscode-button-foreground);
 	border-radius: 4px;
 	padding: 4px 12px;
-	font-size: 11.5px;
+    font-size: var(--team-font-small);
 	font-weight: 600;
 	cursor: pointer;
 }

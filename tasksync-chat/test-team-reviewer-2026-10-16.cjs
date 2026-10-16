@@ -1,0 +1,272 @@
+#!/usr/bin/env node
+/**
+ * Reviewer 2026-10-16 (screenshot of the deployed Team tab), items 1-6, 9, 10.
+ * Caller view: the production #panel-team HTML from webviewProvider.ts, the production Team JS from media/webview.js
+ * (render + keyed patch + wiring + the host 'workerTrace' message case) on a fake DOM whose text nodes behave like a
+ * browser's (no outerHTML), the provider's main-agent row and openAgentFile contract, and workersState's projection.
+ */
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const ts = require('typescript');
+
+const ROOT = __dirname;
+const webviewSrc = fs.readFileSync(path.join(ROOT, 'media', 'webview.js'), 'utf8');
+const providerSrc = fs.readFileSync(path.join(ROOT, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
+const mainCss = fs.readFileSync(path.join(ROOT, 'media', 'main.css'), 'utf8');
+const teamCss = fs.readFileSync(path.join(ROOT, 'media', 'team', 'team.css'), 'utf8');
+
+function between(src, start, end) {
+    const i = src.indexOf(start);
+    const j = src.indexOf(end, i + start.length);
+    assert(i >= 0 && j > i, `slice not found: ${start} .. ${end}`);
+    return src.slice(i, j);
+}
+
+function loadTsModule(filePath, mocks = {}) {
+    const out = ts.transpileModule(fs.readFileSync(filePath, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true }, fileName: filePath }).outputText;
+    const mod = { exports: {} };
+    const req = (id) => {
+        if (id in mocks) return mocks[id];
+        const tsFile = path.resolve(path.dirname(filePath), id + '.ts');
+        return id.startsWith('.') && fs.existsSync(tsFile) ? loadTsModule(tsFile, mocks) : require(id);
+    };
+    vm.runInThisContext(`(function (exports, require, module) { ${out}\n})`)(mod.exports, req, mod);
+    return mod.exports;
+}
+
+// The fake DOM of the production render test, with browser-faithful text nodes: a Text node has no outerHTML.
+const testSrc = fs.readFileSync(path.join(ROOT, 'test-team-production-render.cjs'), 'utf8');
+const createMiniDom = new Function('assert', `${between(testSrc, 'function createMiniDom()', 'function createHarness()')}; return createMiniDom;`)(assert);
+
+const teamPanelHtml = between(providerSrc, '<div class="tab-panel" id="panel-team">', '<!-- End panel-team -->').replace(/\r?\n\s*/g, '');
+
+function createHarness() {
+    const { doc, root, MiniElement } = createMiniDom();
+    const elementInner = Object.getOwnPropertyDescriptor(MiniElement.prototype, 'innerHTML');
+    Object.defineProperty(MiniElement.prototype, 'innerHTML', {
+        configurable: true, set: elementInner.set,
+        get() { return this.children.map(c => (c.tagName ? c.outerHTML : c.textContent)).join(''); },
+    });
+    root.innerHTML = '<div class="widget-tabs"><button class="widget-tab" data-tab="team">Team <span id="tab-badge-team" class="hidden">0</span></button></div>' + teamPanelHtml + '</div>';
+    const textProto = Object.getPrototypeOf(root.querySelector('.widget-tab').children[0]);
+    Object.defineProperty(textProto, 'outerHTML', { configurable: true, get() { return undefined; } });
+    const messages = [];
+    const vscode = { postMessage(msg) { messages.push(msg); } };
+    const traceCase = between(webviewSrc, "            case 'workerTrace':", '                break;');
+    const api = new Function('document', 'window', 'vscode', 'setInterval', `
+        var currentTab = 'chat';
+        var observabilityMetrics = {};
+        function escapeHtml(v) { return String(v == null ? '' : v); }
+        function switchTab(tab) { currentTab = tab; }
+        ${between(webviewSrc, '// ── Usage banner', '// ── end Usage banner ──')}
+        ${between(webviewSrc, '// ── Turn trace rows', '// ── end Turn trace rows ──')}
+        ${between(webviewSrc, '// ── Workers tab: pure render', '// ── end Workers pure render ──')}
+        ${between(webviewSrc, '    var workersState = null;', '    function initSpecsTab()')}
+        function onHostMessage(message) { switch (message.type) { ${traceCase} break; } }
+        return { applyWorkersState: applyWorkersState, initWorkersTab: initWorkersTab, renderWorkersHtml: renderWorkersHtml,
+            onHostMessage: onHostMessage, traceRowsHtml: traceRowsHtml, tab: function () { return currentTab; } };
+    `)(doc, {}, vscode, () => 0);
+    api.initWorkersTab();
+    return { api, doc, messages, click: (el) => el.dispatchEvent({ type: 'click', target: el }) };
+}
+
+const now = Date.now();
+function task(workerId, profile, state, extra = {}) {
+    return {
+        workerId, profile, state, adapter: 'opencode', model: 'github-copilot/gpt-6-luna', thinking: 'low', expired: false,
+        cacheExpiresAt: now + 120_000, lastUpdateAt: now - 1000, usage: { cost: 1, steps: 1 }, turnCost: 0.1,
+        banner: { requests: 1, dollars: 0.1, lastIn: 1000, lastCached: 900, turnOut: 10, lastActivityAt: now - 1000 },
+        runs: [{ runId: 'run-' + workerId, state: state === 'RETIRED' ? 'COMPLETED' : state, queuePosition: 0, dispatchTurnId: 't', elapsedMs: 1000, usage: { cost: 0.1, steps: 1 } }],
+        ...extra,
+    };
+}
+const PRIYA = { id: 'priya', name: 'Priya', role: 'Product Owner', kind: 'validator', pinned: true, profile: 'validator', taskIds: [], turnCost: 0, monthCost: 0 };
+const BHASKAR = { id: 'bhaskar', name: 'Bhaskar', role: 'Tech Lead', kind: 'main', active: false, profile: 'AskAway Build', agentFile: '/u/prompts/askaway-build.agent.md', model: 'github-copilot/claude-opus-5.5', taskIds: [], turnCost: 0.08, monthCost: 6.8 };
+const worker = (id, name, role, profile) => ({ id, name, role, kind: 'worker', profile, taskIds: [], turnCost: 0, monthCost: 0 });
+const ANIKA = worker('anika', 'Anika', 'Architect', 'build');
+const visibleText = (el) => el.textContent.replace(/&middot;/g, '·').replace(/\s+/g, ' ').trim();
+const rows = (doc) => doc.querySelectorAll('[data-member-row]').map(r => r.getAttribute('data-member-row'));
+const results = [];
+
+// 1. "Do we need filter now?" — no filter input or JS; Show completed + archive + refresh in one header row.
+{
+    assert(!/workers-filter/.test(teamPanelHtml), 'the provider Team panel has no filter input');
+    assert(!/getElementById\('workers-filter'\)|workersFilterText/.test(webviewSrc), 'webview.js has no Team filter JS');
+    const { api, doc, messages, click } = createHarness();
+    const header = doc.querySelector('.workers-header');
+    assert.deepEqual(header.children.filter(c => c.tagName).map(c => c.id || c.className), ['specs-toggle', 'workers-archive-btn', 'workers-refresh-btn']);
+    assert(header.querySelector('#workers-show-expired'), 'Show completed lives in the header row');
+    click(doc.getElementById('workers-refresh-btn'));
+    click(doc.getElementById('workers-archive-btn'));
+    assert.deepEqual(messages.map(m => m.type), ['requestWorkersState', 'archiveWorkers']);
+    // A worker badge in the Trace tab now focuses the owning member instead of filling a filter.
+    api.applyWorkersState({ generatedAt: now, members: [PRIYA, ANIKA], workers: [task('worker-b1', 'build', 'RUNNING')], turnWorkerIds: ['worker-b1'] });
+    const badge = doc.createElement('span'); badge.setAttribute('data-worker-ref', 'worker-b1'); doc.body.appendChild(badge);
+    click(badge);
+    assert.equal(api.tab(), 'team');
+    assert.equal(doc.querySelector('[data-member-row="anika"]').getAttribute('data-highlighted'), 'true');
+    assert.equal(doc.querySelector('[data-member-tray="anika"]').hasAttribute('hidden'), false, 'its tasks open');
+    results.push('1 filter removed: test-team-reviewer-2026-10-16.cjs EV-TEAM-NO-FILTER');
+}
+
+// 2. "Turn count is incorrect." — turn cost from the ledger since the turn started; summary + member Turn from the displayed list.
+{
+    const rosterMod = loadTsModule(path.join(ROOT, 'src', 'team', 'roster.ts'));
+    const { projectWorkersState } = loadTsModule(path.join(ROOT, 'src', 'workers', 'workersState.ts'), { '../team/roster': rosterMod });
+    const turnStart = now - 60_000;
+    const usage = (cost) => ({ input: 10, output: 1, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost, steps: 1 });
+    const run = (workerId, startedAt, profile = 'build') => ({ workerId, runId: 'run-' + workerId, startedAt, updatedAt: startedAt, endedAt: startedAt + 10, elapsedMs: 10, state: 'COMPLETED', queuePosition: 0,
+        dispatchTurnId: 't', profile, model: 'github-copilot/claude-opus-5.5', thinking: 'high', usage: usage(0), sessionId: 'ses_' + workerId.replace(/-/g, '_'), sessionOpenAction: 'open',
+        nextInputTokens: 0, lastPromptTokens: 0, lastCachedTokens: 0 });
+    const runs = ['w1', 'w2', 'w3', 'w4', 'w5'].map(id => run('worker-' + id, turnStart + 1000));
+    runs[0].usage = usage(59.5);
+    const facts = [
+        { type: 'checkpoint', ts: turnStart - 5000, workerId: 'worker-w1', runId: 'run-worker-w1', model: 'm', usage: usage(59.2) },
+        { type: 'checkpoint', ts: turnStart + 2000, workerId: 'worker-w1', runId: 'run-worker-w1', model: 'm', usage: usage(0.3) },
+    ];
+    const runtime = { list: () => runs, facts: () => facts, serverEndpoint: '', router: { worker: () => ({ state: 'IDLE' }), cacheExpiresAt: () => now + 60_000 } };
+    const projected = projectWorkersState(runtime, '/ws', () => now, turnStart);
+    assert.equal(projected.workers.find(w => w.workerId === 'worker-w1').turnCost.toFixed(2), '0.30', 'turn cost counts only checkpoints since the turn started');
+    assert(!projected.members.some(m => m.id === 'bhaskar'), 'no worker task lands on the main agent');
+    const state = { ...projected, turnWorkerIds: runs.map(r => r.workerId), members: [...projected.members, BHASKAR] };
+    const { api, doc, click } = createHarness();
+    api.applyWorkersState({ generatedAt: now, members: [PRIYA, ANIKA], workers: [], turnWorkerIds: [] });
+    const summary = doc.querySelector('.workers-summary');
+    assert(visibleText(summary).startsWith('0 tasks this turn'));
+    api.applyWorkersState(state);
+    assert.equal(doc.querySelector('.workers-summary'), summary, 'summary patched in place (no flicker)');
+    assert.equal(visibleText(summary), '5 tasks this turn · 0 running · 0 queued · 5 warm · 5 completed · $0.30 this turn', 'summary counts the displayed tasks');
+    const anika = projected.members.find(m => m.taskIds.includes('worker-w1')).id;
+    click(doc.querySelector(`[data-member-tasks-toggle="${anika}"]`));
+    assert.equal(doc.querySelector(`[data-member-tray="${anika}"]`).querySelectorAll('.worker-card').length, 5, 'summary count equals the cards shown');
+    assert.equal(doc.querySelector(`[data-member-cost="${anika}"]`).getAttribute('data-turn-cost'), '$0.30', 'member Turn is this turn, not the $59.50 lifetime');
+    results.push('2 turn counts: test-team-reviewer-2026-10-16.cjs EV-TEAM-TURN-COUNTS');
+}
+
+// 3. "There is no scrollbar in Team tab." — panel → shell → list flex chain with min-height:0 and a scrolling list.
+{
+    const rule = (css, sel) => (css.match(new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}')) || [])[1] || '';
+    assert(/min-height:\s*0/.test(rule(mainCss, '.tab-panel')) && /overflow:\s*hidden/.test(rule(mainCss, '.tab-panel')));
+    assert(/flex:\s*1/.test(rule(mainCss, '.workers-shell')) && /min-height:\s*0/.test(rule(mainCss, '.workers-shell')), 'the shell fills the panel');
+    const list = rule(mainCss, '.workers-list');
+    assert(/flex:\s*1/.test(list) && /min-height:\s*0/.test(list) && /overflow-y:\s*auto/.test(list), 'the list scrolls');
+    assert(/workers-shell/.test(teamPanelHtml) && /workers-list/.test(teamPanelHtml));
+    results.push('3 scrollbar: test-team-reviewer-2026-10-16.cjs EV-TEAM-SCROLL');
+}
+
+// 4. "Save cost component in Team tab is not needed." — no tips block, even with a cheaper scoreboard model and bloated context.
+{
+    const { api, doc } = createHarness();
+    api.applyWorkersState({ generatedAt: now, members: [PRIYA, ANIKA], turnWorkerIds: ['worker-b1'], workers: [task('worker-b1', 'build', 'RUNNING', { nextInputTokens: 300000 })],
+        scoreboard: [{ mode: 'build', model: 'gpt-6-luna', runs: 3, passed: 2, avgCost: 0.01, avgMs: 1 }, { mode: 'build', model: 'cheap', runs: 4, passed: 4, avgCost: 0.001, avgMs: 1 }] });
+    const html = doc.getElementById('workers-list').innerHTML;
+    assert(!/workers-tips|Save cost/i.test(html) && !/Save cost/.test(webviewSrc));
+    results.push('4 Save cost removed: test-team-reviewer-2026-10-16.cjs EV-TEAM-NO-TIPS');
+}
+
+// 5. Hide members without a running/queued/warm task this turn; Priya always with Trace; main agent while the turn is active.
+{
+    const { api, doc, click } = createHarness();
+    const members = [PRIYA, BHASKAR, ANIKA, worker('tara', 'Tara', 'Test Engineer', 'verify'), worker('rhea', 'Rhea', 'Rules Expert', 'review'), worker('sana', 'Sana', 'Researcher', 'explore'), worker('paolo', 'Paolo', 'Pipeline Expert', 'gradle')];
+    const workers = [
+        task('worker-cold', 'build', 'COMPLETED', { expired: true, cacheExpiresAt: now - 1 }),
+        task('worker-run', 'verify', 'RUNNING'),
+        task('worker-retired', 'review', 'RETIRED', { expired: true }),
+        task('worker-queued', 'explore', 'STARTING', { runs: [{ runId: 'q', state: 'STARTING', queuePosition: 1, usage: {} }] }),
+        task('worker-other-turn', 'gradle', 'RUNNING'),
+    ];
+    const state = { generatedAt: now, members, workers, turnWorkerIds: ['worker-cold', 'worker-run', 'worker-retired', 'worker-queued'] };
+    api.applyWorkersState(state);
+    assert.deepEqual(rows(doc), ['priya', 'tara', 'sana'], 'only Priya plus members with a running or queued task this turn');
+    assert(/^Trace \(\d+\)/.test(doc.querySelector('[data-member-tasks-toggle="priya"]').textContent), 'Priya keeps her Trace button');
+    click(doc.getElementById('workers-show-expired'));
+    assert.deepEqual(rows(doc), ['priya', 'anika', 'tara', 'rhea', 'sana'], 'Show completed reveals cold and retired tasks of this turn');
+    api.applyWorkersState({ ...state, members: members.map(m => (m.id === 'bhaskar' ? { ...m, active: true } : m)) });
+    assert(rows(doc).includes('bhaskar'), 'the main agent shows while its turn is active');
+    results.push('5 active members only: test-team-reviewer-2026-10-16.cjs EV-TEAM-ACTIVE-ONLY');
+}
+
+// 6. "Trace button is also not working." — Priya's Trace loads her validator task traces and expands shared trace rows inline.
+{
+    const { api, doc, messages, click } = createHarness();
+    api.applyWorkersState({ generatedAt: now, members: [PRIYA], workers: [], turnWorkerIds: [] });
+    const pill = doc.querySelector('[data-member-tasks-toggle="priya"]');
+    assert.equal(pill.textContent, 'Trace (0) \u25b8', 'Trace (0) when there really are none');
+    click(pill);
+    assert.equal(doc.querySelector('[data-member-tray="priya"]').hasAttribute('hidden'), false);
+    assert.equal(visibleText(doc.querySelector('[data-member-tray="priya"]')), 'No Validator trace this turn.');
+    const val = task('worker-val', 'validator', 'COMPLETED', { track: 'validator' });
+    api.applyWorkersState({ generatedAt: now, members: [PRIYA], workers: [val], turnWorkerIds: ['worker-val'] });
+    assert.deepEqual(messages.filter(m => m.type === 'requestWorkerTrace').map(m => m.workerId), ['worker-val'], 'her task trace is requested');
+    const events = [{ kind: 'request', id: 'REQV1', ts: now - 500, model: 'gpt-6-luna', inputTokens: 900, outputTokens: 20, cachedTokens: 800, dollars: 0.01 },
+        { kind: 'tool', id: 'TOOLV', ts: now - 400, tool: 'askaway_memory', durMs: 30, status: 'ok', inputTokens: 1, outputTokens: 2, inputPreview: '', outputPreview: '' }];
+    api.onHostMessage({ type: 'workerTrace', data: { workerId: 'worker-val', source: 'opencode', reason: '', runs: { 'run-worker-val': events } } });
+    assert.equal(pill.textContent, 'Trace (2) \u25be', 'count updates in place to the loaded events');
+    const table = doc.querySelector('[data-member-tray="priya"] table.team-validator-trace.obs-timeline-table');
+    assert(table && table.textContent.includes('REQV1') && table.textContent.includes('askaway_memory'), 'shared traceRowsHtml rows inline');
+    assert(api.traceRowsHtml(events, { openIds: {}, now }).includes('REQV1'));
+    results.push('6 Priya Trace: test-team-reviewer-2026-10-16.cjs EV-TEAM-PRIYA-TRACE');
+}
+
+// 9. Task pill count equals the cards; collapsing hides them; counts update without re-creating the row.
+{
+    const { api, doc, click } = createHarness();
+    const one = [task('worker-a1', 'build', 'COMPLETED')];
+    api.applyWorkersState({ generatedAt: now, members: [PRIYA, ANIKA], workers: one, turnWorkerIds: ['worker-a1'] });
+    const pill = doc.querySelector('[data-member-tasks-toggle="anika"]');
+    assert.equal(pill.textContent, '1 task \u25b8');
+    const five = ['a1', 'a2', 'a3', 'a4', 'a5'].map(id => task('worker-' + id, 'build', 'COMPLETED'));
+    api.applyWorkersState({ generatedAt: now, members: [PRIYA, ANIKA], workers: five, turnWorkerIds: five.map(w => w.workerId) });
+    assert.equal(doc.querySelector('[data-member-tasks-toggle="anika"]'), pill, 'same pill node');
+    assert.equal(pill.textContent, '5 tasks \u25b8', 'pill count follows the tasks (browser text nodes are patched)');
+    const tray = doc.querySelector('[data-member-tray="anika"]');
+    assert.equal(tray.querySelectorAll('.worker-card').length, 5, 'pill count equals the cards inside');
+    assert(tray.hasAttribute('hidden'), 'collapsed by default');
+    click(pill); assert(!tray.hasAttribute('hidden'));
+    click(pill); assert(tray.hasAttribute('hidden'), 'collapse hides the cards');
+    assert(/\.team-member-tasks-panel\[hidden\]\s*\{\s*display:\s*none/.test(teamCss), 'the drawer display rule does not override [hidden]');
+    results.push('9 pill count + collapse: test-team-reviewer-2026-10-16.cjs EV-TEAM-PILL-COUNT');
+}
+
+// 10. Bhaskar is the main agent (AskAway Build chat mode + its .agent.md + chat model); build worker tasks belong to Anika.
+{
+    const rosterMod = loadTsModule(path.join(ROOT, 'src', 'team', 'roster.ts'));
+    const { projectTeamMembers } = loadTsModule(path.join(ROOT, 'src', 'workers', 'workersState.ts'), { '../team/roster': rosterMod });
+    const members = projectTeamMembers([{ ...task('worker-b9', 'build', 'RUNNING'), track: '' }]);
+    assert.deepEqual(members.map(m => [m.id, m.taskIds.join()]), [['priya', ''], ['anika', 'worker-b9']], 'the build worker profile maps to Anika');
+    // Provider: the main agent row of the selected chat agent.
+    const methods = between(providerSrc, "    /** VS Code's user prompts folder", '    public async getTurnMetricsSnapshot');
+    const Provider = vm.runInNewContext(ts.transpileModule(`class P {\n${methods}\n}; P`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, {
+        path, fs: { existsSync: f => f === '/home/u/Code/User/prompts/askaway-build.agent.md' },
+        roomFor: () => ({ mainAgentIdentity: () => rosterMod.resolveMainAgentIdentity('AskAway Build'), snapshot: () => ({ members: [{ kind: 'agent', presence: 'joined' }] }) }),
+    });
+    const provider = Object.assign(new Provider(), {
+        _context: { globalStorageUri: { fsPath: '/home/u/Code/User/globalStorage/askaway' } },
+        _turnRequests: [{ model: 'claude-opus-5.5', nanoAiu: 4e9 }, { model: 'gpt-6-luna', nanoAiu: 1e9, subagent: 'explore' }],
+        _observabilityCache: { monthCredits: { aiu: 680 } },
+    });
+    const main = provider._mainAgentMember('/ws');
+    assert.deepEqual([main.id, main.kind, main.active, main.profile, main.agentFile, main.model, main.turnCost.toFixed(2), main.monthCost.toFixed(2)],
+        ['bhaskar', 'main', true, 'AskAway Build', '/home/u/Code/User/prompts/askaway-build.agent.md', 'claude-opus-5.5', '0.04', '6.80']);
+    assert.equal(rosterMod.resolveMainAgentIdentity('AA.Orchestrator').agentFile, '.github/agents/AA.Orchestrator.agent.md');
+    const { api, doc, messages, click } = createHarness();
+    api.applyWorkersState({ generatedAt: now, members: [...members, main], workers: [task('worker-b9', 'build', 'RUNNING')], turnWorkerIds: ['worker-b9'] });
+    const row = doc.querySelector('[data-member-row="bhaskar"]');
+    assert.equal(row.getAttribute('data-main-agent'), 'true');
+    assert.equal(row.querySelector('select'), null, 'no worker model/thinking dropdowns on the main agent');
+    assert.equal(row.querySelector('[data-member-tray]'), null, 'no worker tasks under the main agent');
+    assert(visibleText(row).includes('Chat agent: AskAway Build') && visibleText(row).includes('Model: claude-opus-5.5'));
+    click(row.querySelector('[data-open-agent-file]'));
+    assert.deepEqual(messages.at(-1), { type: 'openAgentFile', memberId: 'bhaskar', profile: '', path: main.agentFile, agentFile: main.agentFile });
+    assert(doc.querySelector('[data-member-tray="anika"]').innerHTML.includes('data-worker-id="worker-b9"'), 'the build task is Anika\'s');
+    results.push('10 main agent separated (build → Anika): test-team-reviewer-2026-10-16.cjs EV-TEAM-MAIN-AGENT');
+}
+
+// webviewProvider.ts stays CRLF-only.
+assert.equal((providerSrc.match(/(^|[^\r])\n/g) || []).length, 0, 'webviewProvider.ts is CRLF-only');
+console.log(results.join('\n'));
+console.log('PASS test-team-reviewer-2026-10-16 (EV-TEAM-NO-FILTER, EV-TEAM-TURN-COUNTS, EV-TEAM-SCROLL, EV-TEAM-NO-TIPS, EV-TEAM-ACTIVE-ONLY, EV-TEAM-PRIYA-TRACE, EV-TEAM-PILL-COUNT, EV-TEAM-MAIN-AGENT)');

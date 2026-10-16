@@ -9,19 +9,16 @@ const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const { PassThrough } = require('node:stream');
-const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
+const { transpileSrc } = require('./tools/transpile-src.cjs');
 
 process.env.NODE_PATH = path.join(__dirname, 'node_modules');
 require('node:module').Module._initPaths();
 const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-remove-build-'));
-for (const name of ['agyRuntime', 'workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) {
-    fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
-        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
-}
-const { parseWorkerProfile } = require(path.join(buildDir, 'workerProfiles.js'));
-const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'openCodeRuntime.js'));
-const { registerWorkerTools } = require(path.join(buildDir, 'workerTools.js'));
-const { projectWorkersState } = require(path.join(buildDir, 'workersState.js'));
+transpileSrc(buildDir);
+const { parseWorkerProfile } = require(path.join(buildDir, 'workers', 'workerProfiles.js'));
+const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'workers', 'openCodeRuntime.js'));
+const { registerWorkerTools } = require(path.join(buildDir, 'workers', 'workerTools.js'));
+const { projectWorkersState } = require(path.join(buildDir, 'workers', 'workersState.js'));
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-remove-'));
 const workspace = fs.realpathSync(fs.mkdtempSync(path.join(tmp, 'ws-')));
@@ -97,7 +94,8 @@ assert.match(webview, /vscode\.postMessage\(\{ type: 'removeWorker', workerId: r
     assert.doesNotMatch(html, /remove-confirm/);
     vm.runInContext(`workersRemoveConfirm[${JSON.stringify(done.workerId)}] = true`, ctx);
     const confirming = cardsOf(runtime);
-    assert.match(confirming, /Remove this worker from rotation\?[\s\S]*data-worker-action="remove-confirm"[\s\S]*data-worker-action="remove-cancel"/);
+    // R-TEAM-02: inside a member row the visible word is "task".
+    assert.match(confirming, /Remove this task from rotation\?[\s\S]*data-worker-action="remove-confirm"[\s\S]*data-worker-action="remove-cancel"/);
     assert.equal((confirming.match(/data-worker-action="remove-confirm"/g) || []).length, 1, 'only the clicked card asks');
     vm.runInContext('workersRemoveConfirm = {}', ctx);
 

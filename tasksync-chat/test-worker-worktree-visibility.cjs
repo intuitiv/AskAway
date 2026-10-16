@@ -6,20 +6,16 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { PassThrough } = require('node:stream');
-const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
+const { transpileSrc } = require('./tools/transpile-src.cjs');
 
 const buildDir = path.join(__dirname, '.worker-worktree-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(buildDir);
-for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'workersState', 'workerTools']) {
-    fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
-        fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
-        { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
-}
-const { parseWorkerProfile } = require(path.join(buildDir, 'workerProfiles.js'));
-const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'openCodeRuntime.js'));
-const { projectWorkersState } = require(path.join(buildDir, 'workersState.js'));
-const { workerToolDefinitions, invokeDefinition } = require(path.join(buildDir, 'workerTools.js'));
+transpileSrc(buildDir);
+const { parseWorkerProfile } = require(path.join(buildDir, 'workers', 'workerProfiles.js'));
+const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'workers', 'openCodeRuntime.js'));
+const { projectWorkersState } = require(path.join(buildDir, 'workers', 'workersState.js'));
+const { workerToolDefinitions, invokeDefinition } = require(path.join(buildDir, 'workers', 'workerTools.js'));
 
 const profile = parseWorkerProfile('---\nname: verify\ndescription: "v"\ntier: light\nmodel: github-copilot/gpt-5.6-luna\nthinking: low\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [low]\nedit: deny\n---\nBody.\n');
 const keyOf = (dir) => dir.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();

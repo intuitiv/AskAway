@@ -22,7 +22,7 @@ const runtime = { serverEndpoint: '', list: () => [], facts: () => [], setServer
 const vscode = { workspace: { workspaceFolders: [{ uri: { fsPath: root } }], getConfiguration: () => ({ get: () => false }) } };
 const host = load('workers/workerHost.ts', {
     vscode, './sharedServer': shared, './openCodeRuntime': { OpenCodeWorkerRuntime: class { constructor() { return runtime; } } },
-    './workerProfiles': { loadWorkerProfiles: () => [], syncOpenCodeAgents: () => [] }, './keepWarm': { startKeepWarmTimer: () => () => {} },
+    './workerProfiles': { loadWorkerProfiles: () => [], syncOpenCodeAgents: () => [], syncAgyPermissions: () => [] }, './keepWarm': { startKeepWarmTimer: () => () => {} },
     '../commentary/commentary': {}, '../observability/cacheClock': {}
 });
 const source = fs.readFileSync(path.join(__dirname, 'src/mcp/mcpServer.ts'), 'utf8');
@@ -30,7 +30,7 @@ const imports = {};
 for (const match of source.matchAll(/from ['"]([^'"]+)['"]/g)) imports[match[1]] = {};
 imports.vscode = vscode;
 imports['../workers/workerHost'] = host;
-const projection = load('workers/workersState.ts', { './openCodeRuntime': {}, './workerRouter': {} });
+const projection = load('workers/workersState.ts', { './openCodeRuntime': {}, './workerRouter': {}, '../team/roster': load('team/roster.ts', {}) });
 imports['../workers/workersState'] = projection;
 imports['../workers/evalScoreboard'] = { loadEvalScoreboard: () => ({}) };
 const { McpServerManager } = load('mcp/mcpServer.ts', imports);
@@ -38,7 +38,8 @@ const providerText = fs.readFileSync(path.join(__dirname, 'src/webview/webviewPr
 const start = providerText.indexOf('    private _refreshWorkersState(): void {');
 const end = providerText.indexOf('\n    }', start) + 6;
 const output = {};
-vm.runInNewContext('out.Provider = class {' + providerText.slice(start, end).replace('private _refreshWorkersState(): void', '_refreshWorkersState()') + '};', { out: output, vscode, ...host, ...projection, console });
+// The sliced method is TypeScript: transpile it before running.
+vm.runInNewContext(ts.transpileModule('out.Provider = class {' + providerText.slice(start, end) + '};', { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, { out: output, vscode, ...host, ...projection, console });
 const webview = fs.readFileSync(path.join(__dirname, 'media/webview.js'), 'utf8');
 const ui = {}, icon = { className: '' }, button = { querySelector: () => icon }, list = { innerHTML: '', querySelectorAll: () => [] };
 const blocks = [['// ── Usage banner', '// ── end Usage banner ──'], ['// ── Turn trace rows: pure render', '// ── end Turn trace rows ──'], ['// ── Workers tab: pure render', '// ── end Workers pure render ──']];
@@ -49,6 +50,7 @@ const pushed = [];
 const provider = new output.Provider();
 provider._workerSpend = () => ({ workerIds: [] });
 provider._benchmarkRows = () => [];
+provider._mainAgentMember = () => ({ id: 'bhaskar', name: 'Bhaskar', role: 'Tech Lead', kind: 'main', active: false, profile: 'AskAway Build', pinned: false, initials: 'BH', avatarSrc: '', creativeStatus: '', agentFile: 'askaway-build.agent.md', model: '', thinking: '', adapter: 'copilot', taskIds: [], turnCost: 0, monthCost: 0 });
 provider._broadcast = message => { pushed.push(message.data); ui.apply(message.data); };
 provider.refreshWorkersState = () => provider._refreshWorkersState();
 provider.setWorkersStateSource = source => { provider._workersStateSource = source; };

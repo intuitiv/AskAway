@@ -45,9 +45,14 @@ const metrics = { monthCredits: { label: 'October', totalDollars: 102, workerDol
 metrics.monthCredits.categories = costRows;
 const update = () => browser.ui.handleExtensionMessage({ data: { type: 'updateObservabilityMetrics', metrics } });
 update();
-assert.match(categories.innerHTML, /<th>Category<\/th><th>Cost \(\$\)<\/th><th>Requests<\/th>/);
-for (const row of costRows) assert.ok(categories.innerHTML.includes('<td>' + row.category + '</td><td><span class="obs-month-amount">$' + row.dollars.toFixed(2) + '</span>'));
-assert.ok(source.indexOf('id="obs-cost-categories"') > source.indexOf('id="obs-turn-summary"'));
+// R-TEAM-29 moves category costs from Trace into per-member Team rows.
+assert.equal(categories.innerHTML, '', 'Trace no longer writes the superseded category cost table');
+assert.ok(!source.includes('id="obs-cost-categories"'), 'Trace does not create the superseded category table');
+const members = costRows.map((row, index) => ({ id: 'member-' + index, name: row.category, role: row.category, pinned: index === 1, taskIds: ['task-' + index], turnCost: row.dollars, monthCost: row.dollars }));
+// R-TEAM-38: a member's Turn is the turn spend of its displayed tasks.
+const activeTasks = members.map((member, index) => ({ workerId: 'task-' + index, profile: member.id, state: 'RUNNING', runs: [], turnCost: member.turnCost }));
+const teamHtml = browser.ui.renderWorkersHtml({ members, workers: activeTasks, turnWorkerIds: activeTasks.map(task => task.workerId), generatedAt: start }, '', {}, false);
+for (const member of members) assert.ok(teamHtml.includes('data-member-cost="' + member.id + '" data-turn-cost="$' + member.turnCost.toFixed(2) + '" data-month-cost="$' + member.monthCost.toFixed(2) + '"'), 'Team associates costs with ' + member.name);
 assert.deepEqual([...month.innerHTML.matchAll(/<span class="obs-month-amount">([^<]+)<\/span>/g)].map(match => match[1]), ['$102.00', '$70.00', '$1.00']);
 assert.equal(month.innerHTML.replace(/<[^>]+>/g, ''), 'October · this workspace: $102.00 ($70.00 workers · $1.00 cloud est.)');
 assert.equal(month.style.color, '');
@@ -64,4 +69,4 @@ assert.doesNotMatch(host.innerHTML, /data-trace-group/);
 assert.match(host.innerHTML, /data-eid="t:record-1234567890:answer" open/);
 openRow = false; update();
 assert.doesNotMatch(host.innerHTML, /data-eid="t:record-1234567890:answer" open/);
-console.log('PASS EV-TRACE-TAB Validator pinned; monthly category aggregation/table; dollars-only red; shared rows and stable expansion');
+console.log('PASS EV-TRACE-TAB Validator pinned; monthly category aggregation/Team member costs (R-TEAM-29); dollars-only red; shared rows and stable expansion');
