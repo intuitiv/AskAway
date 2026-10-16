@@ -31,7 +31,7 @@ import { HandoffNotifier } from '../services/handoffNotifier';
 import { observeWorkers, sharedCommentaryStore, sharedWorkerRuntime, workerSpendSince } from '../workers/workerHost';
 import { workspaceCostRequests, monthlyCostCategories } from '../services/workspaceCost';
 import { presenceStates } from '../availability/presence';
-import { aitalkUserName, gitGlobalUserName } from '../aitalk/userName';
+import { aitalkUserName, aitalkUserPhoto, gitGlobalUserName } from '../aitalk/userName';
 import { turnTotals, mergeToolUsage, persistTurnTotals } from '../workers/turnBudget';
 import { readSpecCostTotals, recordSpecTurn, specCostLedgerFile, readActiveSpecSlug } from '../specs/specCostLedger';
 import { isTelegramHandoffTaskId, submitTelegramConversationReply } from '../services/telegramConversationReply';
@@ -2145,10 +2145,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     // resetting on those would wipe the parent turn's accumulated sub-agent credits.
                     if (!isChildLog && line.indexOf('"type":"user_message"') !== -1) {
                         try {
-                            const ts = (JSON.parse(line) as { ts?: number }).ts;
+                            const event = JSON.parse(line) as { ts?: number; attrs?: { text?: string }; text?: string };
+                            const ts = event.ts;
                             if (typeof ts === 'number' && ts > this._logTurnStartTs) {
                                 this._logTurnStartTs = ts;
                                 this._resetTurnMetrics(ts);
+                                if (lineIndex >= (this._replayFloors.get(logFile) ?? 0)) {
+                                    this._validatorTurnStart?.(event.attrs?.text ?? event.text ?? '', String(ts));
+                                }
                             }
                         } catch { /* malformed — skip */ }
                         continue;
@@ -4205,9 +4209,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     if (message.type === 'aitalkReact') room.react('you', message.replyTo, message.emoji);
                     const snapshot = room.snapshot();
                     const config = vscode.workspace.getConfiguration('askaway.aitalk');
-                    const configuredPhoto = config.get<string>('userPhoto', '');
-                    const photo = configuredPhoto && !/^https?:\/\//i.test(configuredPhoto)
-                        ? 'data:image/' + (path.extname(configuredPhoto).slice(1) === 'svg' ? 'svg+xml' : path.extname(configuredPhoto).slice(1)) + ';base64,' + fs.readFileSync(path.resolve(root, configuredPhoto)).toString('base64') : configuredPhoto;
+                    const photo = aitalkUserPhoto(config.get<string>('userPhoto', ''), root);
                     void aitalkUserName(config.get<string>('userName', ''), () => gitGlobalUserName(root)).then(name => {
                         this._broadcast({ type: 'aitalkState', data: { ...snapshot, userName: name, userPhoto: photo } });
                     });

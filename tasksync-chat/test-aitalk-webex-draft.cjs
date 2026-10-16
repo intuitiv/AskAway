@@ -31,7 +31,7 @@ const load = () => { const mod = { exports: {} }; new Function('require', 'modul
         const handlers = [], intents = [];
         const panel = { innerHTML: '', querySelector: () => undefined };
         const providerModule = {};
-        new Function('exports', 'approveDraft', 'roomFor', 'vscode', 'aitalkUserName', 'gitGlobalUserName', routingJs)(providerModule, api.approveDraft, () => room, { workspace: { workspaceFolders: [{ uri: { fsPath: root } }], getConfiguration: () => ({ get: (key, fallback) => fallback }) } }, async () => 'Reviewer', () => 'Reviewer');
+        new Function('exports', 'approveDraft', 'roomFor', 'vscode', 'aitalkUserName', 'gitGlobalUserName', 'aitalkUserPhoto', routingJs)(providerModule, api.approveDraft, () => room, { workspace: { workspaceFolders: [{ uri: { fsPath: root } }], getConfiguration: () => ({ get: (key, fallback) => fallback }) } }, async () => 'Reviewer', () => 'Reviewer', () => '');
         const provider = new providerModule.Provider();
         const widget = createTalkController({ host: panel, events: { addEventListener: (name, fn) => { if (name === 'click') handlers.push(fn); } }, post: action => {
             intents.push(action);

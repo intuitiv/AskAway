@@ -32,6 +32,8 @@ export function webexTool(host: (input: unknown) => Promise<Record<string, unkno
 
 const packetShape = {
     profile: z.string().describe('Worker mode: build, code, test, explore, research, verify, gradle, rca, review, quality, perf, authoring, devx.'),
+    runtime: z.enum(['opencode', 'agy']).optional().describe('Worker runtime; default opencode. agy runs `model` (e.g. gemini-4-argon-medium) through the agy CLI for any mode; its cost is unreported and it has no OpenCode viewer.'),
+    agyPermissions: z.enum(['review', 'skip']).optional().describe('agy only. Default review: headless agy auto-denies commands/MCP calls its settings.json permissions.allow does not grant, and the run FAILS with that reason. skip: explicit per-run --dangerously-skip-permissions; refused for modes that deny edits or shell.'),
     model: z.string().optional().describe('provider/model; must be allowed by the mode. Omit for the mode default.'),
     thinking: z.string().optional().describe('Reasoning variant; must be allowed by the mode.'),
     dispatchTurnId: z.string().min(1).describe('The orchestrator turn this work is attributed to.'),
@@ -175,7 +177,7 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
                 workerId: worker.workerId, profile: worker.profile, model: worker.model, thinking: worker.thinking, state: worker.state,
                 knowledge: worker.knowledge, nextInputTokens: worker.nextInputTokens,
                 warmForSeconds: worker.cacheExpiresAt ? Math.max(0, Math.round((worker.cacheExpiresAt - now) / 1000)) : 0,
-                lastRunId: worker.runs[worker.runs.length - 1]?.runId ?? '', cost: worker.usage.cost, sessionOpenAction: worker.sessionOpenAction,
+                lastRunId: worker.runs[worker.runs.length - 1]?.runId ?? '', cost: worker.model.startsWith('agy/') ? 'unreported' : worker.usage.cost, sessionOpenAction: worker.sessionOpenAction,
             }));
     });
 
@@ -208,6 +210,8 @@ export function workerToolDefinitions(source: () => RuntimeSource, defaultWorksp
         inputSchema: z.object({ runId: z.string(), limit: z.number().int().positive().max(100).optional() }),
     }, async (args) => (await runtime()).logs(args.runId).slice(-(args.limit ?? 20)).map((fact) => ({
         ts: fact.ts, type: fact.type, tool: fact.tool, usage: fact.usage, exitCode: fact.exitCode,
+        ...(fact.round !== undefined ? { round: fact.round } : {}), ...(fact.tail !== undefined ? { tail: fact.tail } : {}),
+        ...(fact.costStatus ? { costStatus: fact.costStatus } : {}),
     })));
 
     return definitions;

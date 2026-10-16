@@ -1,6 +1,11 @@
 import { createTalkController } from './talkController.js';
 const controller = createTalkController({ host: document.getElementById('aitalk-root'), events: document, post: message => {
     if (message.type === 'talkTab' && message.tab === 'Trace') { document.querySelector('.widget-tab[data-tab="observability"]')?.click(); return; }
+    if (message.type === 'talkMember' && message.member) {
+        document.querySelector('.widget-tab[data-tab="workers"]')?.click();
+        if (typeof window.focusTeamMember === 'function') window.focusTeamMember(message.member);
+        return;
+    }
     window.askawayPostMessage(message);
 } });
 export function renderAITalk(state) { controller.render(state); }

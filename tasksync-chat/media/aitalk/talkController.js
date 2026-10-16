@@ -58,6 +58,8 @@ function sendMessage() {
 document.addEventListener('click', event => {
     const trace = event.target.closest('a.talk-trace-link[data-tab]');
     if (trace?.dataset?.tab) { event.preventDefault(); post({ type: 'talkTab', tab: trace.dataset.tab }); return; }
+    const memberEl = event.target.closest?.('[data-member]');
+    if (memberEl?.dataset?.member) { post({ type: 'talkMember', member: memberEl.dataset.member }); return; }
     const button = event.target.closest('button');
     if (!button) return;
     if (button.dataset?.tab) { post({ type: 'talkTab', tab: button.dataset.tab }); root().querySelectorAll?.('[data-panel]').forEach(panel => { panel.hidden = panel.dataset.panel !== button.dataset.tab; }); return; }

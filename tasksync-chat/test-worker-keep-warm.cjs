@@ -6,14 +6,13 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const http = require('node:http');
+const os = require('node:os');
 const path = require('node:path');
 const { PassThrough } = require('node:stream');
 const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 
-const buildDir = path.join(__dirname, '.worker-keep-warm-test-build');
-fs.rmSync(buildDir, { recursive: true, force: true });
-fs.mkdirSync(buildDir);
-for (const name of ['workerProfiles', 'workerRouter', 'openCodeRuntime', 'keepWarm', 'workersState']) {
+const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), 'worker-keep-warm-build-'));
+for (const name of ['agyRuntime', 'workerProfiles', 'workerRouter', 'openCodeRuntime', 'keepWarm', 'workersState']) {
     fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(
         fs.readFileSync(path.join(__dirname, 'src', 'workers', `${name}.ts`), 'utf8'),
         { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
@@ -25,8 +24,7 @@ const { projectWorkersState } = require(path.join(buildDir, 'workersState.js'));
 const browser = { acquireVsCodeApi: () => ({ getState: () => ({}), setState() {}, postMessage() {} }), document: { readyState: 'loading', addEventListener() {}, querySelectorAll: () => [], getElementById: () => null }, window: {}, console, setTimeout() {}, setInterval() {} };
 require('node:vm').runInNewContext(fs.readFileSync(__dirname + '/media/webview.js', 'utf8').replace(/\}\(\)\);\s*$/, 'globalThis.render = renderWorkersHtml; }());'), browser);
 
-const fixtureDir = path.join(__dirname, '.worker-keep-warm-test-fixture');
-fs.rmSync(fixtureDir, { recursive: true, force: true });
+const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'worker-keep-warm-fixture-'));
 const ledgerDir = path.join(fixtureDir, 'ledger');
 const workspace = path.join(fixtureDir, 'ws');
 fs.mkdirSync(workspace, { recursive: true });
@@ -57,11 +55,14 @@ assert.deepEqual(decide({ unusedPings: 3 }), ['w'], 'three unused pings: a fourt
 assert.deepEqual(decide({ unusedPings: 4 }), [], 'stop after 4 consecutive unused pings');
 assert.deepEqual(decide({}, 0), [], 'main chat never active: no ping');
 assert.deepEqual(decide({}, now - 301_000), [], 'main chat idle for over 5 minutes: no ping');
+assert.deepEqual(decide({ adapter: 'agy' }), [], 'agy adapter: never pinged');
+assert.deepEqual(decide({ model: 'agy/gemini-4-argon-high' }), [], 'agy model: never pinged');
 
 (async () => {
     // 2) Wiring through the real runtime against a fake OpenCode session endpoint.
     const requests = [];
     let failNext = false;
+    const reply = () => JSON.stringify({ info: { role: 'assistant' }, parts: [{ type: 'text', text: 'ok' }, { type: 'step-finish', id: 'prt_ping', cost: 0.0001, tokens: { input: 5, output: 2, reasoning: 0, cache: { read: 1000, write: 0 } } }] });
     const server = http.createServer((req, res) => {
         let body = '';
         req.on('data', (chunk) => { body += chunk; });
@@ -69,7 +70,7 @@ assert.deepEqual(decide({}, now - 301_000), [], 'main chat idle for over 5 minut
             requests.push({ method: req.method, url: req.url, body: body ? JSON.parse(body) : undefined });
             if (failNext) { res.statusCode = 500; res.end('boom'); return; }
             res.setHeader('content-type', 'application/json');
-            res.end(JSON.stringify({ info: { role: 'assistant' }, parts: [{ type: 'text', text: 'ok' }, { type: 'step-finish', id: 'prt_ping', cost: 0.0001, tokens: { input: 5, output: 2, reasoning: 0, cache: { read: 1000, write: 0 } } }] }));
+            res.end(reply());
         });
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -77,7 +78,8 @@ assert.deepEqual(decide({}, now - 301_000), [], 'main chat idle for over 5 minut
 
     let clock = 1_000_000;
     const children = [];
-    const makeRuntime = () => new OpenCodeWorkerRuntime([profile], { ledgerDir, now: () => clock, attachUrl: url, spawner: (args) => {
+    // The agy verify loop (test-agy-runtime.cjs) would end the run after the clock moves; keep-warm needs exit-time completion.
+    const makeRuntime = () => new OpenCodeWorkerRuntime([profile], { ledgerDir, now: () => clock, attachUrl: url, agyVerifyLoop: false, spawner: (args) => {
         const child = new EventEmitter();
         child.args = args;
         child.stdout = new PassThrough();
@@ -92,10 +94,22 @@ assert.deepEqual(decide({}, now - 301_000), [], 'main chat idle for over 5 minut
         child.emit('exit', 0, null);
         await tick();
     };
+    const finishAgyRun = async (child) => {
+        await emit(child, { event: 'step_update', step_update: { conversation_id: 'conv_agy_1', step_index: 1, state: 'DONE', step_type: 'agent_response', text_delta: 'Result: PASS\nEvidence: agy-ok\nKnowledge: agy-k', usage: { input_tokens: 400, output_tokens: 20, thinking_tokens: 0, cache_read_tokens: 1600 } } });
+        await emit(child, { event: 'result', result: { conversation_id: 'conv_agy_1', status: 'SUCCESS', response: 'Result: PASS\nEvidence: agy-ok\nKnowledge: agy-k' } });
+        child.emit('exit', 0, null);
+        await tick();
+    };
 
     const started = runtime.start(packet);
     await finishRun(children[0]);
     const workerId = started.workerId;
+    const agyStarted = runtime.start({ ...packet, runtime: 'agy', model: 'agy/gemini-4-argon-high' });
+    clock += 5_000;
+    await finishAgyRun(children[1]);
+    clock -= 5_000;
+    const agyWorkerId = agyStarted.workerId;
+    assert.deepEqual(runtime.keepWarmWorkers(workspace).map((w) => w.workerId), [workerId], 'only OpenCode workers are candidates for keep-warm pings');
     const pings = () => requests.filter((request) => request.method === 'POST');
     const mainActive = () => clock - 5_000;
 
@@ -105,16 +119,26 @@ assert.deepEqual(decide({}, now - 301_000), [], 'main chat idle for over 5 minut
     assert.deepEqual(await keepWarmTick(runtime, workspace, clock - 301_000), [], 'main chat idle past 5 minutes: no ping');
     assert.equal(pings().length, 0);
 
-    assert.deepEqual(await keepWarmTick(runtime, workspace, mainActive()), [workerId], 'ping #1');
+    assert.deepEqual(await keepWarmTick(runtime, workspace, mainActive()), [workerId], 'ping #1 (only OpenCode worker, never agy)');
     const projected = projectWorkersState(runtime, workspace, () => clock);
-    assert.equal(projected.workers[0].lastPingAt, clock);
-    assert.equal(projected.workers[0].banner.lastActivityAt, clock);
-    assert.equal(projected.workers[0].cacheExpiresAt - clock, 300000);
-    const card = browser.render(projected, '', {}, false);
-    assert.match(card, /pinged 0m ago/);
-    assert.match(card, /warm for 5m0s/);
-    assert.match(card, /Age: 0:00 warm/);
-    assert.doesNotMatch(card, /4:10/);
+    const ocProjected = projected.workers.find((w) => w.workerId === workerId);
+    const agyProjected = projected.workers.find((w) => w.workerId === agyWorkerId);
+    assert.equal(ocProjected.lastPingAt, clock);
+    assert.equal(ocProjected.banner.lastActivityAt, clock);
+    assert.equal(ocProjected.cacheExpiresAt - clock, 300000);
+    assert.deepEqual([agyProjected.adapter, agyProjected.cacheExpiresAt, agyProjected.lastPingAt, agyProjected.expired, agyProjected.banner.dollars],
+        ['agy', 0, 0, false, null], 'agy worker has no cache TTL or ping state and keeps cost unreported');
+    const card = browser.render(projected, '', { [agyWorkerId]: true }, false);
+    const ocCard = browser.render(projected, workerId, {}, false);
+    const agyCard = browser.render(projected, agyWorkerId, { [agyWorkerId]: true }, false);
+    assert.match(ocCard, /pinged 0m ago/);
+    assert.match(ocCard, /warm for 5m0s/);
+    assert.match(ocCard, /Age: 0:00 warm/);
+    assert.doesNotMatch(ocCard, /4:10/);
+    assert.doesNotMatch(agyCard, /Age:|warm for|pinged|within 5 min|cache is cold after 5:00/, 'agy card hides cache-age, warm countdown, and ping UI');
+    assert.match(agyCard, /1 req &middot; <strong class="health-cost">[\s\S]*?cost unreported[\s\S]*?<\/strong> &middot; 2K last in \/ 20 turn out &middot; 80% cache/, 'agy card preserves usage, unreported cost, and cache-token telemetry');
+    assert.match(agyCard, /worker-state-completed">COMPLETED<\/span>[\s\S]*?agy-k[\s\S]*? · turn turn-1 · 5s/, 'agy card preserves status, knowledge, and actual task execution age');
+    assert.match(card, /<strong>2<\/strong> live workers &middot; 0 running &middot; 0 queued &middot; 1 warm/, 'summary counts only OpenCode as warm');
     assert.equal(pings().length, 1, 'exactly ONE message');
     assert.equal(pings()[0].url, '/session/ses_W1/message');
     assert.equal(pings()[0].body.agent, 'aa-verify', 'same agent');
@@ -128,7 +152,8 @@ assert.deepEqual(decide({}, now - 301_000), [], 'main chat idle for over 5 minut
     assert.equal(pingFacts()[0].type, 'checkpoint');
     assert.deepEqual([pingFacts()[0].usage.cacheRead, pingFacts()[0].usage.cost], [1000, 0.0001], "the ping's step_finish usage is recorded");
     const spend = runtime.usageSince(workspace, 0);
-    assert.equal(spend.requests, 2, 'worker spend counts the real step plus the ping');
+    assert.equal(spend.requests, 3, 'worker spend counts the OpenCode step, the agy step, and the OpenCode ping');
+    assert.equal(spend.unreportedCostRequests, 1, 'agy request cost remains unreported');
     assert.ok(Math.abs(spend.dollars - 0.0011) < 1e-9, 'ping cost is part of worker spend');
 
     assert.deepEqual(await keepWarmTick(runtime, workspace, mainActive()), [], 'the ping restarted the cache clock: nothing to do for another ~4 min');
@@ -146,7 +171,7 @@ assert.deepEqual(decide({}, now - 301_000), [], 'main chat idle for over 5 minut
     const submitted = runtime.submit(workerId, packet);
     assert.equal(submitted.workerId, workerId, 'the kept-warm worker is reused');
     assert.deepEqual(await keepWarmTick(runtime, workspace, mainActive()), [], 'a busy worker is never pinged');
-    await finishRun(children[1]);
+    await finishRun(children.at(-1));
     clock += 250_000;
     assert.deepEqual(await keepWarmTick(runtime, workspace, mainActive()), [workerId], 'after a real run, pinging resumes');
 

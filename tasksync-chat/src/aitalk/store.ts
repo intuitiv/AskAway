@@ -12,9 +12,11 @@ export const REACTIONS = ['👍', '👎', '❤️', '😂', '🙏', '🎉', '�
 export class AITalkStore {
     readonly file: string;
     readonly presenceFile: string;
+    readonly typingFile: string;
     constructor(private workspace: string, private registry = rules.defaultMembers) {
         this.file = path.join(workspace, '.askaway', 'aitalk', 'messages.jsonl');
         this.presenceFile = path.join(workspace, '.askaway', 'aitalk', 'presence.jsonl');
+        this.typingFile = path.join(workspace, '.askaway', 'aitalk', 'typing.jsonl');
     }
     snapshot(full = false): { messages: any[]; members: any[] } {
         let members = this.registry.map((member: any) => ({ ...member, presence: member.kind === 'user' ? 'joined' : 'left', joinedAt: null, leftAt: null }));
@@ -87,6 +89,16 @@ export class AITalkStore {
         this.append({ updateEvent: id, fields, ts: stamp() });
     }
     agentId(): string | undefined { return this.snapshot().members.find((member: any) => member.kind === 'agent')?.id; }
+    setTyping(id: string, on: boolean): void {
+        this.append({ id, until: on ? Date.now() + 90000 : 0 }, this.typingFile);
+    }
+    typingIds(): string[] {
+        const active = new Map<string, number>();
+        for (const line of lines(this.typingFile)) {
+            try { const event = JSON.parse(line); active.set(event.id, event.until); } catch { /* Torn event. */ }
+        }
+        return [...active].filter(([, until]) => until > Date.now()).map(([id]) => id);
+    }
     /** Tracker event from the receiving participant: delivered (double grey) or read (double blue). */
     track(event: 'delivered' | 'read', recipient: string, ids: string[]): void {
         if (ids.length) this.append({ deliveryEvent: event, recipient, ids });

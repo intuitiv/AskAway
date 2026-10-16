@@ -41,12 +41,8 @@ tasksync-plugin/dist/
 tasksync-plugin/node_modules/
 
 AGENT_AUDIT.md
-# cowork generated artifacts
-.askaway/cowork-manifest.json
-.askaway/cowork-bundle.md
-.askaway/cowork-inbox/
-# worker-ledger snapshots for the analyst worker
-.askaway/analyst/ledgers/
+# AskAway local runtime state (messages, logs, ledgers, cowork artifacts): private
+.askaway/
 
 
 resources/speckit/**/*

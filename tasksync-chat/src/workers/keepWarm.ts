@@ -9,6 +9,8 @@ export { KEEP_WARM_PROMPT } from './workerRouter';
 
 export interface KeepWarmWorker {
     workerId: string;
+    adapter?: 'opencode' | 'agy';
+    model?: string;
     state: string;
     /** A run is active. */
     active: boolean;
@@ -25,7 +27,8 @@ export interface KeepWarmWorker {
 /** Worker ids to ping now: idle, queue empty, cache alive but expiring within the lead time, main chat active, within limits. */
 export function workersToPing(workers: KeepWarmWorker[], now: number, mainActiveAt: number): string[] {
     if (!mainActiveAt || now - mainActiveAt > KEEP_WARM_MAIN_ACTIVE_MS) { return []; }
-    return workers.filter((worker) => worker.state === 'IDLE' && !worker.active && worker.queued === 0 && !worker.pinging
+    return workers.filter((worker) => worker.adapter !== 'agy' && !worker.model?.startsWith('agy/')
+        && worker.state === 'IDLE' && !worker.active && worker.queued === 0 && !worker.pinging
         && worker.cacheExpiresAt > now && worker.cacheExpiresAt - now <= KEEP_WARM_LEAD_MS
         && worker.nextInputTokens < KEEP_WARM_MAX_CONTEXT_TOKENS && worker.unusedPings < KEEP_WARM_MAX_UNUSED_PINGS)
         .map((worker) => worker.workerId);

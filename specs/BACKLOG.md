@@ -95,7 +95,7 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 | M3 | Memory migration as its own spec (009) | DECIDED | Reviewer 2026-10-07: "Do it in 007. We have to many specs. It belongs there." No spec 009; US6 in spec 007 | 2026-10-07 |
 | M4 | How agentmemory stays running (login item vs started by AskAway) | DECIDED | Reviewer 2026-10-07: "Askaway starts it like we start opencode server." FR-025 in spec 007 | 2026-10-07 |
 | T004-C | Cloud proof uses throwaway PR and tests approval behaviour | DONE | "use throwaway PR. And cloud agent is enabled, but not sure if it require approval or not, but try and test it"; #1608 demo done, copilot Actions ran/no hold observed; setting not captured | specs/006-cloud-tasks/evidence/proof-2026-10-07.md |
-| AG-1 | Route some workers to Antigravity (org Pro licence) behind a settings toggle | DROPPED | Reviewer 2026-10-07: "Lets drop, i'll explore more and get back to you in future." Probe 2026-10-07 with agy 1.3.1: headless login works (org account via businessaicode.googleapis.com, prj-prd-agentspace), JSON/stream-json, usage tokens, `--conversation` resume all work; models Gemini only. But every file write and shell command is auto-denied in headless mode, even with `--dangerously-skip-permissions` and with `permissions.allow` rules (`write_file(dir/)`, `command(regex:.*)`) → read-only only, so no use as a build/test worker. Reviewer: "If it doesnt work, we'll drop this idea." | Reviewer ask, 2026-10-07 |
+| AG-1 | Route some workers to Antigravity (org Pro licence) behind a settings toggle | ~~DROPPED~~ REOPENED 2026-10-15 → 010 T001–T003 | Reviewer 2026-10-07: "Lets drop, i'll explore more and get back to you in future." Probe 2026-10-07 with agy 1.3.1: headless login works (org account via businessaicode.googleapis.com, prj-prd-agentspace), JSON/stream-json, usage tokens, `--conversation` resume all work; models Gemini only. But every file write and shell command is auto-denied in headless mode, even with `--dangerously-skip-permissions` and with `permissions.allow` rules (`write_file(dir/)`, `command(regex:.*)`) → read-only only, so no use as a build/test worker. Reviewer: "If it doesnt work, we'll drop this idea." Latest: "Check now, Argon is available." Runtime proof must recheck historical blocker; model discovery is not a build pass. | Reviewer asks, 2026-10-07 / 2026-10-15; ADR 0023 |
 
 ## Handoff capture gaps — 2026-10-07
 
@@ -155,3 +155,13 @@ GAP means a missing spec contract, not necessarily missing implementation. Exist
 | N12-24 | AITalk bugs: hard-coded members, "You moderates", dark middle, invisible input text, emoji/attach dead, Enter newline, old green dot | DONE turn 6 (EV-AITALK-EXTENSION, EV-THEME-LIGHT, avatar SVGs) |
 | N12-25 | Trace: only main + Validator; summary above groups; no inner "Trace" text; cloud est. per month | DONE turn 6 (EV-TRACE-TAB-UNIFICATION) |
 | N12-26 | Chat tab + ask_user LM tool removed (AITalk replaces) | DONE turn 6; MCP ask_user + legacy Chat CSS cleanup OPEN |
+
+## Team intake — 2026-10-15
+
+| ID | Ask / home | State / reason |
+|---|---|---|
+| TEAM-010 | All current Team asks, exact quotes GOALS.md section 4; specs/010-team/spec.md, plan.md, tasks.md T001–T014; R-TEAM-01–12 | PLANNED; runtime lane agy foundation first, then Storybook review, production deferred |
+| TEAM-FUTURE | "In future we can give a facility to add new Team members from the Team tab." (2026-10-15); R-TEAM-12 | DEFERRED; future add-member capability, not initial Team delivery |
+| TEAM-AITALK | Latest pin/main-Agent join/question/Validator typing bugs → 010 T012; previous AITalk reports remain in their existing homes | UNVERIFIED; this documentation packet ran no AITalk caller-view or live acceptance tests, existing tests/dirty changes do not prove live fixes |
+| TEAM-METADATA | Desired tasksync-chat/package.json description/keywords: alternate agy runtime/Argon after runtime proof; Team/tasks after approved release; 010 T014 | WAITING on runtime lane ownership; no package edits permitted here |
+| AGY-COMPLETE | "go finish remaining thing for agy." (2026-10-15) → 010 US1 T015 MCP, T016 shell/permission, T017 OpenCode-independent reload, T018 token attribution, T019 final gate/deploy and public closure | OPEN; runtime lane active. Adapter fake-CLI/live scoped edit/compile/build/worker-suite passes reported only; no remaining capability or deployment marked done. Model target agy/gemini-4-argon-medium (high/low alternatives), cost unreported not 0/free. Team remains deferred |

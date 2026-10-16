@@ -139,7 +139,8 @@ export function workerProfileRefresh(profiles: WorkerProfile[]): () => WorkerPro
 export function resolveSelection(profile: WorkerProfile, request: WorkerSelection = {}): SelectionResult {
     const model = request.model ?? profile.model;
     const thinking = request.thinking ?? profile.thinking;
-    if (!profile.models.includes(model)) {
+    // agy is a runtime, not a persona: every profile may run any agy model (`agy/<name>`); agy itself rejects an unknown one.
+    if (!profile.models.includes(model) && !/^agy\/[a-z0-9][a-z0-9.-]*$/.test(model)) {
         return { status: 'SELECTION_UNAVAILABLE', profile: profile.name, reason: `model ${model} is not allowed for ${profile.name}` };
     }
     if (!profile.thinkingOptions.includes(thinking)) {
@@ -190,15 +191,15 @@ export function toOpenCodeAgent(profile: WorkerProfile): string {
         ...(permission.length ? ['permission:', ...permission] : []),
         '---',
         '',
-        profile.prompt,
-        '',
-        TIER_GUIDANCE[profile.tier],
-        '',
-        WORKER_BASICS,
-        SHARED_VOICE,
+        workerInstructions(profile),
         '',
     ];
     return lines.join('\n');
+}
+
+/** A profile's worker instructions (prompt, tier guidance, shared basics and voice); any runtime sends the same text. */
+export function workerInstructions(profile: WorkerProfile): string {
+    return [profile.prompt, '', TIER_GUIDANCE[profile.tier], '', WORKER_BASICS, SHARED_VOICE].join('\n');
 }
 
 // Worker runs are headless: an approval prompt is auto-rejected and ends the run, so the rules below keep work inside the allowlist.

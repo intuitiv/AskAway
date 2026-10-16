@@ -24,7 +24,7 @@ export interface WorkerRunTrace {
 export interface WorkerRow {
     workerId: string;
     state: ProjectedWorkerState;
-    adapter: 'opencode';
+    adapter: 'opencode' | 'agy';
     profile: string;
     model: string;
     thinking: string;
@@ -44,8 +44,8 @@ export interface WorkerRow {
     forkedFrom: string;
     /** The orchestrator track of the worker's latest run that named one; '' when none did. */
     track: string;
-    /** Same fields as the chat banner, for the worker's current (or last) run: requests, $, last in / run out, cache hit, age. */
-    banner: { requests: number; dollars: number; lastIn: number; lastCached: number; turnOut: number; lastActivityAt: number };
+    /** Same fields as the chat banner, for the worker's current (or last) run: requests, $ (null: runtime reports no cost), last in / run out, cache hit, age. */
+    banner: { requests: number; dollars: number | null; lastIn: number; lastCached: number; turnOut: number; lastActivityAt: number };
     usage: RunUsage;
     runs: WorkerRunTrace[];
 }
@@ -92,6 +92,7 @@ export async function loadWorkerTrace(runtime: OpenCodeWorkerRuntime, workspaceP
         for (const runId of Object.keys(runs)) { runs[runId] = traceEvents(facts.filter((fact) => fact.runId === runId)); }
         return { workerId, source: 'ledger', reason, runs };
     };
+    if (worker.adapter === 'agy') { return fromLedger('agy conversation: no OpenCode transcript; facts from the AskAway ledger'); }
     if (!SESSION_ID.test(worker.sessionId)) { return fromLedger('no OpenCode session yet'); }
     try {
         return { workerId, source: 'opencode', reason: '', runs: traceFromSession(await fetchMessages(worker.sessionId), worker.runs) };
@@ -213,18 +214,20 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
             startedAt: run.startedAt, endedAt: run.endedAt, elapsedMs: run.elapsedMs, usage: { ...run.usage }, reason: run.reason ?? '',
         }));
         const session = [...runs].reverse().find((run) => run.sessionId);
-        const cacheExpiresAt = routed ? runtime.router.cacheExpiresAt(routed) : 0;
+        const agy = latest.model.startsWith('agy/');
+        const cacheExpiresAt = !agy && routed ? runtime.router.cacheExpiresAt(routed) : 0;
         const expired = !active && (state === 'RETIRED' || state === 'ORPHANED' || (cacheExpiresAt > 0 && now() >= cacheExpiresAt));
+        const lastPingAt = agy ? 0 : (pings.get(workerId) ?? 0);
         workers.push({
-            workerId, state, adapter: 'opencode', profile: latest.profile, model: latest.model, thinking: latest.thinking,
+            workerId, state, adapter: agy ? 'agy' : 'opencode', profile: latest.profile, model: latest.model, thinking: latest.thinking,
             sessionId: session?.sessionId ?? '', sessionOpenAction: session?.sessionOpenAction ?? '',
-            lastUpdateAt: Math.max(...runs.map((run) => run.updatedAt)), lastPingAt: pings.get(workerId) ?? 0, blocker,
+            lastUpdateAt: Math.max(...runs.map((run) => run.updatedAt)), lastPingAt, blocker,
             nextInputTokens: current.nextInputTokens || routed?.contextTokens || 0, cacheExpiresAt, expired,
             knowledge: [...runs].reverse().find((run) => run.knowledge)?.knowledge ?? '',
             forkedFrom: routed?.forkedFrom ?? runs.find((run) => run.forkedFrom)?.forkedFrom ?? '',
             track: [...runs].reverse().find((run) => run.track)?.track ?? '',
-            banner: { requests: current.usage.steps, dollars: current.usage.cost, lastIn: current.lastPromptTokens, lastCached: current.lastCachedTokens,
-                turnOut: current.usage.output, lastActivityAt: Math.max(current.updatedAt, pings.get(workerId) ?? 0) },
+            banner: { requests: current.usage.steps, dollars: agy ? null : current.usage.cost, lastIn: current.lastPromptTokens, lastCached: current.lastCachedTokens,
+                turnOut: current.usage.output, lastActivityAt: Math.max(current.updatedAt, lastPingAt) },
             usage: sumUsage(traces), runs: traces,
         });
     }

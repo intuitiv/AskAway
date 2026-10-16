@@ -33,10 +33,10 @@ fs.writeFileSync(path.join(temp, key + '.jsonl'), facts.map(JSON.stringify).join
 const runtime = new OpenCodeWorkerRuntime([], { ledgerDir: temp, now: () => 400000 });
 runtime.rehydrate(workspace, false);
 const host = { exports: {} };
-vm.runInNewContext(compile('workers/workerHost.ts'), { exports: host.exports, require: (id) => {
+vm.runInNewContext(compile('workers/workerHost.ts'), { exports: host.exports, process, require: (id) => {
     if (id === './openCodeRuntime') return { OpenCodeWorkerRuntime: class { constructor() { return runtime; } } };
     if (id === './workerProfiles') return { loadWorkerProfiles: () => [] };
-    if (id === 'os' || id === 'path') return require(id);
+    if (id === 'os' || id === 'path' || id === 'fs') return require(id);
     return {};
 } });
 host.exports.sharedWorkerRuntime();

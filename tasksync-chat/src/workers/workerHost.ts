@@ -45,10 +45,18 @@ function ensureKeepWarm(workspacePath: string): void {
     keepWarmTimers.set(workspacePath, startKeepWarmTimer(() => runtime, workspacePath, { enabled: keepWarmEnabled, mainActiveAt: mainChatActiveAt }));
 }
 
+/** The agy approval wrapper (tools/agy-approve.py) when installed at ~/.askaway/bin/agy-approve; delete that file to run plain agy. */
+export function agyCommand(home = os.homedir(), env: NodeJS.ProcessEnv = process.env, exists = fs.existsSync): string {
+    if (env.ASKAWAY_AGY_COMMAND) { return env.ASKAWAY_AGY_COMMAND; }
+    const wrapper = path.join(home, '.askaway', 'bin', 'agy-approve');
+    return exists(wrapper) ? wrapper : 'agy';
+}
+
 /** One runtime per extension host, shared by the MCP surface, the VS Code LM tools, and the Workers tab. */
 export function sharedWorkerRuntime(): OpenCodeWorkerRuntime {
     runtime ??= new OpenCodeWorkerRuntime(loadWorkerProfiles(path.join(os.homedir(), '.askaway', 'worker-profiles')), {
         onPresence: (workspace, worker, present) => presenceLifecycle?.(workspace, worker, present),
+        agyCommand: agyCommand(),
     });
     return runtime;
 }

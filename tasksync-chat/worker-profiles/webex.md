@@ -2,10 +2,10 @@
 name: webex
 description: "Read Webex and draft approved replies in the reviewer's own style"
 tier: light
-model: github-copilot/gpt-6.1-sol
-thinking: low
-models: [github-copilot/gpt-6.1-sol]
-thinkingOptions: [low]
+model: agy/gemini-4-argon-high
+thinking: high
+models: [github-copilot/gpt-6.1-sol, agy/gemini-4-argon-high]
+thinkingOptions: [low, high]
 edit: allow
 bash: allow
 webfetch: deny

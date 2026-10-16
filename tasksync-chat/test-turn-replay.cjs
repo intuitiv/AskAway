@@ -44,5 +44,16 @@ const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webview
 assert.match(provider, /const logFiles = await this\._findWorkspaceCopilotDebugLogFiles\(\);\s*await this\._rewindToCurrentTurnOnce\(logFiles\);/);
 assert.match(provider, /if \(lineIndex >= \(this\._replayFloors\.get\(logFile\) \?\? 0\)\) \{\s*toolRows\.push/);
 assert.match(provider, /const recordKey = `\$\{sessionId\}:\$\{lineIndex\}:\$\{this\._hashText\(line\)\}`;\s*if \(ledger\.seen\[recordKey\] === true\)/, 'request rows stay deduplicated by line key');
+const native = provider.slice(provider.indexOf('                    if (!isChildLog && line.indexOf'), provider.indexOf('                    // ── Sub-agent linkage:'));
+const submit = require('node:vm').runInNewContext(ts.transpileModule(`function submit(lines, lineIndexBase) { const logFile = '${main}'; const isChildLog = false; for (const [i, line] of lines.entries()) { const lineIndex = lineIndexBase + i; ${native} } }; submit`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText);
+const starts = [], resets = [];
+const reloaded = { _logTurnStartTs: 0, _replayFloors: plan.floors, _resetTurnMetrics(ts) { resets.push(ts); }, _validatorTurnStart(text, id) { starts.push([text, id]); } };
+// A completed turn is replayed to rebuild metrics, not to restart the Agent lifecycle.
+submit.call(reloaded, lines.slice(turn.lineCount), turn.lineCount);
+assert.deepEqual(resets, [20], 'reload still reconstructs the previous turn metrics');
+assert.deepEqual(starts, [], 'reload after completion must not register Agent again');
+submit.call(reloaded, [JSON.stringify({ type: 'user_message', ts: 30, attrs: { text: 'new live turn' } })], known.get(main).lineCount);
+assert.deepEqual(starts, [['new live turn', '30']], 'live submission after replay passes actual native text');
+console.log('PASS EV-AITALK-NATIVE-REPLAY completed turn stays inactive on reload; live attrs.text delivered');
 fs.rmSync(buildDir, { recursive: true, force: true });
 console.log('EV-OBS-RELOAD TurnRebuiltAfterReload: PASS turnStart=lastUserMessage byteExact=true childRewind=0 alreadyCounted=floors noDoubleCount=true');

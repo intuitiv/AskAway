@@ -33,6 +33,12 @@
 
 ## What AskAway Does
 
+**In progress, not shipped:** agy is being enabled as an alternate runtime with Argon model choices for any profile. [Team planning](specs/010-team/spec.md) follows runtime verification, then Storybook approval; the planned Workers→Team and runs→tasks labels are UI-only.
+
+**Configured defaults, not release proof:** the eight user-level worker profiles and the repo Webex worker profile now default to `agy/gemini-4-argon-high` with high thinking, replacing Sol 6.1 where it was the default; existing Opus assignments remain. `test-worker-profile-refresh.cjs` covers profile parsing and preservation of an existing worker. A live Argon High task and deployment verification remain open. Optional `agy` runtime proof for MCP, shell permissions, reload without OpenCode, token reconciliation and final gate/deploy also remains open. Monetary cost is unreported, not 0/free; no completed runtime release or shipped Team UI is claimed.
+
+The CPO photo helper reads the externally stored `~/.askaway/profile/avatar.png` by default, supports an explicit photo override, and falls back to initials when the file is unavailable; it does not copy the image into a workspace. The caller-view helper test covers two workspaces. Team UI integration, upgrade/privacy acceptance and Storybook approval remain pending.
+
 You tell the agent what you need. AskAway turns that into a flow you do not have to manage:
 
 | Pillar | What you get |

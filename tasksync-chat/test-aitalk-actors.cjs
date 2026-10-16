@@ -12,6 +12,42 @@ const esbuild = require('esbuild');
     const find = id => room.store.snapshot(true).messages.find(item => item.id === id);
     const member = id => room.store.snapshot().members.find(item => item.id === id);
     const flush = () => new Promise(resolve => setImmediate(resolve));
+    const provider = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
+    assert.equal(provider.replace(/\r\n/g, '').includes('\n'), false, 'provider keeps CRLF');
+    const native = provider.slice(provider.indexOf('                    if (!isChildLog && line.indexOf'), provider.indexOf('                    // ── Sub-agent linkage:'));
+    const nativeStart = require('typescript').transpileModule(`function submit(lines, isChildLog = false, lineIndexBase = 0) { const logFile = 'main.jsonl'; for (const [i, line] of lines.entries()) { const lineIndex = lineIndexBase + i; ${native} } }`, { compilerOptions: { target: 9 } }).outputText;
+    let starts = 0;
+    const onSubmit = require('node:vm').runInNewContext(nativeStart + ';submit');
+    let submittedText;
+    const receiver = { _logTurnStartTs: 0, _replayFloors: new Map(), _resetTurnMetrics() {}, _validatorTurnStart(text) { submittedText = text; starts++; room.registerAgent(); } };
+    const line = JSON.stringify({ type: 'user_message', ts: Date.now(), attrs: { text: 'Start now' } });
+    onSubmit.call(receiver, [line, line]);
+    assert.equal(member('agent').presence, 'joined', 'native submit joins immediately without a tool or commentary');
+    assert.equal(starts, 1, 'one registration callback per native turn');
+    assert.equal(submittedText, 'Start now', 'native attrs.text reaches the turn callback');
+    assert.equal(room.snapshot().messages.filter(m => m.text === 'Agent joined').length, 1);
+    room.unregisterAgent();
+    receiver._logTurnStartTs = 0;
+    receiver._replayFloors.set('main.jsonl', 2);
+    onSubmit.call(receiver, [line]);
+    assert.equal(member('agent').presence, 'left', 'reload replay of a completed turn must not rejoin Agent');
+    assert.equal(starts, 1, 'replay does not call the turn-start lifecycle');
+    console.log('PASS EV-AITALK-NATIVE-START native user_message joins Agent immediately once with banner');
+
+    const typingActor = room.register({ id: 'typing-validator', kind: 'navigator', displayName: 'Typing Validator', rank: 300 });
+    const reader = new api.Room(root);
+    typingActor.typing(true);
+    assert.equal(reader.snapshot().typing, 'Typing Validator is typing…', 'typing crosses room/store instances');
+    // Production and Storybook consume this same snapshot renderer.
+    const renderTyping = await import('./media/aitalk/talkRender.js');
+    assert.match(renderTyping.talkHtml([], reader.snapshot()), /talk-typing/);
+    typingActor.post('Ready');
+    assert.equal(reader.snapshot().typing, '', 'posting the reply clears persisted typing');
+    typingActor.typing(true);
+    const clock = Date.now; Date.now = () => clock() + 90001;
+    try { assert.equal(reader.snapshot().typing, '', 'abandoned typing expires'); } finally { Date.now = clock; }
+    typingActor.unregister();
+    console.log('PASS EV-AITALK-SHARED-TYPING shared typing renders across instances, clears on reply and expires');
 
     // Registration: join/leave banners; an unregistered actor cannot post.
     assert.throws(() => room.post('agent', 'progress'), /not registered/);
@@ -66,6 +102,16 @@ const esbuild = require('esbuild');
     assert.ok(question, 'the question is posted as an Agent message @Validator');
     assert.ok(room.store.snapshot().messages.some(item => item.author === 'validator' && item.replyTo === question.id));
     assert.equal(member('agent').presence, 'joined', 'Agent is a participant whenever it posts');
+
+    room.unregisterAgent();
+    const commentary = api.commentaryToolDefinitions(() => new api.CommentaryStore(), root)[0];
+    const mcpPost = api.withAITalkMcpDelivery(async args => ({ content: [{ type: 'text', text: JSON.stringify(commentary.run(args)) }] }), root);
+    await mcpPost({ action: 'aitalk', workspacePath: root, text: '@Validator Is this MCP question visible?' }, { _meta: { recipient: 'agent', workspacePath: root } });
+    const mcpQuestion = room.snapshot().messages.find(m => m.author === 'agent' && m.text === '@Validator Is this MCP question visible?');
+    assert.ok(mcpQuestion, 'explicit main-agent MCP caller posts its question before the answer');
+    await validator.flush();
+    assert.ok(room.snapshot().messages.some(m => m.author === 'validator' && m.replyTo === mcpQuestion.id && m.quote.text === mcpQuestion.text));
+    console.log('PASS EV-AITALK-MCP-QUESTION main-agent MCP question is visible with quoted Validator reply');
 
     // Workers: unknown until they post; leave when every message they posted is answered.
     room.workerLifecycle({ id: 'w-1', displayName: 'build' }, true);

@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+- **Configured, not released (2026-10-15):** eight user-level worker profiles and the repo Webex profile now default to Argon High with high thinking instead of Sol 6.1 where previously defaulted; `test-worker-profile-refresh.cjs` covers parsing and preserving existing workers. A live Argon High task and deployment remain unverified. The CPO photo helper uses the external `~/.askaway/profile/avatar.png` by default with explicit override and initials fallback; `test-aitalk-user-name.cjs` covers two workspaces. Team UI integration and Storybook approval remain pending.
+- **agy completion authorized (2026-10-15), still in progress:** US1 T015–T019 track MCP, shell/permissions, reload independent of OpenCode, token accounting and final gate/deploy. Adapter fake-CLI tests/live scoped edit/compile/build/worker-suite success are reported prior evidence only. Optional agy runtime is selectable for any profile; the later Argon High policy/default entry above supersedes the earlier Medium preview target. Monetary cost is unreported, not 0/free. No deployment completion or shipped Team UI claimed; final evidence closure follows runtime verification.
+- **Planning only (2026-10-15):** recorded Team member/profile/task decisions in spec 010. agy alternate-runtime implementation is in progress, not verified here; Argon is a model choice, not a persona. Runtime proof precedes Team Storybook work; approval precedes production Team UI. Team has not shipped.
 - **README and Marketplace page rewritten for the current product.** Both READMEs now lead with the new motto: spec-based development, OpenCode workers to delegate tasks, the AITalk room, Telegram and Webex integration, plus keep-alive pings, timers and tracing. The old `ask_user`-first and Commentary-tab wording is gone; the extension description and keywords match.
 
 ## AskAway v2.2.0 (09-29-26)

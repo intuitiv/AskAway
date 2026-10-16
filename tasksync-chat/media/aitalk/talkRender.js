@@ -143,8 +143,8 @@ export function bubbleHtml(message, { messages = [], members = defaultMembers, f
     const quote = message.quote || (parent && { author: parent.author, text: parent.text });
     const reactions = reactionsHtml(message);
     const label = displayName(participant(members, message.author) || { id: message.author });
-    const name = !mine && first ? `<span class="talk-sender ${whoClass(message.author, members)}">${escapeHtml(label)}</span>` : '';
-    const avatar = mine ? '' : first ? `<span class="talk-avatar ${whoClass(message.author, members)}" aria-hidden="true">${escapeHtml(initialsOf(label))}</span>` : '<span class="talk-avatar-gap" aria-hidden="true"></span>';
+    const name = !mine && first ? `<span class="talk-sender ${whoClass(message.author, members)}" data-member="${escapeHtml(message.author)}">${escapeHtml(label)}</span>` : '';
+    const avatar = mine ? '' : first ? `<span class="talk-avatar ${whoClass(message.author, members)}" data-member="${escapeHtml(message.author)}" aria-hidden="true">${escapeHtml(initialsOf(label))}</span>` : '<span class="talk-avatar-gap" aria-hidden="true"></span>';
     const trace = (message.attachments ?? []).map(file => `<span class="talk-attachment">${escapeHtml(file.name)}</span>`).join('') + (message.trace ? `<a class="talk-trace-link" href="#trace" data-tab="Trace">View trace ↗</a>` : '');
     return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'}" id="talk-${escapeHtml(message.id || '')}">${avatar}<div class="talk-bubble ${first ? 'tail' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${escapeHtml(message.id || '')}" aria-label="${escapeHtml(message.author)}: message. Right-click, long-press or press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${message.webexDraft ? draftCardHtml(message) : bodyHtml(message, members)}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${mine ? ticksHtml(message) : ''}</span>${reactions}</div></div>`;
 }
@@ -181,7 +181,7 @@ export function titleHtml({ name = 'AITalk', members = defaultMembers, typing = 
     const present = members.filter(member => member.presence !== 'left');
     const subtitle = typing
         ? `<span class="talk-typing-line">${escapeHtml(typing)}</span>`
-        : present.map(m => `<span>${escapeHtml(displayName(m))}</span>`).join(', ');
+        : present.map(m => `<span data-member="${escapeHtml(m.id)}">${escapeHtml(displayName(m))}</span>`).join(', ');
     const label = inChargeLabels[presence?.mode || 'here'] || '';
     return `<div class="talk-title"><h2>${escapeHtml(name)}</h2><div class="talk-subtitle">${subtitle}</div></div>${label ? `<span class="talk-in-charge">${escapeHtml(label)}</span>` : ''}`;
 }
@@ -221,7 +221,7 @@ export function talkParts(messages, options = {}) {
 export function talkHtml(messages, options = {}) {
     const { theme = 'dark', members = defaultMembers, moderator = owner(members) ? displayName(owner(members)) : '' } = options;
     const parts = talkParts(messages, { ...options, members });
-    const tabs = ['AITalk', 'Specs', 'Trace', 'Workers', 'Settings'].map((tab, i) => `<button type="button" data-tab="${i === 0 ? 'Talk' : tab}" aria-pressed="${i === 0}">${tab}</button>`).join('');
+    const tabs = ['AITalk', 'Specs', 'Trace', 'Team', 'Settings'].map((tab, i) => `<button type="button" data-tab="${i === 0 ? 'Talk' : tab}" aria-pressed="${i === 0}">${tab}</button>`).join('');
     const header = headerShell(parts.title, parts.presence);
     return `<div class="talk-prototype theme-${theme} moderator-${escapeHtml(moderator.toLowerCase())}">${options.embedded ? '' : `<nav class="talk-tabs" aria-label="Panel tabs">${tabs}</nav>`}<div class="talk-panel" data-panel="Talk">${header}<div class="talk-thread" role="log" aria-label="Group chat" data-talk-region="thread">${parts.thread}</div>${region('unread', parts.unread)}${region('composer', parts.composer)}</div><div data-panel="Trace" hidden>${options.trace || ''}</div></div>`;
 }

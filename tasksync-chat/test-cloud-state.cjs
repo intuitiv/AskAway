@@ -144,7 +144,7 @@ const view = async () => (await controller.refresh(root, { specs: [{ slug: '006-
     vm.createContext(ctx);
     vm.runInContext(webview.slice(webview.indexOf('var TRACE_HEAD'), webview.indexOf('function traceOpenIds')), ctx);
     vm.runInContext(webview.slice(webview.indexOf('function formatSpecInline(text)'), webview.indexOf('var SPEC_STAGE_COMMAND')), ctx);
-    vm.runInContext(webview.slice(webview.indexOf('function workersEsc(value)'), webview.indexOf('// ── end Workers pure render')), ctx);
+    vm.runInContext(webview.slice(webview.indexOf('function monthlyCostTableHtml(month)'), webview.indexOf('// ── end Workers pure render')), ctx);
     const replayed = structuredClone(stored[0]);
     const later = structuredClone(replayed); later.taskId = 'PROOF-1b'; later.attempt = 2;
     later.queuedAt = new Date(Date.parse(replayed.queuedAt) + minute).toISOString();
@@ -162,7 +162,8 @@ const view = async () => (await controller.refresh(root, { specs: [{ slug: '006-
         for (const html of [specHtml, workerHtml]) {
             assert.ok(html.includes(run.state)); assert.ok(html.includes(run.model)); assert.ok(html.includes(run.report.url));
             assert.ok(html.includes(run.commits[0].url)); assert.ok(html.includes('obs-tl-item')); assert.ok(html.includes('<summary'));
-            assert.doesNotMatch(html, /\$|health-cost|Credits|price/);
+            // Team rows show each member's own month spend (R-TEAM-29); R-CLOUD-11 forbids a price on the cloud task itself.
+            assert.doesNotMatch(html.replace(/<span class="team-member-cost"[^>]*>.*?<\/span> this month<\/span>/g, ''), /\$|health-cost|Credits|price/);
         }
         assert.ok(workerHtml.includes('Trace') || workerHtml.includes('Hide'));
         assert.ok(!ctx.renderWorkersHtml({ workers: [worker], generatedAt: now }, '', {}, false, {}, {}).includes(shared));

@@ -13,6 +13,12 @@ You say what you need in plain words. AskAway runs it through Spec Kit, hands th
 
 ## What AskAway Does
 
+**In progress, not shipped:** agy alternate-runtime support with Argon choices for any profile must be verified first. Team/member profiles and UI-only Workers→Team / runs→tasks terminology remain planned, with Storybook approval required before production Team UI.
+
+**Argon High prototype, not production Team UI:** eight user-level profiles and the Webex profile default to `agy/gemini-4-argon-high`, replacing prior Sol defaults while preserving Opus assignments. With explicit per-run approval, Argon authored the interactive Team/AITalk Storybook prototype, reusing the production chat and usage banner. Focused prototype tests pass; desktop/mobile and animation acceptance are tracked in spec 010. Earlier headless permission failures are historical, not the current authoring status. Live MCP and full post-reload runtime acceptance remain open; monetary cost is unreported, not 0/free.
+
+AITalk reads the externally stored `~/.askaway/profile/avatar.png` by default, supports an explicit photo override, and falls back to initials if the file is unavailable; it does not copy the photo into workspaces. Caller-view tests cover two workspaces and shared-header image rendering. This fix is deployed locally; reload VS Code to load it. Team UI integration, upgrade/privacy acceptance and Storybook approval remain pending.
+
 | Pillar | What you get |
 |--------|--------------|
 | **Spec-based development** | Dictate a requirement. AskAway drives Spec Kit behind the scenes (specify, clarify, plan, tasks, implement, check) and the **Specs** tab shows the stage, user stories and tasks. You only answer questions and approve three gates: what, how, done. |

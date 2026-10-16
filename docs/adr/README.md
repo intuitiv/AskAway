@@ -37,3 +37,5 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0020](0020-webex-browser-oauth-manual-callback.md) | Webex browser OAuth uses the confirmed localhost redirect and manual return through a local masked prompt | G7 | Proposed |
 | [0021](0021-aitalk-actor-framework.md) | AITalk is an actor framework; the chat widget only renders data and emits intents | G8 | Proposed |
 | [0022](0022-cloud-change-merged-tested-pushed.md) | A cloud change is merged locally, tested, then pushed; supersedes ADR 0019's no-push rule | G9 | Proposed |
+| [0023](0023-agy-first-team-members.md) | agy runtime before Team; member rows, tasks, assignment-time presence; supersedes 0021 presence rule only | G18, G5, G8 | Proposed |
+| [0024](0024-team-storybook-review-and-model-comparison.md) | Existing Storybook format, simple names/profiles and collapsible tasks; review one prompt before comparing three models | G18, G5, G13 | Proposed |

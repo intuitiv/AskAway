@@ -516,7 +516,6 @@
         observabilitySection.innerHTML = '<div class="observability-rtk-line" id="obs-workspace-month"></div>' +
             '<div id="obs-turn-view">' +
             '<div class="obs-turn-summary" id="obs-turn-summary">No requests yet this turn</div>' +
-            '<div id="obs-cost-categories"></div>' +
             '<div class="obs-cache-row">' +
             '<div class="obs-cache-age" id="obs-cache-age" title="Time since the last model request. The prompt prefix cache stays warm for ~5 min; past that a new message likely incurs a cache MISS (more expensive). A long-running tool ages this clock too.">Prompt cache age: \u2013</div>' +
             '<button type="button" class="obs-cache-ping-btn" id="obs-cache-ping-btn" title="Keep-warm ping: fills the CURRENT chat input and submits it in the SAME agent/mode (identical system prompt \u2192 cache HIT at the cheap cached rate), refreshing the ~5-min TTL. Use it while the agent is idle and this chat is the active one. For automatic keep-warm, enable the native settings below (Keep cache warm + Extended prompt cache).">\u26a1 Ping</button>' +
@@ -957,11 +956,14 @@
                         turnStartedAt: Number(message.metrics.turnStartedAt) || 0,
                         workers: (function (w) {
                             w = w || {};
-                            return { requests: Number(w.requests) || 0, dollars: Number(w.dollars) || 0, runs: Number(w.runs) || 0,
+                            var out = { requests: Number(w.requests) || 0, dollars: Number(w.dollars) || 0, runs: Number(w.runs) || 0,
                                 workers: Number(w.workers) || 0, workerIds: Array.isArray(w.workerIds) ? w.workerIds.filter(function (id) { return typeof id === 'string'; }) : [],
                                 inputTokens: Number(w.inputTokens) || 0, outputTokens: Number(w.outputTokens) || 0,
                                 cachedTokens: Number(w.cachedTokens) || 0, cacheMisses: Number(w.cacheMisses) || 0,
                                 perModel: w.perModel || {}, toolCalls: Array.isArray(w.toolCalls) ? w.toolCalls : [] };
+                            // Present only when a runtime reported no billed cost (agy), like the provider's field.
+                            if (Number(w.unreportedCostRequests) > 0) out.unreportedCostRequests = Number(w.unreportedCostRequests);
+                            return out;
                         })(message.metrics.workers),
                         gradle: (function (g) {
                             g = g || {};
@@ -1299,6 +1301,8 @@
     // b: { requests, dollars, lastIn (full prompt of the last request), lastCached, turnOut, workers?: { runs, dollars } }
     // `workers` (chat banner only) shows what the worker part of the totals is; worker cards omit it.
     function bannerDollars(dollars) {
+        // null: the runtime reports no billed cost (agy); never shown as $0.
+        if (dollars === null) return '<span title="This runtime reports no billed cost">cost unreported</span>';
         dollars = Number(dollars) || 0;
         return '$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2);
     }
@@ -1326,7 +1330,7 @@
             '; output=' + (Number(b.turnOut) || 0) + '; requests=' + (Number(b.requests) || 0) +
             '; ' + (b.mainContext ? 'main context' : 'worker context') + ' (average prompt)=' + (Number(b.averagePrompt) || 0);
         var requests = Number(b.requests) || 0;
-        var dollars = Number(b.dollars) || 0;
+        var dollars = b.dollars === null ? null : Number(b.dollars) || 0;
         var lastIn = Number(b.lastIn) || 0;
         var cacheInput = b.cacheInput === undefined ? lastIn : Number(b.cacheInput) || 0;
         var hit = cacheInput > 0 ? Math.round((Number(b.lastCached) || 0) / cacheInput * 100) + '%' : '\u2013';
@@ -1336,7 +1340,8 @@
         var workerRequests = Number(w.requests) || 0;
         var workerReqPart = w.requests === undefined ? '' : ' &middot; ' + workerRequests + ' req' + (workerRequests === 1 ? '' : 's');
         var workerPart = workerRuns > 0
-            ? ' <span class="health-workers" title="Distinct workers that ran this turn, their requests and cost (included in the total)">(' + workerRuns + ' worker' + (workerRuns === 1 ? '' : 's') + workerReqPart + ' &middot; ' + bannerDollars(workerDollars) + ')</span>'
+            ? ' <span class="health-workers" title="Distinct workers that ran this turn, their requests and cost (included in the total)">(' + workerRuns + ' worker' + (workerRuns === 1 ? '' : 's') + workerReqPart + ' &middot; ' + bannerDollars(workerDollars) +
+                (Number(w.unreportedCostRequests) > 0 ? ' + agy unreported' : '') + ')</span>'
             : '';
         var flag = b.flagContext ? workerContextFlag(lastIn) : { over: false };
         var lastInHtml = flag.over
@@ -1429,8 +1434,11 @@
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
         });
     }
+    function isValidatorTraceEvent(ev) {
+        return !!(ev && (ev.kind === 'validator' || /validator/i.test(String(ev.group || ev.subagent || ev.actor || ''))));
+    }
     function traceGroupsHtml(main, ctx) {
-        var events = (main || []).slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+        var events = (main || []).filter(function (ev) { return !isValidatorTraceEvent(ev); }).slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
         return '<table class="observability-table obs-timeline-table">' + TRACE_HEAD + '<tbody>' + traceRowsHtml(events, ctx) + '</tbody></table>';
     }
 
@@ -1662,6 +1670,24 @@
 
     function updateObservabilityUI() {
         renderConversationHealth();
+        var validatorEvents = [];
+        if (Array.isArray(observabilityMetrics.traceGroups)) {
+            observabilityMetrics.traceGroups.forEach(function (g) {
+                if (g && /validator/i.test(String(g.id || g.label || '')) && Array.isArray(g.events)) {
+                    validatorEvents = validatorEvents.concat(g.events);
+                }
+            });
+        }
+        (observabilityMetrics.turnEvents || []).forEach(function (ev) {
+            if (isValidatorTraceEvent(ev)) validatorEvents.push(ev);
+        });
+        if (observabilityMetrics.monthCredits || validatorEvents.length) {
+            workersState = Object.assign({}, workersState || { workers: [], generatedAt: Date.now() }, {
+                monthCredits: observabilityMetrics.monthCredits || (workersState && workersState.monthCredits),
+                validatorTrace: validatorEvents.length ? validatorEvents : (workersState && workersState.validatorTrace)
+            });
+            paintWorkers();
+        }
         var categories = document.getElementById('obs-cost-categories');
         if (categories) categories.innerHTML = monthlyCostTableHtml(observabilityMetrics.monthCredits);
         var monthLine = document.getElementById('obs-workspace-month');
@@ -1811,7 +1837,7 @@
         }
         var eventTbody = document.getElementById('obs-turn-event-tbody');
         if (eventTbody) {
-            var events = observabilityMetrics.turnEvents || [];
+            var events = (observabilityMetrics.turnEvents || []).filter(function (ev) { return !isValidatorTraceEvent(ev); });
             if (!events.length && observabilityMetrics.turnRequests && observabilityMetrics.turnRequests.length) {
                 events = observabilityMetrics.turnRequests.map(function (req) {
                     var copy = Object.assign({}, req);
@@ -2981,12 +3007,15 @@
         var input = (Number(usage.input) || 0) + (Number(usage.cacheRead) || 0) + (Number(usage.cacheWrite) || 0);
         b = Object.assign({}, b, { cacheInput: input, lastCached: Number(usage.cacheRead) || 0,
             averagePrompt: b.requests > 0 ? input / b.requests : 0 });
-        var age = cacheAgeLabel(Math.floor((now - (b.lastActivityAt || now)) / 1000));
-        return '<div class="worker-banner" title="Requests, cost, full prompt of the last request / output this run, cache hit of the last request, time since last activity (cache is cold after 5:00)">' +
+        var agy = worker.adapter === 'agy';
+        var age = agy ? null : cacheAgeLabel(Math.floor((now - (b.lastActivityAt || now)) / 1000));
+        var title = 'Requests, cost, full prompt of the last request / output this run, cache hit of the last request' +
+            (agy ? '' : ', time since last activity (cache is cold after 5:00)');
+        return '<div class="worker-banner" title="' + title + '">' +
             '<span class="worker-banner-metrics">' + usageBannerHtml(Object.assign({}, b, { flagContext: true })) + '</span>' +
-            '<strong class="health-cache ' + age.state + '">' + age.text + '</strong>' +
-            (worker.cacheExpiresAt > now ? '<span> warm for ' + workersDuration(worker.cacheExpiresAt - now) + '</span>' : '') +
-            (worker.lastPingAt ? '<span> · pinged ' + Math.floor(Math.max(0, now - worker.lastPingAt) / 60000) + 'm ago</span>' : '') + '</div>';
+            (age ? '<strong class="health-cache ' + age.state + '">' + age.text + '</strong>' : '') +
+            (!agy && worker.cacheExpiresAt > now ? '<span> warm for ' + workersDuration(worker.cacheExpiresAt - now) + '</span>' : '') +
+            (!agy && worker.lastPingAt ? '<span> · pinged ' + Math.floor(Math.max(0, now - worker.lastPingAt) / 60000) + 'm ago</span>' : '') + '</div>';
     }
     // Worker tools return JSON with workerId/runId; the turn trace shows them as a link to the Workers tab.
     function workerRefsFromPreview(text) {
@@ -3021,7 +3050,7 @@
         return '<table class="observability-table observability-model-table obs-timeline-table worker-trace">' + (worker.cloud ? '' : TRACE_HEAD) + '<tbody>' + rows + '</tbody></table>';
     }
     function workerShortModel(model) { return String(model || '').split('/').pop(); }
-    function workerIsWarm(w, now) { return !w.expired && w.state !== 'RUNNING' && w.state !== 'STARTING' && w.state !== 'WAITING_APPROVAL' && w.cacheExpiresAt > now; }
+    function workerIsWarm(w, now) { return w.adapter !== 'agy' && !w.expired && w.state !== 'RUNNING' && w.state !== 'STARTING' && w.state !== 'WAITING_APPROVAL' && w.cacheExpiresAt > now; }
     // Headline for "how many are there": live workers by state, queued runs, and the workspace's worker spend.
     function workersSummaryHtml(state) {
         var now = state.generatedAt;
@@ -3031,9 +3060,10 @@
         var warm = live.filter(function (w) { return workerIsWarm(w, now); }).length;
         var queued = all.reduce(function (n, w) { return n + (w.runs || []).filter(function (r) { return r.queuePosition > 0 && r.state === 'STARTING'; }).length; }, 0);
         var dollars = all.reduce(function (n, w) { return n + ((w.usage && w.usage.cost) || 0); }, 0);
+        var unreported = all.some(function (w) { return w.adapter === 'agy'; }) ? ' <span title="agy reports no billed cost">+ agy unreported</span>' : '';
         return '<div class="workers-summary"><strong>' + live.length + '</strong> live worker' + (live.length === 1 ? '' : 's') +
             ' &middot; ' + running + ' running &middot; ' + queued + ' queued &middot; ' + warm + ' warm &middot; ' + (all.length - live.length) + ' completed' +
-            (all.some(function (w) { return !w.cloud; }) ? ' &middot; <strong class="health-cost">$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2) + '</strong> spent' : '') + '</div>';
+            (all.some(function (w) { return !w.cloud; }) ? ' &middot; <strong class="health-cost">$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2) + '</strong>' + unreported + ' spent' : '') + '</div>';
     }
     // Only what the cards cannot show: context bloat, cache misses, and a cheaper model per the eval scoreboard.
     function workerCostTips(state) {
@@ -3044,7 +3074,7 @@
             if (w.nextInputTokens > 200000) {
                 tips.push(w.workerId + ': ' + formatObservabilityCompact(w.nextInputTokens) + ' context per request \u2014 start fresh for unrelated work.');
             }
-            if ((b.requests || 0) > 1 && b.lastIn > 0 && (b.lastCached || 0) / b.lastIn < 0.5) {
+            if (w.adapter !== 'agy' && (b.requests || 0) > 1 && b.lastIn > 0 && (b.lastCached || 0) / b.lastIn < 0.5) {
                 tips.push(w.workerId + ': ' + Math.round((b.lastCached || 0) / b.lastIn * 100) + '% cache hit \u2014 send its packets within 5 min.');
             }
         });
@@ -3071,13 +3101,189 @@
         return '<div class="workers-tips"><div class="workers-tips-head">Save cost</div>' +
             tips.map(function (t) { return '<div class="workers-tip">' + workersEsc(t) + '</div>'; }).join('') + '</div>';
     }
+    var TEAM_ROSTER = [
+        { id: 'validator', memberId: 'priya', name: 'Priya', role: 'Validator', profile: 'validator', profiles: ['validator'], category: 'Validator', pinned: true, avatar: 'priya-validator.png', creativeStatus: 'Guardrails warm \u00b7 reviewing spec compliance', agentFile: '.github/agents/validator.agent.md', defaultModel: 'github-copilot/claude-sonnet-4.6', defaultThinking: 'medium' },
+        { id: 'bhaskar', memberId: 'bhaskar', name: 'Bhaskar', role: 'Build', profile: 'build', profiles: ['build', 'code'], category: 'Build', pinned: false, avatar: 'bhaskar-build.png', creativeStatus: 'Shipping packets \u00b7 keeping tests green', agentFile: '.opencode/agent/askaway-code.md', defaultModel: 'agy/gemini-4-argon-high', defaultThinking: 'high' },
+        { id: 'arjun', memberId: 'arjun', name: 'Arjun', role: 'Verify', profile: 'verify', profiles: ['verify', 'tester'], category: 'Verify', pinned: false, avatar: 'arjun-verify.png', creativeStatus: 'Probing edge cases \u00b7 caller-view checks', agentFile: '.opencode/agent/askaway-verify.md', defaultModel: 'github-copilot/gpt-5.6-luna', defaultThinking: 'low' },
+        { id: 'maya', memberId: 'maya', name: 'Maya', role: 'Explore', profile: 'explore', profiles: ['explore'], category: 'Explore', pinned: false, avatar: 'maya-explore.png', creativeStatus: 'Mapping files and call graphs', agentFile: '.opencode/agent/askaway-explore.md', defaultModel: 'github-copilot/gpt-5.6-luna', defaultThinking: 'low' },
+        { id: 'kavya', memberId: 'kavya', name: 'Kavya', role: 'Architect', profile: 'architect', profiles: ['architect', 'plan'], category: 'Architect', pinned: false, avatar: 'kavya-architect.png', creativeStatus: 'Shaping ADRs and boundaries', agentFile: '.github/agents/plan.agent.md', defaultModel: 'github-copilot/claude-opus-4.6', defaultThinking: 'high' },
+        { id: 'dev', memberId: 'dev', name: 'Dev', role: 'Review', profile: 'review', profiles: ['review'], category: 'Review', pinned: false, avatar: 'dev-review.png', creativeStatus: 'Auditing diffs against requirements', agentFile: '.opencode/agent/askaway-review.md', defaultModel: 'github-copilot/claude-sonnet-4.6', defaultThinking: 'medium' }
+    ];
+    var TEAM_MODELS = [
+        { id: 'agy/gemini-4-argon-high', label: 'Gemini 4 Argon High (agy)', efforts: ['medium', 'high'] },
+        { id: 'github-copilot/claude-opus-4.6', label: 'Claude Opus 4.6', efforts: ['low', 'medium', 'high'] },
+        { id: 'github-copilot/claude-sonnet-4.6', label: 'Claude Sonnet 4.6', efforts: ['low', 'medium', 'high'] },
+        { id: 'github-copilot/gpt-5.6-terra', label: 'GPT-5.6 Terra', efforts: ['low', 'medium', 'high', 'max'] },
+        { id: 'github-copilot/gpt-5.6-luna', label: 'GPT-5.6 Luna', efforts: ['low', 'medium', 'high'] }
+    ];
+    function effortsForModel(modelId) {
+        var found = TEAM_MODELS.find(function (m) { return m.id === modelId; });
+        return found ? found.efforts.slice() : ['low', 'medium', 'high'];
+    }
+    function isValidatorWorker(w) {
+        return !!(w && (w.kind === 'validator' || w.profile === 'validator' || w.track === 'validator'));
+    }
+    function memberForWorker(w) {
+        if (isValidatorWorker(w)) return TEAM_ROSTER[0];
+        var p = String((w && w.profile) || '').toLowerCase();
+        for (var i = 1; i < TEAM_ROSTER.length; i++) {
+            var m = TEAM_ROSTER[i];
+            if (m.profile === p || (m.profiles && m.profiles.indexOf(p) !== -1) || m.id === p) return m;
+        }
+        var raw = String((w && w.profile) || 'worker');
+        return {
+            id: raw, memberId: raw, name: raw, role: 'Worker', profile: raw, profiles: [raw],
+            category: raw, pinned: false, avatar: '', creativeStatus: 'Running worker tasks',
+            agentFile: '.opencode/agent/askaway-' + raw + '.md',
+            defaultModel: (w && w.model) || 'github-copilot/gpt-5.6-luna',
+            defaultThinking: (w && w.thinking) || 'medium'
+        };
+    }
+    function resolveTeamMemberId(raw, state) {
+        var key = String(raw || '').trim().toLowerCase();
+        if (!key) return '';
+        if (key === 'validator' || key === 'priya' || key === 'review-po') return 'validator';
+        for (var i = 0; i < TEAM_ROSTER.length; i++) {
+            var m = TEAM_ROSTER[i];
+            if (m.id === key || m.memberId === key || m.name.toLowerCase() === key || m.role.toLowerCase() === key || m.profile === key || (m.profiles && m.profiles.indexOf(key) !== -1)) {
+                return m.id;
+            }
+        }
+        var workers = (state && state.workers) || [];
+        for (var j = 0; j < workers.length; j++) {
+            if (String(workers[j].workerId || '').toLowerCase() === key) return memberForWorker(workers[j]).id;
+        }
+        if (key === 'review') return 'validator';
+        return key;
+    }
+    function memberMonthCost(member, state, memberWorkers) {
+        var cats = (state && state.monthCredits && state.monthCredits.categories) || [];
+        var match = cats.find(function (c) {
+            var cat = String(c.category || '').toLowerCase();
+            return cat === String(member.category || '').toLowerCase() ||
+                cat === String(member.role || '').toLowerCase() ||
+                cat === String(member.profile || '').toLowerCase() ||
+                cat === String(member.id || '').toLowerCase();
+        });
+        if (match) return { dollars: Number(match.dollars) || 0, requests: match.requests };
+        var workerSum = (memberWorkers || []).reduce(function (n, w) { return n + ((w.usage && w.usage.cost) || 0); }, 0);
+        return { dollars: workerSum, requests: null };
+    }
+    function workerCardHtml(w, open, now, openIds, traces) {
+        var html = '<div class="worker-card" data-worker-id="' + workersEsc(w.workerId) + '">' +
+            '<div class="worker-card-head">' +
+            '<span class="worker-state worker-state-' + workersEsc(w.state).toLowerCase() + '">' + workersEsc(w.state) + '</span>' +
+            '<span class="worker-mode">' + workersEsc(w.profile) + '</span>' +
+            '<span class="worker-id">' + workersEsc(w.workerId) + '</span>' +
+            '</div>' +
+            '<div class="worker-selection">' + workersEsc(w.adapter) + ' · ' + workersEsc(w.model) + ' · ' + workersEsc(w.thinking) + '</div>' +
+            (w.cloud ? '' : workerBannerHtml(w, now)) +
+            (w.knowledge ? '<div class="worker-knowledge" title="What this worker says it knows; the orchestrator uses it to pick a worker to reuse">' + workersEsc(w.knowledge) + '</div>' : '') +
+            (w.blocker ? '<div class="worker-blocker">' + workersEsc(w.blocker) + '</div>' : '') +
+            '<div class="worker-actions">' +
+            (w.sessionId && w.adapter === 'agy' ? '<span class="worker-open-note" title="agy owns its conversation; AskAway shows it through Trace">agy conversation: no viewer</span>' : '') +
+            (w.sessionId && w.adapter !== 'agy' ? '<button class="worker-open-btn" data-worker-action="open" data-session-id="' + workersEsc(w.sessionId) + '" title="' + workersEsc(w.sessionOpenAction) + '">Open in VS Code</button>' +
+                '<button class="worker-open-ext-btn" data-worker-action="open-external" data-session-id="' + workersEsc(w.sessionId) + '" title="Open in your default terminal app">Terminal app</button>' : '') +
+            '<button class="worker-trace-btn" data-worker-action="trace" data-worker-id="' + workersEsc(w.workerId) + '">' + (open ? 'Hide' : 'Trace') + ' (' + (w.runs || []).length + ')</button>' +
+            '</div>';
+        if (open) {
+            html += workerTraceHtml(w, openIds || {}, now, w.trace || (traces && traces[w.workerId]));
+        }
+        html += '</div>';
+        return html;
+    }
+    function teamPortraitHtml(member, state) {
+        var unsafe = ((state && state.workers) || []).some(function (w) { return String(w.profile || '').indexOf('<') !== -1; });
+        var base = (state && state.avatarBase) ? state.avatarBase.replace(/\/$/, '') : 'avatars';
+        var src = member.avatar ? (base + '/' + member.avatar) : '';
+        if (unsafe || !src) {
+            return '<span class="team-portrait" role="img" aria-label="' + workersEsc(member.name) + '" data-avatar="' + workersEsc(src) + '"></span>';
+        }
+        return '<img class="team-portrait" src="' + workersEsc(src) + '" alt="' + workersEsc(member.name) + '" width="72" height="72" />';
+    }
+    function teamMemberRowHtml(member, memberWorkers, state, expanded, openIds, traces) {
+        var settings = (state && state.memberSettings && state.memberSettings[member.id]) || {};
+        var firstWorker = memberWorkers[0] || {};
+        var selectedModel = settings.model || firstWorker.model || member.defaultModel || TEAM_MODELS[0].id;
+        var efforts = effortsForModel(selectedModel);
+        var rawThinking = settings.thinking || firstWorker.thinking || member.defaultThinking || efforts[0];
+        var selectedThinking = efforts.indexOf(rawThinking) !== -1 ? rawThinking : (efforts[efforts.length - 1] || 'medium');
+        var modelList = TEAM_MODELS.slice();
+        if (selectedModel && !modelList.some(function (m) { return m.id === selectedModel; })) {
+            modelList.unshift({ id: selectedModel, label: workerShortModel(selectedModel), efforts: efforts });
+        }
+        var modelOptions = modelList.map(function (m) {
+            return '<option value="' + workersEsc(m.id) + '"' + (m.id === selectedModel ? ' selected' : '') + '>' + workersEsc(m.label) + '</option>';
+        }).join('');
+        var thinkingOptions = efforts.map(function (ef) {
+            return '<option value="' + workersEsc(ef) + '"' + (ef === selectedThinking ? ' selected' : '') + '>' + workersEsc(ef) + '</option>';
+        }).join('');
+        var activeWorker = memberWorkers.find(function (w) { return w.state === 'RUNNING' || w.state === 'STARTING' || w.state === 'WAITING_APPROVAL'; });
+        var memberState = activeWorker ? activeWorker.state : (memberWorkers.length ? memberWorkers[0].state : 'IDLE');
+        var cost = memberMonthCost(member, state, memberWorkers);
+        var memberKey = 'member:' + member.id;
+        var hasExplicitToggle = expanded && typeof expanded[memberKey] === 'boolean';
+        var hasExpandedChild = memberWorkers.some(function (w) { return !!(expanded && expanded[w.workerId]); });
+        var tasksOpen = hasExplicitToggle ? expanded[memberKey] : hasExpandedChild;
+        var taskCount = memberWorkers.length;
+        var highlighted = (expanded && expanded.highlightedMember === member.id) || (state && state.highlightedMember === member.id);
+        var cardsHtml = memberWorkers.map(function (w) {
+            return workerCardHtml(w, expanded && expanded[w.workerId], state.generatedAt, openIds, traces);
+        }).join('');
+        var validatorEvents = (member.id === 'validator' && state && Array.isArray(state.validatorTrace)) ? state.validatorTrace : [];
+        var validatorTraceHtml = validatorEvents.length
+            ? '<div class="team-validator-trace" data-validator-trace="true"><table class="observability-table observability-model-table obs-timeline-table">' +
+                TRACE_HEAD + '<tbody>' + traceRowsHtml(validatorEvents, { openIds: openIds || {}, now: state.generatedAt }) + '</tbody></table></div>'
+            : '';
+        return '<div class="team-member-row' + (highlighted ? ' team-member-highlighted' : '') + '" data-member-row="' + workersEsc(member.id) + '"' +
+            (member.pinned ? ' data-pinned="true"' : ' data-active-member-row="' + workersEsc(member.id) + '"') +
+            (highlighted ? ' data-highlighted="true"' : '') + '>' +
+            teamPortraitHtml(member, state) +
+            '<div class="team-member-body">' +
+            '<div class="team-member-head">' +
+            '<span class="team-member-identity"><strong class="team-member-name" data-member-name="' + workersEsc(member.id) + '">' + workersEsc(member.name) + '</strong> &middot; <span class="team-member-role">' + workersEsc(member.role) + '</span></span>' +
+            (member.pinned ? ' <span class="team-pinned-badge">Pinned PO</span>' : '') +
+            '<span class="team-member-cost" data-member-cost="' + workersEsc(member.id) + '"><span class="obs-month-amount">$' + cost.dollars.toFixed(2) + '</span> this month</span>' +
+            '<button type="button" class="team-tasks-pill" data-member-tasks-toggle="' + workersEsc(member.id) + '" data-member-task-count="' + workersEsc(member.id) + '" aria-expanded="' + (tasksOpen ? 'true' : 'false') + '">' + taskCount + ' ' + (taskCount === 1 ? 'task' : 'tasks') + '</button>' +
+            '</div>' +
+            '<div class="team-member-status">' +
+            '<span class="worker-state worker-state-' + workersEsc(memberState).toLowerCase() + '">' + workersEsc(memberState) + '</span> ' +
+            '<span class="team-creative-status">' + workersEsc(member.creativeStatus) + '</span> ' +
+            '<span class="team-member-profile">(' + workersEsc(member.profile) + ')</span>' +
+            '</div>' +
+            '<div class="team-member-controls">' +
+            '<label class="team-control-label">Model <select class="team-select team-model-select" data-member-model="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' model">' + modelOptions + '</select></label>' +
+            '<label class="team-control-label">Thinking <select class="team-select team-thinking-select" data-member-thinking="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' thinking effort">' + thinkingOptions + '</select></label>' +
+            '<button type="button" class="team-agent-file-link" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '">Agent file</button>' +
+            '</div>' +
+            validatorTraceHtml +
+            '<div class="team-member-tasks' + (tasksOpen ? ' is-open' : ' is-collapsed') + '" data-member-tasks="' + workersEsc(member.id) + '"' + (tasksOpen ? '' : ' hidden') + '>' +
+            cardsHtml +
+            '</div>' +
+            '</div>' +
+            '</div>';
+    }
+    function groupWorkersByMember(shown) {
+        var groups = [{ member: TEAM_ROSTER[0], workers: [] }];
+        var byId = { validator: groups[0] };
+        shown.forEach(function (w) {
+            var m = memberForWorker(w);
+            if (!byId[m.id]) {
+                byId[m.id] = { member: m, workers: [] };
+                groups.push(byId[m.id]);
+            }
+            byId[m.id].workers.push(w);
+        });
+        return groups;
+    }
     function renderWorkersHtml(state, filter, expanded, showExpired, openIds, traces) {
         if (!state) return '<div class="workers-empty">Worker runtime not available.</div>';
         state = Object.assign({}, state, { workers: (state.workers || []).concat(state.cloudWorkers || []) });
         var server = state.server || { state: 'NOT_ATTACHED', endpoint: '' };
         var html = workersSummaryHtml(state) + '<div class="workers-server workers-server-' + workersEsc(server.state).toLowerCase() + '">' +
             (server.state === 'ATTACHED' ? 'Shared OpenCode server · ' + workersEsc(server.endpoint) : 'Shared OpenCode server not running · starts with the first worker') + '</div>' +
-            workerCostTipsHtml(state);
+            workerCostTipsHtml(state) +
+            '<div id="obs-cost-categories">' + monthlyCostTableHtml(state.monthCredits) + '</div>';
         var pending = workersPendingApprovals(state);
         if (pending) {
             html += '<div class="workers-approval-notice">' + pending + ' worker' + (pending > 1 ? 's' : '') + ' waiting for approval. Open the session in OpenCode to answer.</div>';
@@ -3085,49 +3291,36 @@
         var turnWorkerIds = state.turnWorkerIds || [];
         var shown = (state.workers || []).filter(function (w) { return (showExpired || !w.expired || turnWorkerIds.indexOf(w.workerId) !== -1) && workersMatch(w, filter); });
         var hidden = (state.workers || []).filter(function (w) { return w.expired && turnWorkerIds.indexOf(w.workerId) === -1; }).length;
-        if (!shown.length) {
-            return html + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>' + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
+        var hasValidatorTrace = Array.isArray(state.validatorTrace) && state.validatorTrace.length > 0;
+        if (!shown.length && !hasValidatorTrace) {
+            var emptyRoster = !filter ? '<div class="team-members-list">' + teamMemberRowHtml(TEAM_ROSTER[0], [], state, expanded, openIds, traces) + '</div>' : '';
+            return html + emptyRoster + '<div class="workers-empty">' + ((state.workers || []).length > hidden ? 'No worker matches the filter.' : 'No live workers in this workspace.') + '</div>' + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
         }
         // Swimlanes: one lane per orchestrator track, only when packets carry tracks.
         var laned = shown.some(function (w) { return w.track; });
         if (laned) {
-            shown = shown.slice().sort(function (a, b) {
+            var byTrack = shown.slice().sort(function (a, b) {
                 return (a.track ? 0 : 1) - (b.track ? 0 : 1) || String(a.track).localeCompare(String(b.track));
+            });
+            var lane = null;
+            byTrack.forEach(function (w) {
+                if (w.track !== lane) {
+                    lane = w.track;
+                    var inLane = byTrack.filter(function (x) { return x.track === lane; });
+                    var laneCost = inLane.reduce(function (n, x) { return n + ((x.usage && x.usage.cost) || 0); }, 0);
+                    html += '<div class="workers-lane" data-track="' + workersEsc(lane) + '">' + (lane ? 'Track ' + workersEsc(lane) : 'No track') +
+                        ' &middot; ' + inLane.length + ' worker' + (inLane.length === 1 ? '' : 's') + ' &middot; <strong class="health-cost">$' + laneCost.toFixed(4) + '</strong>' +
+                        (inLane.some(function (x) { return x.adapter === 'agy'; }) ? ' + agy unreported' : '') + '</div>';
+                }
             });
         }
         shown = shown.slice().sort(function (a, b) {
-            return Number(b.kind === 'validator' || b.profile === 'validator' || b.track === 'validator') - Number(a.kind === 'validator' || a.profile === 'validator' || a.track === 'validator');
+            return Number(isValidatorWorker(b)) - Number(isValidatorWorker(a));
         });
-        var lane = null;
-        shown.forEach(function (w) {
-            if (laned && w.track !== lane) {
-                lane = w.track;
-                var inLane = shown.filter(function (x) { return x.track === lane; });
-                var laneCost = inLane.reduce(function (n, x) { return n + ((x.usage && x.usage.cost) || 0); }, 0);
-                html += '<div class="workers-lane" data-track="' + workersEsc(lane) + '">' + (lane ? 'Track ' + workersEsc(lane) : 'No track') +
-                    ' &middot; ' + inLane.length + ' worker' + (inLane.length === 1 ? '' : 's') + ' &middot; <strong class="health-cost">$' + laneCost.toFixed(4) + '</strong></div>';
-            }
-            var open = expanded && expanded[w.workerId];
-            html += '<div class="worker-card" data-worker-id="' + workersEsc(w.workerId) + '">' +
-                '<div class="worker-card-head">' +
-                '<span class="worker-state worker-state-' + workersEsc(w.state).toLowerCase() + '">' + workersEsc(w.state) + '</span>' +
-                '<span class="worker-mode">' + workersEsc(w.profile) + '</span>' +
-                '<span class="worker-id">' + workersEsc(w.workerId) + '</span>' +
-                '</div>' +
-                '<div class="worker-selection">' + workersEsc(w.adapter) + ' · ' + workersEsc(w.model) + ' · ' + workersEsc(w.thinking) + '</div>' +
-                (w.cloud ? '' : workerBannerHtml(w, state.generatedAt)) +
-                (w.knowledge ? '<div class="worker-knowledge" title="What this worker says it knows; the orchestrator uses it to pick a worker to reuse">' + workersEsc(w.knowledge) + '</div>' : '') +
-                (w.blocker ? '<div class="worker-blocker">' + workersEsc(w.blocker) + '</div>' : '') +
-                '<div class="worker-actions">' +
-                (w.sessionId ? '<button class="worker-open-btn" data-worker-action="open" data-session-id="' + workersEsc(w.sessionId) + '" title="' + workersEsc(w.sessionOpenAction) + '">Open in VS Code</button>' +
-                    '<button class="worker-open-ext-btn" data-worker-action="open-external" data-session-id="' + workersEsc(w.sessionId) + '" title="Open in your default terminal app">Terminal app</button>' : '') +
-                '<button class="worker-trace-btn" data-worker-action="trace" data-worker-id="' + workersEsc(w.workerId) + '">' + (open ? 'Hide' : 'Trace') + ' (' + (w.runs || []).length + ')</button>' +
-                '</div>';
-            if (open) {
-                html += workerTraceHtml(w, openIds || {}, state.generatedAt, w.trace || (traces && traces[w.workerId]));
-            }
-            html += '</div>';
-        });
+        var groups = groupWorkersByMember(shown);
+        html += '<div class="team-members-list">' + groups.map(function (g) {
+            return teamMemberRowHtml(g.member, g.workers, state, expanded, openIds, traces);
+        }).join('') + '</div>';
         return html + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
     }
     // Eval results by mode × model: the evidence for picking a worker tier. Same expander and table as Metrics.
@@ -3208,6 +3401,20 @@
     var workersClockSkew = 0;
     var workersTicks = 0;
 
+    function focusTeamMember(rawMember) {
+        var targetId = resolveTeamMemberId(rawMember, workersState);
+        if (!targetId) return;
+        workersExpanded.highlightedMember = targetId;
+        switchTab('workers');
+        paintWorkers();
+        var list = document.getElementById('workers-list');
+        var row = list && list.querySelector ? list.querySelector('[data-member-row="' + targetId + '"]') : null;
+        if (row && typeof row.scrollIntoView === 'function') {
+            row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+    if (typeof window !== 'undefined') window.focusTeamMember = focusTeamMember;
+
     function paintWorkers() {
         var list = document.getElementById('workers-list');
         if (!list || !workersState) return;
@@ -3231,7 +3438,14 @@
     }
 
     function applyWorkersState(data) {
-        workersState = data;
+        var prevSettings = workersState && workersState.memberSettings;
+        var prevMonth = (data && data.monthCredits) || (observabilityMetrics && observabilityMetrics.monthCredits) || (workersState && workersState.monthCredits);
+        var prevValTrace = (data && data.validatorTrace) || (workersState && workersState.validatorTrace);
+        workersState = Object.assign({}, data || {}, {
+            memberSettings: Object.assign({}, prevSettings || {}, (data && data.memberSettings) || {}),
+            monthCredits: prevMonth,
+            validatorTrace: prevValTrace
+        });
         if (data && data.generatedAt) workersClockSkew = Date.now() - data.generatedAt;
         paintWorkers();
         var badge = document.getElementById('tab-badge-workers');
@@ -3274,6 +3488,23 @@
             document.addEventListener('pointerup', function () { setTimeout(function () { workersPointerDown = false; }, 0); });
         }
         if (list) list.addEventListener('click', function (e) {
+            var toggleBtn = e.target.closest && e.target.closest('[data-member-tasks-toggle]');
+            if (toggleBtn) {
+                var memberId = toggleBtn.getAttribute('data-member-tasks-toggle');
+                workersExpanded['member:' + memberId] = !workersExpanded['member:' + memberId];
+                paintWorkers();
+                return;
+            }
+            var agentFileBtn = e.target.closest && e.target.closest('[data-open-agent-file]');
+            if (agentFileBtn) {
+                vscode.postMessage({
+                    type: 'openAgentFile',
+                    memberId: agentFileBtn.getAttribute('data-member-id') || '',
+                    profile: agentFileBtn.getAttribute('data-profile') || '',
+                    agentFile: agentFileBtn.getAttribute('data-open-agent-file') || ''
+                });
+                return;
+            }
             var btn = e.target.closest('[data-worker-action]');
             if (!btn) return;
             var action = btn.getAttribute('data-worker-action');
@@ -3288,6 +3519,27 @@
                 paintWorkers();
             }
         });
+        if (list && list.addEventListener) list.addEventListener('change', function (e) {
+            var modelSel = e.target.closest && e.target.closest('[data-member-model]');
+            var thinkSel = e.target.closest && e.target.closest('[data-member-thinking]');
+            if (!modelSel && !thinkSel) return;
+            var sel = modelSel || thinkSel;
+            var memberId = sel.getAttribute(modelSel ? 'data-member-model' : 'data-member-thinking');
+            var profile = sel.getAttribute('data-profile') || memberId;
+            var row = sel.closest && sel.closest('[data-member-row]');
+            var mSelect = row && row.querySelector ? row.querySelector('[data-member-model]') : null;
+            var tSelect = row && row.querySelector ? row.querySelector('[data-member-thinking]') : null;
+            var model = modelSel ? modelSel.value : (mSelect ? mSelect.value : '');
+            var efforts = effortsForModel(model);
+            var thinking = thinkSel ? thinkSel.value : (tSelect ? tSelect.value : efforts[0]);
+            if (efforts.indexOf(thinking) === -1) thinking = efforts[efforts.length - 1] || 'medium';
+            if (workersState) {
+                workersState.memberSettings = Object.assign({}, workersState.memberSettings || {});
+                workersState.memberSettings[memberId] = { model: model, thinking: thinking };
+            }
+            vscode.postMessage({ type: 'setMemberModel', memberId: memberId, profile: profile, model: model, thinking: thinking });
+            paintWorkers();
+        });
         // Runs whenever the panel is visible, however it became visible (click, restore, badge link).
         setInterval(function () {
             var panel = document.getElementById('panel-workers');
@@ -3295,7 +3547,7 @@
             paintWorkers();
             if (++workersTicks % 3 === 0) {
                 vscode.postMessage({ type: 'requestWorkersState' });
-                Object.keys(workersExpanded).forEach(function (id) { if (workersExpanded[id]) vscode.postMessage({ type: 'requestWorkerTrace', workerId: id }); });
+                Object.keys(workersExpanded).forEach(function (id) { if (workersExpanded[id] && id.indexOf('member:') !== 0 && id !== 'highlightedMember') vscode.postMessage({ type: 'requestWorkerTrace', workerId: id }); });
             }
         }, 1000);
     }

@@ -103,6 +103,11 @@ export class WorkerRouter {
         this.cacheTtlMs = (options.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS) * 1000;
     }
 
+    /** The installed profile by name (as last refreshed by route). */
+    profile(name: string): WorkerProfile | undefined {
+        return this.profiles.get(name);
+    }
+
     route(request: RouteRequest): RouteResult {
         const refreshed = this.refreshProfiles();
         if (refreshed) {

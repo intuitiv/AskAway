@@ -1,3 +1,4 @@
+process.env.ASKAWAY_AVAILABILITY_MODE = 'away';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');

@@ -31,7 +31,6 @@ const member = (name: string) => rules.defaultMembers.find((item: any) => item.k
 export class Room {
     readonly store: AITalkStore;
     private readonly actors = new Map<string, Actor>();
-    private readonly typingIds = new Set<string>();
     private readonly workerNames = new Map<string, string>();
     private readonly reactionWatchers = new Set<(message: TalkMessage, emoji: string, by: string) => void>();
     constructor(readonly workspace: string) { this.store = new AITalkStore(workspace); }
@@ -47,7 +46,7 @@ export class Room {
         return this.handle(actor.id);
     }
     unregister(id: string): void {
-        this.actors.delete(id); this.typingIds.delete(id);
+        this.actors.delete(id); this.store.setTyping(id, false);
         const known = this.store.snapshot().members.find(item => item.id === id);
         if (known) this.store.setPresence(known, false);
     }
@@ -64,7 +63,7 @@ export class Room {
     /** Posts as a registered actor and routes the message: @tag → that actor, reply → owner, user direct → Validator. */
     post(author: string, text: string, options: PostOptions = {}): Posted {
         const state = this.store.post(text, options.replyTo, author, options.details, options.kind, options.attachments, options.fields);
-        this.typingIds.delete(author);
+        this.store.setTyping(author, false);
         const message = state.messages.at(-1) as TalkMessage;
         const parent = message.replyTo ? state.messages.find(item => item.id === message.replyTo) : undefined;
         // Replying to a message you received is the read receipt.
@@ -97,9 +96,10 @@ export class Room {
         this.reactionWatchers.add(watch);
         return () => { this.reactionWatchers.delete(watch); };
     }
-    typing(id: string, on: boolean): void { if (on && this.actors.has(id)) this.typingIds.add(id); else this.typingIds.delete(id); }
+    typing(id: string, on: boolean): void { this.store.setTyping(id, on && this.actors.has(id)); }
     typingText(): string {
-        const names = [...this.typingIds].map(id => this.store.snapshot().members.find(item => item.id === id)?.displayName ?? id);
+        const members = this.store.snapshot().members;
+        const names = this.store.typingIds().filter(id => members.some(item => item.id === id && item.presence === 'joined')).map(id => members.find(item => item.id === id)?.displayName ?? id);
         return names.length ? `${names.join(', ')} ${names.length > 1 ? 'are' : 'is'} typing…` : '';
     }
     snapshot() { return { ...this.store.snapshot(), typing: this.typingText() }; }

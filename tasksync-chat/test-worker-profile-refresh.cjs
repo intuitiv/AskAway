@@ -20,7 +20,8 @@ const profileDir = path.join(root, 'profiles');
 fs.mkdirSync(profileDir);
 const file = path.join(profileDir, 'build.md');
 const a = 'github-copilot/claude-sonnet-5.5', b = 'github-copilot/gpt-6.1-sol';
-const text = model => `---\nname: build\ntier: mid\nmodel: ${model}\nthinking: high\nmodels: [${a}, ${b}]\nthinkingOptions: [high]\n---\nFixture build.\n`;
+const argon = 'agy/gemini-4-argon-high';
+const text = model => `---\nname: build\ntier: mid\nmodel: ${model}\nthinking: high\nmodels: [${a}, ${b}, ${argon}]\nthinkingOptions: [high]\n---\nFixture build.\n`;
 fs.writeFileSync(file, text(a));
 const children = [];
 const runtime = new OpenCodeWorkerRuntime(loadWorkerProfiles(profileDir), {
@@ -45,3 +46,10 @@ assert.equal(runtime.router.worker(first.workerId).model, a, 'existing worker co
 assert.equal(runtime.router.worker(first.workerId).state, 'IDLE');
 assert.equal(children[1].args[children[1].args.indexOf('--model') + 1], b);
 console.log('PASS EV-WORKER-PROFILE-REFRESH: edited default selected without restart; idle worker preserved');
+fs.writeFileSync(file, text(argon));
+const argonProfile = loadWorkerProfiles(profileDir).find(profile => profile.name === 'build');
+assert.equal(argonProfile.model, argon);
+assert.equal(argonProfile.thinking, 'high');
+assert.ok(argonProfile.models.includes(argon));
+assert.equal(runtime.router.worker(first.workerId).model, a, 'Argon default must not mutate an existing worker');
+console.log('PASS EV-WORKER-ARGON-HIGH-DEFAULT: profile parses Argon High while preserving existing workers');

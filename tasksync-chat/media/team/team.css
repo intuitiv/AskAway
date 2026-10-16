@@ -1,0 +1,601 @@
+/* ── Team Tab & Side-by-Side Prototype Styles ────────────────────── */
+
+.team-storybook-shell,
+.team-proto-root {
+	--vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	--vscode-editor-font-family: "SF Mono", Monaco, Menlo, Consolas, "Courier New", monospace;
+	--vscode-foreground: #d8dee9;
+	--vscode-descriptionForeground: #8b95a7;
+	--vscode-sideBar-background: #14171d;
+	--vscode-editor-background: #191d24;
+	--vscode-editorWidget-background: #1f242d;
+	--vscode-input-background: #12151b;
+	--vscode-input-foreground: #e5e9f0;
+	--vscode-input-border: #2e3440;
+	--vscode-panel-border: #292f3a;
+	--vscode-widget-border: #2c333f;
+	--vscode-focusBorder: #5e81ac;
+	--vscode-textLink-foreground: #88c0d0;
+	--vscode-button-background: #4c6ef5;
+	--vscode-button-foreground: #ffffff;
+	--vscode-button-secondaryBackground: #252b36;
+	--vscode-button-secondaryForeground: #d8dee9;
+	--vscode-badge-background: #2e3440;
+	--vscode-badge-foreground: #e5e9f0;
+	--team-surface: #1b2028;
+	--team-surface-elevated: #212731;
+	--team-surface-active: #252d3a;
+	--team-border: #2c3340;
+	--team-accent: #7aa2f7;
+	--team-working: #4fd6be;
+	--team-idle: #6e7889;
+
+	--team-widget-width: 420px;
+
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	width: 420px;
+	max-width: 100%;
+	height: 760px;
+	background: var(--vscode-sideBar-background);
+	color: var(--vscode-foreground);
+	font-family: var(--vscode-font-family);
+	font-size: 12.5px;
+	box-sizing: border-box;
+	overflow: hidden;
+	border: 3px solid var(--vscode-focusBorder);
+	border-radius: 12px;
+	box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+}
+
+.team-storybook-shell[data-theme="light"],
+.team-proto-root[data-theme="light"] {
+	--vscode-foreground: #1e2430;
+	--vscode-descriptionForeground: #596375;
+	--vscode-sideBar-background: #f4f6f9;
+	--vscode-editor-background: #ffffff;
+	--vscode-editorWidget-background: #eef1f6;
+	--vscode-input-background: #ffffff;
+	--vscode-input-foreground: #1e2430;
+	--vscode-input-border: #cfd6e2;
+	--vscode-panel-border: #d8dee9;
+	--vscode-widget-border: #d5dce6;
+	--vscode-focusBorder: #3b63d9;
+	--vscode-textLink-foreground: #2457c5;
+	--vscode-button-background: #3b63d9;
+	--vscode-button-foreground: #ffffff;
+	--vscode-button-secondaryBackground: #e5eaf2;
+	--vscode-button-secondaryForeground: #1e2430;
+	--vscode-badge-background: #e2e7f0;
+	--vscode-badge-foreground: #1e2430;
+	--team-surface: #ffffff;
+	--team-surface-elevated: #f7f9fc;
+	--team-surface-active: #eaf0fb;
+	--team-border: #d7deea;
+	--team-accent: #2b59c3;
+	--team-working: #0e8a72;
+	--team-idle: #768194;
+}
+
+.team-storybook-shell *,
+.team-storybook-shell *::before,
+.team-storybook-shell *::after {
+	box-sizing: border-box;
+}
+
+/* ── Production 5-tab bar ─────────────────────────────────────────── */
+
+.team-storybook-shell .widget-tabs.tab-bar {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 0 8px;
+	height: 36px;
+	width: 100%;
+	flex-shrink: 0;
+	background: var(--vscode-editor-background);
+	border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.team-storybook-shell .widget-tab.tab-btn {
+	appearance: none;
+	border: none;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font-family: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	padding: 8px 8px;
+	flex: 1;
+	text-align: center;
+	white-space: nowrap;
+	cursor: pointer;
+	border-bottom: 2px solid transparent;
+	transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.team-storybook-shell .widget-tab.tab-btn:hover {
+	color: var(--vscode-foreground);
+}
+
+.team-storybook-shell .widget-tab.tab-btn.active {
+	color: var(--vscode-foreground);
+	border-bottom-color: var(--team-accent);
+}
+
+/* ── Separate AITalk & Team tab panels (one active panel at a time) ─ */
+
+.team-pane,
+#panel-aitalk,
+#panel-team {
+	display: none;
+	flex-direction: column;
+	flex: 1;
+	width: 420px;
+	max-width: 100%;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.team-pane.active,
+.team-pane.pane-active {
+	display: flex;
+}
+
+.team-pane[hidden] {
+	display: none !important;
+}
+
+.team-aitalk-pane {
+	width: 420px;
+	max-width: 100%;
+	background: var(--vscode-sideBar-background);
+}
+
+.team-aitalk-pane .talk-root,
+.team-aitalk-pane .talk-prototype {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	width: 100%;
+	max-width: 100%;
+	min-height: 0;
+	height: 100%;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.team-directory-pane {
+	width: 420px;
+	max-width: 100%;
+	background: var(--vscode-sideBar-background);
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 10px 12px 18px;
+}
+
+.team-tab-panel {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	gap: 10px;
+}
+
+/* ── Shared Avatar Badges (AITalk + Team) ─────────────────────────── */
+
+.team-avatar-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+	flex-shrink: 0;
+	vertical-align: middle;
+}
+
+.team-avatar-img {
+	width: 100%;
+	height: 100%;
+	display: block;
+	object-fit: cover;
+}
+
+.aitalk-inline-face {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	margin-right: 4px;
+}
+
+.aitalk-bubble-face,
+.aitalk-ac-face {
+	width: 100%;
+	height: 100%;
+	border-radius: 50%;
+}
+
+.talk-avatar.aitalk-avatar {
+	padding: 0;
+	overflow: hidden;
+	background: transparent;
+}
+
+.aitalk-roster {
+	display: inline-flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.aitalk-roster-member,
+.aitalk-presence,
+.talk-sender.aitalk-who,
+.talk-mention[data-member-id],
+.aitalk-quote-who[data-member-id] {
+	cursor: pointer;
+}
+
+.aitalk-roster-member:hover .aitalk-roster-name,
+.talk-sender.aitalk-who:hover,
+.talk-mention[data-member-id]:hover {
+	text-decoration: underline;
+}
+
+/* ── Team Roster List & Member Row ────────────────────────────────── */
+
+.team-member-list {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	gap: 8px;
+}
+
+.team-member-row {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	background: var(--team-surface);
+	border: 1px solid var(--team-border);
+	border-radius: 8px;
+	padding: 10px 12px;
+	transition: border-color 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.team-member-row.is-working {
+	border-left: 3px solid var(--team-working);
+}
+
+.team-member-row-highlighted,
+.team-member-row.is-highlighted {
+	background: var(--team-surface-active);
+	border-color: var(--team-accent);
+	box-shadow: 0 0 0 1px var(--team-accent);
+}
+
+.team-member-row-main {
+	display: grid;
+	grid-template-columns: 72px minmax(0, 1fr) auto;
+	gap: 10px;
+	align-items: start;
+}
+
+/* Left: ~72px portrait block */
+.team-member-portrait {
+	width: 72px;
+	height: 72px;
+	flex-shrink: 0;
+}
+
+.team-portrait-72 {
+	width: 72px;
+	height: 72px;
+	border-radius: 12px;
+	border: 1px solid var(--team-border);
+	background: var(--team-surface-elevated);
+}
+
+.team-portrait-48 {
+	width: 48px;
+	height: 48px;
+	border-radius: 10px;
+	border: 1px solid var(--team-border);
+}
+
+/* Middle: Name · Role, status, model, thinking, agent file */
+.team-member-body {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+.team-member-headline {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	line-height: 1.25;
+}
+
+.team-member-identity {
+	font-size: 13px;
+	color: var(--vscode-foreground);
+}
+
+.team-member-name {
+	font-weight: 700;
+}
+
+.team-member-role {
+	color: var(--vscode-descriptionForeground);
+	font-weight: 500;
+}
+
+.team-member-status {
+	font-size: 11.5px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.team-member-status.team-status-working {
+	color: var(--team-working);
+	font-weight: 500;
+}
+
+.team-member-cost {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 11px;
+	padding: 1px 6px;
+	border-radius: 999px;
+	background: var(--team-surface-elevated);
+	border: 1px solid var(--team-border);
+	color: var(--vscode-descriptionForeground);
+	font-family: var(--vscode-editor-font-family);
+}
+
+.team-member-cost strong {
+	color: var(--vscode-foreground);
+	font-weight: 600;
+}
+
+.team-validator-trace {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 11.5px;
+}
+
+.team-edit-member-btn {
+	margin-left: auto;
+	appearance: none;
+	border: 1px solid var(--vscode-input-border);
+	background: var(--team-surface-elevated);
+	color: var(--vscode-descriptionForeground);
+	border-radius: 4px;
+	padding: 2px 7px;
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.team-edit-member-btn:hover {
+	color: var(--vscode-foreground);
+	border-color: var(--team-accent);
+}
+
+.team-member-controls {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+}
+
+.team-member-profile {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.team-member-profile code {
+	padding: 1px 5px;
+	border-radius: 4px;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	font-family: var(--vscode-editor-font-family);
+	font-size: 10.5px;
+}
+
+.team-control-field {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	max-width: 100%;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.team-model-select,
+.team-thinking-select,
+.team-edit-select {
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 4px;
+	padding: 2px 6px;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11px;
+	height: 22px;
+	cursor: pointer;
+}
+
+.team-model-select {
+	max-width: 165px;
+	width: 100%;
+}
+
+.team-thinking-select {
+	max-width: 96px;
+}
+
+.team-agent-file-link {
+	border: 1px solid var(--vscode-input-border);
+	background: var(--team-surface-elevated);
+	color: var(--vscode-textLink-foreground);
+	border-radius: 4px;
+	padding: 2px 7px;
+	height: 22px;
+	font-size: 11px;
+	font-weight: 500;
+	text-decoration: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+}
+
+.team-agent-file-link:hover {
+	border-color: var(--team-accent);
+}
+
+/* Right: compact [n tasks ▸] pill */
+.team-member-tasks-col {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+}
+
+.team-tasks-pill {
+	appearance: none;
+	border: 1px solid var(--vscode-input-border);
+	background: var(--team-surface-elevated);
+	color: var(--vscode-foreground);
+	border-radius: 999px;
+	padding: 4px 10px;
+	font-size: 11.5px;
+	font-weight: 600;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.team-tasks-pill:hover,
+.team-tasks-pill.expanded {
+	border-color: var(--team-accent);
+	background: var(--team-surface-active);
+}
+
+/* Expandable task drawer */
+.team-member-tasks-panel {
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px dashed var(--team-border);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+/* ── Member Edit Modal (5 allowed fields + open model dropdown) ──── */
+
+.team-edit-modal {
+	background: var(--team-surface-elevated);
+	border: 1px solid var(--team-accent);
+	border-radius: 8px;
+	padding: 12px 14px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.team-edit-modal-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.team-edit-modal-title {
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.team-edit-close-btn {
+	margin-left: auto;
+	appearance: none;
+	border: none;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	font-size: 13px;
+}
+
+.team-edit-form {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 8px;
+}
+
+.team-edit-label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+
+.team-edit-input {
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 4px;
+	padding: 4px 8px;
+	font-size: 12px;
+	height: 26px;
+}
+
+.team-edit-model-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.team-model-dropdown-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-height: 150px;
+	overflow-y: auto;
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 6px;
+	padding: 4px;
+}
+
+.team-model-dropdown-option {
+	padding: 3px 6px;
+	border-radius: 4px;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	cursor: pointer;
+}
+
+.team-model-dropdown-option.selected {
+	background: var(--team-surface-active);
+	color: var(--team-accent);
+	font-weight: 600;
+}
+
+.team-edit-actions {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.team-edit-save-btn {
+	appearance: none;
+	border: none;
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border-radius: 4px;
+	padding: 4px 12px;
+	font-size: 11.5px;
+	font-weight: 600;
+	cursor: pointer;
+}

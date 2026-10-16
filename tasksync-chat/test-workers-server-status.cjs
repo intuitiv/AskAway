@@ -43,7 +43,7 @@ const webview = fs.readFileSync(path.join(__dirname, 'media/webview.js'), 'utf8'
 const ui = {}, icon = { className: '' }, button = { querySelector: () => icon }, list = { innerHTML: '', querySelectorAll: () => [] };
 const blocks = [['// ── Usage banner', '// ── end Usage banner ──'], ['// ── Turn trace rows: pure render', '// ── end Turn trace rows ──'], ['// ── Workers tab: pure render', '// ── end Workers pure render ──']];
 vm.runInNewContext(blocks.map(([from, to]) => webview.slice(webview.indexOf(from), webview.indexOf(to))).join('\n') + webview.slice(webview.indexOf('    var workersState = null;'), webview.indexOf('    function initWorkersTab()')) + '\nout.apply = applyWorkersState;', {
-    out: ui, document: { getElementById: id => id === 'workers-server-btn' ? button : id === 'workers-list' ? list : null }, traceOpenIds: () => ({})
+    out: ui, observabilityMetrics: {}, document: { getElementById: id => id === 'workers-server-btn' ? button : id === 'workers-list' ? list : null }, traceOpenIds: () => ({})
 });
 const pushed = [];
 const provider = new output.Provider();

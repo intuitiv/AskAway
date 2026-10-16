@@ -18,7 +18,7 @@ export function configureAITalkDelivery(root: string): void {
         const author = state.members.find(member => member.kind === kind);
         if (!author) throw new Error('AITalk participant is not registered');
         // The main agent's commentary call is a tool call of its running turn: it registers like beginAITalkTool.
-        if (kind === 'agent' && !caller) room.registerAgent();
+        if (kind === 'agent' && (!caller || caller.recipient === author.id)) room.registerAgent();
         // An unregistered actor cannot post; the commentary feed itself carries on.
         if (!room.isRegistered(author.id)) return { status: 'REJECTED', reason: `${author.displayName} is not registered in AITalk` };
         if (kind !== 'validator') return room.post(author.id, input.text, { replyTo: input.replyTo, details: input.details, kind: input.kind }).message;

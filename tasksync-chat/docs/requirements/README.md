@@ -9,6 +9,7 @@ Why this exists: the reviewer asked to "capture what I told as requirements for 
 | [chat-banner.md](chat-banner.md) | The shared usage banner (chat, Metrics, Workers): last input, turn output, cache age, turn timer, worker spend |
 | [metrics-tab.md](metrics-tab.md) | Metrics tab: scope, turn trace, worker IDs |
 | [workers-tab.md](workers-tab.md) | Workers tab: cards, trace, visibility toggle, server controls, cost tips |
+| [team.md](team.md) | Planned Team/member/task terminology, profiles, agy-first dependency and Storybook approval |
 | [live-tab.md](live-tab.md) | Commentary tab (once called Live): feed, goal box, turn panes, Telegram mirror |
 | [specs-tab.md](specs-tab.md) | Specs tab: stage bar, All/Completed switches, story groups, per-spec facts |
 | [settings.md](settings.md) | Settings, switches, permissions, Telegram and routing choices the reviewer set |

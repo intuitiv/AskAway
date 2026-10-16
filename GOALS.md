@@ -147,6 +147,15 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - These documents are the validator's knowledge, so a wrong row becomes a wrong decision.
 - Decision: [ADR 0017](docs/adr/0017-never-break-a-requirement.md) · Requirements: [orchestrator.md](tasksync-chat/docs/requirements/orchestrator.md) · Guard: [AGENTS.md](AGENTS.md) "Never break a requirement"
 
+### G18 A configurable Team with runtime-independent members
+- Show a Team of named experts: reviewer as CPO, Validator as PO with a pinned profile, Mahesh as AA.Orchestrator/TPM, and AskAway Build as a distinct technical role.
+- Clarified 2026-10-15: identity follows the selected native agent, not one static Manager name, consistently across name/avatar/join banner/Team profile; unknown agents use their actual display name. Build Bhaskar is the approved configurable AskAway Build name (technical lead, not TPM), replacing the earlier proposed spelling.
+- Every Team member has a selectable short-name mention alias (for example @Bhaskar and @Mahesh); autocomplete shows member identity and routes by stable member ID, retaining current-turn active suggestions and existing routing priority. Duplicate short names require role/identity disambiguation, never arbitrary routing.
+- The CPO uses the reviewer's real uploaded photo in a user-owned folder, shared across workspaces and preserved through extension upgrades, never extension media/install, repo or distributed bundles; the suggested user-scoped reference is `~/.askaway/profile/avatar.png` (planning only).
+- Rename visible Workers to Team and runs to tasks only in the UI; one row per member, multiple tasks, shared faces with AITalk, editable profiles and end-turn cost optimization.
+- Enable and verify the agy runtime with Argon models for any profile before Team work; agy is not a persona. Team production UI waits for Storybook approval.
+- Decision: [ADR 0023](docs/adr/0023-agy-first-team-members.md) · Requirements: [team.md](tasksync-chat/docs/requirements/team.md) · Spec: [010](specs/010-team/spec.md). All behavior remains a test gap until caller-view proof.
+
 ## 3. Open questions
 
 Collected for one batch to the reviewer. Each answer becomes a dated line in the matching goal above.
@@ -662,3 +671,80 @@ Answers to the six 008 questions (scoreboard place, $2 cap, levels in one run, f
 > - opencode based workers to delegate tasks
 > - aitalk room
 > - telegram and webex integration, and other misc stuff, keep alive ping, timer, tracing and so on.
+
+### 2026-10-15, AITalk production ready and the Team
+
+> Dont worry about benchmarks. we'll do it later.
+> Lets make aitalk production ready.
+> - Validator is not yet pinned in workers.
+> - I see verify joined the room, but not main agent.
+> - ai talk shows as Agent joined after a very long time.
+>
+> I am thinking of renaming things, that will give a good picture and a sales pitch for this.
+> I want to see this as a team. Main agent is like a Technical project Manager(TPM), Validator is Product Owner and user is CPO. And workers are like a team. we can even give a name indicating their subject matter expertice.
+> And end of the turn, we track who consumed more moeny and we can look for ways to optimise.
+> we'll have Architect, Developer, Test engineer, performance analyst, Rules expert, pipeline expert, webex chatter, we can give some real names and a funky title. For example, `Chatty Cathy`, `Manager Mahesh`, something like that. And give some faces also, once i have that may be along with Main agent (Manager) other team members also can join the room and Validator and user can ask questions directly to that person (or we can keep it like as it is now)
+> And in settings we should be able to configure their names and their skills, persona. I should be able to select model, thinking effort for each persona so that i can configure from Workers tab.
+> And lets not call Workers, lets call it as Team, and when main agent starts, it will be `Manager Mahesh` joined.
+> I gave names as example, but they need not be same. Think of some better names. And in aitalk, when i click on the user name, it should take me the profile on `Team` tab. It is also better to show me a link to agent prompt, so that i can enhance it and more tools and so on. But model and thinking should be shown in the Team tab.
+> Can we show the status of the team member there only? Like Idle, Working, And show last conversation information, banner, age, message and all.
+> If we create 2 workers for a member, we can show both.
+> I am thingking the UX could be, we have rows. And each row per Member Attached ascii mockup.
+> Statuses can be creative, for different profiles. i missed in the mockup about name. In future we can give a facility to add new Team members from the Team tab.
+> Generate photos, neat and clear photos. Use them in aitalk also.
+>
+> - I still dont see Agent's question, from commentary tool or something, i dont know. I just see Validator response. That doesnt makes sense.
+> - And when Validator is running, show typing animation. That is in story book.
+>
+> Validator also should have profile.
+>
+> For the above thing also, create a story book first, for aitalk and Team tabs. And In AITalk and Team tabs, simulate the scnearios so that i can visualise. That animation i can use it in github and vscode market place also.
+>
+> ~~And i heard that antigravity can be used as model for worker. `agy --prompt "Hi"` it is working for me. Why cant we have this as one worker. It is free for me and we have Argon 4 as model in it. It looks like it is better than Opus. We can have one worker for it.~~
+
+Superseded 2026-10-15 below: agy is a runtime, Argon is a model, neither is a Team persona.
+
+Mockup (Team tab, one row per member): image on the left; Status, Profile, Model and thinking effort in the
+middle; on the right "List of Tasks (tasks count)" with the shared banner, age and the rest per task.
+
+### 2026-10-15, latest Team decisions (verbatim)
+
+> Check now, Argon is available.
+> Mahesh is AA.Orchestrator. AskAway Build has more than standups, it is more technical.
+> As we have so many members, show only the ones whcih are active in a turn.
+> Rename what i see. workers are now more like tasks.
+> 3. Upto you.
+> 4. Try B, if not, give me prompts, i'll upload them for you.
+> 5. Its not Team row, btw, its a member row.
+> 6. Sure B is also fine.
+> 7. Sure.
+> 8. Yes
+> I think we should enable agy as an alternate to opencode first, before this change. Argon 4 is looking goosd and costs nothing. SO, we should aneble it first so that we can do this work also in that model. And Agy is not a member, it is a model which can be availabl;e to anybody.
+
+Packet context for numbered replies: member grouping is delegated; try realistic photo generation first, then provide prompts for reviewer upload; one row per member; join at assignment and @member questions reach the running task; end-turn member costs and an optimization tip; Storybook scenarios and GIF. Technical clarification: agy is the runtime, Argon the model, selectable by any profile, not a new persona. Packet reports `agy models` lists `gemini-4-argon-high`, `gemini-4-argon-medium`, `gemini-4-argon-low`; this is discovery evidence, not proof of working builds, permissions or zero billing.
+
+### 2026-10-15, selected agent identity and CPO photo (verbatim)
+
+> Name should change based on the agent i selected. Mahesh can be Orchestrator. What is the name of the build.
+> CPO should be my photo, it should be in my user specific folder. not in askaway extension.
+
+Clarification (updated by the later 2026-10-15 approval below): AA.Orchestrator → Mahesh; AskAway Build → approved configurable name Build Bhaskar, a technical lead distinct from the TPM. Selected-native-agent identity propagates through name, avatar, join banner and Team profile; unknown agents retain their actual display name without guessed aliases. The CPO photo is real and user-uploaded, not a generated persona portrait; `~/.askaway/profile/avatar.png` is a suggested user-scoped reference shared across workspaces, excluded from extension/repo packaging and retained through upgrades. No photo, directory or implementation is created by this documentation update. Track via R-TEAM-13/14 and 010 T004–T006/T008/T013; agy-first ordering remains.
+
+### 2026-10-15, approved Build name and member mention aliases (verbatim)
+
+> Build Bhaskar, I should be able to select @Bhaskar also, same goes to other members.
+
+This approves Build Bhaskar, replacing the earlier agent-proposed spelling, and short-name aliases for every member. Autocomplete displays member identity, binds selection to stable member ID rather than literal display-name matching, and suggests only current-turn active members. Renamed labels retain identity; duplicate short names disambiguate by role/stable member identity without arbitrary routing. Existing reply/mention routing priority remains unchanged. R-TEAM-15 and 010 T006/T010 track caller-view checks; these checks are planned, not implemented. agy-first and Storybook approval gates remain.
+
+### 2026-10-15, finish agy (verbatim)
+
+> go finish remaining thing for agy.
+
+Authorized agy completion, not Team implementation: optional runtime for any profile, model `agy/gemini-4-argon-medium` with high/low alternatives. Inventory: MCP access, commands/permissions, reload independent of OpenCode, token-accounting verification, final gate/deploy. Existing adapter reportedly passed fake-CLI tests, a live scoped file edit with compile/build and `test:workers`; this packet does not independently verify that report or prove the remaining inventory. Track 010 US1 T015–T019 beneath T001–T003; leave them open until exact caller-view evidence is recorded. Unreported cost is unknown, not 0/free. Runtime worker may proceed; later closure updates must distinguish tested, deployed and reload-verified states. Build Bhaskar/aliases and agy-first/Storybook gates remain unchanged.
+
+### 2026-10-15, Argon High default and uploaded CPO photo (verbatim)
+
+> updated avatar.png in `~/.askaway/profile`
+> Lets use Argon high. Instead of sol 6.1 use Argon, if that works, we can use more often as Opus.
+
+Use `agy/gemini-4-argon-high` for work previously assigned to Sol 6.1; retain Opus for its existing design-heavy role until Argon has been evaluated. This supersedes the earlier Medium trial default, not the runtime permission policy or verification gates. The reviewer-owned photo exists at `~/.askaway/profile/avatar.png` (1254 by 1254 pixels verified); use that external file without copying it into the extension or repository. Track the default migration and avatar integration in spec 010; neither is claimed deployed by this entry.

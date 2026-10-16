@@ -1,5 +1,5 @@
 import { defaultMembers, displayName } from '../../media/aitalk/talkRules.js';
-export const traceSessions = defaultMembers.slice(1).map((member, i) => ({ label: `${displayName(member)} session`, time: `10:${40 + i}`, status: 'finished', events: [{ kind: 'request', id: String(i + 1), model: displayName(member), inputTokens: 1200, outputTokens: 160, cachedTokens: 1000, nanoAiu: 200000000 }] }));
+export const traceSessions = defaultMembers.filter(member => member.kind === 'agent').map((member, i) => ({ label: `${displayName(member)} session`, time: `10:${40 + i}`, status: 'finished', events: [{ kind: 'request', id: String(i + 1), model: displayName(member), inputTokens: 1200, outputTokens: 160, cachedTokens: 1000, nanoAiu: 200000000 }] }));
 const earlier = [
     { kind: 'day', text: 'Yesterday' },
     { id: 'e1', author: 'You', text: 'morning. can we start on the sidebar?', time: '09:02', delivery: 'delivered', tool: 'commentary' },

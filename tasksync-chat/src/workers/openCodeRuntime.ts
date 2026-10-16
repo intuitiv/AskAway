@@ -2,9 +2,15 @@ import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { WorkerProfile } from './workerProfiles';
+import { WorkerProfile, workerInstructions } from './workerProfiles';
 import type { KeepWarmWorker } from './keepWarm';
 import { KEEP_WARM_PROMPT, MAX_PARALLEL_WORKERS, RouteResult, WorkerRouter } from './workerRouter';
+
+/** agy is an alternate runtime (see agyRuntime.ts); its models are namespaced `agy/` so it never shares a worker with OpenCode. */
+export const AGY_PREFIX = 'agy/';
+export function isAgyModel(model: string): boolean {
+    return model.startsWith(AGY_PREFIX);
+}
 
 export const MAX_WAIT_SECONDS = 240;
 /** A run whose process emitted no event this long after spawn is STALLED (OpenCode is silent on a session/directory mismatch). */
@@ -12,7 +18,7 @@ export const STALL_AFTER_SECONDS = 60;
 const MAX_EVIDENCE_LINES = 25;
 
 export type RunState = 'STARTING' | 'RUNNING' | 'STALLED' | 'WAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-export type LifecycleType = 'start' | 'message_update' | 'before_tool' | 'after_tool' | 'checkpoint' | 'approval' | 'stop' | 'error' | 'archive' | 'fork';
+export type LifecycleType = 'start' | 'message_update' | 'before_tool' | 'after_tool' | 'checkpoint' | 'approval' | 'stop' | 'error' | 'archive' | 'fork' | 'denied_continue' | 'verify_round';
 
 export interface RunUsage { input: number; output: number; reasoning: number; cacheRead: number; cacheWrite: number; cost: number; steps: number }
 
@@ -46,6 +52,8 @@ export interface LifecycleRecord {
     toolTokens?: { input: number; output: number };
     usage?: RunUsage;
     exitCode?: number;
+    round?: number;
+    tail?: string;
     state?: RunState;
     reason?: string;
     /** The spawned OpenCode process and its run directory, on the start fact written at spawn. */
@@ -53,6 +61,8 @@ export interface LifecycleRecord {
     dir?: string;
     /** A keep-warm ping's checkpoint: a real request that only refreshed the prompt cache. */
     ping?: boolean;
+    /** A checkpoint of a runtime that reports no dollar cost (agy): usage.cost is unknown, not 0. */
+    costStatus?: 'unreported';
 }
 
 export interface WorkerPacket {
@@ -61,6 +71,10 @@ export interface WorkerPacket {
     /** Where OpenCode runs (e.g. a git worktree of the owner); defaults to the owner. */
     cwd?: string;
     profile: string;
+    /** Worker runtime: OpenCode (default) or agy. `agy` runs `model` (e.g. gemini-4-argon-medium) through the agy CLI. */
+    runtime?: 'opencode' | 'agy';
+    /** agy only, explicit per run: `skip` passes --dangerously-skip-permissions. Refused for a profile that denies edits or shell. */
+    agyPermissions?: 'review' | 'skip';
     model?: string;
     thinking?: string;
     dispatchTurnId: string;
@@ -103,6 +117,10 @@ export interface RunView {
     thinkingNote?: string;
     /** Parent worker id when this run's worker was forked from a busy one. */
     forkedFrom?: string;
+    /** Set for a runtime that reports no dollar cost (agy): usage.cost is not an actual 0. */
+    costStatus?: 'unreported';
+    /** Set when the packet explicitly opted this agy run out of agy's permission review. */
+    agyPermissions?: 'skip';
 }
 
 export interface ChildLike {
@@ -113,7 +131,8 @@ export interface ChildLike {
     kill(signal?: NodeJS.Signals): boolean;
 }
 
-export type Spawner = (args: string[]) => ChildLike;
+/** `options` is given for a non-OpenCode runtime (agy): its binary, the run directory it starts in, and the run title. */
+export type Spawner = (args: string[], options?: { command: string; cwd: string; title: string }) => ChildLike;
 
 /** Forks an OpenCode session at its last completed message and returns the new session's id. */
 export type ForkSession = (sessionId: string) => Promise<{ sessionId: string }>;
@@ -128,16 +147,25 @@ export interface RuntimeOptions {
     forkSession?: ForkSession;
     /** One-shot timer for the stall detector; tests inject a manual one. Returns its canceller. */
     setTimer?: (fire: () => void, ms: number) => () => void;
+    /** The agy binary for `runtime: 'agy'` workers; defaults to `agy` on PATH. */
+    agyCommand?: string;
+    /** Temporary agy verify-loop + continue-on-denial toggle (`askaway.workers.agyVerifyLoop`, default true). */
+    agyVerifyLoop?: boolean | (() => boolean);
 }
 
 interface RunRecord extends RunView {
     workspace: string;
     cwd: string;
     packet: string;
+    command: string;
     evidence: string[];
     child?: ChildLike;
+    /** The process of the run's latest launch, restored from its start fact after a reload. */
+    pid?: number;
     waiters: Array<() => void>;
     autoResumes?: number;
+    deniedContinued?: boolean;
+    verifyRounds?: number;
 }
 
 interface ServerMessage { info: { id: string; role: string; parentID?: string; time?: { completed?: number } } }
@@ -243,11 +271,24 @@ function emptyUsage(): RunUsage {
     return { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0, steps: 0 };
 }
 
+function processAlive(pid: number): boolean {
+    try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
+}
+
+function defaultAgyVerifyLoop(): boolean {
+    try {
+        const vscode = require('vscode') as typeof import('vscode');
+        return vscode.workspace.getConfiguration('askaway.workers').get<boolean>('agyVerifyLoop', true);
+    } catch {
+        return true;
+    }
+}
+
 // Worker stderr is also kept in a per-run file: it never enters the caller's context, but remains for diagnosis.
-const defaultSpawner: Spawner = (args) => {
+const defaultSpawner: Spawner = (args, options) => {
     fs.mkdirSync('/tmp/aa', { recursive: true });
-    const title = args[args.indexOf('--title') + 1] || 'run';
-    const child = childProcess.spawn('opencode', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const title = options?.title || args[args.indexOf('--title') + 1] || 'run';
+    const child = childProcess.spawn(options?.command ?? 'opencode', args, { stdio: ['ignore', 'pipe', 'pipe'], ...(options ? { cwd: options.cwd } : {}) });
     child.stderr.pipe(fs.createWriteStream(path.join('/tmp/aa', `${title.replace(/[^a-zA-Z0-9-]+/g, '_')}.err`), { flags: 'a' }));
     return child;
 };
@@ -269,8 +310,13 @@ export class OpenCodeWorkerRuntime {
     private attachUrl?: string;
     private readonly forkSession?: ForkSession;
     private readonly setTimer: (fire: () => void, ms: number) => () => void;
+    private readonly agyCommand: string;
+    private readonly agyVerifyLoop: () => boolean;
 
     constructor(profiles: WorkerProfile[], options: RuntimeOptions = {}) {
+        this.agyCommand = options.agyCommand ?? 'agy';
+        const verifyLoop = options.agyVerifyLoop;
+        this.agyVerifyLoop = typeof verifyLoop === 'function' ? verifyLoop : () => verifyLoop ?? defaultAgyVerifyLoop();
         this.now = options.now ?? Date.now;
         this.onPresence = options.onPresence;
         this.router = new WorkerRouter(profiles, { now: this.now });
@@ -298,9 +344,27 @@ export class OpenCodeWorkerRuntime {
             reason: `${running} workers running; ${adding} more would exceed the cap of ${MAX_PARALLEL_WORKERS}. Wait for a worker to finish.` };
     }
 
+    /** The explicit agy permission opt-out is valid only on an agy model and a profile that allows both edits and shell. */
+    private permissionRefusal(packet: WorkerPacket, model: string): string {
+        if (packet.agyPermissions !== 'skip') { return ''; }
+        if (!isAgyModel(model)) { return 'agyPermissions applies only to runtime agy'; }
+        const profile = this.router.profile(packet.profile);
+        if (!profile || profile.edit === 'deny' || profile.bash === 'deny') { return `profile ${packet.profile} denies edits or shell, so agy permissions cannot be skipped`; }
+        return '';
+    }
+
     start(packet: WorkerPacket): RunView | { status: 'SELECTION_UNAVAILABLE' | 'INELIGIBLE'; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>> {
         const invalid = validatePacket(packet);
         if (invalid) { return { status: 'INELIGIBLE', reason: invalid }; }
+        // The runtime is chosen explicitly; its models are namespaced `agy/` so agy and OpenCode workers never share a session.
+        if (packet.runtime === 'agy') {
+            if (!packet.model) { return { status: 'INELIGIBLE', reason: 'runtime agy needs a model, e.g. gemini-4-argon-medium' }; }
+            packet = { ...packet, model: isAgyModel(packet.model) ? packet.model : AGY_PREFIX + packet.model };
+        } else if (packet.runtime === 'opencode' && packet.model && isAgyModel(packet.model)) {
+            return { status: 'INELIGIBLE', reason: `model ${packet.model} belongs to runtime agy, not opencode` };
+        }
+        const permission = this.permissionRefusal(packet, packet.model ?? '');
+        if (permission) { return { status: 'INELIGIBLE', reason: permission }; }
         const workspace = canonical(packet.workspacePath);
         this.refreshFromLedger(workspace);
         const capped = this.capRefusal(1);
@@ -315,6 +379,8 @@ export class OpenCodeWorkerRuntime {
     submit(workerId: string, packet: WorkerPacket): RunView | { status: 'RETIRED' | 'INELIGIBLE' | 'CWD_MISMATCH' | 'WORKER_TOO_OLD'; workerId?: string; reason: string } | NonNullable<ReturnType<OpenCodeWorkerRuntime['capRefusal']>> {
         const invalid = validatePacket(packet);
         if (invalid) { return { status: 'INELIGIBLE', workerId, reason: invalid }; }
+        const permission = this.permissionRefusal(packet, this.router.worker(workerId)?.model ?? '');
+        if (permission) { return { status: 'INELIGIBLE', workerId, reason: permission }; }
         this.refreshFromLedger(canonical(packet.workspacePath));
         // Queuing behind a running worker adds no parallelism; starting on an idle one does.
         const capped = this.router.worker(workerId)?.active ? undefined : this.capRefusal(1);
@@ -344,6 +410,7 @@ export class OpenCodeWorkerRuntime {
         let forkedSession = '';
         let skipped = '';
         if (!parentSession) { skipped = 'the busy worker has no OpenCode session yet'; }
+        else if (isAgyModel(this.router.worker(workerId)?.model ?? '')) { skipped = 'agy conversations cannot be forked'; }
         else if (!fork) { skipped = 'no shared OpenCode server attached'; }
         else {
             try { forkedSession = (await fork(parentSession)).sessionId; } catch (error) { skipped = `fork failed: ${(error as Error).message}`; }
@@ -389,6 +456,7 @@ export class OpenCodeWorkerRuntime {
         const parentSession = this.sessionsByWorker.get(workerId);
         const fork = this.forkSession ?? (this.attachUrl ? ((id: string) => forkSessionViaServer(this.attachUrl as string, id)) : undefined);
         if (!parentSession) { return refuse('INELIGIBLE', 'the warm worker has no OpenCode session yet'); }
+        if (isAgyModel(parent.model)) { return refuse('INELIGIBLE', 'agy conversations cannot be forked'); }
         if (!fork) { return refuse('INELIGIBLE', 'no shared OpenCode server attached'); }
         let sessions: string[];
         try { sessions = (await Promise.all(packets.map(() => fork(parentSession)))).map((forked) => forked.sessionId); }
@@ -422,7 +490,8 @@ export class OpenCodeWorkerRuntime {
             .map((run) => {
                 const worker = this.router.worker(run.workerId);
                 return { ...this.view(run), contextTokens: worker?.contextTokens ?? 0, workerState: worker?.state ?? 'UNKNOWN',
-                    sessionOpenAction: !run.sessionId ? '' : this.attachUrl
+                    // agy has no OpenCode viewer: its runs show only through logs and the trace.
+                    sessionOpenAction: !run.sessionId || isAgyModel(run.model) ? '' : this.attachUrl
                         ? `opencode attach ${this.attachUrl} --session ${run.sessionId}` : `opencode --session ${run.sessionId}` };
             });
     }
@@ -474,6 +543,10 @@ export class OpenCodeWorkerRuntime {
         if (!run.sessionId) { return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: 'no OpenCode session to resume' }; }
         if (!this.terminal(run.state)) { return this.view(run); }
         if (run.state === 'COMPLETED') { return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: 'run already completed' }; }
+        // A run restored after a reload has no child here; its agy process may still be running the same conversation.
+        if (!run.child && run.pid && isAgyModel(run.model) && processAlive(run.pid)) {
+            return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: `agy process ${run.pid} from before the reload is still running this conversation; wait for it to exit, then resume` };
+        }
         this.refreshFromLedger(run.workspace);
         if (!this.router.resumeRun(run.workerId, run.runId, run.packet.slice(0, 40), 60)) {
             return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: 'worker is no longer idle; submit fresh work' };
@@ -481,6 +554,8 @@ export class OpenCodeWorkerRuntime {
         run.state = 'STARTING';
         run.endedAt = undefined;
         run.reason = undefined;
+        run.deniedContinued = undefined;
+        run.verifyRounds = undefined;
         this.launch(run, 'Continue the previous packet from where it stopped and finish it.');
         return this.view(run);
     }
@@ -513,7 +588,9 @@ export class OpenCodeWorkerRuntime {
         const result = { reconnected: [] as string[], orphaned: [] as Array<{ workerId: string; reason: string }> };
         for (const [workerId, adopted] of this.adopted) {
             if (adopted.workspace !== workspace) { continue; }
-            const reason = !serverLive ? 'shared OpenCode server not reachable after reload'
+            // An agy conversation is resumed by the agy CLI itself, never through the OpenCode server.
+            const reason = isAgyModel(adopted.model) ? (!adopted.sessionId ? 'no agy conversation was recorded before reload' : '')
+                : !serverLive ? 'shared OpenCode server not reachable after reload'
                 : !adopted.sessionId ? 'no OpenCode session was recorded before reload' : '';
             this.router.adopt({ workerId, workspacePath: workspace, profile: adopted.profile, model: adopted.model, thinking: adopted.thinking,
                 contextTokens: adopted.contextTokens, lastActivityAt: adopted.lastTs, forkedFrom: adopted.forkedFrom, cwd: adopted.cwd }, reason ? 'ORPHANED' : 'IDLE', reason || undefined);
@@ -597,7 +674,7 @@ export class OpenCodeWorkerRuntime {
             for (const [runId, records] of byRun) {
                 const last = records.filter((record) => !record.ping).pop() ?? records[records.length - 1];
                 if (records[records.length - 1].ts > this.now()) { byRun.delete(runId); }
-                else if (last.exitCode === undefined) { unfinishedWorkers.add(records[0].workerId); byRun.delete(runId); }
+                else if (last.exitCode === undefined || last.type === 'verify_round') { unfinishedWorkers.add(records[0].workerId); byRun.delete(runId); }
             }
         }
         for (const [runId, records] of byRun) {
@@ -617,15 +694,16 @@ export class OpenCodeWorkerRuntime {
             }
             const sessionId = [...records].reverse().find((record) => record.sessionId)?.sessionId ?? '';
             if (first.track === 'validator') contextTokens = last.inputTokens ?? contextTokens;
-            const ended = last.exitCode !== undefined;
+            const ended = last.exitCode !== undefined && last.type !== 'verify_round';
             const state: RunState = ended ? last.state ?? (last.type === 'stop' ? 'COMPLETED' : 'FAILED') : 'FAILED';
             const reason = ended ? last.reason ?? (state === 'COMPLETED' ? undefined : `exit code ${last.exitCode}`)
                 : 'interrupted by reload; action resume continues its session';
             this.runs.set(runId, {
                 runId, workerId: first.workerId, sessionId, state, profile: first.profile, model: first.model, thinking: first.thinking,
                 dispatchTurnId: first.dispatchTurnId, track: first.track ?? '', startedAt: first.ts, endedAt: last.ts, updatedAt: last.ts, elapsedMs: last.ts - first.ts,
-                usage, queuePosition: 0, reason, workspace, cwd: canonical(first.cwd ?? first.workspace), packet: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
+                usage, queuePosition: 0, reason, workspace, cwd: canonical(first.cwd ?? first.workspace), packet: '', command: '', evidence: [], waiters: [], nextInputTokens: contextTokens, knowledge: '',
                 lastPromptTokens, lastCachedTokens, ...(first.forkedFrom ? { forkedFrom: first.forkedFrom } : {}),
+                pid: [...records].reverse().find((record) => record.type === 'start')?.pid,
             });
             const lastTs = last.lastUsedAt ?? records[records.length - 1].ts;
             const adopted = this.adopted.get(first.workerId);
@@ -640,7 +718,7 @@ export class OpenCodeWorkerRuntime {
 
     /** The workspace's workers as keep-warm inputs (see keepWarm.ts); a worker with no recorded session cannot be pinged. */
     keepWarmWorkers(workspacePath: string): KeepWarmWorker[] {
-        return this.router.workers(canonical(workspacePath)).filter((worker) => !worker.sessionKey && this.sessionsByWorker.has(worker.workerId)).map((worker) => ({
+        return this.router.workers(canonical(workspacePath)).filter((worker) => !worker.sessionKey && !isAgyModel(worker.model) && this.sessionsByWorker.has(worker.workerId)).map((worker) => ({
             workerId: worker.workerId, state: worker.state, active: !!worker.active, queued: worker.queue.length,
             cacheExpiresAt: this.router.cacheExpiresAt(worker), nextInputTokens: worker.contextTokens,
             unusedPings: this.unusedPings.get(worker.workerId) ?? 0, pinging: this.pinging.has(worker.workerId),
@@ -706,13 +784,14 @@ export class OpenCodeWorkerRuntime {
     }
 
     /** Worker spend since a moment (the turn start): one checkpoint is one model request; session totals are never used. */
-    usageSince(workspacePath: string, sinceMs: number): { requests: number; dollars: number; runs: number; workers: number; workerIds: string[]; inputTokens: number; outputTokens: number; cachedTokens?: number; cacheMisses?: number; perModel?: Record<string, { requests: number; dollars: number; runs: number; inputTokens: number; outputTokens: number; cachedTokens: number }>; toolCalls?: Array<{ tool: string; calls: number; outputTokens: number; avgMs: number; minMs: number; maxMs: number; errors: number; cacheRisk: boolean }> } {
+    usageSince(workspacePath: string, sinceMs: number): { requests: number; dollars: number; runs: number; workers: number; workerIds: string[]; inputTokens: number; outputTokens: number; cachedTokens?: number; cacheMisses?: number; unreportedCostRequests?: number; perModel?: Record<string, { requests: number; dollars: number; runs: number; inputTokens: number; outputTokens: number; cachedTokens: number }>; toolCalls?: Array<{ tool: string; calls: number; outputTokens: number; avgMs: number; minMs: number; maxMs: number; errors: number; cacheRisk: boolean }> } {
         const total = { requests: 0, dollars: 0, runs: 0, workers: 0, workerIds: [] as string[], inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheMisses: 0 };
         const perModel: NonNullable<ReturnType<OpenCodeWorkerRuntime['usageSince']>['perModel']> = {};
         const tools = new Map<string, NonNullable<ReturnType<OpenCodeWorkerRuntime['usageSince']>['toolCalls']>[number]>();
         const models = new Map<string, string>();
         const runIds = new Set<string>();
         const workerIds = new Set<string>();
+        let unreported = 0;
         for (const record of this.readLedger(canonical(workspacePath))) {
             if (record.type === 'start') { models.set(record.runId, record.model); }
             if (record.ts < sinceMs) { continue; }
@@ -733,6 +812,7 @@ export class OpenCodeWorkerRuntime {
             if (record.type !== 'checkpoint' || !record.usage) { continue; }
             total.requests++;
             workerIds.add(record.workerId);
+            if (record.costStatus === 'unreported') { unreported++; }
             total.dollars += record.usage.cost;
             total.inputTokens += record.usage.input + record.usage.cacheRead + record.usage.cacheWrite;
             total.outputTokens += record.usage.output;
@@ -747,7 +827,8 @@ export class OpenCodeWorkerRuntime {
         total.runs = runIds.size;
         total.workerIds = [...workerIds];
         total.workers = workerIds.size;
-        return { ...total, perModel, toolCalls: [...tools.values()] };
+        // Requests whose runtime reports no billed cost (agy): their dollars are unknown, not part of a real $0.
+        return { ...total, perModel, toolCalls: [...tools.values()], ...(unreported ? { unreportedCostRequests: unreported } : {}) };
     }
 
     private admit(routed: Extract<RouteResult, { runId: string }>, workspace: string, packet: WorkerPacket, knowledge = ''): RunView {
@@ -755,10 +836,11 @@ export class OpenCodeWorkerRuntime {
             runId: routed.runId, workerId: routed.workerId, sessionId: this.sessionsByWorker.get(routed.workerId) ?? '',
             state: 'STARTING', profile: packet.profile, model: routed.model, thinking: routed.thinking,
             dispatchTurnId: packet.dispatchTurnId, track: String(packet.track ?? '').trim().slice(0, 24), startedAt: this.now(), updatedAt: this.now(), elapsedMs: 0, usage: emptyUsage(),
-            queuePosition: routed.queuePosition, workspace, cwd: packet.cwd ? canonical(packet.cwd) : workspace, packet: renderPacket(packet), evidence: [], waiters: [],
+            queuePosition: routed.queuePosition, workspace, cwd: packet.cwd ? canonical(packet.cwd) : workspace, packet: renderPacket(packet), command: packet.command, evidence: [], waiters: [],
             nextInputTokens: this.router.worker(routed.workerId)?.contextTokens ?? 0, knowledge, lastPromptTokens: 0, lastCachedTokens: 0,
             ...(packet.thinking && packet.thinking !== routed.thinking ? { thinkingNote: `thinking: ${routed.thinking} (worker's)` } : {}),
             ...(this.router.worker(routed.workerId)?.forkedFrom ? { forkedFrom: this.router.worker(routed.workerId)?.forkedFrom } : {}),
+            ...(packet.agyPermissions === 'skip' ? { agyPermissions: 'skip' as const } : {}),
         };
         this.runs.set(run.runId, run);
         if (routed.queuePosition === 0) { this.launch(run, run.packet); }
@@ -770,19 +852,30 @@ export class OpenCodeWorkerRuntime {
         this.unusedPings.delete(run.workerId);
         run.startedAt = this.now();
         const sessionId = this.sessionsByWorker.get(run.workerId) || run.sessionId;
+        const agy = isAgyModel(run.model);
+        const { agyArgs, agyEventNormalizer, deniedContinueMessage, verifyFailureMessage, runVerifyCommand, MAX_VERIFY_ROUNDS, VERIFY_TIMEOUT_MS, VERIFY_FACT_TAIL_CHARS } = agy
+            ? require('./agyRuntime') as typeof import('./agyRuntime') : {} as Partial<typeof import('./agyRuntime')>;
+        // OpenCode reads the profile instructions from its agent file; agy gets the same text at the start of its conversation.
+        const profile = agy && !sessionId ? this.router.profile(run.profile) : undefined;
         // --print-logs is required: without it `opencode run` is SIGKILLed after ~14s.
-        const args = ['run', '--print-logs', '--log-level', 'ERROR', '--format', 'json', '--agent', `aa-${run.profile}`,
-            '--model', run.model, '--variant', run.thinking, '--dir', run.cwd, '--title', `${run.workerId}/${run.runId}`];
-        if (sessionId) { args.push('--session', sessionId); }
-        if (this.attachUrl) { args.push('--attach', this.attachUrl); }
-        args.push(message);
-        const child = this.spawner(args);
+        const args = agyArgs ? agyArgs({ model: run.model, thinking: run.thinking, conversationId: sessionId, skipPermissions: run.agyPermissions === 'skip',
+            message: profile ? `${workerInstructions(profile)}\n\n${message}` : message })
+            : ['run', '--print-logs', '--log-level', 'ERROR', '--format', 'json', '--agent', `aa-${run.profile}`,
+                '--model', run.model, '--variant', run.thinking, '--dir', run.cwd, '--title', `${run.workerId}/${run.runId}`];
+        if (sessionId && !agy) { args.push('--session', sessionId); }
+        if (this.attachUrl && !agy) { args.push('--attach', this.attachUrl); }
+        if (!agy) { args.push(message); }
+        const child = agy ? this.spawner(args, { command: this.agyCommand, cwd: run.cwd, title: `${run.workerId}/${run.runId}` }) : this.spawner(args);
+        const normalize = agyEventNormalizer ? agyEventNormalizer() : (event: any) => [event];
         run.child = child;
+        run.pid = child.pid;
         // The start fact is written at spawn, so a run that never speaks is still in the ledger with its pid, session and directory.
-        this.record(run, { type: 'start', sessionId, pid: child.pid, dir: run.cwd });
+        this.record(run, { type: 'start', sessionId, pid: child.pid, dir: run.cwd, ...(run.agyPermissions ? { reason: 'agy permissions skipped by packet opt-in (agyPermissions: skip)' } : {}) });
         const cancelStall = this.setTimer(() => this.stall(run, sessionId), STALL_AFTER_SECONDS * 1000);
         // Headless OpenCode rejects anything that would ask and then ends the run; that rejection is the real reason.
         const rejected: string[] = [];
+        // Headless agy auto-denies an action no allow-rule grants and ends its turn; asking it again only repeats the denial.
+        const denied: string[] = [];
         let errBuffer = '';
         child.stderr?.on('data', (chunk: Buffer) => {
             errBuffer += chunk.toString();
@@ -800,12 +893,12 @@ export class OpenCodeWorkerRuntime {
             buffer += chunk.toString();
             const lines = buffer.split('\n');
             buffer = lines.pop() ?? '';
-            for (const line of lines) {
-                let event: any;
-                try { event = JSON.parse(line); } catch { continue; }
+            for (const event of lines.flatMap((line) => { try { return normalize(JSON.parse(line)); } catch { return []; } })) {
                 if (event?.sessionID && !run.sessionId) {
                     run.sessionId = event.sessionID;
                     this.sessionsByWorker.set(run.workerId, event.sessionID);
+                    // agy names its conversation before any other fact: the ledger must hold it, so a reload can resume it.
+                    if (agy) { this.record(run, { type: 'message_update' }); }
                 }
                 if (!started) { started = true; cancelStall(); }
                 if (run.state === 'STARTING' || run.state === 'STALLED') { run.state = 'RUNNING'; run.reason = undefined; }
@@ -821,7 +914,10 @@ export class OpenCodeWorkerRuntime {
                     run.nextInputTokens = usage.input + usage.cacheRead + usage.cacheWrite + usage.output;
                     run.lastPromptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
                     run.lastCachedTokens = usage.cacheRead;
-                    this.record(run, { type: 'checkpoint', usage, callId: part.id ? String(part.id) : undefined });
+                    this.record(run, { type: 'checkpoint', usage, callId: part.id ? String(part.id) : undefined, ...(agy ? { costStatus: 'unreported' as const } : {}) });
+                } else if (event?.type === 'denied') {
+                    for (const action of event.actions as string[]) { if (!denied.includes(action)) { denied.push(action); } }
+                    this.record(run, { type: 'approval', status: 'denied', reason: `agy auto-denied: ${denied.join(', ')}` });
                 } else if (/permission/i.test(String(event?.type))) {
                     run.state = 'WAITING_APPROVAL';
                     this.record(run, { type: 'approval' });
@@ -848,35 +944,70 @@ export class OpenCodeWorkerRuntime {
         child.on('exit', (code, signal) => {
             cancelStall();
             run.evidence = lastText.trim().split('\n').slice(-MAX_EVIDENCE_LINES);
+            const knowledge = [...run.evidence].reverse().find((line) => /^\W*Knowledge:/i.test(line));
+            if (knowledge) { run.knowledge = knowledge.replace(/^\W*Knowledge:\s*/i, '').slice(0, 200); }
+            const finalize = (state: RunState, exitCode: number) => {
+                const worker = this.router.worker(run.workerId);
+                this.router.complete(run.workerId, run.runId, { contextTokens: run.nextInputTokens || worker?.contextTokens || 0 });
+                this.record(run, { type: state === 'COMPLETED' ? 'stop' : 'error', exitCode, state, reason: run.reason });
+                this.finish(run, state, run.reason);
+                const next = worker?.active;
+                if (next) {
+                    const queued = this.runs.get(next.runId);
+                    if (queued && queued.state === 'STARTING') { this.launch(queued, queued.packet); }
+                }
+            };
+            if (agy && this.agyVerifyLoop() && code === 0 && !signal && !run.reason && !denied.includes('mcp')) {
+                if (denied.includes('command') && !run.deniedContinued && run.sessionId && deniedContinueMessage) {
+                    run.deniedContinued = true;
+                    this.record(run, { type: 'denied_continue', reason: 'agy command denied; resumed with file-tools instruction' });
+                    this.launch(run, deniedContinueMessage(run.command));
+                    return;
+                }
+                if (runVerifyCommand && verifyFailureMessage && run.command) {
+                    void runVerifyCommand(run.command, run.cwd, VERIFY_TIMEOUT_MS, (verifyChild) => { run.child = verifyChild; }).then((verify) => {
+                        if (run.reason === 'cancelled by caller') { finalize('CANCELLED', code ?? -1); return; }
+                        const round = (run.verifyRounds ?? 0) + 1;
+                        run.verifyRounds = round;
+                        const tail = verify.output.slice(-(VERIFY_FACT_TAIL_CHARS ?? 1500));
+                        this.record(run, { type: 'verify_round', round, exitCode: verify.exitCode, tail });
+                        if (tail) { run.evidence = [...run.evidence, ...tail.split('\n')].slice(-MAX_EVIDENCE_LINES); }
+                        if (verify.exitCode === 0) {
+                            finalize('COMPLETED', 0);
+                        } else if (round < (MAX_VERIFY_ROUNDS ?? 3) && run.sessionId) {
+                            this.launch(run, verifyFailureMessage(verify.output));
+                        } else {
+                            run.reason = tail || `verify command exited with ${verify.exitCode}`;
+                            finalize('FAILED', verify.exitCode);
+                        }
+                    });
+                    return;
+                }
+            }
             // Only a `Result:` line ends a packet; text that stops mid-thought is an unfinished run, not a completion.
             const hasResult = run.evidence.some((line) => /^\W*Result:\s*(PASS|FAIL|BLOCKED)\b/i.test(line));
             const unfinished = code === 0 && !signal && run.reason !== 'cancelled by caller' && !hasResult;
-            if (unfinished && run.sessionId && (run.autoResumes ?? 0) < MAX_AUTO_RESUMES) {
+            if (unfinished && !denied.length && run.sessionId && (run.autoResumes ?? 0) < MAX_AUTO_RESUMES) {
                 run.autoResumes = (run.autoResumes ?? 0) + 1;
                 this.record(run, { type: 'approval', reason: rejected.length ? `auto-rejected, resumed with feedback: ${rejected.join('; ')}` : 'stopped without a Result line, resumed' });
                 this.launch(run, rejected.length ? rejectionFeedback(rejected) : UNFINISHED_FEEDBACK);
                 return;
             }
-            const worker = this.router.worker(run.workerId);
-            this.router.complete(run.workerId, run.runId, { contextTokens: run.nextInputTokens || worker?.contextTokens || 0 });
-            const knowledge = [...run.evidence].reverse().find((line) => /^\W*Knowledge:/i.test(line));
-            if (knowledge) { run.knowledge = knowledge.replace(/^\W*Knowledge:\s*/i, '').slice(0, 200); }
             const cancelled = run.reason === 'cancelled by caller';
             const silent = unfinished;
             if (silent) {
-                run.reason = rejected.length
+                run.reason = denied.length
+                    // Live agy: --dangerously-skip-permissions grants commands but still denies MCP calls in headless mode.
+                    ? `agy auto-denied ${denied.join(', ')} (headless agy cannot ask). Grant it with a scoped permissions.allow rule in ~/.gemini/antigravity-cli/settings.json`
+                        + `${denied.includes('mcp') ? ' (mcp(<server>); skipping permissions does not grant MCP)' : ''}${denied.includes('command') ? ' (command(<prefix>), e.g. command(rtk))' : ''}`
+                        + `${denied.some((action) => action !== 'mcp') && run.agyPermissions !== 'skip' ? ', or re-dispatch with agyPermissions: skip' : ''}; then resume`
+                    : rejected.length
                     ? `permission auto-rejected: ${rejected.join(', ')} (not allowed for this worker; allow it in the OpenCode config or change the packet)`
                     : run.evidence.join('').trim() === '' ? 'worker ended without a report (no Result/Evidence text)' : 'worker stopped without a Result line';
             }
             const state: RunState = cancelled ? 'CANCELLED' : code === 0 && !signal && !silent ? 'COMPLETED' : 'FAILED';
             if (state === 'FAILED' && !run.reason) { run.reason = signal ? `terminated by ${signal}` : `exit code ${code}`; }
-            this.record(run, { type: state === 'COMPLETED' ? 'stop' : 'error', exitCode: code ?? -1, state, reason: run.reason });
-            this.finish(run, state, run.reason);
-            const next = worker?.active;
-            if (next) {
-                const queued = this.runs.get(next.runId);
-                if (queued && queued.state === 'STARTING') { this.launch(queued, queued.packet); }
-            }
+            finalize(state, code ?? -1);
         });
     }
 
@@ -903,9 +1034,10 @@ export class OpenCodeWorkerRuntime {
     }
 
     private view(run: RunRecord): RunView {
-        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens, forkedFrom, thinkingNote } = run;
+        const { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, usage, queuePosition, reason, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens, forkedFrom, thinkingNote, agyPermissions } = run;
         return { runId, workerId, sessionId, state, profile, model, thinking, dispatchTurnId, track, startedAt, endedAt, updatedAt, nextInputTokens, knowledge, lastPromptTokens, lastCachedTokens,
-            elapsedMs: (endedAt ?? this.now()) - startedAt, usage: { ...usage }, queuePosition, reason, ...(forkedFrom ? { forkedFrom } : {}), ...(thinkingNote ? { thinkingNote } : {}) };
+            elapsedMs: (endedAt ?? this.now()) - startedAt, usage: { ...usage }, queuePosition, reason, ...(forkedFrom ? { forkedFrom } : {}), ...(thinkingNote ? { thinkingNote } : {}),
+            ...(isAgyModel(model) ? { costStatus: 'unreported' as const } : {}), ...(agyPermissions ? { agyPermissions } : {}) };
     }
 
     private record(run: RunRecord, fact: Pick<LifecycleRecord, 'type'> & Partial<LifecycleRecord>): void {
