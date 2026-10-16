@@ -6,8 +6,7 @@
 	position: relative;
 	display: flex;
 	flex-direction: column;
-	width: 420px;
-	width: var(--team-widget-width);
+	width: var(--team-widget-width, 420px);
 	max-width: 100%;
 	height: 760px;
 	background: var(--vscode-sideBar-background);
@@ -85,19 +84,20 @@ body.vscode-light #panel-team {
 	--team-idle: var(--vscode-descriptionForeground, #768194);
 }
 
-.team-storybook-shell {
-.team-pane, #panel-aitalk, #panel-team {
+/* Storybook shell panes: one class-based rule pair so `.active` outranks the hidden default (an id selector here made
+   every pane display:none). */
+.team-storybook-shell .team-pane {
 	display: none;
 	flex-direction: column;
 	flex: 1;
-	width: 420px;
-	width: var(--team-widget-width);
+	width: var(--team-widget-width, 420px);
 	max-width: 100%;
 	min-height: 0;
 	overflow: hidden;
 }
-}
 
+.team-storybook-shell .team-pane.active,
+.team-storybook-shell .team-pane.pane-active,
 .team-pane.active,
 .team-pane.pane-active {
 	display: flex;
@@ -108,8 +108,7 @@ body.vscode-light #panel-team {
 }
 
 .team-aitalk-pane {
-	width: 420px;
-	width: var(--team-widget-width);
+	width: var(--team-widget-width, 420px);
 	max-width: 100%;
 	background: var(--vscode-sideBar-background);
 }
@@ -129,8 +128,7 @@ body.vscode-light #panel-team {
 }
 
 .team-directory-pane {
-	width: 420px;
-	width: var(--team-widget-width);
+	width: var(--team-widget-width, 420px);
 	max-width: 100%;
 	background: var(--vscode-sideBar-background);
 	overflow-y: auto;

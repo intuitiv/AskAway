@@ -66,7 +66,7 @@ export class Room {
 
     /** At activation nobody but the user is registered; actors register themselves again. */
     activate(): void {
-        for (const item of this.store.snapshot().members) if (item.kind !== 'user' && item.presence === 'joined' && !this.actors.has(item.id)) this.store.setPresence(item, false);
+        for (const item of this.store.snapshot().members) if (item.kind !== 'user' && item.presence === 'joined' && !this.actors.has(item.id)) this.store.setPresence(item, false, false);
     }
     register(actor: Actor): ActorHandle {
         actor = rosterIdentity(actor, this.selectedAgent);
@@ -75,10 +75,10 @@ export class Room {
         this.store.setPresence({ presencePolicy: actor.leaveWhenAnswered ? 'leavesWhenAnswered' : 'registered', ...identity }, true);
         return this.handle(actor.id);
     }
-    unregister(id: string): void {
+    unregister(id: string, announce = true): void {
         this.actors.delete(id); this.store.setTyping(id, false);
         const known = this.store.snapshot().members.find(item => item.id === id);
-        if (known) this.store.setPresence(known, false);
+        if (known) this.store.setPresence(known, false, announce);
     }
     isRegistered(id: string): boolean { return this.store.snapshot().members.some(item => item.id === id && item.presence === 'joined'); }
     handle(id: string): ActorHandle {

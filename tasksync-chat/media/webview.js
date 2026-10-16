@@ -3057,6 +3057,11 @@
         if (w.adapter === 'agy' || w.cloud) return 0;
         return typeof w.turnCost === 'number' ? w.turnCost : (Number(w.usage && w.usage.cost) || 0);
     }
+    // The one Team money format (summary, member Turn/Month, cost summaries): $0.00, or 4 decimals below a cent.
+    function teamMoney(value) {
+        var n = Math.max(0, Number(value) || 0);
+        return '$' + n.toFixed(n > 0 && n < 0.01 ? 4 : 2);
+    }
     // Headline for "how many are there": counted from the same task list the member rows display.
     function workersSummaryHtml(state, tasks) {
         var now = state.generatedAt;
@@ -3068,7 +3073,7 @@
         var dollars = list.reduce(function (n, w) { return n + teamTaskTurnCost(w); }, 0);
         return '<div class="workers-summary"><strong>' + list.length + '</strong> task' + (list.length === 1 ? '' : 's') + ' this turn' +
             ' &middot; ' + running + ' running &middot; ' + queued + ' queued &middot; ' + warm + ' warm &middot; ' + completed + ' completed' +
-            (list.some(function (w) { return !w.cloud; }) ? ' &middot; <strong class="health-cost">$' + dollars.toFixed(dollars > 0 && dollars < 0.01 ? 4 : 2) + '</strong> this turn' : '') + '</div>';
+            (list.some(function (w) { return !w.cloud; }) ? ' &middot; <strong class="health-cost">' + teamMoney(dollars) + '</strong> this turn' : '') + '</div>';
     }
     var TEAM_DEFAULT_VALIDATOR = {
         id: 'priya', name: 'Priya', role: 'Validator', pinned: true, initials: 'PR', avatarSrc: '', avatar: '',
@@ -3206,8 +3211,8 @@
         return { turn: Math.max(0, Number(turn) || 0), month: Math.max(0, Number(month) || 0) };
     }
     function memberCostSummaryHtml(costs) {
-        var turnText = '$' + costs.turn.toFixed(2);
-        var monthText = '$' + costs.month.toFixed(2);
+        var turnText = teamMoney(costs.turn);
+        var monthText = teamMoney(costs.month);
         return '<span class="team-cost-turn">' + turnText + ' turn</span> &middot; <span class="team-cost-month"><span class="obs-month-amount">' + monthText + '</span> month</span>';
     }
     function memberDisplayStatus(member, memberWorkers) {
@@ -3303,8 +3308,8 @@
         var cardsHtml = memberWorkers.map(function (w) {
             return workerCardHtml(w, expanded && expanded[w.workerId], state.generatedAt, openIds, traces, { one: 'task', many: 'tasks' });
         }).join('');
-        var turnCostText = costs.turn ? '$' + costs.turn.toFixed(2) : '$0';
-        var monthCostText = costs.month ? '$' + costs.month.toFixed(2) : '$0';
+        var turnCostText = teamMoney(costs.turn);
+        var monthCostText = teamMoney(costs.month);
         var validatorTraceHtml = validatorEvents.length
             ? '<table class="observability-table obs-timeline-table team-validator-trace" data-validator-trace="' + workersEsc(member.id) + '">' +
                 TRACE_HEAD + '<tbody>' + traceRowsHtml(validatorEvents, { openIds: openIds || {}, now: state.generatedAt }) + '</tbody></table>'
@@ -3379,8 +3384,10 @@
                 return [m.id, m.name, m.role, m.profile, m.creativeStatus].join(' ').toLowerCase().indexOf(needle) >= 0;
             });
         }
-        // Visible: Priya always (with her Trace), the main agent while its turn is active, others only with a displayed task.
-        return groups.filter(function (g) { return g.member.pinned || (g.member.kind === 'main' && g.member.active) || g.workers.length > 0; }).sort(function (a, b) { return Number(b.member.pinned) - Number(a.member.pinned); });
+        // Every member row is always visible, idle ones included: Priya first (with her Trace), then the main agent,
+        // then the rest in roster order. Only tasks are filtered (teamDisplayedTasks).
+        var rank = function (m) { return m.pinned ? 0 : m.kind === 'main' ? 1 : 2; };
+        return groups.sort(function (a, b) { return rank(a.member) - rank(b.member); });
     }
     function teamRuntimeWarning(state, groups) {
         var health = state && state.runtimeHealth || (typeof runtimeHealth !== 'undefined' ? runtimeHealth : null);

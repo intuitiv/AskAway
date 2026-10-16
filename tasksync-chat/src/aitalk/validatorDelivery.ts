@@ -19,7 +19,7 @@ export function registerAITalkValidator(root: string, invoke: (text: string, id:
     };
     room.register({ id: self.id, displayName: self.displayName, kind: self.kind, rank: self.rank, colour: self.colour,
         receive: answer, receiveReply: (_original, reply, tracker) => answer(reply, tracker) });
-    return { dispose: () => room.unregister(self.id), flush: () => pending };
+    return { dispose: () => room.unregister(self.id, false), flush: () => pending };
 }
 
 /** askaway_validator: the Agent's question is posted in AITalk as an Agent message @Validator; the answer replies to it. */

@@ -41,9 +41,20 @@ const vm = require('node:vm');
     assert.match(host.innerHTML, /<div class="talk-pill-row aitalk-presence"[^>]*>[^]*?<span class="aitalk-presence-label"[^>]*>Review tests joined<\/span><\/div>/);
     const noticeCss = fs.readFileSync(__dirname + '/media/aitalk/talk.css', 'utf8').match(/\.talk-pill-row\.aitalk-presence\s*\{([^}]*)\}/)?.[1];
     assert.ok(noticeCss, 'production talk.css owns the join/leave notice style');
-    for (const declaration of [/border:\s*1px solid var\(--tk-border\)/, /border-radius:\s*8px/, /padding:\s*4px 12px/, /color:\s*var\(--tk-pill-fg\)/, /background:\s*var\(--tk-pill\)/, /width:\s*fit-content/]) {
-        assert.match(noticeCss, declaration, 'presence notices use a compact bordered, rounded, muted pill');
+    for (const declaration of [/border:\s*0/, /box-shadow:\s*none/, /padding:\s*0/, /margin:\s*4px auto/, /font-size:\s*11px/, /color:\s*var\(--tk-pill-fg\)/, /background:\s*transparent/, /width:\s*fit-content/]) {
+        assert.match(noticeCss, declaration, 'presence notices use a slim muted system line');
     }
+    const notice = render.systemHtml({ kind: 'system', text: 'Review tests joined' }, snapshot.members);
+    assert.doesNotMatch(notice, /aitalk-inline-face|team-avatar-badge|<img/, 'no image means no avatar slot');
+    assert.match(render.systemHtml({ kind: 'system', text: 'Review tests left' }, snapshot.members, { avatarFor: () => 'https://example.invalid/face.png' }), /<img[^>]*src="https:\/\/example.invalid\/face.png"/, 'real notice images remain available');
+    const header = render.titleHtml({ members: ['Machs ', 'Priya', 'Bhaskar', 'Tara'].map((displayName, i) => ({ id: `header-${i}`, displayName, presence: 'joined' })) });
+    assert.equal(header.match(/class="aitalk-roster"[^>]*>([^]*?)<\/span><\/div>/)?.[1]?.replace(/<[^>]+>/g, ''), 'Machs, Priya, Bhaskar, Tara');
+    const talkCss = fs.readFileSync(__dirname + '/media/aitalk/talk.css', 'utf8');
+    assert.match(talkCss, /\.talk-subtitle\s*\{[^}]*white-space:\s*normal/);
+    assert.match(talkCss, /\.talk-subtitle\s*\{[^}]*overflow:\s*visible/);
+    assert.match(talkCss, /\.talk-subtitle \.aitalk-roster\s*\{\s*display:\s*inline;/, 'commas use normal inline spacing, not flex gaps');
+    assert.match(talkCss, /\.talk-subtitle \.aitalk-roster-member\s*\{[^}]*white-space:\s*nowrap/, 'whole names wrap without truncation');
+    console.log('PASS EV-AITALK-HEADER complete names wrap with normal comma spacing');
     for (const kind of ['update', 'heads-up']) {
         const post = { id: 'speech', author: 'main', kind, text: kind === 'update' ? "I've finished routing. I'm checking the tests now." : "Can you pick Workers or Trace? I'd put the scoreboard in Workers." };
         snapshot.messages.push(post); paint();
@@ -74,7 +85,7 @@ const vm = require('node:vm');
     menu = undefined;
     type('@'); assert.doesNotMatch(menu.html, /Review tests/);
     assert.match(host.innerHTML, /<div class="talk-pill-row aitalk-presence"[^>]*>[^]*?<span class="aitalk-presence-label"[^>]*>Review tests left<\/span><\/div>/);
-    console.log('PASS EV-AITALK-NOTICE join/leave markup uses the bordered, rounded, padded, muted production pill');
+    console.log('PASS EV-AITALK-NOTICE slim muted join/leave line without box or empty avatar slot');
     assert.ok(host.innerHTML.indexOf('id="talk-question"') < host.innerHTML.indexOf('id="talk-answer"'), 'newest message remains below earlier messages');
     assert.match(render.threadHtml([{ id: 'unsafe', author: 'main', text: '<script>bad</script>' }], snapshot.members), /&lt;script&gt;/);
     assert.match(fs.readFileSync(__dirname + '/storybook/prototypes/talk.js', 'utf8'), /media\/aitalk\/talkRender/);

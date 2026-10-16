@@ -473,7 +473,7 @@ const sampleState = {
     assert(!html.includes('data-member-tasks="anika"'), 'collapsed tasks container is not rendered, matching the approved Storybook');
     assert(html.includes('Agent file &#8599;'), 'member row includes Agent file &#8599; link');
     // Turn is the displayed tasks' spend (Priya's opencode task $0.14; Anika's agy task is free); Month stays the member's.
-    assert(html.includes('data-member-cost="priya" data-turn-cost="$0.14"') && html.includes('data-member-cost="anika" data-turn-cost="$0" data-month-cost="$9.10"'), 'renders prototype turn + month cost on member row');
+    assert(html.includes('data-member-cost="priya" data-turn-cost="$0.14"') && html.includes('data-member-cost="anika" data-turn-cost="$0.00" data-month-cost="$9.10"'), 'renders prototype turn + month cost on member row (one money format)');
 }
 
 // 3 & 4. Keyed DOM reconciliation: applyWorkersState(s1), applyWorkersState(s2) and 3 timer ticks
@@ -702,7 +702,7 @@ const sampleState = {
     const idle = { ...state, workers: [], memberSettings: {} };
     const fresh = createHarness();
     fresh.api.applyWorkersState(idle);
-    assert.equal(fresh.doc.querySelector('[data-member-model="anika"]'), null, 'a member without a task this turn is hidden');
+    assert.equal(fresh.doc.querySelector('[data-member-model="anika"]').value, 'github-copilot/gpt-6.1-sol', 'an idle member stays visible (R-TEAM-45) with the omitted-model default');
     assert.equal(fresh.doc.querySelector('[data-member-model="priya"]').value, 'github-copilot/gpt-6.1-sol', 'omitted model uses Sol, not agy profile');
     assert.equal(fresh.doc.querySelector('[data-runtime-warning]').textContent, '');
 }
@@ -710,7 +710,7 @@ const sampleState = {
 {
     const { api, doc, root, messages } = createHarness();
     api.applyWorkersState({ ...sampleState, turnWorkerIds: ['worker-build-1'], members: [...sampleState.members, { id: 'idle', name: 'Idle', role: 'Developer', taskIds: [] }] });
-    assert.equal(doc.querySelector('[data-member-row="idle"]'), null);
+    assert(doc.querySelector('[data-member-row="idle"]'), 'an idle member row is visible (R-TEAM-45)');
     const select = doc.querySelector('[data-member-model="anika"]');
     assert(select.textContent.includes('Claude Opus 5.5') && select.textContent.includes('Sol 6.1'));
     assert(!select.textContent.includes('github-copilot/'));

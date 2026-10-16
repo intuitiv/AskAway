@@ -5496,11 +5496,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                         <span>Show completed</span>
                         <div class="toggle-switch specs-toggle-switch" id="workers-show-expired" role="switch" aria-checked="false" tabindex="0"></div>
                     </div>
-                    <button class="specs-refresh-btn" id="workers-archive-btn" title="Archive completed workers (not running, nothing queued, cache cold or retired). Their cost history is kept.">
-                        <span class="codicon codicon-archive"></span>
+                    <button class="specs-refresh-btn" id="workers-archive-btn" title="Archive completed workers (not running, nothing queued, cache cold or retired). Their cost history is kept." aria-label="Archive completed workers">
+                        <svg class="team-header-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.5 2h13l.5.5v3l-.5.5H14v7.5l-.5.5h-11l-.5-.5V6h-.5L1 5.5v-3zM3 6v7h10V6zm-.5-1h11V3h-11zM6 8h4v1H6z"/></svg>
                     </button>
-                    <button class="specs-refresh-btn" id="workers-refresh-btn" title="Refresh workers">
-                        <span class="codicon codicon-refresh"></span>
+                    <button class="specs-refresh-btn" id="workers-refresh-btn" title="Refresh workers" aria-label="Refresh workers">
+                        <svg class="team-header-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 0 5.5 5.5H12A4 4 0 1 1 8 4c1.1 0 2.1.45 2.83 1.17L9 7h5V2l-1.6 1.6A5.48 5.48 0 0 0 8 2.5z"/></svg>
                     </button>
                 </div>
                 <div class="workers-list" id="workers-list"></div>

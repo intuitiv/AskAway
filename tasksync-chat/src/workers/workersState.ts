@@ -1,6 +1,6 @@
 import { LifecycleRecord, OpenCodeWorkerRuntime, RunState, RunUsage } from './openCodeRuntime';
 import type { ScoreRow } from './evalScoreboard';
-import { TEAM_ROSTER, initialsOf, type TeamRosterEntry } from '../team/roster';
+import { initialsOf, teamRoster, type TeamRosterEntry } from '../team/roster';
 
 export type ProjectedWorkerState = RunState | 'RETIRED' | 'ORPHANED';
 
@@ -226,23 +226,19 @@ function matchRosterEntry(worker: WorkerRow, allEntries: TeamRosterEntry[]): Tea
             return entry;
         }
     }
-    const aliases: Record<string, string> = { authoring: 'anika', devx: 'diego', quality: 'rhea', test: 'tara', pipeline: 'paolo', performance: 'pavel' };
-    return roster.find(entry => entry.id === (aliases[prof] || 'diego'))!;
+    const aliases: Record<string, string> = { authoring: 'anika', devx: 'diego', test: 'tara', pipeline: 'paolo', performance: 'pavel' };
+    return roster.find(entry => entry.id === aliases[prof]) ?? roster.find(entry => entry.id === 'diego')!;
 }
 
-export function projectTeamMembers(workers: WorkerRow[]): TeamMemberState[] {
-    const priya = TEAM_ROSTER.find((m) => m.id === 'priya')!;
-    const groups: Array<{ entry: TeamRosterEntry; workers: WorkerRow[] }> = [{ entry: priya, workers: [] }];
-    const byId = new Map<string, { entry: TeamRosterEntry; workers: WorkerRow[] }>([[priya.id, groups[0]]]);
+/** Every roster member (Priya first, then roster order, then the user's own profile members), idle ones included,
+ *  each with the worker tasks it owns. The main agent row is added by the provider. */
+export function projectTeamMembers(workers: WorkerRow[], roster: TeamRosterEntry[] = teamRoster()): TeamMemberState[] {
+    const entries = roster.filter((m) => m.kind !== 'main');
+    const ordered = [...entries.filter((m) => m.id === 'priya'), ...entries.filter((m) => m.id !== 'priya')];
+    const groups = ordered.map((entry) => ({ entry, workers: [] as WorkerRow[] }));
+    const byId = new Map(groups.map((group) => [group.entry.id, group]));
     for (const worker of workers) {
-        const entry = matchRosterEntry(worker, TEAM_ROSTER);
-        let group = byId.get(entry.id);
-        if (!group) {
-            group = { entry, workers: [] };
-            byId.set(entry.id, group);
-            groups.push(group);
-        }
-        group.workers.push(worker);
+        byId.get(matchRosterEntry(worker, roster).id)!.workers.push(worker);
     }
     return groups.map(({ entry, workers: memberWorkers }) => {
         const first = memberWorkers[0];

@@ -19,6 +19,8 @@ You say what you need in plain words. AskAway runs it through Spec Kit, hands th
 
 AITalk reads the externally stored `~/.askaway/profile/avatar.png` by default, supports an explicit photo override, and falls back to initials if the file is unavailable; it does not copy the photo into workspaces. Caller-view tests cover two workspaces and shared-header image rendering. This fix is deployed locally; reload VS Code to load it. Team UI integration, upgrade/privacy acceptance and Storybook approval remain pending.
 
+Team lists every member, idle ones included (Priya first, then the main agent, then the roster); cold or retired tasks hide unless Show completed is on. Members specific to you, such as a rules-authoring expert, stay out of the extension: add `member:` and `role:` to a profile in `~/.askaway/worker-profiles/` and Team shows them.
+
 | Pillar | What you get |
 |--------|--------------|
 | **Spec-based development** | Dictate a requirement. AskAway drives Spec Kit behind the scenes (specify, clarify, plan, tasks, implement, check) and the **Specs** tab shows the stage, user stories and tasks. You only answer questions and approve three gates: what, how, done. |

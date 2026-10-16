@@ -114,17 +114,17 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 		pass('1. Top tab bar renders the 5 production tabs with Workers renamed Team and no extra tabs or buttons');
 	}
 
-	// ── 2. Roster of 12 members, simple first names, roles only in Team tab ──
+	// ── 2. Roster of 11 members, simple first names, roles only in Team tab (Rhea is user-level only, 2026-10-16) ──
 	{
-		assert.strictEqual(TEAM_ROSTER_FIXTURES.length, 12, 'TEAM_ROSTER_FIXTURES must have 12 members');
+		assert.strictEqual(TEAM_ROSTER_FIXTURES.length, 11, 'TEAM_ROSTER_FIXTURES must have 11 members');
 		const expectedNames = [
 			'Mahesh', 'Bhaskar', 'Priya', 'Anika', 'Diego', 'Tara',
-			'Pavel', 'Rhea', 'Paolo', 'Sana', 'Shreya', 'Cathy',
+			'Pavel', 'Paolo', 'Sana', 'Shreya', 'Cathy',
 		];
 		assert.deepStrictEqual(
 			TEAM_ROSTER_FIXTURES.map((m) => m.name),
 			expectedNames,
-			'TEAM_ROSTER_FIXTURES names must match the 12-member table'
+			'TEAM_ROSTER_FIXTURES names must match the 11-member table'
 		);
 		for (const m of TEAM_ROSTER_FIXTURES) {
 			assert.ok(/^[A-Z][a-z]+$/.test(m.name), `Member name "${m.name}" must be a simple first name without prefixes or dots`);
@@ -141,6 +141,11 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 		const [aitalkPaneHtml, teamPaneHtml] = html.split('id="panel-team"');
 
 		for (const m of TEAM_ROSTER_FIXTURES) {
+			// Like production, the main-agent row is the selected chat agent only (Bhaskar for AskAway Build).
+			if (m.kind === 'main' && m.id !== ctrl.state.mainMemberId) {
+				assert.ok(!teamPaneHtml.includes(`data-member-row="${m.id}"`), `unselected main agent ${m.name} has no Team row`);
+				continue;
+			}
 			assert.ok(
 				teamPaneHtml.includes(`<strong class="team-member-name">${m.name}</strong> &middot; <span class="team-member-role">${m.role}</span>`),
 				`Team tab must render "${m.name} · ${m.role}"`
@@ -151,7 +156,7 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 			);
 		}
 		assert.ok(!aitalkPaneHtml.includes('team-member-role'), 'AITalk pane must not contain .team-member-role elements');
-		pass('2. Roster has all 12 members with simple first names, creative statuses, and roles shown only in Team tab');
+		pass('2. Roster has all 11 members with simple first names, creative statuses, and roles shown only in Team tab');
 	}
 
 	// ── 3. Avatars & AITalk header: header names have no <img>; Machs uses /user-profile/avatar.png with user.svg fixture fallback ──
@@ -425,8 +430,8 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 			'Anika row shows Turn $0.02 · Month $3.10'
 		);
 		assert.ok(
-			teamPaneHtml.includes('data-member-cost="diego" data-turn-cost="$0" data-month-cost="$0"'),
-			'Diego (agy) row shows Turn $0 · Month $0'
+			teamPaneHtml.includes('data-member-cost="diego" data-turn-cost="$0.00" data-month-cost="$0.00"'),
+			'Diego (agy) row shows Turn $0.00 · Month $0.00 (the one Team money format)'
 		);
 
 		const diegoPanelIdx = html.indexOf('data-member-tasks="diego"');
@@ -601,11 +606,11 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 
 		// Play through ActiveTurn from step 0 to step 10
 		const turnCtrl = createTeamController({ scenario: 'active-turn', initialStep: 0 });
-		// At step 0, only Priya (pinned first) and Bhaskar (main agent) are active in the turn
+		// At step 0 every member row is visible (R-TEAM-45): Priya first, the selected main agent Bhaskar, then roster order
 		const step0Html = turnCtrl.renderHtml();
 		const [, step0TeamHtml] = step0Html.split('id="panel-team"');
 		const step0RowIds = [...step0TeamHtml.matchAll(/class="team-member-row[^"]*" data-member-id="([^"]+)"/g)].map((m) => m[1]);
-		assert.deepStrictEqual(step0RowIds, ['priya', 'bhaskar'], 'At turn start, Team tab shows only Priya (pinned first) and active main agent Bhaskar');
+		assert.deepStrictEqual(step0RowIds, ['priya', 'bhaskar', 'anika', 'diego', 'tara', 'pavel', 'paolo', 'sana', 'shreya', 'cathy'], 'At turn start, Team shows every member: Priya, the main agent, then roster order');
 
 		// Advance through step 10
 		turnCtrl.stepTo(10);
@@ -637,16 +642,18 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 		assert.strictEqual(expectedWidth, '420px', 'AITalk widget width is 420px');
 
 		const shellBlock = teamCss.match(/\.team-storybook-shell,\s*\.team-proto-root\s*\{([\s\S]*?)\}/);
-		const panesBlock = teamCss.match(/\.team-pane,\s*#panel-aitalk,\s*#panel-team\s*\{([\s\S]*?)\}/);
+		const panesBlock = teamCss.match(/\.team-storybook-shell \.team-pane\s*\{([\s\S]*?)\}/);
 		const aitalkPaneBlock = teamCss.match(/\.team-aitalk-pane\s*\{([\s\S]*?)\}/);
 		const teamPaneBlock = teamCss.match(/\.team-directory-pane\s*\{([\s\S]*?)\}/);
 		const memberListBlock = teamCss.match(/\.team-member-list\s*\{([\s\S]*?)\}/);
 		assert.ok(shellBlock && panesBlock && aitalkPaneBlock && teamPaneBlock && memberListBlock, 'team.css defines shell, pane, and member list rules');
 
-		const shellWidth = (shellBlock[1].match(/\bwidth:\s*(\d+px)\s*;/) || [])[1];
-		const panesWidth = (panesBlock[1].match(/\bwidth:\s*(\d+px)\s*;/) || [])[1];
-		const aitalkPaneWidth = (aitalkPaneBlock[1].match(/\bwidth:\s*(\d+px)\s*;/) || [])[1];
-		const teamPaneWidth = (teamPaneBlock[1].match(/\bwidth:\s*(\d+px)\s*;/) || [])[1];
+		// Widths are var(--team-widget-width, 420px): the Storybook value with the sidebar fallback.
+		const widthOf = (block) => (block.match(/\bwidth:\s*(?:var\(--team-widget-width,\s*)?(\d+px)\)?\s*;/) || [])[1];
+		const shellWidth = widthOf(shellBlock[1]);
+		const panesWidth = widthOf(panesBlock[1]);
+		const aitalkPaneWidth = widthOf(aitalkPaneBlock[1]);
+		const teamPaneWidth = widthOf(teamPaneBlock[1]);
 		assert.strictEqual(shellWidth, expectedWidth, 'Team storybook shell width equals AITalk widget width (420px)');
 		assert.strictEqual(teamPaneWidth, aitalkPaneWidth, 'Team panel width equals AITalk panel width');
 		assert.strictEqual(teamPaneWidth, expectedWidth, 'Team panel width is fixed at 420px');

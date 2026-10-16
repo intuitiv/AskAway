@@ -1,3 +1,7 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
 export interface CreativeRoleStatus {
 	working: string;
 	idle: string;
@@ -34,7 +38,6 @@ export const CREATIVE_ROLE_STATUSES: Record<string, CreativeRoleStatus> = {
 	diego: { working: 'Shipping code…', idle: 'Coffee break' },
 	tara: { working: 'Breaking things…', idle: 'All green' },
 	pavel: { working: 'Profiling hot paths…', idle: 'Frame budget clean' },
-	rhea: { working: 'Checking every rule…', idle: 'Standards met' },
 	paolo: { working: 'Waiting on CI…', idle: 'Pipes clear' },
 	sana: { working: 'Digging through code…', idle: 'Notes indexed' },
 	shreya: { working: 'Tracing the fault line…', idle: 'Root cause pinned' },
@@ -187,21 +190,6 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		idleStatus: CREATIVE_ROLE_STATUSES.pavel.idle,
 	},
 	{
-		id: 'rhea',
-		name: 'Rhea',
-		role: 'Rules Expert',
-		kind: 'worker',
-		profile: 'review',
-		profiles: ['review', 'quality'],
-		model: 'github-copilot/gpt-6-luna',
-		thinking: 'low',
-		turnDollars: 0.01,
-		monthDollars: 0.80,
-		agentFile: '.github/agents/review.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.rhea.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.rhea.idle,
-	},
-	{
 		id: 'paolo',
 		name: 'Paolo',
 		role: 'Pipeline Expert',
@@ -262,6 +250,43 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		idleStatus: CREATIVE_ROLE_STATUSES.cathy.idle,
 	},
 ];
+
+/** The user's own worker profiles (~/.askaway/worker-profiles). Members that are specific to one user (e.g. Rhea, the
+ *  Pega rules-authoring expert) never ship in the extension; a profile with `member:` and `role:` frontmatter adds them. */
+export const USER_PROFILES_DIR = path.join(os.homedir(), '.askaway', 'worker-profiles');
+
+export function userRosterEntries(dir = USER_PROFILES_DIR): TeamRosterEntry[] {
+	let files: string[];
+	try { files = fs.readdirSync(dir).filter((file) => file.endsWith('.md')).sort(); } catch { return []; }
+	const byId = new Map<string, TeamRosterEntry>();
+	for (const file of files) {
+		const source = path.join(dir, file);
+		const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(source, 'utf8'));
+		const fields: Record<string, string> = {};
+		for (const line of (head ? head[1] : '').split(/\r?\n/)) {
+			const kv = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line);
+			if (kv) fields[kv[1]] = kv[2].trim().replace(/^(["'])(.*)\1$/, '$2');
+		}
+		const name = fields.member;
+		if (!name) continue;
+		const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+		const profile = fields.name || file.replace(/\.md$/, '');
+		const existing = byId.get(id);
+		if (existing) { existing.profiles.push(profile); continue; }
+		byId.set(id, {
+			id, name, role: fields.role || 'Member', kind: 'worker', profile, profiles: [profile],
+			model: fields.model || 'github-copilot/gpt-6-luna', thinking: fields.thinking || 'low',
+			turnDollars: 0, monthDollars: 0, agentFile: source, workingStatus: 'Working on a task…', idleStatus: 'Standing by',
+		});
+	}
+	return [...byId.values()];
+}
+
+/** The Team roster: the extension's members, then the user's own profile members (built-in ids win). */
+export function teamRoster(dir = USER_PROFILES_DIR): TeamRosterEntry[] {
+	const builtIn = new Set(TEAM_ROSTER.map((m) => m.id));
+	return [...TEAM_ROSTER, ...userRosterEntries(dir).filter((m) => !builtIn.has(m.id))];
+}
 
 export function initialsOf(name: string): string {
 	const parts = String(name || '').trim().split(/[^A-Za-z0-9]+/).filter(Boolean);

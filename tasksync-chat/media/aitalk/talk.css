@@ -103,7 +103,9 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
 }
 .talk-title { flex: 1; min-width: 0; }
 .talk-title h2 { margin: 0; font-size: 16px; font-weight: 500; }
-.talk-subtitle { overflow: hidden; color: var(--tk-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.talk-subtitle { overflow: visible; color: var(--tk-muted); font-size: 12px; text-overflow: clip; white-space: normal; }
+.talk-subtitle .aitalk-roster { display: inline; }
+.talk-subtitle .aitalk-roster-member { display: inline-block; white-space: nowrap; }
 .talk-subtitle .left { opacity: .5; text-decoration: line-through; }
 .talk-typing-line { color: var(--tk-green); }
 .talk-in-charge {
@@ -436,16 +438,16 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
     gap: 6px;
     width: fit-content;
     max-width: 90%;
-    margin: 10px auto;
-    padding: 4px 12px;
-    border: 1px solid var(--tk-border);
-    border-radius: 8px;
-    background: var(--tk-pill);
-    box-shadow: var(--tk-shadow);
+    margin: 4px auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
     color: var(--tk-pill-fg);
-    font-size: 12px;
+    font-size: 11px;
     text-align: center;
 }
+.aitalk-presence .aitalk-inline-face { width: 14px; height: 14px; margin: 0; }
 .team-avatar-badge.aitalk-inline-face,
 .team-avatar-badge.aitalk-bubble-face,
 .team-avatar-badge.aitalk-ac-face {

@@ -37,9 +37,10 @@ export class AITalkStore {
                     const previous = members.find((member: any) => member.id === event.member.id);
                     const member = { ...previous, ...event.member, presence: event.presenceEvent,
                         joinedAt: event.presenceEvent === 'joined' ? event.ts : previous?.joinedAt ?? null,
-                        leftAt: event.presenceEvent === 'left' ? event.ts : null };
+                        leftAt: event.presenceEvent === 'left' ? event.ts : null,
+                        reconnecting: event.quiet === true && event.presenceEvent === 'left' };
                     members = [...members.filter((item: any) => item.id !== member.id), member];
-                    messages.push({ id: event.id, author: member.id, memberId: member.memberId || member.id, kind: 'system', text: `${member.displayName} ${event.presenceEvent}`, ts: event.ts });
+                    if (!event.quiet) messages.push({ id: event.id, author: member.id, memberId: member.memberId || member.id, kind: 'system', text: `${member.displayName} ${event.presenceEvent}`, ts: event.ts });
                     continue;
                 }
                 if (event.updateEvent) {
@@ -65,12 +66,13 @@ export class AITalkStore {
         });
         return { messages: full ? messages : messages.slice(-500), members: members.map((member: any) => rosterIdentity(member)).sort((a: any, b: any) => b.rank - a.rank) };
     }
-    setPresence(member: any, present: boolean): void {
+    setPresence(member: any, present: boolean, announce = true): void {
         const previous = this.snapshot().members.find(item => item.id === member.id);
         const presenceEvent = present ? 'joined' : 'left';
         if (previous?.presence === presenceEvent && (!present || previous.joinedAt) && previous.memberId === member.memberId && previous.displayName === member.displayName) return;
         if (!previous && !present) return;
-        this.append({ id: randomUUID(), presenceEvent, member, ts: stamp() }, this.presenceFile);
+        const quiet = !announce || (present && previous?.reconnecting && previous.memberId === member.memberId);
+        this.append({ id: randomUUID(), presenceEvent, member, quiet: Boolean(quiet), ts: stamp() }, this.presenceFile);
     }
     /** Only a registered (joined) participant can post. */
     post(text: string, replyTo?: string, author?: string, details?: string, kind?: string, attachments?: Array<{ name: string; path: string }>, fields?: Record<string, unknown>) {

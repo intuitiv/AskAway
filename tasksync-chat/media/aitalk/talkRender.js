@@ -202,7 +202,8 @@ export function systemHtml(item, members = defaultMembers, options = {}) {
             const actorName = match[1];
             const found = (item.memberId && participant(members, item.memberId)) || (item.author && participant(members, item.author)) || participant(members, actorName) || { id: actorName.toLowerCase(), displayName: actorName };
             const id = escapeHtml(item.memberId || memberIdOf(found));
-            const face = avatarBadgeHtml(found, { sizeClass: 'aitalk-inline-face', avatarFor: options.avatarFor, emptyAlt: true, hideInitialsText: true });
+            const image = found.avatarSrc || found.photo || options.avatarFor?.(memberIdOf(found));
+            const face = image ? avatarBadgeHtml({ ...found, avatarSrc: image }, { sizeClass: 'aitalk-inline-face', emptyAlt: true }) : '';
             return `<div class="talk-pill-row aitalk-presence" data-actor="${id}" data-member-id="${id}">${face}<span class="aitalk-presence-label" data-member-id="${id}">${escapeHtml(displayName(found))} ${match[2]}</span></div>`;
         }
     }
@@ -261,7 +262,7 @@ export function titleHtml({ name = 'AITalk', members = defaultMembers, typing = 
     });
     const rosterInner = present.map(m => {
         const id = escapeHtml(memberIdOf(m));
-        return `<span class="aitalk-roster-member" data-member-id="${id}"><span class="aitalk-roster-name" data-member-id="${id}">${escapeHtml(displayName(m))}</span></span>`;
+        return `<span class="aitalk-roster-member" data-member-id="${id}"><span class="aitalk-roster-name" data-member-id="${id}">${escapeHtml(displayName(m).trim())}</span></span>`;
     }).join(', ');
     const typingSuffix = typing ? ` <span class="talk-typing-line talk-typing-inline">${escapeHtml(typing)}</span>` : '';
     const subtitle = `<span class="aitalk-roster" title="In this room">${rosterInner}</span>${typingSuffix}`;

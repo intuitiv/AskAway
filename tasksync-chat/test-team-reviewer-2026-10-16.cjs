@@ -168,26 +168,37 @@ const results = [];
     results.push('4 Save cost removed: test-team-reviewer-2026-10-16.cjs EV-TEAM-NO-TIPS');
 }
 
-// 5. Hide members without a running/queued/warm task this turn; Priya always with Trace; main agent while the turn is active.
+// 5. "i want all members to be vsible in team but the are not" (supersedes "hide members who are not actively working"):
+//    every member row is visible, idle ones included (model, thinking, agent file); Priya first, then the main agent, then
+//    roster order. Tasks keep the rule: cold, retired and finished ones hide unless Show completed; pill count = cards.
 {
     const { api, doc, click } = createHarness();
-    const members = [PRIYA, BHASKAR, ANIKA, worker('tara', 'Tara', 'Test Engineer', 'verify'), worker('rhea', 'Rhea', 'Rules Expert', 'review'), worker('sana', 'Sana', 'Researcher', 'explore'), worker('paolo', 'Paolo', 'Pipeline Expert', 'gradle')];
+    const TARA = worker('tara', 'Tara', 'Test Engineer', 'verify');
+    const members = [PRIYA, ANIKA, TARA, worker('sana', 'Sana', 'Researcher', 'explore'), worker('paolo', 'Paolo', 'Pipeline Expert', 'gradle'), BHASKAR];
     const workers = [
         task('worker-cold', 'build', 'COMPLETED', { expired: true, cacheExpiresAt: now - 1 }),
         task('worker-run', 'verify', 'RUNNING'),
-        task('worker-retired', 'review', 'RETIRED', { expired: true }),
+        task('worker-retired', 'gradle', 'RETIRED', { expired: true }),
         task('worker-queued', 'explore', 'STARTING', { runs: [{ runId: 'q', state: 'STARTING', queuePosition: 1, usage: {} }] }),
-        task('worker-other-turn', 'gradle', 'RUNNING'),
+        task('worker-other-turn', 'build', 'RUNNING'),
     ];
     const state = { generatedAt: now, members, workers, turnWorkerIds: ['worker-cold', 'worker-run', 'worker-retired', 'worker-queued'] };
     api.applyWorkersState(state);
-    assert.deepEqual(rows(doc), ['priya', 'tara', 'sana'], 'only Priya plus members with a running or queued task this turn');
+    const order = ['priya', 'bhaskar', 'anika', 'tara', 'sana', 'paolo'];
+    assert.deepEqual(rows(doc), order, 'every member is visible: Priya, the (idle) main agent, then roster order');
     assert(/^Trace \(\d+\)/.test(doc.querySelector('[data-member-tasks-toggle="priya"]').textContent), 'Priya keeps her Trace button');
+    const pills = () => ['anika', 'tara', 'sana', 'paolo'].map(id => doc.querySelector(`[data-member-tasks-toggle="${id}"]`).textContent);
+    const cards = () => ['anika', 'tara', 'sana', 'paolo'].map(id => doc.querySelector(`[data-member-tray="${id}"]`).querySelectorAll('.worker-card').length);
+    assert.deepEqual(pills(), ['0 tasks \u25b8', '1 task \u25b8', '1 task \u25b8', '0 tasks \u25b8'], 'cold and retired tasks stay hidden; other-turn tasks never show');
+    assert.deepEqual(cards(), [0, 1, 1, 0], 'pill count equals the visible cards');
+    const idle = doc.querySelector('[data-member-row="paolo"]');
+    assert(idle.querySelector('select[data-member-model]') && idle.querySelector('select[data-member-thinking]') && idle.querySelector('[data-open-agent-file]'), 'an idle row shows its model, thinking and agent file');
+    assert.equal(idle.querySelector('[data-status-state]').getAttribute('data-status-state'), 'idle');
     click(doc.getElementById('workers-show-expired'));
-    assert.deepEqual(rows(doc), ['priya', 'anika', 'tara', 'rhea', 'sana'], 'Show completed reveals cold and retired tasks of this turn');
-    api.applyWorkersState({ ...state, members: members.map(m => (m.id === 'bhaskar' ? { ...m, active: true } : m)) });
-    assert(rows(doc).includes('bhaskar'), 'the main agent shows while its turn is active');
-    results.push('5 active members only: test-team-reviewer-2026-10-16.cjs EV-TEAM-ACTIVE-ONLY');
+    assert.deepEqual(rows(doc), order, 'Show completed changes tasks, not members');
+    assert.deepEqual(pills(), ['1 task \u25b8', '1 task \u25b8', '1 task \u25b8', '1 task \u25b8'], 'Show completed reveals cold and retired tasks of this turn');
+    assert.deepEqual(cards(), [1, 1, 1, 1]);
+    results.push('5 all members visible, tasks filtered: test-team-reviewer-2026-10-16.cjs EV-TEAM-ALL-MEMBERS');
 }
 
 // 6. "Trace button is also not working." — Priya's Trace loads her validator task traces and expands shared trace rows inline.
@@ -236,8 +247,9 @@ const results = [];
 {
     const rosterMod = loadTsModule(path.join(ROOT, 'src', 'team', 'roster.ts'));
     const { projectTeamMembers } = loadTsModule(path.join(ROOT, 'src', 'workers', 'workersState.ts'), { '../team/roster': rosterMod });
-    const members = projectTeamMembers([{ ...task('worker-b9', 'build', 'RUNNING'), track: '' }]);
-    assert.deepEqual(members.map(m => [m.id, m.taskIds.join()]), [['priya', ''], ['anika', 'worker-b9']], 'the build worker profile maps to Anika');
+    const members = projectTeamMembers([{ ...task('worker-b9', 'build', 'RUNNING'), track: '' }], rosterMod.TEAM_ROSTER);
+    assert.deepEqual(members.map(m => [m.id, m.taskIds.join()]), [['priya', ''], ['anika', 'worker-b9'], ['diego', ''], ['tara', ''], ['pavel', ''], ['paolo', ''], ['sana', ''], ['shreya', ''], ['cathy', '']],
+        'every worker roster member is projected (idle ones too); the build worker profile maps to Anika');
     // Provider: the main agent row of the selected chat agent.
     const methods = between(providerSrc, "    /** VS Code's user prompts folder", '    public async getTurnMetricsSnapshot');
     const Provider = vm.runInNewContext(ts.transpileModule(`class P {\n${methods}\n}; P`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, {
@@ -266,7 +278,69 @@ const results = [];
     results.push('10 main agent separated (build → Anika): test-team-reviewer-2026-10-16.cjs EV-TEAM-MAIN-AGENT');
 }
 
+// 11. "Rules dev is more specific to authoring mcp of pega. So, it should be only in my user workspace, not part of
+//     extension." — no Rules/authoring/Pega member or profile ships; the user's own profile files add Team members.
+{
+    const rosterMod = loadTsModule(path.join(ROOT, 'src', 'team', 'roster.ts'));
+    const shipped = /\brhea\b|rules expert|\bpega\b|\bauthoring\b|\bdevx\b/i;
+    assert(!rosterMod.TEAM_ROSTER.some(m => shipped.test([m.id, m.name, m.role, ...m.profiles].join(' '))), 'no Rules/authoring member in roster.ts');
+    assert(!Object.keys(rosterMod.CREATIVE_ROLE_STATUSES).includes('rhea'));
+    for (const file of fs.readdirSync(path.join(ROOT, 'worker-profiles'))) {
+        assert(!shipped.test(file + fs.readFileSync(path.join(ROOT, 'worker-profiles', file), 'utf8')), `bundled worker profile ${file} has no Rules/authoring content`);
+    }
+    // package.json's worker-mode description is generated from src/workers/workerTools.ts (LM manifest); it still names
+    // authoring/devx as user-level modes. It ships no profile file or roster member for them (checked above).
+    // The reviewer's own ~/.askaway/worker-profiles: `member:` + `role:` frontmatter adds Rhea; two profiles, one member.
+    const os = require('node:os');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-user-profiles-'));
+    const profile = (name, extra) => `---\nname: ${name}\ntier: mid\nmodel: github-copilot/gpt-6-luna\nthinking: low\nmodels: [github-copilot/gpt-6-luna]\nthinkingOptions: [low]\n${extra}---\nprompt\n`;
+    fs.writeFileSync(path.join(dir, 'review.md'), profile('review', 'member: Rhea\nrole: Rules Expert\n'));
+    fs.writeFileSync(path.join(dir, 'quality.md'), profile('quality', 'member: Rhea\nrole: Rules Expert\n'));
+    fs.writeFileSync(path.join(dir, 'explore.md'), profile('explore', ''));
+    const user = rosterMod.userRosterEntries(dir);
+    assert.deepEqual(user.map(m => [m.id, m.name, m.role, m.profiles.join()]), [['rhea', 'Rhea', 'Rules Expert', 'quality,review']], 'a profile without member: adds nobody');
+    assert.deepEqual(rosterMod.userRosterEntries(path.join(dir, 'missing')), [], 'no user folder, no extra members');
+    const { projectTeamMembers } = loadTsModule(path.join(ROOT, 'src', 'workers', 'workersState.ts'), { '../team/roster': rosterMod });
+    const projected = projectTeamMembers([{ ...task('worker-r1', 'review', 'RUNNING'), track: '' }], rosterMod.teamRoster(dir));
+    assert.equal(projected.at(-1).id, 'rhea', 'user members follow the extension roster');
+    assert.deepEqual(projected.find(m => m.id === 'rhea').taskIds, ['worker-r1'], 'a review task belongs to the user-level Rhea');
+    const { api, doc } = createHarness();
+    api.applyWorkersState({ generatedAt: now, members: projected, workers: [task('worker-r1', 'review', 'RUNNING')], turnWorkerIds: ['worker-r1'] });
+    assert(visibleText(doc.querySelector('[data-member-row="rhea"]')).includes('Rhea · Rules Expert'), 'Rhea renders in the reviewer\'s Team');
+    assert.equal(doc.querySelector('[data-member-row="rhea"] [data-open-agent-file]').getAttribute('data-open-agent-file'), path.join(dir, 'quality.md'), 'her agent file is her (first) user profile');
+    fs.rmSync(dir, { recursive: true, force: true });
+    results.push('11 Rhea user-level only: test-team-reviewer-2026-10-16.cjs EV-TEAM-USER-MEMBERS');
+}
+
+// 12. Storybook screenshot review: panes visible, 420px wide, header icons, one money format.
+{
+    // a) No id selector hides the panes: `.active` must outrank the hidden default.
+    assert(!/team-storybook-shell[^{}]*#panel-/.test(teamCss) && !/\.team-storybook-shell\s*\{\s*\.team-pane/.test(teamCss), 'no nested/id rule hides the Storybook panes');
+    assert(/\.team-storybook-shell \.team-pane\s*\{[^}]*display:\s*none/.test(teamCss));
+    assert(/\.team-storybook-shell \.team-pane\.active[^{]*\{[^}]*display:\s*flex/.test(teamCss), 'the active pane rule has higher specificity than the hidden default');
+    // b) 420px: the width variable has the sidebar fallback, and Storybook passes it on the patched root.
+    assert(!/width:\s*var\(--team-widget-width\)/.test(teamCss) && /width:\s*var\(--team-widget-width, 420px\)/.test(teamCss), 'every widget width falls back to 420px');
+    const teamProto = fs.readFileSync(path.join(ROOT, 'storybook', 'prototypes', 'team.js'), 'utf8');
+    assert(/patchTeamHtml\(contentEl, `<div style="--team-widget-width:\$\{TEAM_WIDGET_WIDTH\}">/.test(teamProto), 'the width rides on the patched root, not a style the patch removes');
+    // c) Archive and refresh icons draw without the codicon font, in production and (sliced from it) in Storybook.
+    const { doc } = createHarness();
+    for (const id of ['workers-archive-btn', 'workers-refresh-btn']) {
+        const button = doc.getElementById(id);
+        assert(button.querySelector('svg path'), `${id} draws an inline icon`);
+        assert(button.getAttribute('aria-label'), `${id} has an accessible name`);
+    }
+    assert(/sliceBetween\(providerSource, '<div class="workers-header">'/.test(teamProto), 'Storybook reuses the production header row');
+    // d) One money formatter: $0.00 for zero, 4 decimals under a cent, never a bare $0.
+    const money = createHarness();
+    money.api.applyWorkersState({ generatedAt: now, members: [{ ...PRIYA, turnCost: 0, monthCost: 0 }, BHASKAR, { ...ANIKA, monthCost: 0.004 }], workers: [], turnWorkerIds: [] });
+    const costs = money.doc.querySelectorAll('[data-member-cost]').map(el => [el.getAttribute('data-member-cost'), el.getAttribute('data-turn-cost'), el.getAttribute('data-month-cost')]);
+    assert.deepEqual(costs, [['priya', '$0.00', '$0.00'], ['bhaskar', '$0.08', '$6.80'], ['anika', '$0.00', '$0.0040']]);
+    assert(/teamMoney\(dollars\)/.test(webviewSrc), 'the summary uses the same formatter');
+    assert(!/'\$0'/.test(webviewSrc.slice(webviewSrc.indexOf('// ── Workers tab: pure render'), webviewSrc.indexOf('// ── end Workers pure render ──'))), 'no second "$0" format in the Team render');
+    results.push('12 Storybook panes/width/icons/money: test-team-reviewer-2026-10-16.cjs EV-TEAM-STORYBOOK-REVIEW');
+}
+
 // webviewProvider.ts stays CRLF-only.
 assert.equal((providerSrc.match(/(^|[^\r])\n/g) || []).length, 0, 'webviewProvider.ts is CRLF-only');
 console.log(results.join('\n'));
-console.log('PASS test-team-reviewer-2026-10-16 (EV-TEAM-NO-FILTER, EV-TEAM-TURN-COUNTS, EV-TEAM-SCROLL, EV-TEAM-NO-TIPS, EV-TEAM-ACTIVE-ONLY, EV-TEAM-PRIYA-TRACE, EV-TEAM-PILL-COUNT, EV-TEAM-MAIN-AGENT)');
+console.log('PASS test-team-reviewer-2026-10-16 (EV-TEAM-NO-FILTER, EV-TEAM-TURN-COUNTS, EV-TEAM-SCROLL, EV-TEAM-NO-TIPS, EV-TEAM-ALL-MEMBERS, EV-TEAM-PRIYA-TRACE, EV-TEAM-PILL-COUNT, EV-TEAM-MAIN-AGENT, EV-TEAM-USER-MEMBERS, EV-TEAM-STORYBOOK-REVIEW)');

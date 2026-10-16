@@ -26,21 +26,25 @@ export {
 const isNode = typeof process !== 'undefined' && Boolean(process.versions && process.versions.node);
 
 let webviewSource = '';
+let providerSource = '';
 let combinedBrowserCss = '';
 if (isNode) {
 	const fs = process.getBuiltinModule ? process.getBuiltinModule('node:fs') : await import('node:fs');
 	webviewSource = fs.readFileSync(new URL('../../media/webview.js', import.meta.url), 'utf8');
+	providerSource = fs.readFileSync(new URL('../../src/webview/webviewProvider.ts', import.meta.url), 'utf8');
 } else {
-	const [rawWebview, rawMainCss, rawTalkCss, rawTeamCss] = await Promise.all([
+	const [rawWebview, rawMainCss, rawTalkCss, rawTeamCss, rawProvider] = await Promise.all([
 		import('../../media/webview.js?raw'),
 		import('../../media/main.css?raw'),
 		import('../../media/aitalk/talk.css?raw'),
 		import('../../media/team/team.css?raw'),
+		import('../../src/webview/webviewProvider.ts?raw'),
 		import('../../media/main.css'),
 		import('../../media/aitalk/talk.css'),
 		import('../../media/team/team.css'),
 	]);
 	webviewSource = rawWebview.default || '';
+	providerSource = rawProvider.default || '';
 	combinedBrowserCss = [
 		rawMainCss.default || '',
 		rawTalkCss.default || '',
@@ -71,7 +75,7 @@ export function getWorkersKit() {
 	const workers = sliceBetween(webviewSource, '// ── Workers tab: pure render', '// ── end Workers pure render ──');
 	const patch = sliceBetween(webviewSource, '    function patchTeamNode(', "    var workersExpanded =");
 	cachedWorkersKit = new Function(
-		`${banner}\n${trace}\n${workers}\n${patch}\nreturn { wireTeamEvents, patchTeamHtml, teamMemberRowHtml, normalizeTeamMember, usageBannerHtml, chatBannerHtml, cacheAgeLabel, efficiencyScore, turnTotalsLead, traceRowsHtml, traceGroupsHtml, TRACE_HEAD, workerBannerHtml, workerTraceHtml, workersSummaryHtml, renderWorkersHtml, workersScoreboardHtml, workersBenchmarkHtml };`
+		`${banner}\n${trace}\n${workers}\n${patch}\nreturn { wireTeamEvents, patchTeamHtml, teamMemberRowHtml, normalizeTeamMember, teamMoney, usageBannerHtml, chatBannerHtml, cacheAgeLabel, efficiencyScore, turnTotalsLead, traceRowsHtml, traceGroupsHtml, TRACE_HEAD, workerBannerHtml, workerTraceHtml, workersSummaryHtml, renderWorkersHtml, workersScoreboardHtml, workersBenchmarkHtml };`
 	)();
 	return cachedWorkersKit;
 }
@@ -110,7 +114,6 @@ export const CREATIVE_ROLE_STATUSES = {
 	diego: { working: 'Shipping code…', idle: 'Coffee break' },
 	tara: { working: 'Breaking things…', idle: 'All green' },
 	pavel: { working: 'Profiling hot paths…', idle: 'Frame budget clean' },
-	rhea: { working: 'Checking every rule…', idle: 'Standards met' },
 	paolo: { working: 'Waiting on CI…', idle: 'Pipes clear' },
 	sana: { working: 'Digging through code…', idle: 'Notes indexed' },
 	shreya: { working: 'Tracing the fault line…', idle: 'Root cause pinned' },
@@ -281,21 +284,6 @@ export const TEAM_ROSTER_FIXTURES = [
 		idleStatus: CREATIVE_ROLE_STATUSES.pavel.idle,
 	},
 	{
-		id: 'rhea',
-		name: 'Rhea',
-		role: 'Rules Expert',
-		kind: 'worker',
-		profile: 'review',
-		profiles: ['review', 'quality'],
-		model: 'github-copilot/gpt-6-luna',
-		thinking: 'low',
-		turnDollars: 0.01,
-		monthDollars: 0.80,
-		agentFile: '.github/agents/review.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.rhea.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.rhea.idle,
-	},
-	{
 		id: 'paolo',
 		name: 'Paolo',
 		role: 'Pipeline Expert',
@@ -451,11 +439,9 @@ export function resolveMainAgentIdentity(selectedAgent = 'AskAway Build') {
 	};
 }
 
+// The production Team money format (webview.js teamMoney), so Storybook never shows a second one.
 export function formatMemberCost(dollars) {
-	const val = Number(dollars);
-	if (!Number.isFinite(val) || val <= 0) return '$0';
-	if (val < 0.01) return `$${val.toFixed(4)}`;
-	return `$${val.toFixed(2)}`;
+	return getWorkersKit().teamMoney(dollars);
 }
 
 export function memberCostSummary(member) {
@@ -587,14 +573,12 @@ export function renderProductionTabBarHtml(activeTab = 'team') {
 	return `<nav class="widget-tabs tab-bar" id="widget-tabs" role="tablist" aria-label="Main Tabs">${btns}</nav>`;
 }
 
+// Same rule as production (webview.js groupWorkersByMember): every member row is visible, idle ones included —
+// Priya first, then the selected main agent, then the rest in roster order. Only tasks are filtered.
 export function getActiveTurnMembers(state) {
-	const members = (state.members || []).filter((m) => m.activeInTurn || m.pinnedFirst);
-	return members.slice().sort((a, b) => {
-		const aPinned = Boolean(a.pinnedFirst || a.id === 'priya' || a.kind === 'validator');
-		const bPinned = Boolean(b.pinnedFirst || b.id === 'priya' || b.kind === 'validator');
-		if (aPinned !== bPinned) return aPinned ? -1 : 1;
-		return 0;
-	});
+	const members = (state.members || []).filter((m) => m.kind !== 'main' || !state.mainMemberId || m.id === state.mainMemberId);
+	const rank = (m) => (m.pinnedFirst || m.id === 'priya' || m.kind === 'validator' ? 0 : m.kind === 'main' ? 1 : 2);
+	return members.slice().sort((a, b) => rank(a) - rank(b));
 }
 
 export function memberStatusInfo(member) {
@@ -691,11 +675,8 @@ export function renderTeamTabHtml(state) {
 	// Same header row and summary as production (#panel-team): no filter, no Save cost tips; counts come from the displayed tasks.
 	const now = state.now || 1_700_000_000_000;
 	const tasks = activeMembers.flatMap((m) => (m.tasks || []).map((task) => toSharedWorkerRecord(task, now)));
-	const headerHtml = `<div class="workers-header">` +
-		`<div class="specs-toggle" title="Include workers whose cache went cold or that retired"><span>Show completed</span><div class="toggle-switch specs-toggle-switch" id="workers-show-expired" role="switch" aria-checked="false" tabindex="0"></div></div>` +
-		`<button class="specs-refresh-btn" id="workers-archive-btn" title="Archive completed workers"><span class="codicon codicon-archive"></span></button>` +
-		`<button class="specs-refresh-btn" id="workers-refresh-btn" title="Refresh workers"><span class="codicon codicon-refresh"></span></button>` +
-	`</div>`;
+	// The production #panel-team header row itself (Show completed, archive, refresh), sliced from webviewProvider.ts.
+	const headerHtml = sliceBetween(providerSource, '<div class="workers-header">', '<div class="workers-list"').replace(/\r?\n\s*/g, '');
 
 	return `<div class="team-tab-panel" data-active-member-count="${activeMembers.length}">` +
 		headerHtml +
@@ -1269,7 +1250,7 @@ export function createTeamController(options = {}) {
 				message: {
 					id: askPriyaMsgId,
 					author: main.id,
-					text: '@Priya Should the Team tab show all 12 roster members or only members active in this turn?',
+					text: '@Priya Should the Team tab show every roster member or only members active in this turn?',
 					time: '10:31',
 				},
 			});
@@ -1288,7 +1269,7 @@ export function createTeamController(options = {}) {
 				do: 'add',
 				message: {
 					...replyMessage(
-						'Only members active in the current turn, with Priya pinned first.',
+						'All members, idle ones too, with Priya pinned first; only cold tasks hide.',
 						'priya',
 						quote,
 						`msg-priya-reply-${msgCounter++}`
@@ -1522,8 +1503,9 @@ export function mountTeamStory(options = {}) {
 	host.append(styleEl, contentEl);
 
 	function paint() {
-		contentEl.style.setProperty('--team-widget-width', TEAM_WIDGET_WIDTH);
-		getWorkersKit().patchTeamHtml(contentEl, `<div>${controller.renderHtml()}</div>`);
+		// The width variable rides on the patched root: patchTeamHtml syncs root attributes, so a style set only on
+		// contentEl would be removed by the first paint and the shell would fall back to its content width.
+		getWorkersKit().patchTeamHtml(contentEl, `<div style="--team-widget-width:${TEAM_WIDGET_WIDTH}">${controller.renderHtml()}</div>`);
 		if (controller.state.highlightedMemberId) {
 			const row = contentEl.querySelector(`.team-member-row[data-member-id="${controller.state.highlightedMemberId}"]`);
 			if (row && typeof row.scrollIntoView === 'function') {

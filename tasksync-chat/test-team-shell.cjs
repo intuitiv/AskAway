@@ -108,7 +108,8 @@ function loadTsModule(filePath, extraMocks = {}) {
     assert.equal(protoMod.renderMemberRowHtml(sharedMember, sharedState), sharedKit.teamMemberRowHtml(normalizedMember, [], { generatedAt: sharedState.now, memberSettings: { [sharedMember.id]: { model: sharedMember.model } }, validatorTrace: [] }, { ['member:' + sharedMember.id]: false, highlightedMember: undefined }, undefined, {}), 'Storybook uses the production shared pure row renderer');
 
     assert.ok(Array.isArray(rosterMod.TEAM_ROSTER), 'TEAM_ROSTER must be exported as an array');
-    assert.equal(rosterMod.TEAM_ROSTER.length, 12, 'TEAM_ROSTER must contain all 12 team members');
+    // Rhea (Pega rules authoring) comes from the user's own profiles, not the extension (R-TEAM-46).
+    assert.equal(rosterMod.TEAM_ROSTER.length, 11, 'TEAM_ROSTER ships 11 built-in members');
     const withoutCosts = ({ turnDollars, monthDollars, traceEvents, ...rest }) => JSON.parse(JSON.stringify(rest));
     assert.deepEqual(
         Array.from(rosterMod.TEAM_ROSTER, withoutCosts),
