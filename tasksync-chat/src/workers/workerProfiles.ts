@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 // Same text as src/agents/sharedVoice.ts (test-style-voice.cjs checks); inline so this module stays import-free for test harnesses.
 export const SHARED_VOICE = `<!-- shared-voice:start -->
@@ -250,4 +251,71 @@ export function syncOpenCodeAgents(profiles: WorkerProfile[], agentsDir: string,
         }
     }
     return written;
+}
+
+export const AGY_MCP_RULE_FORMAT = 'mcp(askaway/<tool>)';
+export const AGY_BASH_RULE = 'command(rtk)';
+
+/** Maps a worker profile's MCP and bash policy to headless agy `permissions.allow` rules. */
+export function toAgyPermissions(profile: Pick<WorkerProfile, 'mcp' | 'bash'>): string[] {
+    const rules: string[] = [];
+    for (const entry of profile.mcp ?? []) {
+        if (!entry.startsWith('askaway_')) { continue; }
+        const tool = entry.slice('askaway_'.length);
+        if (!tool || /^(worker|commentary)(?:_|$)/.test(tool)) { continue; }
+        const rule = AGY_MCP_RULE_FORMAT.replace('<tool>', tool);
+        if (!rules.includes(rule)) { rules.push(rule); }
+    }
+    if (profile.bash && profile.bash !== 'deny' && !rules.includes(AGY_BASH_RULE)) {
+        rules.push(AGY_BASH_RULE);
+    }
+    return rules;
+}
+
+/**
+ * Merges the union of all profiles' agy permission rules into `permissions.allow` of agy's settings JSON idempotently,
+ * keeps all other keys untouched, skips if the settings folder does not exist or the file is malformed, writes only when
+ * changed, and returns whether it changed.
+ */
+export function syncAgyPermissions(
+    profiles: WorkerProfile[],
+    settingsPath = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'settings.json'),
+): boolean {
+    if (!fs.existsSync(path.dirname(settingsPath))) {
+        return false;
+    }
+    try {
+        const existingText = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, 'utf8') : '';
+        const parsedRaw = existingText.trim() ? JSON.parse(existingText) : {};
+        if (!parsedRaw || typeof parsedRaw !== 'object' || Array.isArray(parsedRaw)) {
+            throw new Error('settings root is not a JSON object');
+        }
+        const parsed = parsedRaw as Record<string, any>;
+        const existingPermissions = parsed.permissions && typeof parsed.permissions === 'object' && !Array.isArray(parsed.permissions)
+            ? parsed.permissions as Record<string, any> : {};
+        const existingAllow = Array.isArray(existingPermissions.allow) ? existingPermissions.allow.map(String) : [];
+        const allow = [...existingAllow];
+        for (const profile of profiles) {
+            for (const rule of toAgyPermissions(profile)) {
+                if (!allow.includes(rule)) { allow.push(rule); }
+            }
+        }
+        const next: Record<string, any> = {
+            ...parsed,
+            permissions: {
+                ...existingPermissions,
+                allow,
+            },
+        };
+        const nextText = JSON.stringify(next, null, 2) + '\n';
+        if (existingText.trim() !== '' && (existingText === nextText || JSON.stringify(parsed) === JSON.stringify(next))) {
+            return false;
+        }
+        fs.writeFileSync(settingsPath, nextText, 'utf8');
+        return true;
+    } catch (error) {
+        // Never log error.message: JSON.parse errors quote file content, which may hold tokens.
+        console.warn(`[AskAway] Skipping agy permissions sync: ${path.basename(settingsPath)} is not readable valid JSON`);
+        return false;
+    }
 }

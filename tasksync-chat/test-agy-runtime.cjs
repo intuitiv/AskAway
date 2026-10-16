@@ -74,8 +74,8 @@ out({ event: 'result', result: { conversation_id: conv, status: 'SUCCESS', respo
 `);
 fs.chmodSync(fakeAgy, 0o755);
 
-const profile = parseWorkerProfile('---\nname: build\ndescription: "b"\ntier: mid\nmodel: github-copilot/gpt-5.6-luna\nthinking: medium\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [medium]\nedit: allow\nbash: allow\n---\nBUILD-PROFILE-BODY.\n');
-const readOnly = parseWorkerProfile('---\nname: explore\ndescription: "e"\ntier: light\nmodel: github-copilot/gpt-5.6-luna\nthinking: medium\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [medium]\nedit: deny\n---\nExplore.\n');
+const profile = parseWorkerProfile('---\nname: build\ndescription: "b"\ntier: mid\nmodel: github-copilot/gpt-5.6-luna\nthinking: medium\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [medium]\nedit: allow\nbash: allow\nmcp: [askaway_askaway_memory]\n---\nBUILD-PROFILE-BODY.\n');
+const readOnly = parseWorkerProfile('---\nname: explore\ndescription: "e"\ntier: light\nmodel: github-copilot/gpt-5.6-luna\nthinking: medium\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [medium]\nedit: deny\nmcp: [askaway_askaway_memory]\n---\nExplore.\n');
 const ledgerDir = path.join(tmp, 'ledger');
 const runtime = new OpenCodeWorkerRuntime([profile, readOnly], { ledgerDir, agyCommand: fakeAgy });
 const toolOf = (rt) => {

@@ -945,7 +945,7 @@ export class OpenCodeWorkerRuntime {
             }
             return;
         }
-        const normalize = agyEventNormalizer ? agyEventNormalizer() : (event: any) => [event];
+        const normalize = agyEventNormalizer ? agyEventNormalizer(profile?.mcp ?? []) : (event: any) => [event];
         run.child = child;
         run.pid = child.pid;
         // The start fact is written at spawn, so a run that never speaks is still in the ledger with its pid, session and directory.
@@ -956,6 +956,7 @@ export class OpenCodeWorkerRuntime {
         const rejected: string[] = [];
         // Headless agy auto-denies an action no allow-rule grants and ends its turn; asking it again only repeats the denial.
         const denied: string[] = [];
+        let outOfPolicy = false;
         let errBuffer = '';
         child.stderr?.on('data', (chunk: Buffer) => {
             errBuffer += chunk.toString();
@@ -1002,6 +1003,7 @@ export class OpenCodeWorkerRuntime {
                     run.state = 'WAITING_APPROVAL';
                     this.record(run, { type: 'approval' });
                 } else if (event?.type === 'error') {
+                    if (agy && event.outOfPolicy) { outOfPolicy = true; }
                     const detail = String(event.error?.data?.message ?? event.error?.message ?? event.error?.name ?? event.message ?? 'provider or tool error');
                     run.reason = CREDENTIAL.test(detail) ? 'provider or tool error (credential omitted)' : detail.replace(/\s+/g, ' ').slice(0, 240);
                     this.record(run, { type: 'error', reason: run.reason });
@@ -1027,7 +1029,7 @@ export class OpenCodeWorkerRuntime {
             const knowledge = [...run.evidence].reverse().find((line) => /^\W*Knowledge:/i.test(line));
             if (knowledge) { run.knowledge = knowledge.replace(/^\W*Knowledge:\s*/i, '').slice(0, 200); }
             const finalize = (state: RunState, exitCode: number) => this.finalizeRun(run, state, exitCode);
-            if (agy && this.agyVerifyLoop() && code === 0 && !signal && !run.reason && !denied.includes('mcp')) {
+            if (agy && this.agyVerifyLoop() && code === 0 && !signal && !run.reason && !outOfPolicy && !denied.includes('mcp')) {
                 if (denied.includes('command') && !run.deniedContinued && run.sessionId && deniedContinueMessage) {
                     run.deniedContinued = true;
                     this.record(run, { type: 'denied_continue', reason: 'agy command denied; resumed with file-tools instruction' });
@@ -1060,7 +1062,7 @@ export class OpenCodeWorkerRuntime {
             }
             // Only a `Result:` line ends a packet; text that stops mid-thought is an unfinished run, not a completion.
             const hasResult = run.evidence.some((line) => /^\W*Result:\s*(PASS|FAIL|BLOCKED)\b/i.test(line));
-            const unfinished = code === 0 && !signal && run.reason !== 'cancelled by caller' && !hasResult;
+            const unfinished = code === 0 && !signal && run.reason !== 'cancelled by caller' && !outOfPolicy && !hasResult;
             if (unfinished && !denied.length && run.sessionId && (run.autoResumes ?? 0) < MAX_AUTO_RESUMES) {
                 run.autoResumes = (run.autoResumes ?? 0) + 1;
                 this.record(run, { type: 'approval', reason: rejected.length ? `auto-rejected, resumed with feedback: ${rejected.join('; ')}` : 'stopped without a Result line, resumed' });
@@ -1079,7 +1081,7 @@ export class OpenCodeWorkerRuntime {
                     ? `permission auto-rejected: ${rejected.join(', ')} (not allowed for this worker; allow it in the OpenCode config or change the packet)`
                     : run.evidence.join('').trim() === '' ? 'worker ended without a report (no Result/Evidence text)' : 'worker stopped without a Result line';
             }
-            const state: RunState = cancelled ? 'CANCELLED' : code === 0 && !signal && !silent ? 'COMPLETED' : 'FAILED';
+            const state: RunState = cancelled ? 'CANCELLED' : code === 0 && !signal && !silent && !outOfPolicy ? 'COMPLETED' : 'FAILED';
             if (state === 'FAILED' && !run.reason) { run.reason = signal ? `terminated by ${signal}` : `exit code ${code}`; }
             finalize(state, code ?? -1);
         });

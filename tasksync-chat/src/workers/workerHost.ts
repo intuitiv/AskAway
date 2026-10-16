@@ -6,7 +6,7 @@ import { cacheSafeWaitMs } from '../observability/cacheClock';
 import { startKeepWarmTimer } from './keepWarm';
 import { OpenCodeWorkerRuntime, RuntimeOptions } from './openCodeRuntime';
 import { defaultRestartDeps, defaultServerDeps, DEFAULT_OPENCODE_SERVER_URL, ensureSharedOpenCodeServer, restartSharedOpenCodeServer, RestartDeps, ServerStatus } from './sharedServer';
-import { loadWorkerProfiles, syncOpenCodeAgents } from './workerProfiles';
+import { loadWorkerProfiles, syncAgyPermissions, syncOpenCodeAgents } from './workerProfiles';
 import { SessionMessage } from './workersState';
 
 let runtime: OpenCodeWorkerRuntime | undefined;
@@ -69,8 +69,11 @@ export function workerSpendSince(workspacePath: string | undefined, sinceMs: num
 
 /** The runtime once it is attached to the shared OpenCode server (started on first worker use, not at activation). */
 export async function sharedWorkerRuntimeReady(workspacePath?: string): Promise<OpenCodeWorkerRuntime> {
-    syncOpenCodeAgents(loadWorkerProfiles(path.join(os.homedir(), '.askaway', 'worker-profiles')),
+    const profiles = loadWorkerProfiles(path.join(os.homedir(), '.askaway', 'worker-profiles'));
+    syncOpenCodeAgents(profiles,
         path.join(os.homedir(), '.config', 'opencode', 'agents'), workspacePath ? path.join(workspacePath, '.opencode', 'agents') : undefined);
+    syncAgyPermissions(profiles,
+        path.join(os.homedir(), '.gemini', 'antigravity-cli', 'settings.json'));
     // A server that stopped since it was attached must be started again, not attached to.
     if (ready && serverStatus?.state === 'ATTACHED' && !(await defaultServerDeps.probe(serverUrl()))) { ready = undefined; }
     ready ??= ensureSharedOpenCodeServer(serverUrl(), defaultServerDeps)

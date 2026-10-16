@@ -1,5 +1,5 @@
 import * as childProcess from 'child_process';
-import { AGY_PREFIX, type ChildLike } from './openCodeRuntime';
+import type { ChildLike } from './openCodeRuntime';
 import type { WorkerProfile } from './workerProfiles';
 
 /**
@@ -7,11 +7,13 @@ import type { WorkerProfile } from './workerProfiles';
  * models: any profile selects it with `runtime: 'agy'` or a model prefixed `agy/`. OpenCode stays the default.
  * Loaded lazily by the runtime only when an agy run launches.
  */
+const AGY_PREFIX = 'agy/';
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 export const MAX_VERIFY_ROUNDS = 3;
 export const VERIFY_TIMEOUT_MS = 300_000;
 export const VERIFY_PROMPT_TAIL_CHARS = 4000;
 export const VERIFY_FACT_TAIL_CHARS = 1500;
+export { AGY_BASH_RULE, AGY_MCP_RULE_FORMAT, toAgyPermissions } from './workerProfiles';
 
 /**
  * Print-mode arguments. Policy boundary: by default agy keeps its own review mode, where headless agy auto-denies any
@@ -106,6 +108,11 @@ export function runVerifyCommand(command: string, cwd: string, timeoutMs = VERIF
     });
 }
 
+function isAllowedAgyMcpTool(tool: string, allowedMcp: readonly string[]): boolean {
+    if (/^askaway_(worker|commentary)(?:_|$)/.test(tool)) { return false; }
+    return allowedMcp.some((pattern) => pattern === tool || (pattern.endsWith('*') && tool.startsWith(pattern.slice(0, -1))));
+}
+
 /**
  * Normalizes agy stream-json lines into the OpenCode run events the runtime already records (sessionID, text,
  * step_finish usage, tool parts, error), plus `denied` for actions headless agy auto-denied (`result.denied_actions`).
@@ -113,7 +120,7 @@ export function runVerifyCommand(command: string, cwd: string, timeoutMs = VERIF
  * cache reads (a step reports cache_read > input with total = input + output), so both map raw. agy reports no cost.
  * Stateful per process: agent text deltas accumulate per step.
  */
-export function agyEventNormalizer(): (event: any) => any[] {
+export function agyEventNormalizer(allowedMcp: readonly string[] = []): (event: any) => any[] {
     let conversation = '';
     const text = new Map<number, string>();
     const toolsSeen = new Set<number>();
@@ -138,6 +145,10 @@ export function agyEventNormalizer(): (event: any) => any[] {
                 if (done) {
                     const ms = Math.round(Number(step.duration_seconds ?? 0) * 1000);
                     out.push({ ...base, part: { tool, callID: `step-${index}`, state: { status: state === 'DONE' ? 'completed' : 'error', input: info.parameters, output: info.output, time: ms ? { start: 1, end: 1 + ms } : {} } } });
+                }
+                // Post-hoc check: fires on the streamed tool step after the tool already ran.
+                if (tool.startsWith('askaway_') && !isAllowedAgyMcpTool(tool, allowedMcp)) {
+                    out.push({ ...base, type: 'error', outOfPolicy: true, error: { message: `agy called out-of-policy MCP tool ${tool} (allowed: ${allowedMcp.join(', ') || 'none'})` } });
                 }
             }
             if (step.usage) {
