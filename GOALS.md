@@ -770,3 +770,7 @@ Edit is the member's profile (name, role, status line, picture) and supersedes R
 > Fix all of them and make sure that all tools, hooks, commands work in this extensions.
 
 Hooks fail open and get sandbox grants; `/sk.*` ship per harness (R-TOOLS-03, R-TOOLS-04, R-SKFLOW-25, [ADR 0026](docs/adr/0026-hooks-and-sk-commands-in-copilot-harness.md)).
+
+> i reloaded. now trace tab should show me the actual data.
+
+The Copilot harness stopped writing `debug-logs/main.jsonl`; the extension now converts its session events for the same readers (R-TRACE-06).

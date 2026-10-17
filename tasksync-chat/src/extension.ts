@@ -34,6 +34,7 @@ import { DedupKnowledgeStore, KnowledgeStore } from './validator/knowledgeStore'
 import { SUBAGENT_TIMER_INJECT_SCRIPT } from './hooks/subagentTimerScript';
 import { conversationHooksConfig, copilotCommandHook, copilotShellHook, failOpenCommand, hookSandboxPaths, mergeSandboxPaths, SANDBOX_PATHS_SETTING } from './hooks/copilotHooks';
 import { installClaudeSpecKitCommands, removeLegacySpecKitCopies } from './specs/specKitInstall';
+import { CopilotSdkLogBridge } from './observability/copilotSdkLog';
 import { McpServerManager } from './mcp/mcpServer';
 import { killAllGradleRuns } from './gradle/gradleEngine';
 import { ContextManager } from './context';
@@ -1036,6 +1037,18 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(outputChannel);
     outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Extension activating...`);
 
+    // The Copilot harness (VS Code 1.140+) writes ~/.copilot/session-state/*/events.jsonl instead of debug-logs/main.jsonl.
+    if (context.storageUri) {
+        const bridge = new CopilotSdkLogBridge({
+            sessionStateDir: path.join(os.homedir(), '.copilot', 'session-state'),
+            debugRoot: path.join(path.dirname(context.storageUri.fsPath), 'GitHub.copilot-chat', 'debug-logs'),
+            workspaceRoots: () => (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath),
+        });
+        const syncSdkLogs = () => { bridge.sync().catch(err => logRuntime('Warning: Copilot SDK log bridge failed', formatError(err))); };
+        syncSdkLogs();
+        const sdkLogTimer = setInterval(syncSdkLogs, 2000);
+        context.subscriptions.push({ dispose: () => clearInterval(sdkLogTimer) });
+    }
     void ensureHookSandboxAccess(context);
     void ensureAskAwayBuildAgentInstalled(context);
     void ensureSpecKitCommandsInstalled(context);
