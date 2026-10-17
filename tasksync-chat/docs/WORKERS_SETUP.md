@@ -1,6 +1,6 @@
 # Workers Setup Guide
 
-The AskAway side panel always shows a **Workers** tab, but it only becomes useful once you
+The AskAway side panel always shows a **Team** tab, but its workers only become useful once you
 install [OpenCode](https://opencode.ai) and configure at least one worker profile. This guide
 covers that setup end to end.
 
@@ -8,12 +8,12 @@ covers that setup end to end.
 
 | Where | What it shows |
 |-------|----------------|
-| **Workers** tab | Live state, cost, and session links for background [OpenCode](https://opencode.ai) agents ("workers") started in the current workspace |
+| **Team** tab | Live state, cost, and session links for background [OpenCode](https://opencode.ai) agents ("workers") started in the current workspace |
 | **AITalk** tab | The workspace group chat where workers and the agent post plain-language updates while they work |
 
 A "worker" is a separate OpenCode agent process AskAway starts on your machine and manages
 for you — you give it a bounded objective, it runs on its own (with its own model, budget,
-and permissions), and you watch its progress and cost from the Workers tab instead of
+and permissions), and you watch its progress and cost from the Team tab instead of
 babysitting it in the main chat.
 
 ## Do I need this?
@@ -21,7 +21,7 @@ babysitting it in the main chat.
 No, not by default. This is an advanced, optional feature for people who want to offload
 bounded background research or build tasks to a separate AI agent process. If you only
 want Telegram/Webex notifications or the cost dashboard, you can ignore the
-Workers tab completely — it will simply stay empty.
+worker tasks completely: the Team tab will simply show the members idle.
 
 ## Prerequisites
 
@@ -128,7 +128,7 @@ Ask your agent (Copilot Chat, or any client with the `worker` tool) something li
 > Use the worker tool to start an `explore` worker that investigates how X works in this
 > repo and reports back.
 
-Open the **Workers** tab to watch it run, and the **AITalk** tab for its narration
+Open the **Team** tab to watch it run, and the **AITalk** tab for its narration
 feed. AskAway starts and manages the underlying `opencode serve` process for you the
 first time a worker runs.
 
@@ -156,7 +156,7 @@ wire OpenCode to AskAway's MCP server:
    }
    ```
 
-3. Restart the shared OpenCode server from the restart icon in the Workers tab header so
+3. Restart the shared OpenCode server from the restart icon in the Team tab header so
    it reloads the tool list — OpenCode only reads MCP config at `opencode serve` startup.
 
 ## Optional: live commentary in Telegram
@@ -170,6 +170,6 @@ into the same Telegram message as the rest of the turn.
 | Symptom | Likely cause / fix |
 |---------|--------------------|
 | Worker tool errors with a "no such file or directory" on `~/.askaway/worker-profiles` | The folder doesn't exist yet — do Step 3 |
-| Workers tab stays empty | OpenCode isn't installed/authenticated, or no worker has run yet — this is expected until Step 4 |
+| No tasks appear under any member in the Team tab | OpenCode isn't installed/authenticated, or no worker has run yet — this is expected until Step 4 |
 | `SELECTION_UNAVAILABLE` when starting a worker | The requested `model`/`thinking` isn't listed in that profile's `models`/`thinkingOptions` |
-| A worker can't see new AskAway tools after editing `opencode.json` | Restart the shared OpenCode server (Workers tab header) — OpenCode caches MCP tools at server start |
+| A worker can't see new AskAway tools after editing `opencode.json` | Restart the shared OpenCode server (Team tab header) — OpenCode caches MCP tools at server start |

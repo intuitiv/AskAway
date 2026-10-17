@@ -51,37 +51,23 @@ You tell the agent what you need. AskAway turns that into a flow you do not have
 
 ## In Action
 
-### From a request to finished work
-
-One plain request, two workers running in parallel, a different worker checking each result, and the cost shown as it goes.
-
-![A request handled by parallel workers, with live status and cost](tasksync-chat/docs/screenshots/workers-flow.gif)
-
 ### AITalk, live
 
-The Agent, a worker and the Validator talking in one workspace room: typing indicators, replies, joins and leaves.
+One room per workspace, with the team by name: Bhaskar (the main agent) asks Priya (the Validator), Anika and Diego join as they pick up work, and you can @mention any of them.
 
-![AITalk room updating live as the Agent, a worker and the Validator join and reply](tasksync-chat/docs/screenshots/aitalk-live.gif)
+![AITalk room with Bhaskar, Priya, Anika and Diego joining, replying and answering a question](tasksync-chat/docs/screenshots/aitalk-live.gif)
 
 ### Team
 
-Every member with model, thinking, cost and an Agent file link. The list scrolls and shows its scrollbar.
+Every member on one screen: model, thinking, cost and an Agent file link. Tasks appear under their owner as work starts and finish, and the list scrolls.
 
-![Team tab scrolling through the members](tasksync-chat/docs/screenshots/team-tab.gif)
-
-### AITalk room
-
-![AITalk room with messages, replies and reactions](tasksync-chat/docs/screenshots/aitalk-room.png)
-
-### Workers
-
-![Workers tab with worker status and cost](tasksync-chat/docs/screenshots/workers-tab.png)
+![Team tab showing members, their costs and tasks starting and finishing during a turn](tasksync-chat/docs/screenshots/team-tab.gif)
 
 ### Trace
 
 ![Trace tab with request and token details](tasksync-chat/docs/screenshots/trace-tab.png)
 
-The side panel tabs are **AITalk**, **Specs**, **Trace**, **Workers** and **Settings**, with one shared cost banner above them.
+The side panel tabs are **AITalk**, **Specs**, **Trace**, **Team** and **Settings**, with one shared cost banner above them.
 
 ## AITalk Room
 
@@ -104,7 +90,7 @@ The workspace group chat. The Agent joins when a turn starts and leaves when it 
 
 - Workers run through OpenCode on one shared local server per workspace and are reused rather than recreated.
 - Warm workers get a cheap keep-alive ping (at most four) so their context is not lost.
-- The **Workers** tab shows state, cost, tokens, tool trace and a link to each live session; the shared banner and Telegram show worker spend.
+- The **Team** tab shows each member's tasks with state, cost, tokens, tool trace and a link to each live session; the shared banner and Telegram show worker spend.
 - A side channel lets you look inside a running worker, nudge it, or ask a side question without derailing the main agent.
 - Setup: [Workers setup guide](tasksync-chat/docs/WORKERS_SETUP.md).
 

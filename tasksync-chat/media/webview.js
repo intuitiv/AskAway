@@ -3325,14 +3325,18 @@
         var main = member.kind === 'main';
         var controlsHtml = main
             ? '<span class="team-member-profile">Chat agent: <code class="worker-state">' + workersEsc(member.profile) + '</code></span>' +
-                '<span class="team-member-profile" data-main-model="' + workersEsc(member.id) + '">Model: ' + workersEsc(member.model ? workerShortModel(member.model) : 'chat model') + '</span>' +
-                '<a href="#" class="team-agent-file-link" data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-member-kind="main" data-profile="" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>'
+                '<span class="team-member-profile" data-main-model="' + workersEsc(member.id) + '">Model: ' + workersEsc(member.model ? workerShortModel(member.model) : 'chat model') + '</span>'
             : '<span class="team-member-profile">Profile: <code class="worker-state">' + workersEsc(member.profile) + '</code></span>' +
                 '<label class="team-control-field"><span class="team-control-label">Model</span>' +
                 '<select class="team-model-select" data-member-id="' + workersEsc(member.id) + '" data-member-model="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' model">' + modelOptions + '</select></label>' +
                 '<label class="team-control-field"><span class="team-control-label">Thinking</span>' +
-                '<select class="team-thinking-select" data-member-id="' + workersEsc(member.id) + '" data-member-thinking="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' thinking effort">' + thinkingOptions + '</select></label>' +
-                '<a href="#" class="team-agent-file-link" data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>';
+                '<select class="team-thinking-select" data-member-id="' + workersEsc(member.id) + '" data-member-thinking="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' thinking effort">' + thinkingOptions + '</select></label>';
+        // Agent file and Edit are the same kind of small chip on the same bottom row of every member card.
+        var agentLinkHtml = main
+            ? '<a href="#" class="team-agent-file-link" data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-member-kind="main" data-profile="" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>'
+            : '<a href="#" class="team-agent-file-link" data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>';
+        var actionsHtml = '<div class="team-member-actions">' + agentLinkHtml +
+            '<button type="button" class="team-edit-member-btn" data-edit-member="' + workersEsc(member.id) + '" title="Edit ' + workersEsc(member.name) + '">Edit</button></div>';
         return '<div class="team-member-row' + (highlighted ? ' team-member-row-highlighted is-highlighted' : '') + (status.dotState === 'running' ? ' is-working' : '') + '" data-member-id="' + workersEsc(member.id) + '" data-member-row="' + workersEsc(member.id) + '"' +
             (member.pinned ? ' data-pinned="true"' : main ? ' data-main-agent="true"' : ' data-active-member-row="' + workersEsc(member.id) + '"') +
             (highlighted ? ' data-highlighted="true"' : '') + '>' +
@@ -3346,9 +3350,9 @@
             '</span>' +
             '<span class="team-member-status team-status-' + (status.dotState === 'running' ? 'working' : 'idle') + '" data-status-state="' + (status.dotState === 'running' ? 'working' : 'idle') + '">● ' + workersEsc(status.label) + '</span>' +
             '<span class="team-member-cost" data-member-cost="' + workersEsc(member.id) + '" data-turn-cost="' + turnCostText + '" data-month-cost="' + monthCostText + '">Turn <strong class="team-cost-turn">' + turnCostText + '</strong> &middot; Month <strong class="team-cost-month">' + monthCostText + '</strong></span>' +
-            '<button type="button" class="form-btn team-edit-member-btn" data-edit-member="' + workersEsc(member.id) + '" title="Edit ' + workersEsc(member.name) + '">Edit</button>' +
             '</div>' +
             '<div class="team-member-controls">' + controlsHtml + '</div>' +
+            actionsHtml +
             '</div>' +
             (main ? '' : '<div class="team-member-tasks-col"><button type="button" class="team-tasks-pill' + (tasksOpen ? ' expanded' : '') + '" data-member-tasks-toggle="' + workersEsc(member.id) + '" data-toggle-tasks="' + workersEsc(member.id) + '" data-toggle-trace="' + workersEsc(member.id) + '" aria-expanded="' + (tasksOpen ? 'true' : 'false') + '">' + pillLabel + '</button></div>') +
             '</div>' +

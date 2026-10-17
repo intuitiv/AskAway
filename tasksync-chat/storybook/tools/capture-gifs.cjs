@@ -23,24 +23,30 @@ const THEME = `:root {
     --vscode-scrollbarSlider-background: rgba(121,121,121,.4); --vscode-scrollbarSlider-hoverBackground: rgba(100,100,100,.7);
 } body { background: #1f1f1f; }`;
 
+// Both clips replay the Team story's 40 s turn with the real Team names: Bhaskar (main agent) asks Priya (validator),
+// Anika, Diego and Tara pick up tasks, and the user @-mentions Diego. AITalk shows the conversation; Team shows the members.
+const panelScroll = page => page.evaluate(() => (document.getElementById('panel-team') || {}).scrollTop || 0);
 const clips = [
-    { name: 'aitalk-live.gif', id: 'aitalk-talk--live-simulation', seconds: 15, fps: 12, width: 420 },
+    { name: 'aitalk-live.gif', id: 'aitalk-team-tab--active-turn', seconds: 36, fps: 10, width: 380, speed: 1.5 },
     {
-        name: 'team-tab.gif', id: 'aitalk-team-tab--active-turn', args: 'activeTab:team', seconds: 13, fps: 10, width: 400,
-        // Scroll the member list down and back up: the visible scrollbar is part of the point.
+        name: 'team-tab.gif', id: 'aitalk-team-tab--active-turn', args: 'activeTab:team', seconds: 42, fps: 8, width: 360, speed: 1.6,
         act: async page => {
-            await page.mouse.move(450, 520);
-            await page.waitForTimeout(1500);
-            for (let i = 0; i < 14; i++) { await page.mouse.wheel(0, 70); await page.waitForTimeout(110); }
-            const down = await page.evaluate(() => (document.getElementById('panel-team') || {}).scrollTop);
-            assert.ok(down > 100, 'the Team list really scrolls');
-            await page.waitForTimeout(900);
-            for (let i = 0; i < 14; i++) { await page.mouse.wheel(0, -70); await page.waitForTimeout(110); }
-            assert.ok(await page.evaluate(() => (document.getElementById('panel-team') || {}).scrollTop) < down, 'the list scrolled back up');
-            await page.waitForTimeout(1500);
+            const at = async seconds => { await page.waitForTimeout(Math.max(0, seconds * 1000 - (Date.now() - started))); };
+            const started = Date.now();
+            await page.mouse.move(210, 420);
+            // Diego picks up two tasks at ~16 s: open them, then scroll the list so the scrollbar is seen.
+            await at(18);
+            await page.locator('[data-member-tasks-toggle="diego"]').click();
+            await at(21);
+            for (let i = 0; i < 12; i++) { await page.mouse.wheel(0, 60); await page.waitForTimeout(100); }
+            assert.ok(await panelScroll(page) > 100, 'the Team list really scrolls');
+            await at(25);
+            for (let i = 0; i < 12; i++) { await page.mouse.wheel(0, -60); await page.waitForTimeout(100); }
+            await page.locator('[data-member-tasks-toggle="diego"]').click();
+            // Tara verifies at ~32 s and the tasks complete at ~36 s.
+            await at(41);
         },
     },
-    { name: 'workers-flow.gif', id: 'askaway-sample-conversation--replay', viewport: { width: 1200, height: 860 }, seconds: 34, fps: 8, width: 880, speed: 2 },
 ];
 
 function ffmpeg(args) {
@@ -82,7 +88,7 @@ function encode(clip, recorded, destination) {
     const speed = clip.speed || 1;
     const filter = `crop=${w}:${h}:${x}:${y},setpts=PTS/${speed},fps=${clip.fps},scale=${clip.width}:-2:flags=lanczos`;
     ffmpeg(['-ss', String(recorded.readyAt + 0.2), '-i', recorded.file, '-t', String(clip.seconds / speed),
-        '-vf', `${filter},split[a][b];[a]palettegen=max_colors=80:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+        '-vf', `${filter},split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
         '-loop', '0', destination]);
 }
 

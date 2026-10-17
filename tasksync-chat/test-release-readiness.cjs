@@ -10,7 +10,7 @@ const repo = path.join(root, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
 // README GIFs: linked from both READMEs, real GIF files, small enough for a Marketplace page.
-const gifs = ['workers-flow.gif', 'aitalk-live.gif', 'team-tab.gif'];
+const gifs = ['aitalk-live.gif', 'team-tab.gif'];
 for (const [readme, base] of [['README.md', 'tasksync-chat/docs/screenshots/'], ['tasksync-chat/README.md', 'https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/']]) {
     const text = fs.readFileSync(path.join(repo, readme), 'utf8');
     for (const gif of gifs) { assert.ok(text.includes(`](${base}${gif})`), `${readme} shows ${gif}`); }
@@ -21,6 +21,16 @@ for (const gif of gifs) {
     assert.match(bytes.subarray(0, 6).toString('latin1'), /^GIF8[79]a$/, `${gif} is a GIF`);
     assert.ok(bytes.length > 100 * 1024 && bytes.length < 4 * 1024 * 1024, `${gif} is ${(bytes.length / 1048576).toFixed(2)} MB (want 0.1-4 MB)`);
     assert.ok(bytes.readUInt16LE(6) >= 300, `${gif} is at least 300px wide`);
+}
+
+// There is no Workers tab: workers live under their owner in Team, so the docs must not point people at one.
+for (const doc of ['README.md', 'tasksync-chat/README.md', 'tasksync-chat/docs/WORKERS_SETUP.md']) {
+    assert.ok(!/workers\W{0,4} tab/i.test(fs.readFileSync(path.join(repo, doc), 'utf8')) && !fs.readFileSync(path.join(repo, doc), 'utf8').includes('**Workers**'), `${doc} does not name Workers as a tab`);
+}
+for (const gone of ['workers-flow.gif', 'workers-tab.png', 'aitalk-room.png']) {
+    for (const readme of ['README.md', 'tasksync-chat/README.md']) {
+        assert.ok(!fs.readFileSync(path.join(repo, readme), 'utf8').includes(gone), `${readme} no longer shows ${gone}`);
+    }
 }
 
 // Package contents (what a consumer installs).
@@ -42,4 +52,4 @@ assert.ok(/^\d+\.\d+\.\d+$/.test(pkg.version), 'the version is plain semver');
 const changelog = fs.readFileSync(path.join(repo, 'CHANGELOG.md'), 'utf8');
 assert.ok(changelog.includes(`## AskAway v${pkg.version} `), `CHANGELOG has a section for v${pkg.version}`);
 assert.ok(!/^## Unreleased/m.test(changelog), 'no Unreleased heading remains once the release section exists');
-console.log(`PASS EV-RELEASE-READINESS version=${pkg.version} files=${files.length} gifs=3 contributed=${pkg.contributes.chatSkills.length + pkg.contributes.chatPromptFiles.length}`);
+console.log(`PASS EV-RELEASE-READINESS version=${pkg.version} files=${files.length} gifs=${gifs.length} contributed=${pkg.contributes.chatSkills.length + pkg.contributes.chatPromptFiles.length}`);

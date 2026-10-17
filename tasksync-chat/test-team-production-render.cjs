@@ -748,11 +748,19 @@ const sampleState = {
     const select = doc.querySelector('[data-member-model="anika"]');
     assert(select.textContent.includes('Claude Opus 5.5') && select.textContent.includes('Sol 6.1'));
     assert(!select.textContent.includes('github-copilot/'));
-    assert(doc.querySelector('[data-edit-member="anika"]').classList.contains('form-btn'));
+    // Every member card ends with one actions row holding the Agent file link and Edit as the same kind of chip.
+    for (const row of doc.querySelectorAll('.team-member-row')) {
+        const actions = row.querySelector('.team-member-actions');
+        assert(actions, `${row.getAttribute('data-member-id')} has an actions row`);
+        const kinds = actions.children.filter(c => c.tagName).map(c => c.className.split(' ')[0]);
+        assert.deepEqual(kinds, ['team-agent-file-link', 'team-edit-member-btn'], 'Agent file then Edit, on every card');
+        assert(!row.querySelector('.team-member-headline [data-edit-member]'), 'Edit is no longer inside the wrapping headline');
+        assert(!row.querySelector('.form-btn.team-edit-member-btn'), 'Edit is the small chip, not the large form button');
+    }
     assert(doc.querySelector('.team-member-profile code').classList.contains('worker-state'));
     assert(!doc.getElementById('workers-list').innerHTML.includes('Shared OpenCode server'));
     const css = fs.readFileSync(path.join(__dirname, 'media/team/team.css'), 'utf8');
-    assert(/min-width:\s*220px/.test(css));
+    assert(/min-width:\s*min\(220px, 100%\)/.test(css), 'the model select is wide when there is room and never overflows the card');
     assert(!/11\.5px|10\.5px|\.widget-tab\.tab-btn/.test(css));
     const story = fs.readFileSync(path.join(__dirname, 'storybook/prototypes/team.js'), 'utf8');
     assert(story.includes('getWorkersKit().wireTeamEvents(host'));

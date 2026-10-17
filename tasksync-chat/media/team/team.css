@@ -232,6 +232,7 @@ body.vscode-light #panel-team {
 }
 
 .team-member-row {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	width: 100%;
@@ -255,7 +256,7 @@ body.vscode-light #panel-team {
 
 .team-member-row-main {
 	display: grid;
-	grid-template-columns: 72px minmax(0, 1fr) auto;
+	grid-template-columns: 72px minmax(0, 1fr);
 	gap: 10px;
 	align-items: start;
 }
@@ -292,10 +293,12 @@ body.vscode-light #panel-team {
 
 .team-member-headline {
 	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 6px;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 3px;
 	line-height: 1.25;
+	/* Room for the tasks pill in the card's top-right corner. */
+	padding-right: 92px;
 }
 
 .team-member-identity {
@@ -346,8 +349,34 @@ body.vscode-light #panel-team {
     font-size: var(--team-font-small);
 }
 
-.team-edit-member-btn {
-	margin-left: auto;
+/* Agent file and Edit: the same small chip, side by side on the last row of every card. */
+.team-member-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 2px;
+}
+
+.team-member-row .team-edit-member-btn {
+	appearance: none;
+	display: inline-flex;
+	align-items: center;
+	height: 22px;
+	padding: 2px 10px;
+	font-family: inherit;
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 1;
+	color: var(--vscode-foreground);
+	background: var(--team-surface-elevated);
+	border: 1px solid var(--vscode-input-border, var(--team-border));
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.team-member-row .team-edit-member-btn:hover {
+	border-color: var(--team-accent);
 }
 
 .team-member-edit-form {
@@ -401,9 +430,10 @@ body.vscode-light #panel-team {
 
 
 .team-control-field {
-	display: inline-flex;
+	display: flex;
 	align-items: center;
-	gap: 4px;
+	gap: 6px;
+	width: 100%;
 	max-width: 100%;
 	font-size: 11px;
 	color: var(--vscode-descriptionForeground);
@@ -423,10 +453,14 @@ body.vscode-light #panel-team {
 	cursor: pointer;
 }
 
+.team-control-label {
+	flex: 0 0 52px;
+}
+
 .team-model-select {
-    min-width: 220px;
-    flex: 1 1 220px;
-    width: 100%;
+	flex: 1 1 auto;
+	min-width: min(220px, 100%);
+	width: 100%;
 }
 
 .team-thinking-select {
@@ -452,8 +486,11 @@ body.vscode-light #panel-team {
 	border-color: var(--team-accent);
 }
 
-/* Right: compact [n tasks ▸] pill */
+/* Top-right corner of every card: compact [n tasks ▸] pill. It floats so the controls below get the full width. */
 .team-member-tasks-col {
+	position: absolute;
+	top: 10px;
+	right: 12px;
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;

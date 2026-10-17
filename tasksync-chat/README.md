@@ -24,38 +24,24 @@ Team lists every member, idle ones included (Priya first, then the main agent, t
 | Pillar | What you get |
 |--------|--------------|
 | **Spec-based development** | Dictate a requirement. AskAway drives Spec Kit behind the scenes (specify, clarify, plan, tasks, implement, check) and the **Specs** tab shows the stage, user stories and tasks. You only answer questions and approve three gates: what, how, done. |
-| **OpenCode workers** | Detail work goes to reusable [OpenCode](https://opencode.ai) workers that run in parallel, so the main conversation stays short and cheap. Each worker shows state, cost and a link to its live session in the **Workers** tab. |
+| **OpenCode workers** | Detail work goes to reusable [OpenCode](https://opencode.ai) workers that run in parallel, so the main conversation stays short and cheap. Each worker shows state, cost and a link to its live session under its owner in the **Team** tab. |
 | **AITalk room** | One WhatsApp-style group chat per workspace: you, the Agent, the Validator and the workers. Message them, `@mention` them, reply and react, with sent / delivered / read ticks and presence. |
 | **Telegram and Webex** | Everything that happens in VS Code can reach your phone, and you can answer from there. Webex messages can be drafted in AITalk and sent only after you approve. |
 | **Cost and trace** | Live per-turn and monthly cost, tokens, cache hit, worker share and an efficiency score, plus a trace of every request and tool call. |
 
 ## In Action
 
-### From a request to finished work
-
-One plain request, two workers running in parallel, a different worker checking each result, and the cost shown as it goes.
-
-![A request handled by parallel workers, with live status and cost](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/workers-flow.gif)
-
 ### AITalk, live
 
-The Agent, a worker and the Validator talking in one workspace room: typing indicators, replies, joins and leaves.
+One room per workspace, with the team by name: Bhaskar (the main agent) asks Priya (the Validator), Anika and Diego join as they pick up work, and you can @mention any of them.
 
-![AITalk room updating live as the Agent, a worker and the Validator join and reply](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/aitalk-live.gif)
+![AITalk room with Bhaskar, Priya, Anika and Diego joining, replying and answering a question](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/aitalk-live.gif)
 
 ### Team
 
-Every member with model, thinking, cost and an Agent file link. The list scrolls and shows its scrollbar.
+Every member on one screen: model, thinking, cost and an Agent file link. Tasks appear under their owner as work starts and finish, and the list scrolls.
 
-![Team tab scrolling through the members](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/team-tab.gif)
-
-### AITalk room
-
-![AITalk room with messages, replies and reactions](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/aitalk-room.png)
-
-### Workers
-
-![Workers tab with worker status and cost](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/workers-tab.png)
+![Team tab showing members, their costs and tasks starting and finishing during a turn](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/team-tab.gif)
 
 ### Trace
 
@@ -89,10 +75,10 @@ Workers are background agents run through [OpenCode](https://opencode.ai) on one
 
 - Delegated and run in parallel, so detail work does not bloat the main conversation.
 - Reused and kept warm with a cheap keep-alive ping (up to four per worker) so their context is not recreated.
-- Each worker's cost, tokens, tool trace and session link live in the **Workers** tab and in the shared banner.
+- Each worker's cost, tokens, tool trace and session link live under their owner in the **Team** tab and in the shared banner.
 - Side channel: look inside a running worker, nudge it, or ask a side question without derailing the main agent.
 
-Workers need OpenCode and at least one worker profile; see the [Workers setup guide](docs/WORKERS_SETUP.md). Without them, the tab stays empty.
+Workers need OpenCode and at least one worker profile; see the [Workers setup guide](docs/WORKERS_SETUP.md). Without them, the Team tab shows the members idle.
 
 ## Telegram and Webex
 
