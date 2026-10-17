@@ -202,6 +202,12 @@ const disallowedEvents = norm({
 });
 assert.ok(disallowedEvents.some((e) => e.type === 'error' && e.outOfPolicy === true && /askaway_gradle/.test(e.error.message)), 'out-of-policy MCP tool must emit outOfPolicy error');
 
+// The approval wrapper's own audit step (tool_name askaway_approval) never fails a run; a model calling an MCP tool of that name still does.
+const wrapperEvents = norm({ event: 'step_update', step_update: { conversation_id: 'conv-norm', step_index: 4, step_type: 'tool', state: 'DONE', tool_name: 'askaway_approval', tool_info: { parameters: { CommandLine: 'node -e 1', decision: 'allow' }, output: '' } } });
+assert.ok(!wrapperEvents.some((e) => e.type === 'error'), 'the approval wrapper audit step must not be out-of-policy');
+const mcpApproval = norm({ event: 'step_update', step_update: { conversation_id: 'conv-norm', step_index: 5, step_type: 'tool', state: 'DONE', tool_name: 'call_mcp_tool', tool_info: { parameters: { ServerName: 'askaway', ToolName: 'approval' }, output: '' } } });
+assert.ok(mcpApproval.some((e) => e.type === 'error' && e.outOfPolicy === true), 'an MCP tool named approval is still checked against the profile');
+
 // (c) End-to-end agy run: receives profile instructions in its first prompt, fails on out-of-policy askaway_X tool call
 // (including when a profile has no mcp list), and leaves OpenCode error + Result: PASS behavior unchanged.
 const noMcpProfile = parseWorkerProfile(`---

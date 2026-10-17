@@ -175,7 +175,9 @@ export function agyEventNormalizer(allowedMcp: readonly string[] = []): (event: 
                     out.push({ ...base, part: { tool, callID: `step-${index}`, state: { status: state === 'DONE' ? 'completed' : 'error', input: info.parameters, output: info.output, time: ms ? { start: 1, end: 1 + ms } : {} } } });
                 }
                 // Post-hoc check: fires on the streamed tool step after the tool already ran.
-                if (tool.startsWith('askaway_') && !isAllowedAgyMcpTool(tool, allowedMcp)) {
+                // `askaway_approval` named directly is the approval wrapper's own audit step, not an MCP call the model made.
+                const wrapperAudit = name === 'askaway_approval';
+                if (tool.startsWith('askaway_') && !wrapperAudit && !isAllowedAgyMcpTool(tool, allowedMcp)) {
                     out.push({ ...base, type: 'error', outOfPolicy: true, error: { message: `agy called out-of-policy MCP tool ${tool} (allowed: ${allowedMcp.join(', ') || 'none'})` } });
                 }
             }
