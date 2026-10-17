@@ -49,3 +49,13 @@ AskAway.code-workspace
 
 # Include askaway resources for bundling in VSIX
 !askaway-resources/**
+
+# Test output and caches that tests leave in the working folder (tens of thousands of files)
+build/**
+.webex-cache/**
+test-fixtures/**
+.test-fixtures/**
+.*-build/**
+.askaway/**
+.gate.tmp
+docs/screenshots/**

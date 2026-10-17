@@ -2,7 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## AskAway v2.3.0 (10-17-26)
+- **Works with VS Code 1.140+ (the Copilot harness) and keeps working on older versions.** Hooks, `/sk.*` commands, Trace and credits, agy workers and the Team tab were checked against the new harness; details in the entries below and ADR 0026.
+- **`/sk.handoff` now captures everything the next conversation needs:** where we are, done with evidence, assumptions, decisions and rules in force, learnings, observations, what is not finished, and what to pick up next (R-SKFLOW-26).
+- **Team scrollbar:** the Team list now shows an always-visible scrollbar (macOS hides overlay scrollbars until you scroll), and the Storybook Team story scrolls instead of clipping (R-TEAM-39).
+- **agy workers:** the approval wrapper's own audit step is no longer reported as an out-of-policy tool call.
+- **README GIFs:** three GIFs recorded from the real UI (a request handled by parallel workers, the live AITalk room, the Team tab); `node storybook/tools/capture-gifs.cjs` regenerates them.
+- **Smaller package:** test output and screenshots no longer ship in the `.vsix` (test output had grown to about 33,000 files).
 - **Hooks and /sk.* work in the VS Code 1.140+ Copilot harness (2026-10-17):** that harness runs `~/.copilot/hooks` inside the session sandbox, where AskAway's scripts failed with exit 126 and the fail-closed `preToolUse` hook denied every tool call. Every AskAway hook command now exits 0 when its script cannot start, and the extension grants the sandbox the AskAway paths its hooks use (`chat.agent.sandbox.fileSystem.userConfiguredPaths`). `/sk.*` now ship through the extension's `chatPromptFiles` and `chatSkills` contributions (Local: `/sk.plan`; Copilot harness: `/sk-plan`, skill names cannot contain dots) plus Claude commands, and the old copies in `~/.copilot/skills` are removed; the conversation hooks now ship in the package. See ADR 0026.
 - **Trace, credits, turn budget and handoff work in the Copilot harness (2026-10-17):** that harness writes `~/.copilot/session-state/*/events.jsonl` instead of `debug-logs/main.jsonl`, so Trace was empty. The extension now converts this workspace's sessions into the main.jsonl format every reader already uses, appending as they grow (R-TRACE-06).
 - **Team, Integrations and profiles (2026-10-16, deployed locally):** Edit opens the member's profile form (name, role, status line, picture) instead of the prompt; Settings → Integrations shows OpenCode, agy and Claude with one switch, one Refresh and a last-checked time each; agy ships on again; Turn cost comes from the same records `turn_budget` counts; the worker tool's `profiles` action lists the enabled profiles; Build splits into `build` (Opus) and `build-lite` (Sol); join/leave notices no longer stretch your photo; main-agent commentary reaches AITalk even when the room refuses a line.

@@ -31,6 +31,24 @@ Team lists every member, idle ones included (Priya first, then the main agent, t
 
 ## In Action
 
+### From a request to finished work
+
+One plain request, two workers running in parallel, a different worker checking each result, and the cost shown as it goes.
+
+![A request handled by parallel workers, with live status and cost](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/workers-flow.gif)
+
+### AITalk, live
+
+The Agent, a worker and the Validator talking in one workspace room: typing indicators, replies, joins and leaves.
+
+![AITalk room updating live as the Agent, a worker and the Validator join and reply](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/aitalk-live.gif)
+
+### Team
+
+Every member with model, thinking, cost and an Agent file link. The list scrolls and shows its scrollbar.
+
+![Team tab scrolling through the members](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/team-tab.gif)
+
 ### AITalk room
 
 ![AITalk room with messages, replies and reactions](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/aitalk-room.png)

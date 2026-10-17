@@ -780,3 +780,11 @@ The Copilot harness stopped writing `debug-logs/main.jsonl`; the extension now c
 > i dont see scroll bar in team tab
 
 The Team list now shows a styled, always-visible scrollbar (R-TEAM-39).
+
+### 2026-10-17, handoff, release and README GIFs
+
+> `sk-handoff`, should always capture whats done, what are the assumptions, what are the elarnings, osbervations, and whats completed, and what to pick next, so that we can continue in next conversation. update the prompt of it accordingly.
+> MAke sure that we get ready to publish a new version so that my consumers are not blocked with new vscode update.
+> Capture gifs for marketplace read me file.
+
+`/sk.handoff` now follows that structure (R-SKFLOW-26).
