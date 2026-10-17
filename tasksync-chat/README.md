@@ -13,13 +13,13 @@ You say what you need in plain words. AskAway runs it through Spec Kit, hands th
 
 ## What AskAway Does
 
-**Team tab (deployed locally, 2026-10-16):** every member shows in Team with model and thinking dropdowns, an Agent file link to the prompt, and an Edit form for name, role, status line and picture (kept in `~/.askaway/team/`, never in the package). Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked; OpenCode and agy start on. Build has two members: a high-intelligence one (Opus) and a low-intelligence one (Sol). The main agent's progress lines also appear in AITalk.
+**Your team, by name.** Every member shows in the Team tab with model and thinking dropdowns, an Agent file link to the prompt, and an Edit form for name, role, status line and picture (kept in `~/.askaway/team/`, never in the package). Idle members stay visible, Priya (the Validator) first, then the main agent, then the roster; cold or retired tasks hide unless Show completed is on. Build has two members, a high-intelligence one (Opus) and a low-intelligence one (Sol). The main agent's progress lines also appear in AITalk.
 
-**Argon High prototype, not production Team UI:** eight user-level profiles and the Webex profile default to `agy/gemini-4-argon-high`, replacing prior Sol defaults while preserving Opus assignments. With explicit per-run approval, Argon authored the interactive Team/AITalk Storybook prototype, reusing the production chat and usage banner. Focused prototype tests pass; desktop/mobile and animation acceptance are tracked in spec 010. Earlier headless permission failures are historical, not the current authoring status. Live MCP and full post-reload runtime acceptance remain open; monetary cost is unreported, not 0/free.
+**Members of your own.** Add `member:` and `role:` to a profile in `~/.askaway/worker-profiles/` and Team shows them, for example a rules-authoring expert. They stay out of the extension itself.
 
-AITalk reads the externally stored `~/.askaway/profile/avatar.png` by default, supports an explicit photo override, and falls back to initials if the file is unavailable; it does not copy the photo into workspaces. Caller-view tests cover two workspaces and shared-header image rendering. This fix is deployed locally; reload VS Code to load it. Team UI integration, upgrade/privacy acceptance and Storybook approval remain pending.
+**Runtimes.** Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked. OpenCode and agy start on. agy runs the `agy/gemini-4-argon-high` family; agy reports no cost, so its tasks show $0 rather than a price.
 
-Team lists every member, idle ones included (Priya first, then the main agent, then the roster); cold or retired tasks hide unless Show completed is on. Members specific to you, such as a rules-authoring expert, stay out of the extension: add `member:` and `role:` to a profile in `~/.askaway/worker-profiles/` and Team shows them.
+**Your picture.** AITalk reads `~/.askaway/profile/avatar.png` by default, supports an explicit photo override, and falls back to initials. The photo is never copied into a workspace.
 
 | Pillar | What you get |
 |--------|--------------|

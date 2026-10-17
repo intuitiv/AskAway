@@ -84,7 +84,7 @@ const packetShape = {
     command: z.string().min(1).regex(/^(?!\s*cd\s)[^&|;<>]+$/, 'one simple command from the repo root, no cd/&&/|/;/redirects')
         .describe('One simple verification command run from the repo root, e.g. `rtk npm --prefix tasksync-chat run test:workers`. No cd, &&, |, ; or redirects.'),
     estimatedSeconds: z.number().positive().optional(),
-    track: z.string().max(24).optional().describe('Your plan\'s track for this packet, e.g. "A"; the Workers tab shows one lane per track.'),
+    track: z.string().max(24).optional().describe('Your plan\'s track for this packet, e.g. "A"; it is kept in the worker state with the task.'),
     workspacePath: z.string().optional().describe('Defaults to the current workspace.'),
 };
 

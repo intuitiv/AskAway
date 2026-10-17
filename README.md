@@ -33,11 +33,13 @@
 
 ## What AskAway Does
 
-**Team tab (deployed locally, 2026-10-16):** every member shows in Team with model and thinking dropdowns, an Agent file link to the prompt, and an Edit form for name, role, status line and picture (kept in `~/.askaway/team/`, never in the package). Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked; OpenCode and agy start on. Build has two members: a high-intelligence one (Opus) and a low-intelligence one (Sol). The main agent's progress lines also appear in AITalk.
+**Your team, by name.** Every member shows in the Team tab with model and thinking dropdowns, an Agent file link to the prompt, and an Edit form for name, role, status line and picture (kept in `~/.askaway/team/`, never in the package). Idle members stay visible, Priya (the Validator) first, then the main agent, then the roster; cold or retired tasks hide unless Show completed is on. Build has two members, a high-intelligence one (Opus) and a low-intelligence one (Sol). The main agent's progress lines also appear in AITalk.
 
-**Configured defaults, not release proof:** the eight user-level worker profiles and the repo Webex worker profile now default to `agy/gemini-4-argon-high` with high thinking, replacing Sol 6.1 where it was the default; existing Opus assignments remain. `test-worker-profile-refresh.cjs` covers profile parsing and preservation of an existing worker. A live Argon High task and deployment verification remain open. Optional `agy` runtime proof for MCP, shell permissions, reload without OpenCode, token reconciliation and final gate/deploy also remains open. Monetary cost is unreported, not 0/free; no completed runtime release or shipped Team UI is claimed.
+**Members of your own.** Add `member:` and `role:` to a profile in `~/.askaway/worker-profiles/` and Team shows them, for example a rules-authoring expert. They stay out of the extension itself.
 
-The CPO photo helper reads the externally stored `~/.askaway/profile/avatar.png` by default, supports an explicit photo override, and falls back to initials when the file is unavailable; it does not copy the image into a workspace. The caller-view helper test covers two workspaces. Team UI integration, upgrade/privacy acceptance and Storybook approval remain pending.
+**Runtimes.** Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked. OpenCode and agy start on. agy runs the `agy/gemini-4-argon-high` family; agy reports no cost, so its tasks show $0 rather than a price.
+
+**Your picture.** AITalk reads `~/.askaway/profile/avatar.png` by default, supports an explicit photo override, and falls back to initials. The photo is never copied into a workspace.
 
 You tell the agent what you need. AskAway turns that into a flow you do not have to manage:
 

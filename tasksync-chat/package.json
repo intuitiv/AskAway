@@ -716,7 +716,7 @@
             "track": {
               "type": "string",
               "maxLength": 24,
-              "description": "Your plan's track for this packet, e.g. \"A\"; the Workers tab shows one lane per track."
+              "description": "Your plan's track for this packet, e.g. \"A\"; it is kept in the worker state with the task."
             },
             "workspacePath": {
               "type": "string",
@@ -802,7 +802,7 @@
                   "track": {
                     "type": "string",
                     "maxLength": 24,
-                    "description": "Your plan's track for this packet, e.g. \"A\"; the Workers tab shows one lane per track."
+                    "description": "Your plan's track for this packet, e.g. \"A\"; it is kept in the worker state with the task."
                   },
                   "workspacePath": {
                     "type": "string",
