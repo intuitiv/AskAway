@@ -774,3 +774,9 @@ Hooks fail open and get sandbox grants; `/sk.*` ship per harness (R-TOOLS-03, R-
 > i reloaded. now trace tab should show me the actual data.
 
 The Copilot harness stopped writing `debug-logs/main.jsonl`; the extension now converts its session events for the same readers (R-TRACE-06).
+
+### 2026-10-17, Team scrollbar
+
+> i dont see scroll bar in team tab
+
+The Team list now shows a styled, always-visible scrollbar (R-TEAM-39).

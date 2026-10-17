@@ -187,5 +187,14 @@ function loadTsModule(filePath, extraMocks = {}) {
         '#panel-team must use width: 100% in team.css to match other tabs (R-TEAM-31)'
     );
 
-    console.log('PASS EV-TEAM-SHELL (tabs, #panel-team, roster, workersState members, agy $0 cost, team.css scoping)');
+    // R-TEAM-39: macOS overlay scrollbars only show while scrolling (measured 0px wide in Chrome), so the Team list
+    // needs a styled, always-visible scrollbar. scrollbar-width would switch that styling off.
+    const mainCss = fs.readFileSync(path.join(root, 'media', 'main.css'), 'utf8');
+    const rule = (selector) => (mainCss.match(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}')) || [])[1] || '';
+    assert.match(rule('.workers-list'), /overflow-y:\s*auto/, 'the Team list scrolls');
+    assert.doesNotMatch(rule('.workers-list'), /scrollbar-width/, 'scrollbar-width would switch the styled scrollbar off');
+    assert.match(rule('.workers-list::-webkit-scrollbar'), /width:\s*10px/, 'the Team list has a classic 10px scrollbar');
+    assert.match(rule('.workers-list::-webkit-scrollbar-thumb'), /scrollbarSlider/, 'the thumb uses the theme colour');
+
+    console.log('PASS EV-TEAM-SHELL (tabs, #panel-team, roster, workersState members, agy $0 cost, team.css scoping, visible Team scrollbar)');
 })();

@@ -2430,7 +2430,13 @@ body[class*="avail-"]::before, .availability-frame::before {
 /* The Team panel scrolls like the other tabs: shell fills the panel, header stays, list takes the rest and scrolls. */
 .workers-shell { display: flex; flex-direction: column; flex: 1; gap: 6px; min-height: 0; }
 .workers-header { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 8px; min-height: 28px; }
-.workers-list { display: flex; flex-direction: column; flex: 1; gap: 6px; min-height: 0; overflow-y: auto; }
+.workers-list { display: flex; flex-direction: column; flex: 1; gap: 6px; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+/* macOS draws overlay scrollbars that only show while scrolling, so the Team list looked unscrollable. A styled
+   ::-webkit-scrollbar turns on a classic always-visible one, as in Settings. No scrollbar-width here: it would switch the styling off. */
+.workers-list::-webkit-scrollbar { width: 10px; }
+.workers-list::-webkit-scrollbar-track { background: transparent; }
+.workers-list::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+.workers-list::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground); background-clip: padding-box; }
 .workers-server { font-size: 11px; opacity: 0.8; }
 .workers-summary { font-size: 12px; }
 .workers-lane { font-size: 11px; font-weight: 600; padding: 4px 2px 0; border-bottom: 1px solid var(--vscode-panel-border); }
