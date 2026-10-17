@@ -7,6 +7,12 @@ description: Generate compact executable tasks and navigable task details for th
 
 Require a resolved Decision Register and Cloud Worker Packet. Generate tasks executable by a fresh local or cloud worker without chat history. Follow .specify/templates/tasks-template.md: Setup, Foundational, one phase per [USn] with Independent Test + Checkpoint, then Polish. Mark independent parallel work [P]. Use short plain-language task titles; put execution details in task-details.md rather than repeating the template.
 
+Steps:
+1. Read plan.md (Decision Register and Cloud Worker Packet), spec.md and the active feature's task template. If the plan is not ready, stop and route to /sk.plan or /sk.check.
+2. Write tasks.md, one row per task: - [ ] T001 [cloud or local tag] [P] [USn] short plain-language title. primary/file/path. Add AC-TNNN-* acceptance references per the /sk.check rules.
+3. Write task-details.md with one section per task under a heading of the form ## T001 — title: why, files, prerequisites, and the verification (Assert, Verify, Expected). Implementations read only their own section.
+4. Run the task budget below and report its PASS line.
+
 Mark [direct-agent-ready] only for self-contained work with satisfied prerequisites and applicable cloud context. Exclude manual, reviewer-owned, destructive, security-sensitive, unresolved, and externally blocked work. Eligibility is not approval. Use /sk.check for analysis before implementation.
 
 Cloud eligibility: tag every task after its task ID with [cloud] only when it is self-contained, estimated well inside ~45 minutes, has no open questions and needs no local services. Otherwise use [local: <reason>] with the applicable reason: local service, open question, > 45 min, or not self-contained. Keep these tags separate from [direct-agent-ready]. For example: T001 [cloud] [US1] Validate a pure parser; T002 [local: local service] [US1] Verify against a local service. Eligibility only exposes a Queue in cloud affordance; cloud tasks start only on an explicit reviewer request. Never automatically queue eligible tasks or launch them on startup, polling or schedules.

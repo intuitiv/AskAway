@@ -6,7 +6,15 @@ description: Create a new numbered Spec Kit feature without losing the previous 
 
 # /sk.new
 
-Create a new numbered feature from $ARGUMENTS under specs/. Preserve the previous feature_directory until creation succeeds. Keep feature slug, current Git branch, recorded task branch, and explicit cloud base revision separate. Mark genuine [NEEDS CLARIFICATION], activate the new feature, and do not plan or implement.
+Create a new numbered feature from $ARGUMENTS (the reviewer's plain description) under specs/. Preserve the previous feature_directory until creation succeeds. Keep feature slug, current Git branch, recorded task branch, and explicit cloud base revision separate; never derive one from another.
+
+Steps:
+1. Read .specify/feature.json and remember its feature_directory. Do not change it yet.
+2. List specs/ and take the next number (highest NNN + 1, zero padded). Make a short kebab-case slug from the description.
+3. Create specs/NNN-slug/spec.md from .specify/templates/spec-template.md: prioritized user stories (P1 first), each independently testable, with Given/When/Then acceptance scenarios, functional requirements, success criteria, and **Status**: Draft. Write what and why, never how.
+4. Mark every genuine gap as [NEEDS CLARIFICATION: question], at most five. Choose a sensible default for everything else and list it under Assumptions.
+5. Only after the files exist, set feature_directory in .specify/feature.json to the new folder (activate the new feature).
+6. Report the path, the number, the stories found, the open [NEEDS CLARIFICATION] items, and the next command: /sk.check. Do not plan or implement.
 `,
     'sk.start.prompt.md': `---
 agent: AskAway Build
@@ -15,7 +23,15 @@ description: Select a numbered Spec Kit feature and summarize its state.
 
 # /sk.start
 
-Select feature $ARGUMENTS in .specify/feature.json. Report feature directory, current Git branch, recorded task branch, and cloud base revision separately. Do not implement.
+Select feature $ARGUMENTS (a number such as 002, or a slug) in .specify/feature.json and orient. If no argument is given, list specs/ with each spec's stage and ask which one, as a single question.
+
+Steps:
+1. Resolve the argument to exactly one specs/NNN-* folder. If none or several match, list the candidates and stop.
+2. Set feature_directory in .specify/feature.json. Make no other edit.
+3. Report these four separately and never infer one from another: feature directory, current Git branch, recorded task branch, and cloud base revision (say "not set" when none is recorded).
+4. Report the stage the way Spec Kit names it: which of spec.md, plan.md, tasks.md and implementation-log.md exist, whether any derived artifact is older than the one it derives from (stale), open [NEEDS CLARIFICATION] items, open versus done tasks, and the one command to run next (/sk.check, /sk.plan, /sk.tasks, /sk.implement or /sk.continue).
+
+Do not implement.
 `,
     'sk.continue.prompt.md': `---
 agent: AskAway Build
@@ -24,7 +40,13 @@ description: Resume the active Spec Kit feature and pitch its next eligible task
 
 # /sk.continue
 
-Read implementation-log.md before tasks.md. Exclude manual, reviewer-owned, blocked, moved, and deferred work; require prerequisites. Pitch exactly one task with Task, Plan, Value, and Demo.
+Resume the active feature in .specify/feature.json. If the file is missing, say to run /sk.start NNN and stop.
+
+Steps:
+1. Read implementation-log.md before tasks.md: what is done, the evidence, what is blocked and why.
+2. Build the candidate list from unchecked tasks whose prerequisites are done. Exclude manual, reviewer-owned, blocked, moved, and deferred work. Prefer the earliest user story (P1 first); take a [P] task only when its files are independent of work in flight.
+3. If no task is eligible, say why and route: open questions go to /sk.check, a missing plan to /sk.plan, missing tasks to /sk.tasks, everything done to /sk.check for convergence.
+4. Pitch exactly one task with Task (ID and title), Plan (three to five steps and the files), Value (what the reviewer can see), and Demo (the command and its expected result). Stop for approval; once approved, continue with /sk.implement.
 `,
     'sk.plan.prompt.md': `---
 agent: AskAway Build
@@ -36,6 +58,15 @@ description: Plan the active Spec Kit feature after resolving required clarifica
 Require a resolved Decision Register and Cloud Worker Packet usable by a fresh worker without chat history. Name an explicit base commit, tag, or remote ref and exact checkout value; never infer it from feature or branch metadata. Stop on [NEEDS CLARIFICATION], TBD, contradiction, unsupported assumption, or deferred decision. Do not generate tasks.
 
 Follow .specify/templates/plan-template.md. Plan dependencies around user stories and their Given/When/Then scenarios; verify each story's success metrics at its checkpoint. Use /sk.check for the checklist before /sk.tasks.
+
+Steps:
+1. Read spec.md, the constitution, and any research. If a [NEEDS CLARIFICATION] remains, stop and route to /sk.check.
+2. Write plan.md from .specify/templates/plan-template.md: technical context, constitution check, structure, then research.md, data-model.md, contracts/ and quickstart.md where the template calls for them.
+3. Decision Register: one row per technical decision with the options considered, the choice, the reason, who decided (reviewer or agent) and its status. No row may stay open, TBD, or deferred.
+4. Cloud Worker Packet: a section a fresh worker can follow without chat history: the goal, the explicit base (commit, tag, or remote ref plus the exact checkout value), the areas to touch, the build and test commands, the constraints, the secrets rule (never put a secret in a packet), and the definition of done.
+5. Order the user stories and their dependencies. For each story keep its Given/When/Then scenarios, Independent Test, Checkpoint and success metrics. Name which work can run in parallel.
+6. Work beyond the next increment goes under ## Later in plan.md as one-line bullets.
+7. Report the files written, the number of Decision Register rows, the base value, and the next steps: /sk.check (checklist) then /sk.tasks.
 `,
     'sk.tasks.prompt.md': `---
 agent: AskAway Build
@@ -45,6 +76,12 @@ description: Generate compact executable tasks and navigable task details for th
 # /sk.tasks
 
 Require a resolved Decision Register and Cloud Worker Packet. Generate tasks executable by a fresh local or cloud worker without chat history. Follow .specify/templates/tasks-template.md: Setup, Foundational, one phase per [USn] with Independent Test + Checkpoint, then Polish. Mark independent parallel work [P]. Use short plain-language task titles; put execution details in task-details.md rather than repeating the template.
+
+Steps:
+1. Read plan.md (Decision Register and Cloud Worker Packet), spec.md and the active feature's task template. If the plan is not ready, stop and route to /sk.plan or /sk.check.
+2. Write tasks.md, one row per task: - [ ] T001 [cloud or local tag] [P] [USn] short plain-language title. primary/file/path. Add AC-TNNN-* acceptance references per the /sk.check rules.
+3. Write task-details.md with one section per task under a heading of the form ## T001 — title: why, files, prerequisites, and the verification (Assert, Verify, Expected). Implementations read only their own section.
+4. Run the task budget below and report its PASS line.
 
 Mark [direct-agent-ready] only for self-contained work with satisfied prerequisites and applicable cloud context. Exclude manual, reviewer-owned, destructive, security-sensitive, unresolved, and externally blocked work. Eligibility is not approval. Use /sk.check for analysis before implementation.
 
@@ -63,6 +100,16 @@ description: Pitch and implement exactly one Spec Kit task or approved story.
 Require the Decision Register and Cloud Worker Packet. Give the worker only the packet, selected task row, and matching task-details section; never rely on chat history. Follow .specify/templates/tasks-template.md and its story dependencies. Pitch Task/Story, Plan, Value, and Demo unless already approved. Before editing, state the observable assertion, verification command, and exact expected result. Prove execution; zero matched tests is failure.
 
 Check off a task only after its verification passes. At each story Checkpoint, run its Independent Test, prove its Given/When/Then scenarios, and verify its success metrics. [direct-agent-ready] never bypasses approval. Use /sk.check for convergence.
+
+Steps:
+1. Resolve the task: use $ARGUMENTS, otherwise the next eligible task found as /sk.continue does. Read implementation-log.md first.
+2. Pitch it (Task or Story, Plan, Value, Demo) unless the reviewer already approved it, and wait.
+3. Delegate the work to a worker with a self-contained packet: the Cloud Worker Packet, the selected task row, its task-details section, the allowed files, the verification command, and the stop condition. The worker never commits; review its diff yourself.
+4. Before any edit, state the observable assertion, the verification command, and the exact expected result.
+5. Implement with a test written from the caller's point of view, run the verification, and show the real output. Zero tests matched, or a check that did not run, counts as failure.
+6. Only then check the task off and append an entry to implementation-log.md: task ID, files changed, the command, its result, and the date.
+7. At a story Checkpoint run its Independent Test, prove each Given/When/Then scenario and verify its success metrics. Merge through the spec's one active PR; never open a PR per day.
+8. Report what was done with evidence, what is next, and anything blocked.
 `,
     'sk.check.prompt.md': `---
 agent: AskAway Build
@@ -70,6 +117,12 @@ description: Diagnose the active Spec Kit feature and offer approved acceptance 
 ---
 
 # /sk.check
+
+Choose the check that matches the stage the active feature has reached, and say which one you ran:
+- spec.md written: clarify (questions that would change code or tests).
+- plan.md written: checklist (quality of the requirements and plan).
+- tasks.md written: analyze (spec, plan and tasks agree; every requirement has a task).
+- during or after implementation: converge (what is built versus what the spec says).
 
 Inspect the active feature strictly read-only before approval. Before the user answers or approves a route, run no writer. Use Spec Kit's templates under .specify/templates/ for clarification, checklist, analysis, or convergence at the current stage. Find [NEEDS CLARIFICATION], Open Question, placeholders, contradictions, unsupported assumptions, and deferred decisions first. Ask up to five numbered questions; technical answers go into the plan Decision Register via /sk.plan. Report as Story -> Tasks -> Finding with progress and blocked dependents; put unmapped findings under Cross-cutting / Unassigned.
 
@@ -84,7 +137,16 @@ description: Print a no-tool resume checkpoint.
 
 # /sk.handoff
 
-Use only facts already established. Do not call tools or edit files. Report active spec, completed result, latest verification, unfinished work, and one resume command.
+Use only facts already established in this conversation. Do not call tools or edit files.
+
+Print a checkpoint someone can paste into a new chat and continue from:
+- Active spec and stage.
+- Completed: what was finished, with the latest verification command and its result.
+- Unfinished: open tasks or steps, in order, with what blocks each.
+- Decisions and reviewer answers that must not be asked again.
+- Resume: one command to run first (for example /sk.continue).
+
+If a fact is not established, write "unknown" instead of guessing.
 `,
     'sk.review.prompt.md': `---
 agent: AskAway Build
@@ -93,7 +155,18 @@ description: Review measured cost, AI time, requests, and delivered outcomes for
 
 # /sk.review
 
-Review the selected spec without changing product code. Separate provider attribution, productive work, research, rework, and human waiting. Do not treat lower cost alone as higher value.
+Review the selected spec ($ARGUMENTS, else the active feature) without changing product code.
+
+Evidence to read: the spec's cost ledger under ~/.askaway/spec-cost for this workspace, the .askaway/specs folder for the spec, implementation-log.md, tasks.md, and the Specs tab figures (provider cost, AI time, requests).
+
+Report:
+1. Measured provider cost, AI time and request count, split by stage (specify, check, plan, tasks, implement, converge) and by main agent versus workers.
+2. Separate productive work, research, rework (tasks redone or reverted) and human waiting.
+3. Delivered outcomes: stories whose Checkpoint passed, tasks done, and what remains.
+4. Cost per delivered outcome and where it was highest.
+5. Two or three concrete changes that would cut cost or time without losing quality.
+
+Do not treat lower cost alone as higher value. Say plainly when a figure is missing.
 `
 };
 
@@ -102,17 +175,12 @@ disable-model-invocation: true
 ---
 `;
 
-export const CLAUDE_SPEC_KIT_COMMANDS: Record<string, string> = {
-    'sk.new.md': `${CLAUDE_HEADER}Create a numbered feature from $ARGUMENTS, preserve the previous feature_directory, separate branch identities and explicit cloud base revision, record genuine [NEEDS CLARIFICATION], and do not plan or implement.`,
-    'sk.start.md': `${CLAUDE_HEADER}Select feature $ARGUMENTS in .specify/feature.json and report feature directory, Git branch, task branch, and cloud base revision separately.`,
-    'sk.continue.md': `${CLAUDE_HEADER}Read implementation-log.md before tasks.md, exclude blocked/manual/reviewer/deferred work, and pitch exactly one eligible task.`,
-    'sk.plan.md': `${CLAUDE_HEADER}${SPEC_KIT_PROMPTS['sk.plan.prompt.md'].replace(/^---[\s\S]*?---\s*/, '')}`,
-    'sk.tasks.md': `${CLAUDE_HEADER}${SPEC_KIT_PROMPTS['sk.tasks.prompt.md'].replace(/^---[\s\S]*?---\s*/, '')}`,
-    'sk.implement.md': `${CLAUDE_HEADER}${SPEC_KIT_PROMPTS['sk.implement.prompt.md'].replace(/^---[\s\S]*?---\s*/, '')}`,
-    'sk.check.md': `${CLAUDE_HEADER}${SPEC_KIT_PROMPTS['sk.check.prompt.md'].replace(/^---[\s\S]*?---\s*/, '')}`,
-    'sk.handoff.md': `${CLAUDE_HEADER}Use only established facts. Do not call tools or edit files; print a concise resume checkpoint.`,
-    'sk.review.md': `${CLAUDE_HEADER}Review the selected spec's measured provider cost, AI time, requests, outcomes, and human waiting without changing product code.`
-};
+export const CLAUDE_SPEC_KIT_COMMANDS: Record<string, string> = Object.fromEntries(
+    Object.entries(SPEC_KIT_PROMPTS).map(([file, text]) => [
+        file.replace('.prompt.md', '.md'),
+        `${CLAUDE_HEADER}${text.replace(/^---[\s\S]*?---\s*/, '')}`
+    ])
+);
 
 export const CLAUDE_ASKAWAY_BUILD_AGENT = `---
 name: askaway-build
