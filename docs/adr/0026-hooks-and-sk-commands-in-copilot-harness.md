@@ -17,13 +17,14 @@ VS Code 1.140 made the Copilot harness (Copilot SDK, agent host) the default. Th
 
 - Every AskAway Copilot hook command ends with `|| exit 0`, so a script the sandbox cannot start never blocks the agent.
 - On activation the extension adds `~/.askaway` (read/write) and the workspace-storage and Copilot session-state folders (read-only) to `chat.agent.sandbox.fileSystem.userConfiguredPaths`, keeping the reviewer's own entries and anything he denied.
-- The extension installs `/sk.*` as prompt files (Local harness), `sk-*` skills (Copilot harness: the command is `/sk-plan`, not `/sk.plan`) and Claude commands, and refreshes them on every activation.
+- The extension contributes `/sk.*` through `chatPromptFiles` (Local harness) and `chatSkills` (every harness; in the Copilot harness the command is `/sk-plan`, not `/sk.plan`). Copies an earlier version wrote into `~/.copilot/skills` and the user prompts folder are removed so each command shows once. Claude Code has no contribution point, so its commands are written to `~/.claude`.
 - The conversation hooks ship in the package and are installed with the others.
 
 ## Consequences
 
 - An AskAway hook can fail quietly in the sandbox; the Output channel logs the grant and the install, and Copilot shows one warning per failed hook.
-- The `sk.*` and `sk-*` names are AskAway's; edits to them are overwritten. Other skills and prompts are untouched.
+- The `sk.*` and `sk-*` names are AskAway's; a copy of them in the user folders is deleted on activation. Other skills and prompts are untouched.
+- After a Spec Kit prompt changes, run `node tools/gen-spec-kit-assets.cjs`; the test fails if `skills/` and `prompts/` are stale.
 - The sandbox grant lets sandboxed agent commands write `~/.askaway`, where the hook scripts live; the reviewer can deny it in the setting.
 
 ## Related

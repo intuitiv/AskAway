@@ -33,7 +33,7 @@ import { AgentmemoryStore } from './validator/agentmemoryStore';
 import { DedupKnowledgeStore, KnowledgeStore } from './validator/knowledgeStore';
 import { SUBAGENT_TIMER_INJECT_SCRIPT } from './hooks/subagentTimerScript';
 import { conversationHooksConfig, copilotCommandHook, copilotShellHook, failOpenCommand, hookSandboxPaths, mergeSandboxPaths, SANDBOX_PATHS_SETTING } from './hooks/copilotHooks';
-import { installSpecKitCommands } from './specs/specKitInstall';
+import { installClaudeSpecKitCommands, removeLegacySpecKitCopies } from './specs/specKitInstall';
 import { McpServerManager } from './mcp/mcpServer';
 import { killAllGradleRuns } from './gradle/gradleEngine';
 import { ContextManager } from './context';
@@ -710,19 +710,17 @@ async function ensureConversationHooksInstalled(context: vscode.ExtensionContext
 }
 
 /**
- * /sk.* commands: prompt files for the Local harness, `sk-*` skills for the Copilot harness (skill names
- * cannot contain dots), commands for Claude Code. The Copilot agent copy gets any AskAway tool it lacks.
+ * /sk.* commands ship through the chatSkills / chatPromptFiles contribution points in package.json, which
+ * every harness reads. Here: drop the copies earlier versions wrote into user folders (they would show each
+ * command twice), write Claude Code's commands, and add any AskAway tool the Copilot agent copy lacks.
  */
 async function ensureSpecKitCommandsInstalled(context: vscode.ExtensionContext): Promise<void> {
     try {
         const userDir = path.dirname(path.dirname(context.globalStorageUri.fsPath));
         const copilotHome = path.join(os.homedir(), '.copilot');
-        const result = await installSpecKitCommands({
-            promptsDir: path.join(userDir, 'prompts'),
-            copilotHome,
-            claudeHome: path.join(os.homedir(), '.claude'),
-        });
-        logRuntime('Installed AskAway Spec Kit commands', result);
+        const removed = await removeLegacySpecKitCopies({ promptsDir: path.join(userDir, 'prompts'), copilotHome });
+        const claude = await installClaudeSpecKitCommands(path.join(os.homedir(), '.claude'));
+        logRuntime('AskAway Spec Kit commands', { removedLegacyCopies: removed, ...claude });
 
         const agentPath = path.join(copilotHome, 'agents', ASKWAY_BUILD_AGENT_FILE);
         const agentText = await fs.promises.readFile(agentPath, 'utf8').catch(() => undefined);

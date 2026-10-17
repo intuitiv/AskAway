@@ -62,33 +62,58 @@ assert.equal(hooks.mergeSandboxPaths(merged, wanted), undefined, 'second merge c
 assert.equal(hooks.mergeSandboxPaths({ deniedPaths: ['/Users/m/.askaway'], readonlyPaths: wanted.readonlyPaths }, wanted), undefined, 'a denied path stays denied');
 assert.deepEqual(plain(hooks.mergeSandboxPaths(undefined, wanted).readwritePaths), plain(wanted.readwritePaths));
 
-// R-SKFLOW-25: /sk.* reach every harness. Local reads prompt files, Copilot reads skills (no dots in names).
+// R-SKFLOW-25: /sk.* reach every harness through the chatSkills / chatPromptFiles contribution points
+// (Copilot harness skills cannot contain dots, so the command there is /sk-plan).
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+const files = install.contributedSpecKitFiles();
+const names = Object.keys(assets.SPEC_KIT_PROMPTS);
+assert.equal(Object.keys(files).length, names.length * 2);
+const contributedSkills = pkg.contributes.chatSkills.map((entry) => entry.path);
+const contributedPrompts = pkg.contributes.chatPromptFiles.map((entry) => entry.path);
+for (const name of names) {
+    const skillName = name.replace(/\.prompt\.md$/, '').replace(/\./g, '-');
+    assert.ok(contributedSkills.includes(`./skills/${skillName}/SKILL.md`), `${skillName} is contributed as a skill`);
+    assert.ok(contributedPrompts.includes(`./prompts/${name}`), `${name} is contributed as a prompt file`);
+}
+assert.equal(contributedSkills.length, names.length);
+assert.equal(contributedPrompts.length, names.length);
+for (const [relative, content] of Object.entries(files)) {
+    assert.ok(fs.existsSync(path.join(__dirname, relative)), `${relative} ships in the extension folder`);
+    assert.equal(fs.readFileSync(path.join(__dirname, relative), 'utf8'), content, `${relative} is current (run node tools/gen-spec-kit-assets.cjs)`);
+    if (relative.endsWith('SKILL.md')) {
+        const folder = path.basename(path.dirname(relative));
+        assert.match(content, new RegExp(`^---\\nname: ${folder}\\n`), `${relative}: name matches its folder`);
+        assert.match(content, /disable-model-invocation: true/);
+        assert.doesNotMatch(content, /^agent:/m, 'prompt-only frontmatter is dropped');
+        assert.match(content, /^# \/sk\./m, 'the command body is kept');
+    }
+}
+assert.ok(!/^(skills|prompts)\b/m.test(fs.readFileSync(path.join(__dirname, '.vscodeignore'), 'utf8')), 'packaging does not exclude skills or prompts');
+
 (async () => {
-    const targets = { promptsDir: path.join(tmp, 'prompts'), copilotHome: path.join(tmp, '.copilot'), claudeHome: path.join(tmp, '.claude') };
+    // Legacy copies written by an earlier version are removed; the reviewer's other skills and prompts stay.
+    const targets = { promptsDir: path.join(tmp, 'prompts'), copilotHome: path.join(tmp, '.copilot') };
+    fs.mkdirSync(targets.promptsDir, { recursive: true });
+    fs.writeFileSync(path.join(targets.promptsDir, 'sk.plan.prompt.md'), 'old');
+    fs.writeFileSync(path.join(targets.promptsDir, 'mine.prompt.md'), 'mine');
     fs.mkdirSync(path.join(targets.copilotHome, 'skills', 'sk-check'), { recursive: true });
     fs.writeFileSync(path.join(targets.copilotHome, 'skills', 'sk-check', 'SKILL.md'), 'stale migrated copy');
     fs.mkdirSync(path.join(targets.copilotHome, 'skills', 'mine'), { recursive: true });
     fs.writeFileSync(path.join(targets.copilotHome, 'skills', 'mine', 'SKILL.md'), 'reviewer skill');
+    assert.equal(await install.removeLegacySpecKitCopies(targets), 2);
+    assert.ok(!fs.existsSync(path.join(targets.promptsDir, 'sk.plan.prompt.md')));
+    assert.ok(!fs.existsSync(path.join(targets.copilotHome, 'skills', 'sk-check')));
+    assert.equal(fs.readFileSync(path.join(targets.copilotHome, 'skills', 'mine', 'SKILL.md'), 'utf8'), 'reviewer skill');
+    assert.equal(fs.readFileSync(path.join(targets.promptsDir, 'mine.prompt.md'), 'utf8'), 'mine');
+    assert.equal(await install.removeLegacySpecKitCopies(targets), 0, 'second run removes nothing');
 
-    const result = await install.installSpecKitCommands(targets);
-    const names = Object.keys(assets.SPEC_KIT_PROMPTS);
-    assert.equal(result.prompts, names.length);
-    for (const name of names) {
-        assert.equal(fs.readFileSync(path.join(targets.promptsDir, name), 'utf8'), assets.SPEC_KIT_PROMPTS[name], `${name} installed for the Local harness`);
-        const skillName = name.replace(/\.prompt\.md$/, '').replace(/\./g, '-');
-        const skill = fs.readFileSync(path.join(targets.copilotHome, 'skills', skillName, 'SKILL.md'), 'utf8');
-        assert.match(skill, new RegExp(`^---\\nname: ${skillName}\\n`), `${skillName} skill name matches its folder`);
-        assert.match(skill, /disable-model-invocation: true/);
-        assert.doesNotMatch(skill, /^agent:/m, 'prompt-only frontmatter is dropped');
-        assert.match(skill, /^# \/sk\./m, 'the command body is kept');
-    }
+    const claudeHome = path.join(tmp, '.claude');
+    const claude = await install.installClaudeSpecKitCommands(claudeHome);
+    assert.equal(claude.claudeCommands, Object.keys(assets.CLAUDE_SPEC_KIT_COMMANDS).length);
     for (const name of Object.keys(assets.CLAUDE_SPEC_KIT_COMMANDS)) {
-        assert.ok(fs.existsSync(path.join(targets.claudeHome, 'commands', name)), `${name} installed for Claude Code`);
+        assert.ok(fs.existsSync(path.join(claudeHome, 'commands', name)), `${name} installed for Claude Code`);
     }
-    assert.notEqual(fs.readFileSync(path.join(targets.copilotHome, 'skills', 'sk-check', 'SKILL.md'), 'utf8'), 'stale migrated copy', 'AskAway-owned sk-* skills are refreshed');
-    assert.equal(fs.readFileSync(path.join(targets.copilotHome, 'skills', 'mine', 'SKILL.md'), 'utf8'), 'reviewer skill', 'other skills are untouched');
-    const second = await install.installSpecKitCommands(targets);
-    assert.deepEqual([second.prompts, second.skills, second.claudeCommands], [0, 0, 0], 'a second activation writes nothing');
+    assert.equal((await install.installClaudeSpecKitCommands(claudeHome)).claudeCommands, 0, 'second activation writes nothing');
 
     // The Copilot copy of the build agent gains the shipped tools it lacks, and nothing else changes.
     const before = '---\nname: "AskAway Build"\ntools: [execute, intuitiv.askaway/memory2]\n---\nBody\n';
@@ -97,5 +122,5 @@ assert.deepEqual(plain(hooks.mergeSandboxPaths(undefined, wanted).readwritePaths
     assert.ok(after.endsWith('---\nBody\n'));
     assert.equal(agent.addMissingAskAwayTools(after, ['memory2', 'asks', 'worker']), after, 'idempotent');
 
-    console.log('PASS EV-COPILOT-HARNESS hooksFailOpen=true sandboxGrants=true skCommands=true');
+    console.log('PASS EV-COPILOT-HARNESS hooksFailOpen=true sandboxGrants=true skContributed=true');
 })().catch((error) => { console.error(error); process.exit(1); });

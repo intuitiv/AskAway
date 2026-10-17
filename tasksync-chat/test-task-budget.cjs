@@ -65,9 +65,7 @@ const activeSlug = path.basename(JSON.parse(fs.readFileSync(path.join(__dirname,
 assert.match(real.stdout, new RegExp(`TASK-BUDGET ${activeSlug}: (PASS|FAIL) open=\\d+/12`), 'runs on this repo\'s active spec');
 assert.equal(real.status, 0, `this repo's active spec is within budget: ${real.stdout}`);
 
-const skTasks = path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User', 'prompts', 'sk.tasks.prompt.md');
-if (fs.existsSync(skTasks)) {
-    assert.match(fs.readFileSync(skTasks, 'utf8'), /node tasksync-chat\/tools\/task-budget\.cjs/, '/sk.tasks runs the budget before reporting');
-}
+const skTasks = path.join(__dirname, 'prompts', 'sk.tasks.prompt.md');
+assert.match(fs.readFileSync(skTasks, 'utf8'), /node tasksync-chat\/tools\/task-budget\.cjs/, '/sk.tasks runs the budget before reporting');
 fs.rmSync(workspace, { recursive: true, force: true });
 console.log('EV-049 TaskBudget: PASS flood100=refused fatCycle=refused doneIgnored=true activeSpecDefault=true skTasksGate=true');

@@ -1251,6 +1251,64 @@
         "title": "AskAway: Open Plan Board",
         "icon": "$(project)"
       }
+    ],
+    "chatSkills": [
+      {
+        "path": "./skills/sk-new/SKILL.md"
+      },
+      {
+        "path": "./skills/sk-start/SKILL.md"
+      },
+      {
+        "path": "./skills/sk-continue/SKILL.md"
+      },
+      {
+        "path": "./skills/sk-plan/SKILL.md"
+      },
+      {
+        "path": "./skills/sk-tasks/SKILL.md"
+      },
+      {
+        "path": "./skills/sk-implement/SKILL.md"
+      },
+      {
+        "path": "./skills/sk-check/SKILL.md"
+      },
+      {
+        "path": "./skills/sk-handoff/SKILL.md"
+      },
+      {
+        "path": "./skills/sk-review/SKILL.md"
+      }
+    ],
+    "chatPromptFiles": [
+      {
+        "path": "./prompts/sk.new.prompt.md"
+      },
+      {
+        "path": "./prompts/sk.start.prompt.md"
+      },
+      {
+        "path": "./prompts/sk.continue.prompt.md"
+      },
+      {
+        "path": "./prompts/sk.plan.prompt.md"
+      },
+      {
+        "path": "./prompts/sk.tasks.prompt.md"
+      },
+      {
+        "path": "./prompts/sk.implement.prompt.md"
+      },
+      {
+        "path": "./prompts/sk.check.prompt.md"
+      },
+      {
+        "path": "./prompts/sk.handoff.prompt.md"
+      },
+      {
+        "path": "./prompts/sk.review.prompt.md"
+      }
     ]
   },
   "scripts": {
