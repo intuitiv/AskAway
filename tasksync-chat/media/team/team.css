@@ -136,6 +136,26 @@ body.vscode-light #panel-team {
 	padding: 10px 12px 18px;
 }
 
+/* The Storybook shell clips every pane (overflow: hidden, two classes), which hid the member list's scroll. Win by specificity.
+   Scrollbar: macOS overlay scrollbars hide until scrolling, so style a classic always-visible one (same as .workers-list). */
+.team-storybook-shell .team-pane.team-directory-pane {
+	overflow-y: auto;
+	overflow-x: hidden;
+}
+
+.team-directory-pane::-webkit-scrollbar { width: 10px; }
+.team-directory-pane::-webkit-scrollbar-track { background: transparent; }
+.team-directory-pane::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-background);
+	border-radius: 5px;
+	border: 2px solid transparent;
+	background-clip: padding-box;
+}
+.team-directory-pane::-webkit-scrollbar-thumb:hover {
+	background: var(--vscode-scrollbarSlider-hoverBackground);
+	background-clip: padding-box;
+}
+
 .team-tab-panel {
 	display: flex;
 	flex-direction: column;

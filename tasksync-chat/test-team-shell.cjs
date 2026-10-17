@@ -196,5 +196,10 @@ function loadTsModule(filePath, extraMocks = {}) {
     assert.match(rule('.workers-list::-webkit-scrollbar'), /width:\s*10px/, 'the Team list has a classic 10px scrollbar');
     assert.match(rule('.workers-list::-webkit-scrollbar-thumb'), /scrollbarSlider/, 'the thumb uses the theme colour');
 
+    // The Storybook shell clips every pane with two classes; the directory pane must out-rank that and show a scrollbar (R-TEAM-39).
+    const paneRule = (selector) => (teamCss.match(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}')) || [])[1] || '';
+    assert.match(paneRule('.team-storybook-shell .team-pane.team-directory-pane'), /overflow-y:\s*auto/, 'the story member list scrolls');
+    assert.match(paneRule('.team-directory-pane::-webkit-scrollbar'), /width:\s*10px/, 'the story member list has a visible scrollbar');
+
     console.log('PASS EV-TEAM-SHELL (tabs, #panel-team, roster, workersState members, agy $0 cost, team.css scoping, visible Team scrollbar)');
 })();

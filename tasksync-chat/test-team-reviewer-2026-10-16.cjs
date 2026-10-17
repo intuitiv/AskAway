@@ -139,7 +139,7 @@ const results = [];
     assert(visibleText(summary).startsWith('0 tasks this turn'));
     api.applyWorkersState(state);
     assert.equal(doc.querySelector('.workers-summary'), summary, 'summary patched in place (no flicker)');
-    assert.equal(visibleText(summary), '5 tasks this turn · 0 running · 0 queued · 5 warm · 5 completed · $0.30 this turn', 'summary counts the displayed tasks');
+    assert.equal(visibleText(summary), '5 tasks this turn · 0 running · 0 queued · 5 warm · 5 completed · $0.38 this turn', 'summary = main agent $0.08 + the worker member $0.30, equal to the rows shown');
     const anika = projected.members.find(m => m.taskIds.includes('worker-w1')).id;
     click(doc.querySelector(`[data-member-tasks-toggle="${anika}"]`));
     assert.equal(doc.querySelector(`[data-member-tray="${anika}"]`).querySelectorAll('.worker-card').length, 5, 'summary count equals the cards shown');
@@ -254,11 +254,14 @@ const results = [];
     const methods = between(providerSrc, "    /** VS Code's user prompts folder", '    public async getTurnMetricsSnapshot');
     const Provider = vm.runInNewContext(ts.transpileModule(`class P {\n${methods}\n}; P`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, {
         path, fs: { existsSync: f => f === '/home/u/Code/User/prompts/askaway-build.agent.md' },
+        applyMemberOverride: rosterMod.applyMemberOverride, readMemberOverrides: () => ({}), initialsOf: rosterMod.initialsOf, AIU_PER_DOLLAR: 100,
         roomFor: () => ({ mainAgentIdentity: () => rosterMod.resolveMainAgentIdentity('AskAway Build'), snapshot: () => ({ members: [{ kind: 'agent', presence: 'joined' }] }) }),
     });
     const provider = Object.assign(new Provider(), {
         _context: { globalStorageUri: { fsPath: '/home/u/Code/User/globalStorage/askaway' } },
         _turnRequests: [{ model: 'claude-opus-5.5', nanoAiu: 4e9 }, { model: 'gpt-6-luna', nanoAiu: 1e9, subagent: 'explore' }],
+        // The main agent's Turn is the accumulated turn scope (sub-agents included), the number turn_budget counts as main spend.
+        _deriveLastRequest: () => ({ nanoAiu: 4e9 }),
         _observabilityCache: { monthCredits: { aiu: 680 } },
     });
     const main = provider._mainAgentMember('/ws');
