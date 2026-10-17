@@ -77,7 +77,7 @@ The workspace group chat. The Agent joins when a turn starts and leaves when it 
 
 ## Spec-Based Development
 
-- Plain text works without Spec Kit knowledge. `/sk.start`, `/sk.plan`, `/sk.tasks`, `/sk.check`, `/sk.continue` and `/sk.handoff` are shortcuts to the same stages.
+- Plain text works without Spec Kit knowledge. `/sk.start`, `/sk.plan`, `/sk.tasks`, `/sk.check`, `/sk.continue` and `/sk.handoff` are shortcuts to the same stages (`/sk-start`, `/sk-plan` and so on in the Copilot harness, where skill names cannot contain dots).
 - Standard artifacts: user stories with acceptance scenarios, tasks per story, `[P]` for parallel tasks.
 - Every new ask becomes a Spec Kit task, so nothing is dropped; questions arrive in one batch.
 - Optional cloud tasks run flagged work on the GitHub Copilot cloud agent while you are offline; AskAway tracks the PR and shares its link when done.

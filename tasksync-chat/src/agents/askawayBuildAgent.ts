@@ -88,3 +88,16 @@ ${SHARED_VOICE}
 - Explain credit math plainly when asked.
 - When user says today is RTK work, prioritize RTK setup, RTK command routing, RTK observability, and proof of savings.
 `;
+
+/**
+ * The Copilot harness reads its own copy of the agent from ~/.copilot/agents with an explicit tool list.
+ * Add any AskAway tool the extension ships but the copy does not list yet; never remove or reorder entries.
+ */
+export function addMissingAskAwayTools(agentText: string, toolReferenceNames: string[], extensionId = 'intuitiv.askaway'): string {
+    const match = /^tools:\s*\[([^\]\n]*)\]\s*$/m.exec(agentText);
+    if (!match) { return agentText; }
+    const listed = match[1].split(',').map(entry => entry.trim()).filter(Boolean);
+    const missing = toolReferenceNames.map(ref => `${extensionId}/${ref}`).filter(id => !listed.includes(id));
+    if (missing.length === 0) { return agentText; }
+    return agentText.replace(match[0], `tools: [${[...listed, ...missing].join(', ')}]`);
+}

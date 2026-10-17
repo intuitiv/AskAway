@@ -14,6 +14,7 @@ import { notifyAttention, registerAttentionNotify } from './services/attentionNo
 import { createWebexSuiteHost } from './services/webexToolsHost';
 import { registerTools } from './tools';
 import { ASKWAY_BUILD_AGENT_FILE, ASKWAY_BUILD_AGENT_CONTENT } from './agents/askawayBuildAgent';
+import { addMissingAskAwayTools } from './agents/askawayBuildAgent';
 import { memoryTool } from './validator/memoryTool';
 import { validatorTool } from './validator/validatorTool';
 import { asksTool } from './specs/askTool';
@@ -31,6 +32,8 @@ import { ensureMemoryServer, localMemorySecret, MEMORY_SERVER_URL } from './vali
 import { AgentmemoryStore } from './validator/agentmemoryStore';
 import { DedupKnowledgeStore, KnowledgeStore } from './validator/knowledgeStore';
 import { SUBAGENT_TIMER_INJECT_SCRIPT } from './hooks/subagentTimerScript';
+import { conversationHooksConfig, copilotCommandHook, copilotShellHook, failOpenCommand, hookSandboxPaths, mergeSandboxPaths, SANDBOX_PATHS_SETTING } from './hooks/copilotHooks';
+import { installSpecKitCommands } from './specs/specKitInstall';
 import { McpServerManager } from './mcp/mcpServer';
 import { killAllGradleRuns } from './gradle/gradleEngine';
 import { ContextManager } from './context';
@@ -283,10 +286,10 @@ async function ensureSubagentTimerHookInstalled(): Promise<void> {
         const cfg = {
             version: 1,
             hooks: {
-                PreToolUse: [{ type: 'command', command: gatePath, cwd: '.', timeout: 5 }],
-                PostToolUse: [{ type: 'command', command: gatePath, cwd: '.', timeout: 5 }],
-                UserPromptSubmit: [{ type: 'command', command: gatePath, cwd: '.', timeout: 5 }],
-                Stop: [{ type: 'command', command: gatePath, cwd: '.', timeout: 5 }],
+                PreToolUse: [copilotCommandHook(gatePath, 5)],
+                PostToolUse: [copilotCommandHook(gatePath, 5)],
+                UserPromptSubmit: [copilotCommandHook(gatePath, 5)],
+                Stop: [copilotCommandHook(gatePath, 5)],
             },
         };
         await fs.promises.mkdir(path.dirname(copilotHookPath), { recursive: true });
@@ -318,7 +321,7 @@ async function ensureCacheTimerHookInstalled(): Promise<void> {
         await fs.promises.mkdir(path.dirname(copilotHookPath), { recursive: true });
         const cfg: any = { version: 1, hooks: {} };
         for (const ev of events) {
-            cfg.hooks[ev] = [{ type: 'command', command: gateAbs, cwd: '.', timeout: 5 }];
+            cfg.hooks[ev] = [copilotCommandHook(gateAbs, 5)];
         }
         await fs.promises.writeFile(copilotHookPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
 
@@ -433,7 +436,7 @@ async function ensureToolIoHookInstalled(): Promise<void> {
         await fs.promises.mkdir(path.dirname(copilotHookPath), { recursive: true });
         const cfg: any = { version: 1, hooks: {} };
         for (const ev of events) {
-            cfg.hooks[ev] = [{ type: 'command', command: gateAbs, cwd: '.', timeout: 5 }];
+            cfg.hooks[ev] = [copilotCommandHook(gateAbs, 5)];
         }
         await fs.promises.writeFile(copilotHookPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
 
@@ -539,8 +542,8 @@ async function ensureSubagentModelHookInstalled(): Promise<void> {
         const cfg = {
             version: 1,
             hooks: {
-                PreToolUse: [{ type: 'command', command: gateAbs, cwd: '.', timeout: 5 }],
-                preToolUse: [{ type: 'command', bash: gateAbs, powershell: gateAbs, cwd: '.', timeoutSec: 5 }],
+                PreToolUse: [copilotCommandHook(gateAbs, 5)],
+                preToolUse: [copilotShellHook(gateAbs, 5)],
             },
         };
         await fs.promises.writeFile(copilotHookPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
@@ -628,7 +631,7 @@ async function ensureBudgetHookInstalled(): Promise<void> {
         if (typeof cfg.version !== 'number') { cfg.version = 1; }
         if (!cfg.hooks || typeof cfg.hooks !== 'object' || Array.isArray(cfg.hooks)) { cfg.hooks = {}; }
         const gateAbs = path.join(os.homedir(), '.askaway', 'hooks', 'budget-gate.sh');
-        cfg.hooks.UserPromptSubmit = [{ type: 'command', command: gateAbs, cwd: '.', timeout: 10 }];
+        cfg.hooks.UserPromptSubmit = [copilotCommandHook(gateAbs, 10)];
         await fs.promises.writeFile(copilotHookPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
 
         logRuntime('Installed AskAway turn-budget hook', { gatePath, injectPath });
@@ -662,6 +665,77 @@ async function ensureAskAwayBuildAgentInstalled(context: vscode.ExtensionContext
         }
     } catch (err) {
         logRuntime('Warning: Could not install AskAway Build user agent', formatError(err));
+    }
+}
+
+/**
+ * Copilot harness sessions (VS Code 1.140+) run ~/.copilot/hooks scripts inside the session sandbox,
+ * which cannot touch ~/.askaway by default. Grant the paths the AskAway hooks use.
+ */
+async function ensureHookSandboxAccess(context: vscode.ExtensionContext): Promise<void> {
+    try {
+        const userDir = path.dirname(path.dirname(context.globalStorageUri.fsPath));
+        const config = vscode.workspace.getConfiguration();
+        const current = config.inspect<Record<string, string[]>>(SANDBOX_PATHS_SETTING)?.globalValue;
+        const merged = mergeSandboxPaths(current, hookSandboxPaths(os.homedir(), userDir));
+        if (!merged) {
+            logRuntime('Sandbox hook access already granted');
+            return;
+        }
+        await config.update(SANDBOX_PATHS_SETTING, merged, vscode.ConfigurationTarget.Global);
+        logRuntime('Granted AskAway hooks sandbox access', merged);
+    } catch (err) {
+        logRuntime('Warning: Could not grant AskAway hooks sandbox access (older VS Code has no sandbox paths setting)', formatError(err));
+    }
+}
+
+/** Ship the conversation hooks (active-spec context injector, compact chat capture) with the extension. */
+async function ensureConversationHooksInstalled(context: vscode.ExtensionContext): Promise<void> {
+    const hooksDir = path.join(os.homedir(), '.askaway', 'hooks');
+    try {
+        await fs.promises.mkdir(hooksDir, { recursive: true });
+        for (const script of ['spec-context-inject.cjs', 'compact-chat-capture.cjs']) {
+            const content = await fs.promises.readFile(context.asAbsolutePath(path.join('hooks', script)), 'utf8');
+            if (await fs.promises.readFile(path.join(hooksDir, script), 'utf8').catch(() => undefined) !== content) {
+                await fs.promises.writeFile(path.join(hooksDir, script), content, 'utf8');
+            }
+        }
+        const copilotHookPath = path.join(os.homedir(), '.copilot', 'hooks', 'conversation-context.json');
+        await fs.promises.mkdir(path.dirname(copilotHookPath), { recursive: true });
+        await fs.promises.writeFile(copilotHookPath, `${JSON.stringify(conversationHooksConfig(hooksDir), null, 2)}\n`, 'utf8');
+        logRuntime('Installed AskAway conversation hooks', { hooksDir, copilotHookPath });
+    } catch (err) {
+        logRuntime('Warning: Could not install AskAway conversation hooks', formatError(err));
+    }
+}
+
+/**
+ * /sk.* commands: prompt files for the Local harness, `sk-*` skills for the Copilot harness (skill names
+ * cannot contain dots), commands for Claude Code. The Copilot agent copy gets any AskAway tool it lacks.
+ */
+async function ensureSpecKitCommandsInstalled(context: vscode.ExtensionContext): Promise<void> {
+    try {
+        const userDir = path.dirname(path.dirname(context.globalStorageUri.fsPath));
+        const copilotHome = path.join(os.homedir(), '.copilot');
+        const result = await installSpecKitCommands({
+            promptsDir: path.join(userDir, 'prompts'),
+            copilotHome,
+            claudeHome: path.join(os.homedir(), '.claude'),
+        });
+        logRuntime('Installed AskAway Spec Kit commands', result);
+
+        const agentPath = path.join(copilotHome, 'agents', ASKWAY_BUILD_AGENT_FILE);
+        const agentText = await fs.promises.readFile(agentPath, 'utf8').catch(() => undefined);
+        const tools: Array<{ toolReferenceName?: string }> = context.extension.packageJSON?.contributes?.languageModelTools ?? [];
+        if (agentText !== undefined) {
+            const updated = addMissingAskAwayTools(agentText, tools.map(t => t.toolReferenceName).filter((n): n is string => !!n));
+            if (updated !== agentText) {
+                await fs.promises.writeFile(agentPath, updated, 'utf8');
+                logRuntime('Added missing AskAway tools to the Copilot harness agent', { agentPath });
+            }
+        }
+    } catch (err) {
+        logRuntime('Warning: Could not install AskAway Spec Kit commands', formatError(err));
     }
 }
 
@@ -816,7 +890,7 @@ async function ensureRtkGlobalHooksInstalled(): Promise<void> {
  * and rewrites only the ones carrying a shell command.
  */
 async function ensureCopilotHookInstalled(): Promise<void> {
-    const gateAbsPath = path.join(os.homedir(), '.askaway', 'hooks', 'rtk-gate.sh');
+    const gateAbsPath = failOpenCommand(path.join(os.homedir(), '.askaway', 'hooks', 'rtk-gate.sh'));
     const copilotHookPath = path.join(os.homedir(), '.copilot', 'hooks', 'rtk-rewrite.json');
     const BROKEN_CMD = 'rtk hook copilot';
 
@@ -847,7 +921,7 @@ async function ensureCopilotHookInstalled(): Promise<void> {
         // `PreToolUse` array uses a single `command` string per entry.
         const upper = Array.isArray(config.hooks.PreToolUse) ? config.hooks.PreToolUse : [];
         if (upper.length === 0) {
-            config.hooks.PreToolUse = [{ type: 'command', command: gateAbsPath, cwd: '.', timeout: 5 }];
+            config.hooks.PreToolUse = [copilotCommandHook(gateAbsPath, 5)];
             changed = true;
         } else {
             for (const entry of upper) {
@@ -862,7 +936,7 @@ async function ensureCopilotHookInstalled(): Promise<void> {
         // `preToolUse` array uses `bash`/`powershell` string keys per entry.
         const lower = Array.isArray(config.hooks.preToolUse) ? config.hooks.preToolUse : [];
         if (lower.length === 0) {
-            config.hooks.preToolUse = [{ type: 'command', bash: gateAbsPath, powershell: gateAbsPath, cwd: '.', timeoutSec: 5 }];
+            config.hooks.preToolUse = [copilotShellHook(gateAbsPath, 5)];
             changed = true;
         } else {
             for (const entry of lower) {
@@ -964,7 +1038,10 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(outputChannel);
     outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: Extension activating...`);
 
+    void ensureHookSandboxAccess(context);
     void ensureAskAwayBuildAgentInstalled(context);
+    void ensureSpecKitCommandsInstalled(context);
+    void ensureConversationHooksInstalled(context);
     void ensureCoworkInstalled(context);
     void ensureRtkGlobalHooksInstalled();
     void ensureCopilotHookInstalled();

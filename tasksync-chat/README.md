@@ -59,7 +59,7 @@ The **AITalk** tab is the workspace group chat. The Agent joins when a turn star
 
 The **Specs** tab mirrors Spec Kit without making you learn it.
 
-- Plain text works: a normal message is routed to the right stage. Shortcuts `/sk.start`, `/sk.plan`, `/sk.tasks`, `/sk.check`, `/sk.continue` and `/sk.handoff` are there if you prefer them.
+- Plain text works: a normal message is routed to the right stage. Shortcuts `/sk.start`, `/sk.plan`, `/sk.tasks`, `/sk.check`, `/sk.continue` and `/sk.handoff` are there if you prefer them. In the Copilot harness (VS Code 1.140+) skill names cannot contain dots, so the same shortcuts are `/sk-start`, `/sk-plan` and so on; AskAway installs both.
 - Specs use standard user stories with acceptance scenarios and tasks per story; `[P]` tasks run in parallel.
 - New asks and recommendations become Spec Kit tasks, so nothing is dropped.
 - Questions come in one batch, so you answer once.

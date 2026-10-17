@@ -762,3 +762,11 @@ Use `agy/gemini-4-argon-high` for work previously assigned to Sol 6.1; retain Op
 > I still see border of `joined` or `left` in aitalk are kind of distorted. theer is lot of blank space before that.
 
 Edit is the member's profile (name, role, status line, picture) and supersedes R-TEAM-20; model and thinking stay on the row and the prompt stays behind Agent file (R-TEAM-48). agy ships enabled again; Integrations (OpenCode, agy, Claude) share one switch, one Refresh and a last-checked time (R-SETTINGS-15). Main-agent commentary reaches AITalk (R-AITALK-31). Profiles and the Build split are R-WTOOL-41/42.
+
+### 2026-10-17, Copilot harness: hooks and /sk.* commands
+
+> Hooks are not working and commands /sk.* are not showing up. Explore and see what we can do. THis happened after recent October VScode update.
+> I had hooks under `/Users/machs/.copilot/hooks`, with that i am not able to run any copilot conversations. So, i renamed to `hooks.off`.
+> Fix all of them and make sure that all tools, hooks, commands work in this extensions.
+
+Hooks fail open and get sandbox grants; `/sk.*` ship per harness (R-TOOLS-03, R-TOOLS-04, R-SKFLOW-25, [ADR 0026](docs/adr/0026-hooks-and-sk-commands-in-copilot-harness.md)).

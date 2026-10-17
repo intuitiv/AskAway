@@ -40,3 +40,4 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0023](0023-agy-first-team-members.md) | agy runtime before Team; member rows, tasks, assignment-time presence; supersedes 0021 presence rule only | G18, G5, G8 | Proposed |
 | [0024](0024-team-storybook-review-and-model-comparison.md) | Existing Storybook format, simple names/profiles and collapsible tasks; review one prompt before comparing three models | G18, G5, G13 | Proposed |
 | [0025](0025-team-edit-is-profile-and-integrations.md) | Team Edit is the member profile; Integrations (OpenCode, agy, Claude) share switch, Refresh and last-checked | G18, G5 | Proposed |
+| [0026](0026-hooks-and-sk-commands-in-copilot-harness.md) | Hooks fail open and get sandbox grants; /sk.* ship as prompt files (Local), sk-* skills (Copilot) and Claude commands | G15 | Proposed |
