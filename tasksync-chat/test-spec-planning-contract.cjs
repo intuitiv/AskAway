@@ -120,5 +120,17 @@ for (const caller of ['remoteChannel.ts', 'telegramLive.ts', 'handoffNotifier.ts
 for (const rule of ['Personal-token self-posts never notify', 'Webex has no long-poll API', 'posted/processed IDs', 'ASKAWAY_WEBEX_LIVE=1', 'US5']) assert.ok(webexResearch.includes(rule), `Webex research omits ${rule}`);
 assert.match(webexPlan, /Given[\s\S]*When[\s\S]*Then/);
 assert.ok(webexPlan.includes('4068059') && webexPlan.includes('src/services/**'), 'explicit base and actual source scope required');
+// R-SKFLOW-26: /sk.handoff leaves the next conversation everything it needs, and still calls no tools.
+for (const [name, text] of [['Copilot handoff', SPEC_KIT_PROMPTS['sk.handoff.prompt.md']], ['Claude handoff', CLAUDE_SPEC_KIT_COMMANDS['sk.handoff.md']]]) {
+    for (const section of ['Where we are', 'Done', 'Assumptions', 'Decisions and rules in force', 'Learnings', 'Observations', 'Not finished', 'Pick up next']) {
+        assert.ok(text.includes(`**${section}**`), `${name} has the ${section} section`);
+    }
+    assert.match(text, /Do not call tools or edit files/, `${name} stays a no-tool checkpoint`);
+    assert.match(text, /none for an empty section|"none" for an empty section/, `${name} says what to write for an empty section`);
+    assert.match(text, /without (?:the )?history|none of this chat's history/i, `${name} is written for a reader with no history`);
+    assert.ok(text.indexOf('**Done**') < text.indexOf('**Assumptions**') && text.indexOf('**Learnings**') < text.indexOf('**Pick up next**'), `${name} sections are in order`);
+}
+const handoffFrontmatter = SPEC_KIT_PROMPTS['sk.handoff.prompt.md'].split('---')[1];
+assert.ok(!/^description:.*: /m.test(handoffFrontmatter), 'the description has no colon that would break the YAML');
 console.log('PASS EV-WEBEX-MIGRATION-PLAN callers=6 rules=5 explicit base/scope, decisions and story scenarios');
 console.log('PASS story-structured no-CY/PAC/CAC planning contract for Copilot and Claude');
