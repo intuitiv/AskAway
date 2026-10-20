@@ -130,7 +130,7 @@ T029 subsequent retry (2026-10-08): `invalid_scope` persists with KMS included. 
 
 ### Tests for User Story 4
 
-- [ ] T018 [P] [US4] Add caller-view `tasksync-chat/test-share-with-me-webex.cjs` with explicit live opt-in and sanitized evidence, covering the existing `~/.local/bin/share-with-me` default `SHARE_CHANNEL=webex`, successful document arrival and credential/upload failures without Telegram fallback (FR-023; test authoring after T005, disjoint from adapter files).
+- [ ] T018 [P] [US4] Add caller-view `tasksync-chat/test-share-with-me-webex.cjs` with explicit live opt-in and sanitized evidence, covering the existing `~/.local/bin/share-with-me` default `SHARE_CHANNEL=webex`, successful document arrival and credential/upload failures without Telegram fallback (FR-023; test authoring after T005, disjoint from adapter files). 2026-10-20: still the SKIP stub; the live arrival test needs a fake credential boundary (FR-036) and a reviewer opt-in, so it stays open.
 
 ### Implementation for User Story 4
 
@@ -200,7 +200,7 @@ Write caller-view command tests first using fake APIs, bounded data and seeded f
 
 **Purpose**: Verify parity, secrecy and requirement coverage together.
 
-- [ ] T022 Run all new caller-view tests and existing Telegram regressions, including `tasksync-chat/test-remote-channel-parity.cjs`, `test-webex-remote-adapter.cjs`, `test-goals-docs.cjs` and `test-spec-planning-contract.cjs`; record results and FR/SC coverage in `specs/009-webex-remote-channel/quickstart.md`. Zero matched tests or unobserved live delivery is not a pass; US5 remains explicitly deferred if undecided.
+- [ ] T022 Run all new caller-view tests and existing Telegram regressions, including `tasksync-chat/test-remote-channel-parity.cjs`, `test-webex-remote-adapter.cjs`, `test-goals-docs.cjs` and `test-spec-planning-contract.cjs`; record results and FR/SC coverage in `specs/009-webex-remote-channel/quickstart.md`. Zero matched tests or unobserved live delivery is not a pass; US5 remains explicitly deferred if undecided. 2026-10-20: gate exit 0 and results recorded in quickstart.md; stays open until live delivery is observed.
 - [x] T023 [P] Cite passing caller-view parity in `tasksync-chat/docs/requirements/telegram.md`, preserving reviewer wording/links; `test-remote-channel-parity.cjs` PASS EV-REMOTE-CHANNEL-PARITY matched=2 and `test-goals-docs.cjs` PASS EV-GOALS-DOCS (2026-10-12). Live delivery and T006 identity remain separate.
 
 ---

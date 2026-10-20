@@ -50,3 +50,7 @@ Latest source packet: WebexService bounds text/edit to 7000 characters and retri
 - Default share-with-me test: `SKIP EV-SHARE-WITH-ME-WEBEX matched=0 live arrival requires ASKAWAY_WEBEX_LIVE=1; no network or credentials read`. Zero matched live cases is not a pass. FR-036 blocks executing the credential-reading external script without a fake boundary.
 - Acceptance `rtk npm --prefix tasksync-chat run test:workers` reached both new PASS lines and live SKIP, then failed outside this packet at `tasksync-chat/test-workers-control-plane.cjs:250:12`: `an expanded row stays open across the 1s re-render`. Later Telegram/docs/planning tests did not run.
 - Coverage: partial FR-006/007/013/016/022/025/026, SC-002/004/005/006; not comprehensive closure. See tasks.md's eight explicit dispositions and checklists/requirements.md. No deployment, live upload or phone notification claimed.
+
+### Gate rerun — 2026-10-20 (supersedes the earlier gate failures)
+- `npm --prefix tasksync-chat run test:workers`: exit 0, including `test-webex-remote-adapter.cjs`, `test-remote-channel-parity.cjs`, `test-goals-docs.cjs`, `test-spec-planning-contract.cjs`, the Telegram regressions and `test-release-readiness.cjs`.
+- `test-share-with-me-webex.cjs` is still the default SKIP (`matched=0`, live arrival needs `ASKAWAY_WEBEX_LIVE=1` and a fake credential boundary per FR-036). No live Webex delivery was observed, so T018 and the live part of T022 stay open; US5 live verification stays deferred.
