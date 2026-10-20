@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## AskAway v2.3.1 (10-20-26)
+- **Team scrollbar, for real:** the live refresh of the Team list stripped the class that makes it scroll, so the 2.3.0 scrollbar styling never applied. The list keeps its class on every refresh, and a test guards it (R-TEAM-39).
+- **Agent "left" notices in AITalk:** the main agent now leaves the room at every turn end. Before, it left only when the final answer's Response Handoff was found, so "left" often never appeared (R-AITALK-32).
+
 ## AskAway v2.3.0 (10-17-26)
 - **Works with VS Code 1.140+ (the Copilot harness) and keeps working on older versions.** Hooks, `/sk.*` commands, Trace and credits, agy workers and the Team tab were checked against the new harness; details in the entries below and ADR 0026.
 - **`/sk.handoff` now captures everything the next conversation needs:** where we are, done with evidence, assumptions, decisions and rules in force, learnings, observations, what is not finished, and what to pick up next (R-SKFLOW-26).
