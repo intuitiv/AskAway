@@ -46,7 +46,7 @@ const FALLBACK = 'Fetching available models...\ngemini-3.1-pro-low\tGemini 3.1 P
 
 function fakeHost() {
     const host = { settings: { opencode: true, agy: false, claude: false }, files: new Set(['/fake/bin/agy', '/fake/bin/claude', TOKEN]), models: SIGNED_IN, server: true,
-        claude: '{"loggedIn":true,"authMethod":"claude.ai"}', claudeCalls: 0, restarts: 0, order: [],
+        claude: '{"loggedIn":true,"authMethod":"claude.ai"}', opencodeModelList: 'github-copilot/claude-sonnet-5.5\ngithub-copilot/gpt-6.1-sol\n', claudeCalls: 0, restarts: 0, order: [],
         clock: new Date(2026, 9, 15, 10, 0).getTime(), warnings: [], modelCalls: 0, probes: 0, started: [] };
     health.configureRuntimeHealth({
         enabled: (runtime) => host.settings[runtime],
@@ -56,6 +56,8 @@ function fakeHost() {
         pathDirs: () => ['/fake/bin'],
         exists: (file) => host.files.has(file),
         agyModels: async (binary) => { assert.equal(binary, '/fake/bin/agy'); host.modelCalls++; if (host.modelsError) { throw new Error(host.modelsError); } return host.models; },
+        opencodeModels: async () => { if (host.opencodeModelsError) { throw new Error(host.opencodeModelsError); } return host.opencodeModelList; },
+        modelsFile: () => path.join(buildDir, 'runtime-models.json'),
         claudeAuth: async (binary) => { assert.equal(binary, '/fake/bin/claude'); host.claudeCalls++; if (host.claudeError) { throw new Error(host.claudeError); } return host.claude; },
         probeOpenCode: async () => { host.probes++; host.order.push('probe'); return host.server; },
         restartOpenCode: async () => { host.restarts++; host.order.push('restart'); if (host.restartError) { throw new Error(host.restartError); } host.server = true; },
@@ -119,7 +121,7 @@ function tool(host, workers = {}, runs = {}) {
     assert.equal((await call({ action: 'start', ...packet })).reason, 'OpenCode is off in Settings');
     host.settings.agy = false;
     const off = await call({ action: 'start', ...packet });
-    assert.deepEqual([off.status, off.reason], ['WORKERS_DISABLED', 'WORKERS_DISABLED: enable OpenCode or agy in Settings']);
+    assert.deepEqual([off.status, off.reason], ['WORKERS_DISABLED', 'WORKERS_DISABLED: enable OpenCode, agy or Claude in Settings']);
     assert.equal(host.started.length, 2, 'only the two healthy dispatches reached the runtime');
 
     // The gate uses the effective model: an agy-default profile without a model runs on Sol (OpenCode); resume follows its run.
@@ -182,7 +184,7 @@ function tool(host, workers = {}, runs = {}) {
     assert.equal(await health.setRuntimeEnabled('claude', false), false);
     assert.equal(host.settings.claude, true);
     const call2 = tool(host);
-    assert.equal((await call2({ action: 'start', ...packet })).status, 'WORKERS_DISABLED', 'Claude has no worker runtime yet');
+    assert.notEqual((await call2({ action: 'start', ...packet })).status, 'WORKERS_DISABLED', 'Claude on is a worker runtime');
     console.log('EV-RUNTIME-HEALTH last runtime refused: PASS');
 
     // Daily recheck: once per day after 06:00 local, and before an agy task whose last ok check predates 06:00 today.
@@ -224,8 +226,39 @@ function tool(host, workers = {}, runs = {}) {
     assert.equal(posted.length, count, 'a disposed view gets no more messages');
     const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
     assert.match(provider, /case 'setRuntimeEnabled':\s*case 'recheckRuntimeHealth':\s*void handleRuntimeHealthMessage\(message\)/);
-    assert.match(provider, /onDidChangeRuntimeHealth\(\(health\) => this\._broadcast\(\{ type: 'runtimeHealth', health \}\)\)/);
+    assert.match(provider, /onDidChangeRuntimeHealth\(\(health\) => this\._broadcast\(\{ type: 'runtimeHealth', health, models: getRuntimeModelIds\(\) \}\)\)/);
     console.log('EV-RUNTIME-HEALTH runtimeHealth message: PASS');
+
+    // Model discovery (reviewer 2026-10-20): every check of an enabled integration refreshes its stored model list, the
+    // runtimeHealth message carries the ids the Team dropdowns offer, and a failed check keeps the last good list.
+    host = fakeHost();
+    fs.rmSync(path.join(buildDir, 'runtime-models.json'), { force: true });
+    host.settings = { opencode: true, agy: true, claude: true };
+    const modelMessages = [];
+    const modelView = health.bindRuntimeHealthView((message) => modelMessages.push(message));
+    await health.recheckRuntimeHealth();
+    const offered = modelMessages.at(-1).models;
+    for (const id of ['github-copilot/claude-sonnet-5.5', 'github-copilot/gpt-6.1-sol', 'agy/gemini-4-argon-high', 'agy/gemini-3.8-flash-low', 'claude/sonnet', 'claude/opus', 'claude/haiku']) {
+        assert.ok(offered.includes(id), `${id} is offered`);
+    }
+    assert.ok(JSON.parse(fs.readFileSync(path.join(buildDir, 'runtime-models.json'), 'utf8')).claude.models.includes('haiku'), 'the list is stored on disk');
+    host.settings.agy = false;
+    await health.recheckRuntimeHealth('agy');
+    assert.ok(!modelMessages.at(-1).models.some((id) => id.startsWith('agy/')), 'a runtime that is off offers no models');
+    host.settings.agy = true;
+    host.models = FALLBACK;
+    host.clock += 1000;
+    await health.recheckRuntimeHealth('agy');
+    assert.ok(health.getRuntimeModelIds().includes('agy/gemini-4-argon-high'), 'a signed-out check (fallback list only) keeps the last good agy list');
+    assert.ok(!health.getRuntimeModelIds().includes('agy/gemini-3.1-pro-low'), 'the signed-out fallback list is never stored');
+    host.opencodeModelsError = 'boom';
+    await health.recheckRuntimeHealth('opencode');
+    assert.ok(health.getRuntimeModelIds().includes('github-copilot/gpt-6.1-sol'), 'a failed model listing keeps the stored OpenCode list');
+    modelView.dispose();
+    const webview = fs.readFileSync(path.join(__dirname, 'media', 'webview.js'), 'utf8');
+    assert.match(webview, /runtimeModelIds = Array\.isArray\(message\.models\) \? message\.models : runtimeModelIds/);
+    assert.match(webview, /var modelList = runtimeModelIds\.length \? runtimeModelIds\.map/);
+    console.log('EV-RUNTIME-HEALTH model discovery: PASS');
 
     // Integrations (reviewer 2026-10-16): Claude is checked through its CLI login; every integration shows the same
     // {enabled, ok, checkedAt}; one refresh per integration (OpenCode restarts its server first, agy/Claude only check).

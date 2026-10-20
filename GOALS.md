@@ -796,5 +796,8 @@ The Team list now shows a styled, always-visible scrollbar (R-TEAM-39).
 > I need some clar chat button on aitalk also.
 > Initially agent will wait for immediate reply for say 30 sec or 1min, after that agent will continue its work, by registering some callback with chat widget. And in next tool call, whenever someone replies, chat widget runs that callback and that response will be sent to respective party in next tool call, if it is regular agent, in case of validator(Priya), it would be immediate.
 > Actor should be interface, and we need specific implemntaion to Validator, Main agent, User and worker agents.
+> FIrst thing is to complete support for agy, calude. I like the new UI in settings tab. Do they work fine? Do we check all the enabled ones every day or on restart and store all teh models to be shown in team configuration?
+> Are workers still working? Why they arent picked up using Sonnet model, using Build prompt? Is somethign wrong in it?
+> Is turn budget being honoured, using Sonnet model?
 
-The Team list scrollbar was fixed in the source (the installed copy was old); AITalk gets a Clear chat button (R-AITALK-33), a bounded reply wait with a callback (R-AITALK-34), concrete actor kinds (R-AITALK-35) and Priya an agent file (R-TEAM-49).
+The Team list scrollbar was fixed in the source (the installed copy was old); AITalk gets a Clear chat button (R-AITALK-33), a bounded reply wait with a callback (R-AITALK-34), concrete actor kinds (R-AITALK-35) and Priya an agent file (R-TEAM-49). Claude became a worker runtime (R-WTOOL-43) and the integrations' models are discovered, stored and shown in Team (R-WTOOL-44).

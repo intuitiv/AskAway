@@ -25,7 +25,7 @@ export interface WorkerRunTrace {
 export interface WorkerRow {
     workerId: string;
     state: ProjectedWorkerState;
-    adapter: 'opencode' | 'agy';
+    adapter: 'opencode' | 'agy' | 'claude';
     profile: string;
     model: string;
     thinking: string;
@@ -67,7 +67,7 @@ export interface TeamMemberState {
     avatarFile?: string;
     model: string;
     thinking: string;
-    adapter: 'opencode' | 'agy' | 'copilot';
+    adapter: 'opencode' | 'agy' | 'claude' | 'copilot';
     /** 'main': the selected chat agent (never owns worker tasks); 'validator': Priya; 'worker': roster experts. */
     kind?: 'main' | 'validator' | 'worker';
     /** Main agent only: its chat turn is running. */
@@ -121,6 +121,7 @@ export async function loadWorkerTrace(runtime: OpenCodeWorkerRuntime, workspaceP
         return { workerId, source: 'ledger', reason, runs };
     };
     if (worker.adapter === 'agy') { return fromLedger('agy conversation: no OpenCode transcript; facts from the AskAway ledger'); }
+    if (worker.adapter === 'claude') { return fromLedger('claude conversation: no OpenCode transcript; facts from the AskAway ledger'); }
     if (!SESSION_ID.test(worker.sessionId)) { return fromLedger('no OpenCode session yet'); }
     try {
         return { workerId, source: 'opencode', reason: '', runs: traceFromSession(await fetchMessages(worker.sessionId), worker.runs) };
@@ -246,7 +247,7 @@ export function projectTeamMembers(workers: WorkerRow[], roster: TeamRosterEntry
         const first = memberWorkers[0];
         const model = first?.model || entry.model;
         const thinking = first?.thinking || entry.thinking;
-        const adapter: 'opencode' | 'agy' = first?.adapter ? first.adapter : (model.startsWith('agy/') ? 'agy' : 'opencode');
+        const adapter: 'opencode' | 'agy' | 'claude' = first?.adapter ? first.adapter : (model.startsWith('agy/') ? 'agy' : model.startsWith('claude/') ? 'claude' : 'opencode');
         const active = memberWorkers.some((w) => w.state === 'RUNNING' || w.state === 'STARTING' || w.state === 'WAITING_APPROVAL');
         const turnCost = memberWorkers.reduce((sum, w) => sum + w.turnCost, 0);
         const monthCost = memberWorkers.reduce((sum, w) => sum + (w.adapter === 'agy' ? 0 : w.usage.cost), 0);
@@ -313,7 +314,7 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
         const expired = !active && (state === 'RETIRED' || state === 'ORPHANED' || (cacheExpiresAt > 0 && now() >= cacheExpiresAt));
         const lastPingAt = agy ? 0 : (pings.get(workerId) ?? 0);
         workers.push({
-            workerId, state, adapter: agy ? 'agy' : 'opencode', profile: latest.profile, model: latest.model, thinking: latest.thinking,
+            workerId, state, adapter: agy ? 'agy' : latest.model.startsWith('claude/') ? 'claude' : 'opencode', profile: latest.profile, model: latest.model, thinking: latest.thinking,
             sessionId: session?.sessionId ?? '', sessionOpenAction: session?.sessionOpenAction ?? '',
             lastUpdateAt: Math.max(...runs.map((run) => run.updatedAt)), lastPingAt, blocker,
             nextInputTokens: current.nextInputTokens || routed?.contextTokens || 0, cacheExpiresAt, expired,

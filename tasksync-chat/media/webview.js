@@ -735,6 +735,7 @@
                 applyWorkersState(message.data);
                 break;
             case 'runtimeHealth':
+                runtimeModelIds = Array.isArray(message.models) ? message.models : runtimeModelIds;
                 applyRuntimeHealth(message.health);
                 break;
             case 'memberPicturePicked': {
@@ -3092,6 +3093,8 @@
         thinking: 'medium', defaultThinking: 'medium',
         turnCost: 0, monthCost: 0, taskIds: [], workerIds: []
     };
+    // Models the enabled integrations offered at their last check (ids as agy/…, claude/…, provider/model); the static list is the fallback.
+    var runtimeModelIds = [];
     var TEAM_MODELS = [
         { id: 'github-copilot/claude-opus-5.5', label: 'github-copilot/claude-opus-5.5', efforts: ['high', 'medium', 'low'] },
         { id: 'github-copilot/claude-sonnet-5.5', label: 'github-copilot/claude-sonnet-5.5', efforts: ['high', 'medium', 'low'] },
@@ -3105,6 +3108,9 @@
         { id: 'agy/gemini-3.1-pro-high', label: 'agy/gemini-3.1-pro-high', efforts: ['high', 'low'] },
         { id: 'agy/gemini-3.1-pro-low', label: 'agy/gemini-3.1-pro-low', efforts: ['high', 'low'] },
         { id: 'agy/gemini-4-argon-high', label: 'Gemini 4 Argon High (agy)', efforts: ['medium', 'high'] },
+        { id: 'claude/sonnet', label: 'claude/sonnet', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+        { id: 'claude/opus', label: 'claude/opus', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+        { id: 'claude/haiku', label: 'claude/haiku', efforts: ['low', 'medium', 'high'] },
         { id: 'github-copilot/claude-opus-4.6', label: 'Claude Opus 4.6', efforts: ['low', 'medium', 'high'] },
         { id: 'github-copilot/claude-sonnet-4.6', label: 'Claude Sonnet 4.6', efforts: ['low', 'medium', 'high'] },
         { id: 'github-copilot/gpt-5.6-terra', label: 'GPT-5.6 Terra', efforts: ['low', 'medium', 'high', 'max'] },
@@ -3255,8 +3261,8 @@
             (w.knowledge ? '<div class="worker-knowledge" title="What this ' + label.one + ' says it knows; the orchestrator uses it to pick a ' + label.one + ' to reuse">' + workersEsc(w.knowledge) + '</div>' : '') +
             (w.blocker ? '<div class="worker-blocker">' + workersEsc(w.blocker) + '</div>' : '') +
             '<div class="worker-actions">' +
-            (w.sessionId && w.adapter === 'agy' ? '<span class="worker-open-note" title="agy owns its conversation; AskAway shows it through Trace">agy conversation: no viewer</span>' : '') +
-            (w.sessionId && w.adapter !== 'agy' ? '<button class="worker-open-btn" data-worker-action="open" data-session-id="' + workersEsc(w.sessionId) + '" title="' + workersEsc(w.sessionOpenAction) + '">Open in VS Code</button>' +
+            (w.sessionId && (w.adapter === 'agy' || w.adapter === 'claude') ? '<span class="worker-open-note" title="' + workersEsc(w.adapter) + ' owns its conversation; AskAway shows it through Trace">' + workersEsc(w.adapter) + ' conversation: no viewer</span>' : '') +
+            (w.sessionId && w.adapter !== 'agy' && w.adapter !== 'claude' ? '<button class="worker-open-btn" data-worker-action="open" data-session-id="' + workersEsc(w.sessionId) + '" title="' + workersEsc(w.sessionOpenAction) + '">Open in VS Code</button>' +
                 '<button class="worker-open-ext-btn" data-worker-action="open-external" data-session-id="' + workersEsc(w.sessionId) + '" title="Open in your default terminal app">Terminal app</button>' : '') +
             '<button class="worker-trace-btn" data-worker-action="trace" data-worker-id="' + workersEsc(w.workerId) + '">' + (open ? 'Hide' : 'Trace') + ' (' + (w.runs || []).length + ')</button>' +
             (w.cloud ? '' : workerRemoveHtml(w, label)) +
@@ -3292,13 +3298,17 @@
         var efforts = effortsForModel(selectedModel);
         var rawThinking = settings.thinking || member.thinking || member.defaultThinking || firstWorker.thinking || efforts[0];
         var selectedThinking = efforts.indexOf(rawThinking) !== -1 ? rawThinking : (efforts[efforts.length - 1] || 'medium');
-        var modelList = TEAM_MODELS.slice();
+        var modelList = runtimeModelIds.length ? runtimeModelIds.map(function (id) {
+            var known = TEAM_MODELS.find(function (m) { return m.id === id; });
+            return known || { id: id, label: id, efforts: ['low', 'medium', 'high'] };
+        }) : TEAM_MODELS.slice();
         if (selectedModel && !modelList.some(function (m) { return m.id === selectedModel; })) {
             modelList.unshift({ id: selectedModel, label: workerShortModel(selectedModel), efforts: efforts });
         }
         var modelOptions = modelList.map(function (m) {
-            var label = m.label.replace(/^github-copilot\//, '').replace(/^agy\//, '').replace(/^claude-opus-/, 'Claude Opus ').replace(/^claude-sonnet-/, 'Claude Sonnet ').replace(/^gpt-6.1-sol$/, 'Sol 6.1').replace(/^gpt-6-luna$/, 'GPT-6 Luna').replace(/^gemini-4-argon-/, 'Argon ').replace(/^gemini-/, 'Gemini ').replace(/-/g, ' ');
+            var label = m.label.replace(/^github-copilot\//, '').replace(/^agy\//, '').replace(/^claude\//, '').replace(/^claude-opus-/, 'Claude Opus ').replace(/^claude-sonnet-/, 'Claude Sonnet ').replace(/^gpt-6.1-sol$/, 'Sol 6.1').replace(/^gpt-6-luna$/, 'GPT-6 Luna').replace(/^gemini-4-argon-/, 'Argon ').replace(/^gemini-/, 'Gemini ').replace(/-/g, ' ');
             if (m.id.indexOf('agy/') === 0 && label.indexOf('(agy)') === -1) label += ' (agy)';
+            if (m.id.indexOf('claude/') === 0) label = 'Claude ' + m.id.slice(7).charAt(0).toUpperCase() + m.id.slice(8) + ' (claude)';
             return '<option value="' + workersEsc(m.id) + '"' + (m.id === selectedModel ? ' selected' : '') + '>' + workersEsc(label) + '</option>';
         }).join('');
         var thinkingOptions = efforts.map(function (ef) {

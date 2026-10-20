@@ -3,10 +3,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { DEFAULT_OPENCODE_SERVER_URL, probeHttp } from './sharedServer';
+import { loadRuntimeModels, namespacedModels, parseOpenCodeModels, recordRuntimeModels, RUNTIME_MODELS_FILE } from './runtimeModels';
 
 /**
  * Integrations (OpenCode, agy, Claude) are gated by Settings toggles and a health check; at least one stays on
- * (reviewer, 2026-10-16). Claude is an integration status only: it has no worker runtime yet.
+ * (reviewer, 2026-10-16). All three run workers (agy and Claude through their CLIs) and are gated per dispatch.
  */
 export type RuntimeName = 'opencode' | 'agy' | 'claude';
 export const RUNTIME_NAMES: RuntimeName[] = ['opencode', 'agy', 'claude'];
@@ -25,6 +26,10 @@ export interface RuntimeHealthDeps {
     agyModels: (binary: string) => Promise<string>;
     /** `claude auth status --json` output; never reads a token. */
     claudeAuth: (binary: string) => Promise<string>;
+    /** `opencode models` output: one provider/model per line. */
+    opencodeModels: (binary: string) => Promise<string>;
+    /** Where each runtime's discovered models are kept between restarts. */
+    modelsFile: () => string;
     probeOpenCode: () => Promise<boolean>;
     /** Restarts the shared OpenCode server (the existing Workers restart). */
     restartOpenCode: () => Promise<void>;
@@ -35,8 +40,8 @@ const LABEL: Record<RuntimeName, string> = { opencode: 'OpenCode', agy: 'agy', c
 export const AGY_LOGIN_REASON = 'agy login expired: run agy and sign in';
 export const OPENCODE_DOWN_REASON = 'OpenCode server is not up';
 export const CLAUDE_LOGIN_REASON = 'Claude is not signed in';
-export const WORKERS_DISABLED_REASON = 'WORKERS_DISABLED: enable OpenCode or agy in Settings';
-const WORKER_RUNTIMES: RuntimeName[] = ['opencode', 'agy'];
+export const WORKERS_DISABLED_REASON = 'WORKERS_DISABLED: enable OpenCode, agy or Claude in Settings';
+const WORKER_RUNTIMES: RuntimeName[] = ['opencode', 'agy', 'claude'];
 const DAY_HOUR = 6;
 
 function vscodeApi(): any {
@@ -65,6 +70,8 @@ const defaultDeps: RuntimeHealthDeps = {
     exists: (file) => fs.existsSync(file),
     agyModels: (binary) => runCheck(binary, ['models'], 30),
     claudeAuth: (binary) => runCheck(binary, ['auth', 'status', '--json'], 20),
+    opencodeModels: (binary) => runCheck(binary, ['models'], 30),
+    modelsFile: () => RUNTIME_MODELS_FILE,
     probeOpenCode: () => probeHttp(process.env.ASKAWAY_OPENCODE_SERVER_URL || DEFAULT_OPENCODE_SERVER_URL),
     restartOpenCode: async () => {
         // Lazy: the worker host pulls in the whole OpenCode runtime.
@@ -97,6 +104,11 @@ export function getRuntimeHealth(): RuntimeHealth {
 /** Internal detail of the last check (reason for logs and refusals; agy model ids). */
 export function runtimeDetail(runtime: RuntimeName): { reason: string; models: string[] } {
     return { reason: state[runtime].reason, models: [...state[runtime].models] };
+}
+
+/** Worker model ids of the enabled integrations (agy/…, claude/…, provider/model), from the last checks, kept across restarts. */
+export function getRuntimeModelIds(): string[] {
+    return namespacedModels(loadRuntimeModels(deps.modelsFile()), (runtime) => deps.enabled(runtime));
 }
 
 export function onDidChangeRuntimeHealth(listener: (health: RuntimeHealth) => void): { dispose(): void } {
@@ -151,12 +163,18 @@ async function checkClaude(enabled: boolean, checkedAt: number): Promise<Checked
     }
     let loggedIn = false;
     try { loggedIn = JSON.parse(output)?.loggedIn === true; } catch { /* not JSON: not signed in */ }
-    return { enabled, ok: loggedIn, reason: loggedIn ? '' : CLAUDE_LOGIN_REASON, checkedAt, models: [] };
+    // The CLI has no model listing; these aliases always resolve to its current Sonnet, Opus and Haiku.
+    return { enabled, ok: loggedIn, reason: loggedIn ? '' : CLAUDE_LOGIN_REASON, checkedAt, models: loggedIn ? ['sonnet', 'opus', 'haiku'] : [] };
 }
 
 async function checkOpenCode(enabled: boolean, checkedAt: number): Promise<CheckedState> {
     const ok = await deps.probeOpenCode().catch(() => false);
-    return { enabled, ok, reason: ok ? '' : OPENCODE_DOWN_REASON, checkedAt, models: [] };
+    let models: string[] = [];
+    if (ok) {
+        const binary = findBinary('opencode') || path.join(deps.home(), '.opencode', 'bin', 'opencode');
+        try { models = parseOpenCodeModels(await deps.opencodeModels(binary)); } catch { /* The server is up; the model list is just not refreshed. */ }
+    }
+    return { enabled, ok, reason: ok ? '' : OPENCODE_DOWN_REASON, checkedAt, models };
 }
 
 const CHECKS: Record<RuntimeName, (enabled: boolean, checkedAt: number) => Promise<CheckedState>> = { opencode: checkOpenCode, agy: checkAgy, claude: checkClaude };
@@ -174,7 +192,11 @@ export async function recheckRuntimeHealth(runtime?: RuntimeName): Promise<Runti
     await Promise.all(names.map((name) => {
         let pending = inflight.get(name);
         if (!pending) {
-            pending = check(name).then((next) => { state[name] = next; }).finally(() => inflight.delete(name));
+            pending = check(name).then((next) => {
+                state[name] = next;
+                // A healthy check refreshes the stored list; a failed or signed-out one (agy then prints only a fallback list) keeps the last good one.
+                try { recordRuntimeModels(name, next.ok ? next.models : [], next.checkedAt, deps.modelsFile()); } catch { /* A read-only home never fails a check. */ }
+            }).finally(() => inflight.delete(name));
             inflight.set(name, pending);
         }
         return pending;
@@ -256,9 +278,9 @@ export type RuntimeHealthMessage =
     | { type: 'recheckRuntimeHealth' };
 
 /** Webview glue: posts `runtimeHealth` now and on every change; the returned dispose stops it. */
-export function bindRuntimeHealthView(post: (message: { type: 'runtimeHealth'; health: RuntimeHealth }) => void): { dispose(): void } {
-    post({ type: 'runtimeHealth', health: getRuntimeHealth() });
-    return onDidChangeRuntimeHealth((health) => post({ type: 'runtimeHealth', health }));
+export function bindRuntimeHealthView(post: (message: { type: 'runtimeHealth'; health: RuntimeHealth; models: string[] }) => void): { dispose(): void } {
+    post({ type: 'runtimeHealth', health: getRuntimeHealth(), models: getRuntimeModelIds() });
+    return onDidChangeRuntimeHealth((health) => post({ type: 'runtimeHealth', health, models: getRuntimeModelIds() }));
 }
 
 const isRuntime = (value: unknown): value is RuntimeName => RUNTIME_NAMES.includes(value as RuntimeName);

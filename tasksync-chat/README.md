@@ -13,11 +13,11 @@ You say what you need in plain words. AskAway runs it through Spec Kit, hands th
 
 ## What AskAway Does
 
-**Your team, by name.** Every member shows in the Team tab with model and thinking dropdowns, an Agent file link to the prompt, and an Edit form for name, role, status line and picture (kept in `~/.askaway/team/`, never in the package). Idle members stay visible, Priya (the Validator) first, then the main agent, then the roster; cold or retired tasks hide unless Show completed is on. Build has two members, a high-intelligence one (Opus) and a low-intelligence one (Sol). The main agent's progress lines also appear in AITalk.
+**Your team, by name.** Every member shows in the Team tab with model and thinking dropdowns, an Agent file link to the prompt (Priya's lives in `~/.askaway/validator/validator.md`), and an Edit form for name, role, status line and picture (kept in `~/.askaway/team/`, never in the package). Idle members stay visible, Priya (the Validator) first, then the main agent, then the roster; cold or retired tasks hide unless Show completed is on. Build has two members, a high-intelligence one (Opus) and a low-intelligence one (Sol). The main agent's progress lines also appear in AITalk.
 
 **Members of your own.** Add `member:` and `role:` to a profile in `~/.askaway/worker-profiles/` and Team shows them, for example a rules-authoring expert. They stay out of the extension itself.
 
-**Runtimes.** Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked. OpenCode and agy start on. agy runs the `agy/gemini-4-argon-high` family; agy reports no cost, so its tasks show $0 rather than a price.
+**Runtimes.** Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked. OpenCode and agy start on. Claude runs workers through the `claude` CLI (`claude/sonnet`, `claude/opus`, `claude/haiku`) and reports its real cost. agy runs the `agy/gemini-4-argon-high` family; agy reports no cost, so its tasks show $0 rather than a price. At startup, every morning and on Refresh, each enabled integration's models are discovered and stored, and the Team dropdowns offer them.
 
 **Your picture.** AITalk reads `~/.askaway/profile/avatar.png` by default, supports an explicit photo override, and falls back to initials. The photo is never copied into a workspace.
 
@@ -55,6 +55,8 @@ The **AITalk** tab is the workspace group chat. The Agent joins when a turn star
 
 - Post a message, `@mention` an actor, or reply to a message to route it to its owner. Unaddressed messages go to the Validator.
 - Ticks on your messages show sent, delivered and read.
+- When the agent asks a question here it waits up to 45 seconds for your reply, then carries on; your answer reaches it with its next tool call.
+- **Clear chat** in the header empties the conversation (after a confirmation) and keeps who is in the room.
 - Agent updates read like normal messages, so you can follow the agent's thinking, see where it is stuck, and steer it before it finishes.
 - Set your availability from your avatar (away for 30 minutes, a few hours, or until you are back).
 - Webex drafts appear as a **Draft** card with recipient and full text. Nothing is sent until you 👍 it.

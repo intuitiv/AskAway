@@ -52,6 +52,13 @@ export function agyCommand(home = os.homedir(), env: NodeJS.ProcessEnv = process
     return exists(wrapper) ? wrapper : 'agy';
 }
 
+/** The claude binary the health check would accept (PATH, then ~/.local/bin), so a worker spawns the one that passed; plain `claude` when none is found. */
+export function claudeCommand(home = os.homedir(), env: NodeJS.ProcessEnv = process.env, exists = fs.existsSync): string {
+    if (env.ASKAWAY_CLAUDE_COMMAND) { return env.ASKAWAY_CLAUDE_COMMAND; }
+    const dirs = [...(env.PATH ?? '').split(path.delimiter).filter(Boolean), path.join(home, '.local', 'bin')];
+    return dirs.map((dir) => path.join(dir, 'claude')).find((file) => exists(file)) ?? 'claude';
+}
+
 let builtinProfilesDir: string | undefined;
 /** The extension's own profiles (e.g. build, build-lite); set at activation before the runtime is created. */
 export function setBuiltinWorkerProfilesDir(dir: string | undefined): void { builtinProfilesDir = dir; }
@@ -67,6 +74,7 @@ export function sharedWorkerRuntime(): OpenCodeWorkerRuntime {
     runtime ??= new OpenCodeWorkerRuntime(hostWorkerProfiles(), {
         onPresence: (workspace, worker, present) => presenceLifecycle?.(workspace, worker, present),
         agyCommand: agyCommand(),
+        claudeCommand: claudeCommand(),
     });
     return runtime;
 }

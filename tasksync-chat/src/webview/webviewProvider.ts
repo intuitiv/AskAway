@@ -17,7 +17,7 @@ import { CloudSpecsController, shouldPollCloud } from '../cloud/cloudSpecs';
 import { defaultIO } from '../cloud/cloudQueue';
 import { PacketTask } from '../cloud/packet';
 import { projectWorkersState, sessionOpenCommand, TeamMemberState, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
-import { getRuntimeHealth, handleRuntimeHealthMessage, onDidChangeRuntimeHealth, recheckRuntimeHealth, refreshIntegration, RUNTIME_NAMES, RuntimeHealth, RuntimeHealthMessage } from '../workers/runtimeHealth';
+import { getRuntimeHealth, getRuntimeModelIds, handleRuntimeHealthMessage, onDidChangeRuntimeHealth, recheckRuntimeHealth, refreshIntegration, RUNTIME_NAMES, RuntimeHealth, RuntimeHealthMessage } from '../workers/runtimeHealth';
 import { applyMemberOverride, AVATARS_DIR, initialsOf, readMemberOverrides, saveMemberProfile } from '../team/roster';
 import { AITalkStore } from '../aitalk/store'; import { roomFor } from '../aitalk/actors';
 import { approveDraft } from '../services/webexDrafts';
@@ -412,7 +412,7 @@ type ToWebviewMessage =
     | { type: 'specsData'; data: SpecScanResult }
     | { type: 'workersState'; data: (WorkersState & { cloudWorkers?: Awaited<ReturnType<CloudSpecsController['workers']>>; benchmark?: unknown[] }) | null }
     | { type: 'workerTrace'; data: WorkerTrace }
-    | { type: 'runtimeHealth'; health: RuntimeHealth }
+    | { type: 'runtimeHealth'; health: RuntimeHealth; models: string[] }
     | { type: 'memberPicturePicked'; memberId: string; name: string }
     | { type: 'commentaryState'; data: CommentaryView | null }
     | { type: 'availabilityState'; data: AvailabilityState | null; states: typeof presenceStates }
@@ -780,7 +780,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         // Listen for settings changes
         this._disposables.push(
-            onDidChangeRuntimeHealth((health) => this._broadcast({ type: 'runtimeHealth', health })),
+            onDidChangeRuntimeHealth((health) => this._broadcast({ type: 'runtimeHealth', health, models: getRuntimeModelIds() })),
             vscode.workspace.onDidChangeConfiguration(e => {
                 // Skip reload if we're the ones updating config (prevents race condition)
                 if (this._isUpdatingConfig) {
@@ -4627,7 +4627,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         // Send available models and worker queue
         this.broadcastAvailableModels();
         this._broadcastWorkerQueue();
-        this._broadcast({ type: 'runtimeHealth', health: getRuntimeHealth() });
+        this._broadcast({ type: 'runtimeHealth', health: getRuntimeHealth(), models: getRuntimeModelIds() });
 
         // Send plan state if plan mode is active
         if (this._currentPlan) {

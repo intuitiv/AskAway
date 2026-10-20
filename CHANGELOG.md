@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## AskAway v2.3.2 (10-20-26)
+- **Claude is a worker runtime:** `runtime: claude` or a `claude/<model>` id starts a headless `claude -p` worker that stays warm across submits, reports its real dollar cost and is gated by its Settings switch like agy (R-WTOOL-43).
+- **Models are discovered and stored:** at startup, every morning and on Refresh each enabled integration (OpenCode, agy, Claude) lists its models; they are kept in `~/.askaway/runtime-models.json` (a failed or signed-out check keeps the last good list) and fill the Team model dropdowns (R-WTOOL-44).
+- **AITalk asks wait for an answer:** a heads-up the agent asks in AITalk waits up to 45 seconds for a reply, then the agent carries on and the answer arrives with its next tool call, once; the Validator answers through the same path at once. Participants are now concrete actors (Validator, main agent, user, worker) behind one interface (R-AITALK-34, R-AITALK-35).
+- **Clear chat** button in the AITalk header (R-AITALK-33).
+- **Priya has an agent file**, `~/.askaway/validator/validator.md`, created on the first click of her Agent file link; editing it changes the validator's prompt, model and thinking (R-TEAM-49).
+- **Team scrollbar:** the live refresh no longer strips the list's scroll class (R-TEAM-39). The agent now leaves the AITalk room at every turn end (R-AITALK-32).
+
 ## AskAway v2.3.1 (10-20-26)
 - **Team scrollbar, for real:** the live refresh of the Team list stripped the class that makes it scroll, so the 2.3.0 scrollbar styling never applied. The list keeps its class on every refresh, and a test guards it (R-TEAM-39).
 - **Agent "left" notices in AITalk:** the main agent now leaves the room at every turn end. Before, it left only when the final answer's Response Handoff was found, so "left" often never appeared (R-AITALK-32).

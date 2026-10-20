@@ -163,8 +163,8 @@ export function defaultModel(profile: Pick<WorkerProfile, 'model'>): string {
 export function resolveSelection(profile: WorkerProfile, request: WorkerSelection = {}): SelectionResult {
     const model = request.model ?? defaultModel(profile);
     const thinking = request.thinking ?? profile.thinking;
-    // agy is a runtime, not a persona: every profile may run any agy model (`agy/<name>`); agy itself rejects an unknown one.
-    if (!profile.models.includes(model) && !/^agy\/[a-z0-9][a-z0-9.-]*$/.test(model)) {
+    // agy and claude are runtimes, not personas: every profile may run any of their models (`agy/<name>`, `claude/<name>`); the CLI rejects an unknown one.
+    if (!profile.models.includes(model) && !/^(agy|claude)\/[a-z0-9][a-z0-9.-]*$/.test(model)) {
         return { status: 'SELECTION_UNAVAILABLE', profile: profile.name, reason: `model ${model} is not allowed for ${profile.name}` };
     }
     if (!profile.thinkingOptions.includes(thinking)) {

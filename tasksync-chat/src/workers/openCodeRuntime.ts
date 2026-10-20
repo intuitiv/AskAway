@@ -11,6 +11,11 @@ export const AGY_PREFIX = 'agy/';
 export function isAgyModel(model: string): boolean {
     return model.startsWith(AGY_PREFIX);
 }
+/** Claude Code is an alternate runtime (see claudeRuntime.ts) namespaced `claude/` like agy; unlike agy it reports cost and has a prompt cache. */
+export const CLAUDE_PREFIX = 'claude/';
+export function isClaudeModel(model: string): boolean {
+    return model.startsWith(CLAUDE_PREFIX);
+}
 
 export const MAX_WAIT_SECONDS = 240;
 /** A run whose process emitted no event this long after spawn is STALLED (OpenCode is silent on a session/directory mismatch). */
@@ -73,8 +78,8 @@ export interface WorkerPacket {
     /** Where OpenCode runs (e.g. a git worktree of the owner); defaults to the owner. */
     cwd?: string;
     profile: string;
-    /** Worker runtime: OpenCode (default) or agy. `agy` runs `model` (e.g. gemini-4-argon-medium) through the agy CLI. */
-    runtime?: 'opencode' | 'agy';
+    /** Worker runtime: OpenCode (default), agy or claude. `agy`/`claude` run `model` (e.g. gemini-4-argon-medium, sonnet) through that CLI. */
+    runtime?: 'opencode' | 'agy' | 'claude';
     /** agy only, explicit per run: `skip` passes --dangerously-skip-permissions. Refused for a profile that denies edits or shell. */
     agyPermissions?: 'review' | 'skip';
     model?: string;
@@ -153,6 +158,10 @@ export interface RuntimeOptions {
     agyCommand?: string;
     /** Temporary agy verify-loop + continue-on-denial toggle (`askaway.workers.agyVerifyLoop`, default true). */
     agyVerifyLoop?: boolean | (() => boolean);
+    /** The claude binary for `runtime: 'claude'` workers; defaults to `claude` on PATH. */
+    claudeCommand?: string;
+    /** The AskAway MCP URL handed to Claude with --mcp-config; defaults to the URL the extension registers for MCP clients. */
+    claudeMcpUrl?: () => string;
 }
 
 interface RunRecord extends RunView {
@@ -329,7 +338,10 @@ const defaultSpawner: Spawner = (args, options) => {
     fs.mkdirSync('/tmp/aa', { recursive: true });
     const title = options?.title || args[args.indexOf('--title') + 1] || 'run';
     const child = childProcess.spawn(options?.command ?? 'opencode', args, { stdio: ['ignore', 'pipe', 'pipe'], ...(options ? { cwd: options.cwd } : {}) });
-    child.stderr.pipe(fs.createWriteStream(path.join('/tmp/aa', `${title.replace(/[^a-zA-Z0-9-]+/g, '_')}.err`), { flags: 'a' }));
+    const errFile = path.join('/tmp/aa', `${title.replace(/[^a-zA-Z0-9-]+/g, '_')}.err`);
+    child.stderr.pipe(fs.createWriteStream(errFile, { flags: 'a' }));
+    // A missing binary emits `error` (no `exit`): left unhandled it would crash the extension host, so it ends the run as a failed exit.
+    child.on('error', (error) => { try { fs.appendFileSync(errFile, `${error.message}\n`); } catch { /* diagnosis only */ } child.emit('exit', 127, null); });
     return child;
 };
 
@@ -354,9 +366,13 @@ export class OpenCodeWorkerRuntime {
     private readonly setTimer: (fire: () => void, ms: number) => () => void;
     private readonly agyCommand: string;
     private readonly agyVerifyLoop: () => boolean;
+    private readonly claudeCommand: string;
+    private readonly claudeMcpUrl: () => string;
 
     constructor(profiles: WorkerProfile[], options: RuntimeOptions = {}) {
         this.agyCommand = options.agyCommand ?? 'agy';
+        this.claudeCommand = options.claudeCommand ?? 'claude';
+        this.claudeMcpUrl = options.claudeMcpUrl ?? (() => (require('./claudeRuntime') as typeof import('./claudeRuntime')).askawayMcpUrl());
         const verifyLoop = options.agyVerifyLoop;
         this.agyVerifyLoop = typeof verifyLoop === 'function' ? verifyLoop : () => verifyLoop ?? defaultAgyVerifyLoop();
         this.now = options.now ?? Date.now;
@@ -402,8 +418,11 @@ export class OpenCodeWorkerRuntime {
         if (packet.runtime === 'agy') {
             if (!packet.model) { return { status: 'INELIGIBLE', reason: 'runtime agy needs a model, e.g. gemini-4-argon-medium' }; }
             packet = { ...packet, model: isAgyModel(packet.model) ? packet.model : AGY_PREFIX + packet.model };
-        } else if (packet.runtime === 'opencode' && packet.model && isAgyModel(packet.model)) {
-            return { status: 'INELIGIBLE', reason: `model ${packet.model} belongs to runtime agy, not opencode` };
+        } else if (packet.runtime === 'claude') {
+            if (!packet.model) { return { status: 'INELIGIBLE', reason: 'runtime claude needs a model, e.g. sonnet' }; }
+            packet = { ...packet, model: isClaudeModel(packet.model) ? packet.model : CLAUDE_PREFIX + packet.model };
+        } else if (packet.runtime === 'opencode' && packet.model && (isAgyModel(packet.model) || isClaudeModel(packet.model))) {
+            return { status: 'INELIGIBLE', reason: `model ${packet.model} belongs to runtime ${isAgyModel(packet.model) ? 'agy' : 'claude'}, not opencode` };
         }
         const permission = this.permissionRefusal(packet, packet.model ?? '');
         if (permission) { return { status: 'INELIGIBLE', reason: permission }; }
@@ -453,6 +472,7 @@ export class OpenCodeWorkerRuntime {
         let skipped = '';
         if (!parentSession) { skipped = 'the busy worker has no OpenCode session yet'; }
         else if (isAgyModel(this.router.worker(workerId)?.model ?? '')) { skipped = 'agy conversations cannot be forked'; }
+        else if (isClaudeModel(this.router.worker(workerId)?.model ?? '')) { skipped = 'claude conversations cannot be forked'; }
         else if (!fork) { skipped = 'no shared OpenCode server attached'; }
         else {
             try { forkedSession = (await fork(parentSession)).sessionId; } catch (error) { skipped = `fork failed: ${(error as Error).message}`; }
@@ -499,6 +519,7 @@ export class OpenCodeWorkerRuntime {
         const fork = this.forkSession ?? (this.attachUrl ? ((id: string) => forkSessionViaServer(this.attachUrl as string, id)) : undefined);
         if (!parentSession) { return refuse('INELIGIBLE', 'the warm worker has no OpenCode session yet'); }
         if (isAgyModel(parent.model)) { return refuse('INELIGIBLE', 'agy conversations cannot be forked'); }
+        if (isClaudeModel(parent.model)) { return refuse('INELIGIBLE', 'claude conversations cannot be forked'); }
         if (!fork) { return refuse('INELIGIBLE', 'no shared OpenCode server attached'); }
         let sessions: string[];
         try { sessions = (await Promise.all(packets.map(() => fork(parentSession)))).map((forked) => forked.sessionId); }
@@ -532,8 +553,8 @@ export class OpenCodeWorkerRuntime {
             .map((run) => {
                 const worker = this.router.worker(run.workerId);
                 return { ...this.view(run), contextTokens: worker?.contextTokens ?? 0, workerState: worker?.state ?? 'UNKNOWN',
-                    // agy has no OpenCode viewer: its runs show only through logs and the trace.
-                    sessionOpenAction: !run.sessionId || isAgyModel(run.model) ? '' : this.attachUrl
+                    // agy and claude have no OpenCode viewer: their runs show only through logs and the trace.
+                    sessionOpenAction: !run.sessionId || isAgyModel(run.model) || isClaudeModel(run.model) ? '' : this.attachUrl
                         ? `opencode attach ${this.attachUrl} --session ${run.sessionId}` : `opencode --session ${run.sessionId}` };
             });
     }
@@ -592,8 +613,8 @@ export class OpenCodeWorkerRuntime {
         if (!this.terminal(run.state)) { return this.view(run); }
         if (run.state === 'COMPLETED') { return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: 'run already completed' }; }
         // A run restored after a reload has no child here; its agy process may still be running the same conversation.
-        if (!run.child && run.pid && isAgyModel(run.model) && processAlive(run.pid)) {
-            return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: `agy process ${run.pid} from before the reload is still running this conversation; wait for it to exit, then resume` };
+        if (!run.child && run.pid && (isAgyModel(run.model) || isClaudeModel(run.model)) && processAlive(run.pid)) {
+            return { status: 'FRESH_SUBMISSION_REQUIRED', runId, reason: `${isAgyModel(run.model) ? 'agy' : 'claude'} process ${run.pid} from before the reload is still running this conversation; wait for it to exit, then resume` };
         }
         this.refreshFromLedger(run.workspace);
         if (!this.router.resumeRun(run.workerId, run.runId, run.packet.slice(0, 40), 60)) {
@@ -637,8 +658,9 @@ export class OpenCodeWorkerRuntime {
         const result = { reconnected: [] as string[], orphaned: [] as Array<{ workerId: string; reason: string }> };
         for (const [workerId, adopted] of this.adopted) {
             if (adopted.workspace !== workspace) { continue; }
-            // An agy conversation is resumed by the agy CLI itself, never through the OpenCode server.
-            const reason = isAgyModel(adopted.model) ? (!adopted.sessionId ? 'no agy conversation was recorded before reload' : '')
+            // An agy or claude conversation is resumed by its CLI itself, never through the OpenCode server.
+            const cli = isAgyModel(adopted.model) ? 'agy' : isClaudeModel(adopted.model) ? 'claude' : '';
+            const reason = cli ? (!adopted.sessionId ? `no ${cli} conversation was recorded before reload` : '')
                 : !serverLive ? 'shared OpenCode server not reachable after reload'
                 : !adopted.sessionId ? 'no OpenCode session was recorded before reload' : '';
             this.router.adopt({ workerId, workspacePath: workspace, profile: adopted.profile, model: adopted.model, thinking: adopted.thinking,
@@ -811,6 +833,7 @@ export class OpenCodeWorkerRuntime {
         const sessionId = this.sessionsByWorker.get(workerId) ?? '';
         const run = [...this.runs.values()].filter((candidate) => candidate.workerId === workerId).sort((a, b) => b.updatedAt - a.updatedAt)[0];
         if (run?.track === 'validator') return { status: 'SKIPPED', reason: 'validator sessions have no keep-alive pings' };
+        if (worker && run && isClaudeModel(run.model) && sessionId) { return this.pingClaude(workerId, run, sessionId); }
         if (!worker || !run || !this.attachUrl || !/^[A-Za-z0-9_-]+$/.test(sessionId)) { return { status: 'SKIPPED', reason: 'no attached session' }; }
         const expires = this.router.cacheExpiresAt(worker);
         if (worker.state !== 'IDLE' || worker.active || worker.queue.length > 0 || expires <= this.now() || this.pinging.has(workerId)) {
@@ -836,6 +859,56 @@ export class OpenCodeWorkerRuntime {
             const context = usage.input + usage.cacheRead + usage.cacheWrite + usage.output;
             if (context > 0) { run.nextInputTokens = context; run.lastPromptTokens = usage.input + usage.cacheRead + usage.cacheWrite; run.lastCachedTokens = usage.cacheRead; }
             this.record(run, { type: 'checkpoint', usage, ping: true, callId: finish.id ? String(finish.id) : undefined });
+            this.router.touch(workerId, context);
+            this.unusedPings.set(workerId, (this.unusedPings.get(workerId) ?? 0) + 1);
+            return { status: 'PINGED' };
+        } catch (error) {
+            return { status: 'FAILED', reason: (error as Error).message };
+        } finally {
+            this.pinging.delete(workerId);
+        }
+    }
+
+    /** The keep-warm ping of a Claude worker: one `--resume` print call; its reported usage and cost go to the ledger tagged `ping`. */
+    private async pingClaude(workerId: string, run: RunRecord, sessionId: string): Promise<{ status: 'PINGED' | 'SKIPPED' | 'FAILED'; reason?: string }> {
+        const worker = this.router.worker(workerId);
+        if (!worker || worker.state !== 'IDLE' || worker.active || worker.queue.length > 0 || this.router.cacheExpiresAt(worker) <= this.now() || this.pinging.has(workerId)) {
+            return { status: 'SKIPPED', reason: 'not an idle warm worker' };
+        }
+        const { claudeArgs, claudeEventNormalizer } = require('./claudeRuntime') as typeof import('./claudeRuntime');
+        const profile = this.router.profile(run.profile);
+        this.pinging.add(workerId);
+        try {
+            const child = this.spawner(claudeArgs({ model: run.model, thinking: run.thinking, sessionId, addDir: run.cwd, message: KEEP_WARM_PROMPT, profile,
+                instructions: profile ? workerInstructions(profile) : undefined }), { command: this.claudeCommand, cwd: run.cwd, title: `${workerId}/ping` });
+            const normalize = claudeEventNormalizer();
+            const usage: RunUsage = { ...emptyUsage(), steps: 1 };
+            let last: RunUsage | undefined;
+            let failed = '';
+            let buffer = '';
+            child.stdout?.on('data', (chunk: Buffer) => {
+                buffer += chunk.toString();
+                const lines = buffer.split('\n');
+                buffer = lines.pop() ?? '';
+                for (const event of lines.flatMap((line) => { try { return normalize(JSON.parse(line)); } catch { return []; } })) {
+                    if (event?.type === 'error') { failed = String(event.error?.message ?? 'claude error'); }
+                    if (event?.type !== 'step_finish') { continue; }
+                    const tokens = event.part.tokens;
+                    last = { input: tokens.input, output: tokens.output, reasoning: 0, cacheRead: tokens.cache.read, cacheWrite: tokens.cache.write, cost: event.part.cost, steps: 1 };
+                    for (const key of ['input', 'output', 'cacheRead', 'cacheWrite', 'cost'] as const) { usage[key] += last[key]; }
+                }
+            });
+            // A missing binary or a hung process must never leave the worker pinging forever (it would stall keep-warm for every worker).
+            let timer: NodeJS.Timeout | undefined;
+            const code = await new Promise<number | null>((resolve) => {
+                timer = setTimeout(() => { failed ||= `claude ping timed out after ${PING_HTTP_TIMEOUT_MS / 1000}s`; try { child.kill?.('SIGTERM'); } catch { /* already gone */ } resolve(null); }, PING_HTTP_TIMEOUT_MS);
+                child.on('exit', (exitCode: number | null) => resolve(exitCode));
+            }).finally(() => clearTimeout(timer));
+            if (failed || code !== 0) { return { status: 'FAILED', reason: failed || `exit code ${code}` }; }
+            for (const key of Object.keys(usage) as Array<keyof RunUsage>) { run.usage[key] += usage[key]; }
+            const context = last ? last.input + last.cacheRead + last.cacheWrite + last.output : 0;
+            if (last && context > 0) { run.nextInputTokens = context; run.lastPromptTokens = context - last.output; run.lastCachedTokens = last.cacheRead; }
+            this.record(run, { type: 'checkpoint', usage, ping: true });
             this.router.touch(workerId, context);
             this.unusedPings.set(workerId, (this.unusedPings.get(workerId) ?? 0) + 1);
             return { status: 'PINGED' };
@@ -968,19 +1041,26 @@ export class OpenCodeWorkerRuntime {
             ? require('./agyRuntime') as typeof import('./agyRuntime') : {} as Partial<typeof import('./agyRuntime')>;
         // An error from an earlier launch of this run never decides this launch's outcome.
         if (agy && run.reason !== 'cancelled by caller') { run.reason = undefined; }
-        // OpenCode reads the profile instructions from its agent file; agy gets the same text at the start of its conversation.
-        const profile = agy ? this.router.profile(run.profile) : undefined;
+        // OpenCode reads the profile instructions from its agent file; agy gets the same text at the start of its conversation,
+        // claude as an appended system prompt on every launch.
+        const claude = isClaudeModel(run.model);
+        const profile = agy || claude ? this.router.profile(run.profile) : undefined;
         // --print-logs is required: without it `opencode run` is SIGKILLed after ~14s.
-        const args = agyArgs ? agyArgs({ model: run.model, thinking: run.thinking, conversationId: sessionId, addDir: run.cwd, skipPermissions: run.agyPermissions === 'skip',
+        const args = claude ? (require('./claudeRuntime') as typeof import('./claudeRuntime')).claudeArgs({ model: run.model, thinking: run.thinking,
+            sessionId, addDir: run.cwd, message, profile, instructions: profile ? workerInstructions(profile) : undefined,
+            mcpUrl: profile?.mcp.length ? this.claudeMcpUrl() : '' })
+            : agyArgs ? agyArgs({ model: run.model, thinking: run.thinking, conversationId: sessionId, addDir: run.cwd, skipPermissions: run.agyPermissions === 'skip',
             edit: profile?.edit, message: !sessionId && profile ? `${workerInstructions(profile)}\n\n${message}` : message })
             : ['run', '--print-logs', '--log-level', 'ERROR', '--format', 'json', '--agent', `aa-${run.profile}`,
                 '--model', run.model, '--variant', run.thinking, '--dir', run.cwd, '--title', `${run.workerId}/${run.runId}`];
-        if (sessionId && !agy) { args.push('--session', sessionId); }
-        if (this.attachUrl && !agy) { args.push('--attach', this.attachUrl); }
-        if (!agy) { args.push(message); }
+        const openCode = !agy && !claude;
+        if (sessionId && openCode) { args.push('--session', sessionId); }
+        if (this.attachUrl && openCode) { args.push('--attach', this.attachUrl); }
+        if (openCode) { args.push(message); }
         let child: ChildLike;
         try {
-            child = agy ? this.spawner(args, { command: this.agyCommand, cwd: run.cwd, title: `${run.workerId}/${run.runId}` }) : this.spawner(args);
+            child = openCode ? this.spawner(args)
+                : this.spawner(args, { command: claude ? this.claudeCommand : this.agyCommand, cwd: run.cwd, title: `${run.workerId}/${run.runId}` });
         } catch (error) {
             if (!this.terminal(run.state)) {
                 run.reason = (error as Error).message;
@@ -988,7 +1068,8 @@ export class OpenCodeWorkerRuntime {
             }
             return;
         }
-        const normalize = agyEventNormalizer ? agyEventNormalizer(profile?.mcp ?? []) : (event: any) => [event];
+        const normalize = claude ? (require('./claudeRuntime') as typeof import('./claudeRuntime')).claudeEventNormalizer()
+            : agyEventNormalizer ? agyEventNormalizer(profile?.mcp ?? []) : (event: any) => [event];
         run.child = child;
         run.pid = child.pid;
         // The start fact is written at spawn, so a run that never speaks is still in the ledger with its pid, session and directory.
@@ -1034,8 +1115,8 @@ export class OpenCodeWorkerRuntime {
                 if (event?.sessionID && !run.sessionId) {
                     run.sessionId = event.sessionID;
                     this.sessionsByWorker.set(run.workerId, event.sessionID);
-                    // agy names its conversation before any other fact: the ledger must hold it, so a reload can resume it.
-                    if (agy) { this.record(run, { type: 'message_update' }); }
+                    // agy and claude name their conversation before any other fact: the ledger must hold it, so a reload can resume it.
+                    if (agy || claude) { this.record(run, { type: 'message_update' }); }
                 }
                 if (!started) { started = true; cancelStall(); }
                 if (run.state === 'STARTING' || run.state === 'STALLED') { run.state = 'RUNNING'; run.reason = undefined; }
@@ -1063,6 +1144,8 @@ export class OpenCodeWorkerRuntime {
                     const detail = String(event.error?.data?.message ?? event.error?.message ?? event.error?.name ?? event.message ?? 'provider or tool error');
                     run.reason = CREDENTIAL.test(detail) ? 'provider or tool error (credential omitted)' : detail.replace(/\s+/g, ' ').slice(0, 240);
                     this.record(run, { type: 'error', reason: run.reason });
+                    // A Claude error result (error_max_turns, error_during_execution, ...) ends the run FAILED with its reason.
+                    if (claude && !fatal) { fatal = run.reason; }
                     scanAgy(detail);
                 } else if (part.tool) {
                     const status = String(part.state?.status ?? '');

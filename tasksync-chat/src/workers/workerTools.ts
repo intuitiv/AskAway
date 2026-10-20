@@ -7,22 +7,22 @@ import type { TurnBudget } from './turnBudget';
 type Caller = { recipient: string; workspace?: string };
 let delivery: ((result: string, caller?: Caller) => string) | undefined;
 export function setToolResultDelivery(handler: (result: string, caller?: Caller) => string): void { delivery = handler; }
-type RuntimeName = 'opencode' | 'agy';
-/** `before` checks toggles and agy health without starting anything; `ready` also probes the OpenCode server once it was started. */
+type RuntimeName = 'opencode' | 'agy' | 'claude';
+/** `before` checks toggles and agy/claude health without starting anything; `ready` also probes the OpenCode server once it was started. */
 type RuntimeGate = (runtimes: RuntimeName[], phase: 'before' | 'ready') => Promise<Record<string, unknown> | null>;
 let runtimeGate: RuntimeGate | undefined;
 let runtimeInspect: (() => OpenCodeWorkerRuntime) | undefined;
 /** The host installs the Settings/health gate and a runtime getter that never starts the OpenCode server; without a gate every runtime is allowed. */
 export function setWorkerRuntimeGate(gate: RuntimeGate | undefined, inspect?: () => OpenCodeWorkerRuntime): void { runtimeGate = gate; runtimeInspect = inspect; }
 
-const runtimeOfModel = (model: string): RuntimeName => model.startsWith('agy/') ? 'agy' : 'opencode';
+const runtimeOfModel = (model: string): RuntimeName => model.startsWith('agy/') ? 'agy' : model.startsWith('claude/') ? 'claude' : 'opencode';
 /** The runtimes a dispatch uses, by effective model: the packet's runtime or model, else the warm worker's, else the profile default. */
 function dispatchRuntimes(action: string, args: any, live: OpenCodeWorkerRuntime): RuntimeName[] {
     if (action === 'resume') { return [runtimeOfModel(String(live.status(args.runId)?.model ?? ''))]; }
     const workerModel = args.workerId ? String(live.router?.worker(args.workerId)?.model ?? '') : '';
     const packets: any[] = action === 'fanout' ? (Array.isArray(args.packets) ? args.packets : []) : [args];
     return packets.map((packet): RuntimeName => {
-        if (packet.runtime === 'agy' || packet.runtime === 'opencode') { return packet.runtime; }
+        if (packet.runtime === 'agy' || packet.runtime === 'opencode' || packet.runtime === 'claude') { return packet.runtime; }
         const profile = typeof packet.profile === 'string' ? live.router?.profile(packet.profile) : undefined;
         return runtimeOfModel(String(packet.model || workerModel || (profile ? defaultModel(profile) : '')));
     });
@@ -70,7 +70,7 @@ export function webexTool(host: (input: unknown) => Promise<Record<string, unkno
 
 const packetShape = {
     profile: z.string().describe('Worker mode: one of the enabled profiles that `action: "profiles"` lists.'),
-    runtime: z.enum(['opencode', 'agy']).optional().describe('Worker runtime; default opencode. agy runs `model` (e.g. gemini-4-argon-medium) through the agy CLI for any mode; its cost is unreported and it has no OpenCode viewer.'),
+    runtime: z.enum(['opencode', 'agy', 'claude']).optional().describe('Worker runtime; default opencode. agy runs `model` (e.g. gemini-4-argon-medium) through the agy CLI for any mode; its cost is unreported and it has no OpenCode viewer. claude runs `model` (sonnet, opus, haiku or any id the Claude CLI accepts) through Claude Code headless; its cost is reported.'),
     agyPermissions: z.enum(['review', 'skip']).optional().describe('agy only. Default review: headless agy auto-denies commands/MCP calls its settings.json permissions.allow does not grant, and the run FAILS with that reason. skip: explicit per-run --dangerously-skip-permissions; refused for modes that deny edits or shell.'),
     model: z.string().optional().describe('provider/model; must be allowed by the mode. Omit for the mode default.'),
     thinking: z.string().optional().describe('Reasoning variant; must be allowed by the mode.'),
