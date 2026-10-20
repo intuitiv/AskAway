@@ -1,3 +1,4 @@
+import { ensureValidatorAgentFile } from '../validator/profile';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -472,6 +473,7 @@ type FromWebviewMessage =
     | { type: 'requestAITalk' }
     | { type: 'aitalkPost' | 'aitalkReply'; text: string; replyTo?: string; attachments?: Array<{ name: string; path: string }> }
     | { type: 'aitalkAttach' }
+    | { type: 'aitalkClear' }
     | { type: 'aitalkApproveDraft'; draftId: string }
     | { type: 'aitalkReact'; replyTo: string; emoji: string }
     | { type: 'requestSpecs' }
@@ -4295,6 +4297,16 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 });
                 break;
             }
+            case 'aitalkClear': {
+                const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (!root) break;
+                void vscode.window.showWarningMessage('Clear the AITalk chat? Messages not yet delivered to the agent are lost too.', { modal: true }, 'Clear chat').then(choice => {
+                    if (choice !== 'Clear chat') return;
+                    new AITalkStore(root).clear();
+                    this._handleWebviewMessage({ type: 'requestAITalk' });
+                });
+                break;
+            }
             case 'requestAITalk':
             case 'aitalkPost':
             case 'aitalkReply':
@@ -4342,6 +4354,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 // The main agent's chat-mode file (AskAway Build) lives in VS Code's user prompts folder.
                 const prompts = this._userPromptsDir();
                 const profile = typeof message.profile === 'string' && /^[\w.-]+$/.test(message.profile) ? message.profile : '';
+                // Priya's file is the user's copy of the validator profile; the first click writes the default.
+                if (message.profile === 'validator' || message.memberId === 'priya') {
+                    const file = ensureValidatorAgentFile();
+                    void vscode.workspace.openTextDocument(vscode.Uri.file(file)).then(document => vscode.window.showTextDocument(document, { selection: new vscode.Range(0, 0, 0, 0) }));
+                    break;
+                }
                 const requested = message.path || message.agentFile;
                 const promptFile = requested && path.join(prompts, path.basename(requested));
                 // Built-in profiles (build, build-lite, ...) ship in the extension; the user's own file of the same name wins.

@@ -12,6 +12,12 @@ const OPENER_ITEMS = 30;
 type TalkPost = (workspace: string, input: { text: string; replyTo?: string; details?: string; kind?: string; authorKind?: string; detail?: Record<string, unknown> }) => unknown;
 let talkPost: TalkPost | undefined;
 export function setCommentaryAITalkMirror(callback: TalkPost): void { talkPost = callback; }
+/** Waits for a reply to a posted AITalk question; resolves with the post plus the reply, or flagged pending when none came in time. */
+type TalkWait = (workspace: string, posted: { id: string }, seconds: number) => Promise<unknown>;
+let talkWait: TalkWait | undefined;
+export function setCommentaryAITalkWait(callback: TalkWait): void { talkWait = callback; }
+/** A heads-up asked in AITalk waits this long for an answer before the agent carries on (the answer then arrives with its next tool call). */
+export const AITALK_QUESTION_WAIT_SECONDS = 45;
 
 /** `validator` items are written only by `postValidator()`; `detail` is the validator's expandable trace rows. */
 export interface CommentaryItem { id: string; ts: number; kind: CommentaryKind | 'validator'; text: string; turnId: string; detail?: Record<string, unknown> }
@@ -209,11 +215,13 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
             + 'Speak to the reviewer in plain first-person sentences, like updating a colleague. Use one or two short sentences, not emoji-led bold banners or headlines. '
             + 'kind `update` for everything that is just happening. kind `heads-up` when you will need something from the reviewer soon, or something is unclear to you, so they can prepare. '
             + 'You hold the context the reviewer lacks, so a heads-up asks the exact question with options, or asks for the input you need. Never just "something is unclear". '
-             + '10-20 words. Batch it with the step\'s real tool call; do not repeat it in chat. action aitalk posts a crisp question or reply; optional details appear under Read more.',
+             + '10-20 words. Batch it with the step\'s real tool call; do not repeat it in chat. action aitalk posts a crisp question or reply; optional details appear under Read more. '
+             + 'A heads-up asked with action aitalk waits up to 45 seconds for a reply (waitSeconds changes it, 0 skips it). If none comes, carry on: the reply is delivered with your next tool call.',
         inputSchema: z.object({
             action: z.enum(['post', 'aitalk']).optional(),
             details: z.string().max(8000).optional(),
             replyTo: z.string().optional(),
+            waitSeconds: z.number().min(0).max(120).optional().describe('action aitalk: seconds to wait for a reply to this question (default 45 for a heads-up, 0 otherwise).'),
             kind: z.enum(COMMENTARY_KINDS).optional(),
             text: z.string().min(1).describe('10-20 plain words: what is happening and why.'),
             turnId: z.string().optional(),
@@ -224,7 +232,10 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
             const workspace = args.workspacePath || defaultWorkspace;
             if (!workspace) return { status: 'REJECTED', reason: 'workspacePath is required: say which workspace this line belongs to' };
             if (args.action === 'aitalk') {
-                return talkPost ? talkPost(workspace, args) : { status: 'REJECTED', reason: 'AITalk is not configured' };
+                if (!talkPost) return { status: 'REJECTED', reason: 'AITalk is not configured' };
+                const posted = talkPost(workspace, args) as { id?: string } | undefined;
+                const seconds = args.waitSeconds ?? (args.kind === 'heads-up' && !args.replyTo ? AITALK_QUESTION_WAIT_SECONDS : 0);
+                return talkWait && posted?.id && seconds > 0 ? talkWait(workspace, { id: posted.id }, seconds).then(waited => ({ ...posted, ...(waited as object) })) : posted;
             }
             if (!args.kind) return { status: 'INVALID_INPUT', reason: 'kind is required for commentary' };
             return store().post(workspace, args);

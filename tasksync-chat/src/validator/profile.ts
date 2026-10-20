@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { parseWorkerProfile, WorkerProfile, SHARED_VOICE } from '../workers/workerProfiles';
 
 /**
@@ -27,6 +30,21 @@ Stop condition: one answer, or "no source answers", or the step limit.
 Evidence contract: emit exactly ONE JSON object on ONE line with these exact keys: {"answer":string|null,"sources":string[],"observations":string,"summary":string,"impact":string,"risk":"low"|"high","reversible":boolean,"confidence":number}. All keys are required. No prose, headings or Markdown fences around the object. Then emit Result: PASS on a separate line for the worker runtime. Confidence is 0..1. Cite supplied source ids exactly. Assess whether answering authorizes a low-risk reversible decision; destructive, irreversible, uncertain or unsourced decisions are high risk and must be held for the reviewer. Never include a secret. Never address or message the agent. Live answers require confidence >= 0.8; delivery is only via a requested tool result while enabled and Away.
 `;
 
-export function validatorProfile(): WorkerProfile {
+/** Priya's agent file: the user's copy of the profile above. Editing it changes the validator's prompt, model and thinking. */
+export const VALIDATOR_AGENT_FILE = path.join(os.homedir(), '.askaway', 'validator', 'validator.md');
+
+export function validatorProfile(file = VALIDATOR_AGENT_FILE): WorkerProfile {
+    try {
+        if (fs.existsSync(file)) { return parseWorkerProfile(fs.readFileSync(file, 'utf8'), file); }
+    } catch { /* A broken edit never stops the validator: the built-in profile applies. */ }
     return parseWorkerProfile(VALIDATOR_PROFILE_MARKDOWN, 'validator-profile');
+}
+
+/** Writes the default agent file on first use so the Team card's Agent file link always opens something. */
+export function ensureValidatorAgentFile(file = VALIDATOR_AGENT_FILE): string {
+    if (!fs.existsSync(file)) {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, VALIDATOR_PROFILE_MARKDOWN);
+    }
+    return file;
 }

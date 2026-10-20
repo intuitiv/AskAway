@@ -126,6 +126,21 @@ export class AITalkStore {
         this.append({ id: randomUUID(), author: by.id, replyTo, emoji, ts: stamp() });
         return this.snapshot(true);
     }
+    /** Clears the conversation. Who is in the room stays; their old join/leave lines go with the messages. */
+    clear(): void {
+        const present = new Map<string, any>();
+        for (const line of lines(this.presenceFile)) {
+            try {
+                const event = JSON.parse(line);
+                if (event?.presenceEvent && event.member?.id) present.set(event.member.id, event);
+            } catch { /* Torn event. */ }
+        }
+        const kept = [...present.values()].filter(event => event.presenceEvent === 'joined').map(event => ({ ...event, quiet: true }));
+        fs.mkdirSync(path.dirname(this.file), { recursive: true });
+        fs.writeFileSync(this.file, '');
+        fs.writeFileSync(this.presenceFile, kept.map(event => JSON.stringify(event) + '\n').join(''));
+        fs.writeFileSync(this.typingFile, '');
+    }
     private append(event: object, file = this.file) {
         let size = 0;
         try { size = fs.statSync(file).size; } catch { /* New workspace. */ }

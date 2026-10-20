@@ -1,11 +1,12 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { AITalkStore } from './store';
 import { roomFor } from './actors';
-import { setCommentaryAITalkMirror } from '../commentary/commentary';
+import { setCommentaryAITalkMirror, setCommentaryAITalkWait } from '../commentary/commentary';
 let workspace: string | undefined;
 const mcpCaller = new AsyncLocalStorage<AITalkCaller>();
 export function configureAITalkDelivery(root: string): void {
     workspace = root;
+    configureAITalkReplyWait();
     setCommentaryAITalkMirror((target, input) => {
         const room = roomFor(target);
         const state = room.store.snapshot(true);
@@ -34,6 +35,17 @@ export function configureAITalkDelivery(root: string): void {
         const questionId = input.replyTo ?? (typeof detail.observedId === 'string' ? detail.observedId : undefined);
         const replyTo = state.messages.some(message => message.id === questionId) ? questionId : undefined;
         return room.post(author.id, crisp, { replyTo, details: details || input.details, kind: input.kind }).message;
+    });
+}
+/** The asker waits briefly for a reply; a reply that arrives in time is handed over now, otherwise it comes with the next tool call. */
+export function configureAITalkReplyWait(): void {
+    setCommentaryAITalkWait(async (target, posted, seconds) => {
+        const room = roomFor(target);
+        const reply = await room.awaitReply(posted.id, seconds * 1000);
+        if (!reply) return { pending: true, note: 'No reply yet. Carry on with your work; a reply is delivered with your next tool call.' };
+        const recipient = mcpCaller.getStore()?.recipient ?? room.store.agentId();
+        if (recipient) room.store.track('delivered', recipient, [reply.id]);
+        return { reply: { id: reply.id, author: reply.author, text: reply.text } };
     });
 }
 export interface AITalkCaller { recipient: string; workspace?: string; displayName?: string }

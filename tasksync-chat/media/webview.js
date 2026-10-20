@@ -3087,7 +3087,7 @@
     }
     var TEAM_DEFAULT_VALIDATOR = {
         id: 'priya', name: 'Priya', role: 'Validator', pinned: true, initials: 'PR', avatarSrc: '', avatar: '',
-        creativeStatus: 'Reviewing spec compliance', agentFile: '.github/agents/validator.agent.md',
+        creativeStatus: 'Reviewing spec compliance', agentFile: '~/.askaway/validator/validator.md',
         model: 'github-copilot/claude-sonnet-4.6', defaultModel: 'github-copilot/claude-sonnet-4.6',
         thinking: 'medium', defaultThinking: 'medium',
         turnCost: 0, monthCost: 0, taskIds: [], workerIds: []
@@ -3146,7 +3146,7 @@
             avatarSrc: avatarSrc,
             avatar: avatarSrc,
             creativeStatus: (m && m.creativeStatus) || (pinned ? 'Reviewing spec compliance' : 'Ready for next packet'),
-            agentFile: (m && m.agentFile) || (pinned ? '.github/agents/validator.agent.md' : '.opencode/agent/askaway-' + String(role).toLowerCase() + '.md'),
+            agentFile: (m && m.agentFile) || (pinned ? '~/.askaway/validator/validator.md' : '.opencode/agent/askaway-' + String(role).toLowerCase() + '.md'),
             model: model,
             defaultModel: model,
             thinking: thinking,

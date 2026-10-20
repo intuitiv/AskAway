@@ -126,7 +126,7 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		thinking: 'low',
 		turnDollars: 0.01,
 		monthDollars: 1.42,
-		agentFile: '.github/agents/validator.agent.md',
+		agentFile: '~/.askaway/validator/validator.md',
 		workingStatus: CREATIVE_ROLE_STATUSES.priya.working,
 		idleStatus: CREATIVE_ROLE_STATUSES.priya.idle,
 	},

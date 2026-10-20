@@ -1,4 +1,4 @@
-import { roomFor } from './actors';
+import { roomFor, ValidatorActor } from './actors';
 const rules = require('../../media/aitalk/talkRules.js');
 const validatorMember = () => rules.defaultMembers.find((member: any) => member.kind === 'validator');
 
@@ -6,20 +6,10 @@ const validatorMember = () => rules.defaultMembers.find((member: any) => member.
 export function registerAITalkValidator(root: string, invoke: (text: string, id: string) => Promise<unknown>) {
     const room = roomFor(root);
     const self = validatorMember();
-    let pending: Promise<unknown> = Promise.resolve();
-    const answer = (message: { id: string; text: string }, tracker: { delivered(): void; read(): void }) => {
-        const run = pending.then(async () => {
-            tracker.delivered();
-            room.typing(self.id, true);
-            try { return await invoke(message.text, message.id); }
-            finally { room.typing(self.id, false); tracker.read(); }
-        });
-        pending = run.catch(error => { console.warn('[AskAway] AITalk Validator failed:', error); });
-        return run;
-    };
-    room.register({ id: self.id, displayName: self.displayName, kind: self.kind, rank: self.rank, colour: self.colour,
-        receive: answer, receiveReply: (_original, reply, tracker) => answer(reply, tracker) });
-    return { dispose: () => room.unregister(self.id, false), flush: () => pending };
+    const actor = new ValidatorActor({ id: self.id, displayName: self.displayName, kind: self.kind, rank: self.rank, colour: self.colour },
+        invoke, on => room.typing(self.id, on));
+    room.register(actor);
+    return { dispose: () => room.unregister(self.id, false), flush: () => actor.flush() };
 }
 
 /** askaway_validator: the Agent's question is posted in AITalk as an Agent message @Validator; the answer replies to it. */

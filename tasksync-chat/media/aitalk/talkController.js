@@ -70,6 +70,7 @@ document.addEventListener('click', event => {
     const button = event.target.closest('button');
     if (!button) return;
     if (button.dataset?.tab) { post({ type: 'talkTab', tab: button.dataset.tab }); root().querySelectorAll?.('[data-panel]').forEach(panel => { panel.hidden = panel.dataset.panel !== button.dataset.tab; }); return; }
+    if (button.hasAttribute('data-clear-chat')) { post({ type: 'aitalkClear' }); return; }
     if (button.hasAttribute('data-bottom')) { const thread = root().querySelector('.talk-thread'); thread.scrollTop = thread.scrollHeight; state.unread = 0; renderAITalk(); return; }
     if (button.hasAttribute('data-react-more')) { const extra = button.parentElement.querySelector('.talk-react-extra'); extra.hidden = !extra.hidden; return; }
     if (button.hasAttribute('data-send')) {

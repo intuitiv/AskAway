@@ -788,3 +788,13 @@ The Team list now shows a styled, always-visible scrollbar (R-TEAM-39).
 > Capture gifs for marketplace read me file.
 
 `/sk.handoff` now follows that structure (R-SKFLOW-26).
+
+### 2026-10-20, Team scrollbar, agy and Claude, workers, spec 003 reply wait, actors, Priya's file, Clear chat
+
+> I still dont see scrollbar in Team. Why?
+> There is no agent file for Priya.
+> I need some clar chat button on aitalk also.
+> Initially agent will wait for immediate reply for say 30 sec or 1min, after that agent will continue its work, by registering some callback with chat widget. And in next tool call, whenever someone replies, chat widget runs that callback and that response will be sent to respective party in next tool call, if it is regular agent, in case of validator(Priya), it would be immediate.
+> Actor should be interface, and we need specific implemntaion to Validator, Main agent, User and worker agents.
+
+The Team list scrollbar was fixed in the source (the installed copy was old); AITalk gets a Clear chat button (R-AITALK-33), a bounded reply wait with a callback (R-AITALK-34), concrete actor kinds (R-AITALK-35) and Priya an agent file (R-TEAM-49).

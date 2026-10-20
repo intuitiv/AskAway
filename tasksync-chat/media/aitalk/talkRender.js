@@ -278,7 +278,7 @@ export function headerPresenceHtml({ members = defaultMembers, presence }) {
 
 // Regions are patched independently, so a snapshot update never re-mounts an open menu, focus or scroll.
 const region = (key, html) => `<div class="talk-region" data-talk-region="${key}">${html}</div>`;
-const headerShell = (title, presence) => `<header class="talk-header"><span class="talk-group-avatar" aria-hidden="true">✦</span>${region('title', title)}${region('presence', presence)}</header>`;
+const headerShell = (title, presence) => `<header class="talk-header"><span class="talk-group-avatar" aria-hidden="true">✦</span>${region('title', title)}<button type="button" class="talk-clear" data-clear-chat aria-label="Clear chat" title="Clear chat"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M10 3h3v1h-1v9l-1 1H5l-1-1V4H3V3h3V2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1zM7 2v1h2V2zM5 4v9h6V4zm1 2h1v5H6zm3 0h1v5H9z"/></svg></button>${region('presence', presence)}</header>`;
 export const headerHtml = options => headerShell(titleHtml(options), headerPresenceHtml(options));
 
 export function composerHtml({ draft = '', reply, members = defaultMembers, popover = false, emoji = false, attachments = [], activeMentionIndex = 0, avatarFor, autocompleteCandidates } = {}) {

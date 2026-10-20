@@ -219,7 +219,7 @@ export const TEAM_ROSTER_FIXTURES = [
 		turnDollars: 0.01,
 		monthDollars: 1.42,
 		traceEvents: VALIDATOR_TRACE_FIXTURES,
-		agentFile: '.github/agents/validator.agent.md',
+		agentFile: '~/.askaway/validator/validator.md',
 		workingStatus: CREATIVE_ROLE_STATUSES.priya.working,
 		idleStatus: CREATIVE_ROLE_STATUSES.priya.idle,
 	},

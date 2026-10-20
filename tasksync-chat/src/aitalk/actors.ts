@@ -1,6 +1,8 @@
 import * as path from 'path';
 import { AITalkStore } from './store';
 import { rosterIdentity } from './names';
+import { MainAgentActor, UserActor, WorkerActor } from './actorKinds';
+export { MainAgentActor, UserActor, ValidatorActor, WorkerActor } from './actorKinds';
 import { resolveMainAgentIdentity, type MainAgentIdentity } from '../team/roster';
 export { resolveMainAgentIdentity } from '../team/roster';
 const rules = require('../../media/aitalk/talkRules.js');
@@ -33,14 +35,14 @@ const member = (name: string) => rules.defaultMembers.find((item: any) => item.k
 export function mainAgentActor(selectedAgent = 'AskAway Build'): Actor {
     const base = member('agent');
     const persona = resolveMainAgentIdentity(selectedAgent);
-    return {
+    return new MainAgentActor({
         ...identity(base),
         id: persona.id,
         memberId: persona.id,
         displayName: persona.name,
         name: persona.name,
         role: persona.role,
-    };
+    });
 }
 
 /** The AITalk room: registry of actors, routing of messages to them, trackers and typing. */
@@ -50,9 +52,13 @@ export class Room {
     private readonly actors = new Map<string, Actor>();
     private readonly workerNames = new Map<string, string>();
     private readonly reactionWatchers = new Set<(message: TalkMessage, emoji: string, by: string) => void>();
+    private readonly replyWaiters = new Map<string, Set<(reply: TalkMessage) => void>>();
     constructor(readonly workspace: string, selectedAgent?: string) {
         this.store = new AITalkStore(workspace);
         this.selectedAgent = selectedAgent;
+        // The reviewer is always in the room; unlike the others the user never registers or leaves.
+        const user = member('user');
+        this.actors.set(user.id, new UserActor(identity(user)));
     }
 
     setSelectedAgent(selectedAgent: string): MainAgentIdentity {
@@ -69,7 +75,9 @@ export class Room {
         for (const item of this.store.snapshot().members) if (item.kind !== 'user' && item.presence === 'joined' && !this.actors.has(item.id)) this.store.setPresence(item, false, false);
     }
     register(actor: Actor): ActorHandle {
-        actor = rosterIdentity(actor, this.selectedAgent);
+        const resolved = rosterIdentity(actor, this.selectedAgent);
+        // Class actors keep their own instance (and private state); plain-object actors get the resolved copy.
+        if (Object.getPrototypeOf(actor) === Object.prototype) actor = resolved; else Object.assign(actor, resolved);
         this.actors.set(actor.id, actor);
         const { leaveWhenAnswered: _leave, receive: _r, receiveReply: _rr, receiveReaction: _rx, ...identity } = actor;
         this.store.setPresence({ presencePolicy: actor.leaveWhenAnswered ? 'leavesWhenAnswered' : 'registered', ...identity }, true);
@@ -107,8 +115,27 @@ export class Room {
             const result = parent?.author === recipient && actor.receiveReply ? actor.receiveReply(parent, message, tracker) : actor.receive?.(message, tracker);
             deliveries.push(Promise.resolve(result));
         }
+        if (parent && parent.author !== author) for (const waiter of [...(this.replyWaiters.get(parent.id) ?? [])]) { try { waiter(message); } catch { /* One waiter never blocks the post. */ } }
         this.releaseAnswered();
         return { message, trackers, deliveries };
+    }
+    /** Runs `callback` when someone other than its author replies to the message; returns a function that cancels it. */
+    onReply(messageId: string, callback: (reply: TalkMessage) => void): () => void {
+        const waiters = this.replyWaiters.get(messageId) ?? new Set();
+        waiters.add(callback);
+        this.replyWaiters.set(messageId, waiters);
+        return () => { waiters.delete(callback); if (!waiters.size) this.replyWaiters.delete(messageId); };
+    }
+    /** Resolves with the first reply to the message within `ms`, or undefined: the asker then carries on and the reply reaches it on its next tool call. */
+    awaitReply(messageId: string, ms: number): Promise<TalkMessage | undefined> {
+        const messages = this.store.snapshot(true).messages;
+        const asked = messages.find((item: any) => item.id === messageId);
+        const already = messages.find((item: any) => item.replyTo === messageId && item.author !== asked?.author);
+        if (already) return Promise.resolve(already as TalkMessage);
+        return new Promise(resolve => {
+            const stop = this.onReply(messageId, reply => { clearTimeout(timer); stop(); resolve(reply); });
+            const timer = setTimeout(() => { stop(); resolve(undefined); }, ms);
+        });
     }
     userPost(text: string, replyTo?: string, attachments?: PostOptions['attachments']): Posted {
         return this.post(member('user').id, text, { replyTo, attachments });
@@ -142,13 +169,13 @@ export class Room {
         if (selectedAgent) this.selectedAgent = selectedAgent;
         const agent = member('agent');
         const persona = resolveMainAgentIdentity(this.selectedAgent || 'AskAway Build');
-        const actor: Actor = {
+        const actor = new MainAgentActor({
             ...identity(agent),
             memberId: persona.id,
             name: persona.name,
             role: persona.role,
             displayName: this.selectedAgent ? persona.name : agent.displayName,
-        };
+        });
         if (!this.actors.has(agent.id) || !this.isRegistered(agent.id) || this.actors.get(agent.id)?.memberId !== actor.memberId) return this.register(actor);
         return this.handle(agent.id);
     }
@@ -161,7 +188,7 @@ export class Room {
     workerPost(workerId: string, text: string, options: PostOptions = {}): Posted {
         if (!this.isRegistered(workerId)) {
             const name = this.workerNames.get(workerId);
-            this.register({ id: workerId, displayName: name ? `${name} · ${workerId}` : workerId, kind: 'worker', rank: 100, leaveWhenAnswered: true });
+            this.register(new WorkerActor({ id: workerId, displayName: name ? `${name} · ${workerId}` : workerId, kind: 'worker', rank: 100 }));
         }
         return this.post(workerId, text, options);
     }
