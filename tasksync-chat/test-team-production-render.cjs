@@ -310,7 +310,7 @@ function createHarness() {
         '<button id="workers-archive-btn"></button>',
         '<button id="workers-server-btn"><span class="codicon"></span></button>',
         '<div id="workers-show-expired"></div>',
-        '<div id="workers-list"></div>',
+        '<div class="workers-list" id="workers-list"></div>',
         '</div>'
     ].join('');
 
@@ -759,6 +759,9 @@ const sampleState = {
     }
     assert(doc.querySelector('.team-member-profile code').classList.contains('worker-state'));
     assert(!doc.getElementById('workers-list').innerHTML.includes('Shared OpenCode server'));
+    // The list scrolls through the workers-list class; a patch that stripped it left the Team tab unscrollable.
+    api.applyWorkersState({ ...sampleState, generatedAt: now + 1000 });
+    assert.equal(doc.getElementById('workers-list').getAttribute('class'), 'workers-list', 'patching keeps the scroll class on the list');
     const css = fs.readFileSync(path.join(__dirname, 'media/team/team.css'), 'utf8');
     assert(/min-width:\s*min\(220px, 100%\)/.test(css), 'the model select is wide when there is room and never overflows the card');
     assert(!/11\.5px|10\.5px|\.widget-tab\.tab-btn/.test(css));

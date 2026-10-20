@@ -62,6 +62,7 @@ export class HandoffNotifier implements vscode.Disposable {
     /** The running notifier, so the provider can send the long-run notice without extension wiring. */
     public static current: HandoffNotifier | undefined;
     private _lastPostedTs = 0;
+    private _lastEndedTs = 0;
     private _lastPostedHandoff = '';
     private _watchTimer: NodeJS.Timeout | undefined;
     private _processing = false;
@@ -71,7 +72,8 @@ export class HandoffNotifier implements vscode.Disposable {
         private readonly _debugLogsDir: string | undefined,
         private readonly _log: (msg: string, data?: unknown) => void,
         private readonly _getTurnMetrics?: () => TurnMetricsSnapshot | Promise<TurnMetricsSnapshot>,
-        private readonly _validateFinal?: (text: string, id: string) => Promise<void>
+        private readonly _validateFinal?: (text: string, id: string) => Promise<void>,
+        private readonly _turnEnded?: () => void
     ) { }
 
     public start(): void {
@@ -79,6 +81,7 @@ export class HandoffNotifier implements vscode.Disposable {
         HandoffNotifier.current = this;
         // Seed with the current stamp so activation never replays the previous turn.
         this._lastPostedTs = this._readStamp();
+        this._lastEndedTs = this._lastPostedTs;
         this._watchTimer = setInterval(() => { void this._onTurnEnd(); }, WATCH_INTERVAL_MS);
     }
 
@@ -108,6 +111,11 @@ ${text}`, `AskAway: ${text}`);
         const ts = this._readStamp();
         if (!ts || ts <= this._lastPostedTs) { return; }
 
+        // The turn ended whether or not its final text carries a handoff, so the agent leaves the room now.
+        if (ts > this._lastEndedTs) {
+            this._lastEndedTs = ts;
+            try { this._turnEnded?.(); } catch (err) { this._log('Handoff notifier: turn-end callback failed', err instanceof Error ? err.message : String(err)); }
+        }
         const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         const enabled = this._targets.filter(t => cfg.get<boolean>(t.setting, false));
         if (!enabled.length && !this._validateFinal) { this._lastPostedTs = ts; return; }

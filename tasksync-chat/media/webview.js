@@ -3737,7 +3737,8 @@
             list.innerHTML = renderWorkersHtml(state, filter, expanded, showExpired, openIds, traces);
             return;
         }
-        patchTeamHtml(list, '<div id="workers-list">' + rendered + '</div>');
+        // The patch removes attributes the fresh root lacks, so the root keeps the class that makes the list scroll.
+        patchTeamHtml(list, '<div class="workers-list" id="workers-list">' + rendered + '</div>');
     }
 
     function tickTeamAges() {

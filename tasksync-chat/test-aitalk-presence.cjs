@@ -49,14 +49,15 @@ const vm = require('node:vm');
     assert.equal(member('user').presence, 'joined'); assert.equal(member('agent').presence, 'left');
     const extension = fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8');
     const startCallback = extension.match(/provider\.setValidatorTurnStart\((\(text, id\) => \{[^\n]+\})\);/)[1];
-    const stopCallback = extension.match(/(\(text, id\) => \{ roomFor\(memoryProject\)\.unregisterAgent\(\);[^\n]+\})/)[1];
+    const leaveCallback = extension.match(/(\(\) => roomFor\(memoryProject\)\.unregisterAgent\(\))\s*\);/)[1];
     const turns = [];
     const context = { memoryProject: root, roomFor: api.roomFor,
         triggers: { previousFinal: () => 'previous', turnStart: (...args) => turns.push(['start', ...args]), turnEnd: (...args) => turns.push(['end', ...args]) } };
     vm.runInNewContext(`(${startCallback})`, context)('start message', 'turn-presence'); assert.equal(member('agent').presence, 'joined');
     assert.ok(member('agent').joinedAt);
-    vm.runInNewContext(`(${stopCallback})`, context)('final message', 'turn-presence'); assert.equal(member('agent').presence, 'left'); assert.ok(member('agent').leftAt);
-    assert.deepEqual(turns, [['start', 'previous', 'start message', 'turn-presence'], ['end', 'final message', 'turn-presence']]);
+    // The notifier calls the leave callback at every turn end, apart from the handoff-based validator call.
+    vm.runInNewContext(`(${leaveCallback})`, context)(); assert.equal(member('agent').presence, 'left'); assert.ok(member('agent').leftAt);
+    assert.deepEqual(turns, [['start', 'previous', 'start message', 'turn-presence']]);
     assert.match(extension, /setWorkerPresenceLifecycle\(\(workspace, worker, running\) => roomFor\(workspace\)\.workerLifecycle\(worker, running\)\)/);
     for (const file of ['workerHost.ts', 'openCodeRuntime.ts']) {
         assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'src/workers', file), 'utf8'), /(?:from\s*|require\()['"]\.\.\/aitalk\//);

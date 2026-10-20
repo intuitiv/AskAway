@@ -2,6 +2,7 @@
 
 | ID | Requirement (one plain sentence) | Reviewer's words (date) | Guarded by |
 |---|---|---|---|
+| R-AITALK-32 | The main agent's "joined" line appears when its turn starts and its "left" line when the turn ends, even when the final text has no Response Handoff. | "joined and left notifications are not working." (2026-10-20) | test-aitalk-agent-leave.cjs EV-AITALK-LEAVE |
 | R-AITALK-30 | Join/leave notices are compact muted system lines without a box or empty avatar slot; header names wrap with normal comma spacing; reload re-registration does not announce a false departure and return. | "banner for joined and left border is crazy." (2026-10-16) | test-aitalk-ui.cjs EV-AITALK-NOTICE, EV-AITALK-HEADER; test-aitalk-presence.cjs EV-AITALK-RELOAD |
 | R-AITALK-29 | Resolve current and persisted participant names through stable roster identities in the header, presence, notices, typing, messages and mentions. | "aitalk is having different names." (2026-10-16) | test-aitalk-names.cjs EV-AITALK-NAMES |
 | R-AITALK-26 | Native user submissions register the Agent immediately, once per turn, with a join banner. | "I see verify joined the room, but not main agent."; "ai talk shows as Agent joined after a very long time." (2026-10-15) | test-aitalk-actors.cjs EV-AITALK-NATIVE-START |

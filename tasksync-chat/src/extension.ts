@@ -1367,7 +1367,8 @@ export function activate(context: vscode.ExtensionContext) {
                     debugLogsDir,
                     logRuntime,
                     () => provider.getTurnMetricsSnapshot(),
-                    (text, id) => { roomFor(memoryProject).unregisterAgent(); return triggers.turnEnd(text, id); }
+                    (text, id) => triggers.turnEnd(text, id),
+                    () => roomFor(memoryProject).unregisterAgent()
                 );
                 notifier.start();
                 context.subscriptions.push(notifier);
