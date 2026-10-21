@@ -264,7 +264,7 @@ export class WebexService implements RemoteChannel {
     }
 
     private turnRoot?: string;
-    private turnPolicy() { return availabilityPolicy(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || ''); }
+    private turnPolicy() { return availabilityPolicy(); }
     private turnWorkspace = '';
     public async beginTurn(workspace: string, prompt: string, status: string): Promise<RemoteMessageId | undefined> {
         this.resolveHandoffs();

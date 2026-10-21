@@ -15,10 +15,13 @@ Show completed, archive and reload sat in a Team header row and did little. Ever
 
 > When i update model for one member from one workspace, it is not reflecting in another workspace. (2026-10-21)
 
-- Team has no header row. Priya and the main agent always show; others show with Turn spend, a shown task or a working status (R-TEAM-50, R-TEAM-52).
+- Team has no header row. Priya and the main agent always show; every other member shows only with Turn spend above zero, so $0 members (agy ones included) are hidden (R-TEAM-50, R-TEAM-52).
 - A member's model and thinking are saved once in `~/.askaway/team/members.json` and read by every workspace, by that member's worker tasks and by Priya (R-TEAM-53).
 - The Model dropdown lists each model once, grouped by OpenCode, agy and Claude, thinking stripped; Thinking lists its efforts; agy models are saved with the effort in the name (R-TEAM-54).
 - A signed-out agy or Claude shows "Sign in required" with a Sign in button (R-TEAM-55). Build is Sonnet or Argon; Grafana tools go to the test, perf and developer profiles (R-TEAM-56).
+> All updates to team like config, user availability is across workspaces. (2026-10-21)
+
+- Availability is one global file, and Settings toggles are written at user scope, so every workspace agrees (R-TEAM-57).
 - Turn cost reads the ledger since the turn started for every workspace (R-TEAM-51).
 
 ## Consequences

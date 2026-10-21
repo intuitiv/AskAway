@@ -815,4 +815,9 @@ The Team list scrollbar was fixed in the source (the installed copy was old); AI
 > I added `grafana` mcp to my user. add that toool to Test Engineer, Performance analyst, and Developer.
 > build should be either sonnet or argon, not Opus.
 
-Rows R-TEAM-50 to R-TEAM-56 (ADR 0027). The Team header row (Show completed, archive, reload) is gone, members show by Turn spend, a member's model and thinking are one choice shared by every workspace, and Settings offers a manual sign-in.
+> Main agent and Validator should be shown always, but main agent will never be 0, so you can hide all 0$.
+> Test grafana mcp under the profiles using [a Loki Explore link].
+> i removed sandbox.
+> All updates to team like config, user availability is across workspaces.
+
+Rows R-TEAM-50 to R-TEAM-57 (ADR 0027). The Team header row (Show completed, archive, reload) is gone, members show by Turn spend, a member's model and thinking are one choice shared by every workspace, and Settings offers a manual sign-in.

@@ -9,7 +9,7 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-availability-home-')
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-availability-ws-'));
 const otherWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-availability-other-'));
 const key = fs.realpathSync(workspace).replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
-const file = path.join(home, '.askaway', 'availability', `${key}.json`);
+const file = path.join(home, '.askaway', 'availability', 'global.json');
 const until = new Date(Date.now() + 3600000).toISOString();
 const run = (cwd = workspace) => childProcess.execFileSync(process.execPath, [path.join(__dirname, 'hooks', 'spec-context-inject.cjs')], {
     input: JSON.stringify({ session_id: 'availability-conversation', cwd }),
@@ -44,7 +44,8 @@ try {
     assert.match(away, /Send questions to Telegram; work continues on other lanes/);
     assert.doesNotMatch(away, /Never ask questions/);
     assert.equal(context(), away, 'rules are present on repeated prompts in the same conversation');
-    assert.equal(run(otherWorkspace), '', 'availability is scoped to the commentary workspace key');
+    // Reviewer 2026-10-21: availability is the reviewer's, one state for every workspace (R-AVAIL-GLOBAL).
+    assert.equal(JSON.parse(run(otherWorkspace)).hookSpecificOutput.additionalContext, away, 'another workspace sees the same availability');
 
     store('offline', { until, note: 'overnight' });
     const offline = context();

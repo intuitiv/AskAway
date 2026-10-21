@@ -39,7 +39,7 @@ export function createWebexSuiteHost(secrets: vscode.SecretStorage, workspace: s
 
 /** Interim permission boundary; replace this function when the final permission mechanism is agreed. */
 export async function approveWebexSend(workspace: string, draft: Parameters<WebexToolDeps['approve']>[0]): ReturnType<WebexToolDeps['approve']> {
-    if (readAvailability(workspace)?.mode !== 'here') { return 'unavailable'; }
+    if (readAvailability()?.mode !== 'here') { return 'unavailable'; }
     const choice = await vscode.window.showWarningMessage(
         `Send Webex message to ${draft.recipientLabel}?\n\n${draft.text}${draft.parentId ? `\n\nReply to: ${draft.parentId}` : ''}`,
         { modal: true }, 'Send', 'Cancel');

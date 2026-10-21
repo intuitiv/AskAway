@@ -46,6 +46,7 @@ function load(relative) {
         if (name === 'fs') return fakeFs;
         if (name.endsWith('/workerHost')) return host;
         if (name.endsWith('/team/roster')) return { memberSelections: () => ({}) };
+        if (name.endsWith('/availabilityGate')) return { availabilityPolicy: () => ({ startAlert: true, liveStatus: true, final: true, endAlert: true, notify: true }) };
         if (name.endsWith('/specCostLedger')) return { recordSpecTurn: (_file, turn) => { specTurn = turn; }, specCostLedgerFile: () => '/spec-ledger', readActiveSpecSlug: () => '001-fixture' };
         if (name.startsWith('.')) {
             const rel = path.relative(path.join(__dirname, 'src'), path.resolve(path.dirname(filename), name));

@@ -105,4 +105,8 @@ assert.ok(lite.mcp.includes('grafana_*'), 'Diego (Developer, build-lite) has Gra
 const grafana = profiles.toOpenCodeAgent(lite);
 assert.match(grafana, /"grafana_\*": allow/, 'OpenCode workers are allowed the grafana tools');
 assert.equal(profiles.toAgyPermissions({ mcp: ['grafana_*'], bash: 'deny' }).length, 0, 'agy rules cover AskAway tools only');
+// 6. Reviewer-level state is one for every workspace (R-TEAM-57): Settings toggles write at user scope; availability is one file.
+assert.equal((provider.match(/ConfigurationTarget\.Workspace\b/g) || []).length, 1, 'only the autopilot reset still writes workspace scope');
+assert.match(provider, /availability', 'global\.json'/);
+assert.ok(!/availability'[^;\n]*commentaryKey/.test(provider), 'availability is not keyed by workspace');
 console.log('test-team-model-selection: passed (EV-TEAM-MODEL-SELECTION)');

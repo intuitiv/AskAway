@@ -9,13 +9,13 @@ export function cloudDigestPoster(root: string,
     webex: () => Pick<RemoteChannel, 'isConfigured' | 'sendText'> | undefined,
     telegram: () => Pick<RemoteChannel, 'isConfigured' | 'sendText'> | undefined) {
     return remoteDigestPoster(() => {
-        if (!availabilityPolicy(root).liveStatus) { return undefined; }
+        if (!availabilityPolicy().liveStatus) { return undefined; }
         const preferred = webex();
         const useWebex = preferred?.isConfigured() === true;
         const channel = useWebex ? preferred : telegram();
         if (!channel?.isConfigured()) { return undefined; }
         return { isConfigured: () => channel.isConfigured(), sendLive: async (html: string) => {
-            if (!availabilityPolicy(root).liveStatus) { return undefined; }
+            if (!availabilityPolicy().liveStatus) { return undefined; }
             const text = useWebex ? html.replace(/<b>(.*?)<\/b>/g, '**$1**')
                 .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&') : html;
             return await channel.sendText(text, text, undefined, { notify: false }) as number | undefined;

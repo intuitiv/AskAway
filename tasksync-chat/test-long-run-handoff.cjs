@@ -14,8 +14,7 @@ const { LongRunHandoff, handoffNeeded } = require(path.join(buildDir, 'handoffTh
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-long-run-home-'));
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-long-run-ws-'));
-const key = fs.realpathSync(workspace).replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
-const file = path.join(home, '.askaway', 'availability', `${key}.json`);
+const file = path.join(home, '.askaway', 'availability', 'global.json');
 fs.mkdirSync(path.dirname(file), { recursive: true });
 const hook = () => childProcess.execFileSync(process.execPath, [path.join(__dirname, 'hooks', 'spec-context-inject.cjs')], {
     input: JSON.stringify({ session_id: 'long-run', cwd: workspace }), env: { ...process.env, HOME: home }, encoding: 'utf8',

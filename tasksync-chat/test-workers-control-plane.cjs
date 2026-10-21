@@ -92,6 +92,7 @@ const packet = (overrides = {}) => ({
     await tick();
 
     const state = JSON.parse(JSON.stringify(projectWorkersState(runtime, wsA, now)));
+    state.members.forEach((member) => { member.turnCost = 0.1; }); // Team shows a member only with Turn spend (R-TEAM-52)
     assert.deepEqual(state.server, { state: 'NOT_ATTACHED', endpoint: '' });
     assert.equal(state.generatedAt, clock);
     assert.equal(state.workers.length, 3, 'workspace filter keeps only wsA workers');
@@ -256,6 +257,7 @@ const packet = (overrides = {}) => ({
     assert.match(openA, /gpt-5\.6-terra · high/);
     clock += 301_000;
     const later = JSON.parse(JSON.stringify(projectWorkersState(runtime, wsA, now)));
+    later.members.forEach((member) => { member.turnCost = 0.1; });
     assert.deepEqual(later.workers.filter((w) => !w.expired).map((w) => w.workerId), [run1.workerId], 'after 5 min idle the failed worker expires; the running one stays');
     assert.match(ui.render(later, '', expandedMembers), /class="worker-card"/);
     assert.equal((ui.render(later, '', expandedMembers).match(/class="worker-card"/g) || []).length, 1, 'two expired workers are hidden');
@@ -300,7 +302,8 @@ const packet = (overrides = {}) => ({
     console.log(`EV-015b WorkersQueueAndEvals: PASS cancelQueued=true refused=3 scoreboardRows=${board.length} malformedSkipped=1`);
 
     // The tab answers "how many are there" from the displayed tasks (R-TEAM-38); no Save cost tips (R-TEAM-40).
-    assert.match(all, /^<div class="workers-summary"><strong>2<\/strong> tasks this turn &middot; 1 running &middot; 1 queued &middot; 1 warm &middot; 1 completed &middot; <strong class="health-cost">\$0\.00<\/strong> this turn<\/div>/, 'no turn started in this projection, so no turn spend');
+    const noSpend = ui.render({ ...state, members: state.members.map((member) => ({ ...member, turnCost: 0 })) }, '', expandedMembers);
+    assert.match(noSpend, /^<div class="workers-summary"><strong>2<\/strong> tasks this turn &middot; 1 running &middot; 1 queued &middot; 1 warm &middot; 1 completed &middot; <strong class="health-cost">\$0\.00<\/strong> this turn<\/div>/, 'no turn started in this projection, so no turn spend');
     assert.doesNotMatch(all, /Reuse \w+ worker/, 'no reuse tip: each card shows its cache age and warm-for');
     assert.doesNotMatch(all, /workers-tips/, 'no tips block when nothing needs attention');
     const tipsWithBoard = ui.render({ ...state, scoreboard: [

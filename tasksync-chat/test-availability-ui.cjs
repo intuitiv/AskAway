@@ -90,35 +90,35 @@ const hook = () => childProcess.execFileSync(process.execPath, [path.join(__dirn
     env: { ...process.env, HOME: home }, encoding: 'utf8',
 });
 try {
-    assert.equal(readAvailability(workspace, home), null);
+    assert.equal(readAvailability(home), null);
     const until = new Date(Date.now() + 3600000).toISOString();
-    writeAvailability(workspace, { mode: 'away', until, note: 'back\nsoon' }, home);
-    assert.deepEqual({ ...readAvailability(workspace, home), setAt: 0 }, { mode: 'away', until, note: 'back soon', setAt: 0 });
+    writeAvailability({ mode: 'away', until, note: 'back\nsoon' }, home);
+    assert.deepEqual({ ...readAvailability(home), setAt: 0 }, { mode: 'away', until, note: 'back soon', setAt: 0 });
     const away = JSON.parse(hook()).hookSpecificOutput.additionalContext;
     assert.match(away, /Reviewer: Away \(reachable on Telegram\)/);
     assert.match(away, /Reviewer note: back soon/);
 
-    writeAvailability(workspace, { mode: 'offline', until: '', note: '' }, home);
+    writeAvailability({ mode: 'offline', until: '', note: '' }, home);
     assert.match(JSON.parse(hook()).hookSpecificOutput.additionalContext, /Reviewer: Offline \(not reachable\)/);
 
-    writeAvailability(workspace, { mode: 'bogus', until: 'garbage' }, home);
-    assert.equal(readAvailability(workspace, home).mode, 'here', 'unknown mode falls back to Here');
+    writeAvailability({ mode: 'bogus', until: 'garbage' }, home);
+    assert.equal(readAvailability(home).mode, 'here', 'unknown mode falls back to Here');
     assert.equal(hook(), '', 'Here injects nothing');
     for (const mode of ['here', 'away', 'awayValidator', 'offline']) {
-        writeAvailability(workspace, { mode }, home);
-        assert.equal(readAvailability(workspace, home).mode, mode);
+        writeAvailability({ mode }, home);
+        assert.equal(readAvailability(home).mode, mode);
     }
     for (const mode of ['here', 'away', 'awayValidator', 'offline']) {
         ui.open(); ui.choose(mode);
-        assert.equal(posted.mode, mode); writeAvailability(workspace, posted, home);
-        ui.apply(readAvailability(workspace, home)); assert.deepEqual([...classes], ['avail-' + mode]);
+        assert.equal(posted.mode, mode); writeAvailability(posted, home);
+        ui.apply(readAvailability(home)); assert.deepEqual([...classes], ['avail-' + mode]);
     }
     assert.equal(opened, 0, 'no native title command is registered');
     ui.open(); flyout.handlers.change({ target: { value: '30m' } }); ui.choose('away');
     assert.ok(Date.parse(posted.until) > Date.now() + 29 * 60000);
-    writeAvailability(workspace, { mode: 'away', until: new Date(Date.now() - 1000).toISOString() }, home);
-    assert.equal(readAvailability(workspace, home).mode, 'here');
-    assert.equal(JSON.parse(fs.readFileSync(mod.exports.availabilityFile(workspace, home), 'utf8')).mode, 'here');
+    writeAvailability({ mode: 'away', until: new Date(Date.now() - 1000).toISOString() }, home);
+    assert.equal(readAvailability(home).mode, 'here');
+    assert.equal(JSON.parse(fs.readFileSync(mod.exports.availabilityFile(home), 'utf8')).mode, 'here');
     assert.equal(provider.replace(/\r\n/g, '').includes('\n'), false, 'CRLF preserved');
     console.log('PASS EV-AVAILABILITY-UI title openPresence; config four-state flyout badge/label/meaning; persisted selection/frame; reset expiry Here; Escape; quick pick removed; CRLF');
 } finally {

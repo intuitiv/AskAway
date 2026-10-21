@@ -2022,7 +2022,7 @@ export class TelegramService implements RemoteChannel {
     /** Post a one-off markdown message (turn-end handoff). Unlike the heartbeat this is never throttled or edited in place. */
     public async postText(markdown: string, fallback: string, replyTaskId?: string, options?: { notify?: boolean }): Promise<boolean> {
         if (!this.isConfigured()) { return false; }
-        const policy = availabilityPolicy(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '');
+        const policy = availabilityPolicy();
         if (replyTaskId && !policy.final) { return true; }
         const workspaceName = this._workspaceName();
         const head = `📋 <b>AskAway · ${this._escapeHtml(workspaceName)}</b>\n\n`;
@@ -2121,7 +2121,7 @@ export class TelegramService implements RemoteChannel {
     public async finishLive(liveMessageId: RemoteMessageId, headHtml: string, finalMarkdown: string, replyTaskId: string, options?: { notify?: boolean }): Promise<boolean> {
         liveMessageId = Number(liveMessageId);
         if (!this.isConfigured()) { return false; }
-        const policy = availabilityPolicy(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '');
+        const policy = availabilityPolicy();
         if (!policy.final) { return true; }
         const finalHtml = this._boundedHtml(finalMarkdown, Math.max(200, 4000 - headHtml.length - 2));
         const text = `${headHtml}\n\n${finalHtml}`;

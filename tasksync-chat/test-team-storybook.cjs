@@ -136,6 +136,8 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 		const ctrl = createTeamController({ scenario: 'active-turn', initialStep: 4 });
 		for (const m of ctrl.state.members) {
 			ctrl.memberJoin(m.id, { working: true });
+			// Team shows a member only with Turn spend (R-TEAM-52), so give every member some.
+			m.turnDollars = Math.max(m.turnDollars || 0, 0.05);
 		}
 		const html = ctrl.renderHtml();
 		const [aitalkPaneHtml, teamPaneHtml] = html.split('id="panel-team"');
@@ -146,9 +148,12 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 				assert.ok(!teamPaneHtml.includes(`data-member-row="${m.id}"`), `unselected main agent ${m.name} has no Team row`);
 				continue;
 			}
-			assert.ok(
+			// agy reports no cost, so an agy member's Turn is $0 and Team hides it (R-TEAM-52) unless it is Priya.
+			const shown = m.id === 'priya' || !String(m.model).startsWith('agy/');
+			assert.strictEqual(
 				teamPaneHtml.includes(`<strong class="team-member-name">${m.name}</strong> &middot; <span class="team-member-role">${m.role}</span>`),
-				`Team tab must render "${m.name} · ${m.role}"`
+				shown,
+				`Team tab ${shown ? 'must render' : 'hides the $0 agy member'} "${m.name} · ${m.role}"`
 			);
 			assert.ok(
 				!aitalkPaneHtml.includes(`${m.name} · ${m.role}`) && !aitalkPaneHtml.includes(`${m.name} &middot; ${m.role}`),
@@ -197,6 +202,7 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 		// Advance to step 7 and open @Di autocomplete so all avatar surfaces are present simultaneously for Diego & Machs
 		const ctrl = createTeamController({ scenario: 'active-turn', initialStep: 7, activeTab: 'aitalk' });
 		ctrl.setDraft('@Di');
+		ctrl.state.members.find((m) => m.id === 'diego').turnDollars = 0.05; // a member shows in Team only with Turn spend
 		const html = ctrl.renderHtml();
 		const diegoUri = avatarFor('diego');
 
@@ -246,6 +252,7 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 			avatarOverrides: { diego: customUri },
 		});
 		overrideCtrl.setDraft('@Di');
+		overrideCtrl.state.members.find((m) => m.id === 'diego').turnDollars = 0.05;
 		const overrideHtml = overrideCtrl.renderHtml();
 		const occurrences = overrideHtml.split(`src="${customUri}"`).length - 1;
 		assert.ok(occurrences >= 4, `Overriding avatarFor("diego") updates all avatar surfaces (observed ${occurrences} occurrences)`);
@@ -430,13 +437,15 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 			'Anika row shows Turn $0.02 · Month $3.10'
 		);
 		assert.ok(
-			teamPaneHtml.includes('data-member-cost="diego" data-turn-cost="$0.00" data-month-cost="$0.00"'),
-			'Diego (agy) row shows Turn $0.00 · Month $0.00 (the one Team money format)'
+			teamPaneHtml.includes('data-member-cost="diego" data-turn-cost="$0.02" data-month-cost="$0.02"'),
+			'Diego row shows Turn $0.02 (his Sol task; his agy task adds $0) · Month $0.02 (the one Team money format)'
 		);
 
 		const diegoPanelIdx = html.indexOf('data-member-tasks="diego"');
-		assert.ok(diegoPanelIdx !== -1, 'Diego agy task panel is rendered');
-		const diegoPanelHtml = html.slice(diegoPanelIdx, html.indexOf('</section>', diegoPanelIdx));
+		assert.ok(diegoPanelIdx !== -1, 'Diego task panel is rendered');
+		const agyCardIdx = html.indexOf('data-worker-id="worker-diego-2"', diegoPanelIdx);
+		assert.ok(agyCardIdx !== -1, 'Diego agy task card is rendered');
+		const diegoPanelHtml = html.slice(agyCardIdx, html.indexOf('</section>', agyCardIdx));
 
 		assert.ok(diegoPanelHtml.includes('$0'), 'agy task card shows "$0" cost');
 		assert.ok(!/cost unreported|unreported/i.test(html), 'Rendered HTML never shows "cost unreported" or "unreported"');
@@ -492,14 +501,14 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 			thinking: 'high',
 		});
 
-		// Change Anika to agy/gemini-3.1-pro-high and render to verify medium is omitted in select
-		ctrl.setMemberModel('anika', 'agy/gemini-3.1-pro-high');
+		// Change Priya (always shown; an agy member has $0 Turn and Team hides it otherwise) to agy/gemini-3.1-pro-high and render to verify medium is omitted in select
+		ctrl.setMemberModel('priya', 'agy/gemini-3.1-pro-high');
 		const html = ctrl.renderHtml();
-		const anikaThinkingSelectMatch = html.match(/<select class="team-thinking-select" data-member-id="anika"[^>]*>([\s\S]*?)<\/select>/);
-		assert.ok(anikaThinkingSelectMatch, 'Anika thinking select is rendered');
-		assert.ok(anikaThinkingSelectMatch[1].includes('value="high"'), 'gemini-3.1-pro thinking select includes high');
-		assert.ok(anikaThinkingSelectMatch[1].includes('value="low"'), 'gemini-3.1-pro thinking select includes low');
-		assert.ok(!anikaThinkingSelectMatch[1].includes('value="medium"'), 'gemini-3.1-pro thinking select omits medium');
+		const priyaThinkingSelectMatch = html.match(/<select class="team-thinking-select" data-member-id="priya"[^>]*>([\s\S]*?)<\/select>/);
+		assert.ok(priyaThinkingSelectMatch, 'Priya thinking select is rendered');
+		assert.ok(priyaThinkingSelectMatch[1].includes('value="high"'), 'gemini-3.1-pro thinking select includes high');
+		assert.ok(priyaThinkingSelectMatch[1].includes('value="low"'), 'gemini-3.1-pro thinking select includes low');
+		assert.ok(!priyaThinkingSelectMatch[1].includes('value="medium"'), 'gemini-3.1-pro thinking select omits medium');
 
 		// Agent file ↗ intent
 		const fileIntent = ctrl.openAgentFile('anika');

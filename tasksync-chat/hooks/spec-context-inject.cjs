@@ -36,9 +36,9 @@ function readCommentary(cwd) {
     }
 }
 
-function availabilityContext(cwd) {
+function availabilityContext() {
     try {
-        const state = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.askaway', 'availability', `${commentaryKey(cwd)}.json`), 'utf8'));
+        const state = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.askaway', 'availability', 'global.json'), 'utf8'));
         if (!['away', 'awayValidator', 'offline'].includes(state.mode)) { return ''; }
         if (state.until && !(Date.parse(state.until) >= Date.now())) { return ''; }
         const away = String(state.mode).startsWith('away');
@@ -147,7 +147,7 @@ function main() {
             : `${anchor}\nStay on it; treat unrelated requests as asides.`);
     }
 
-    parts.push(availabilityContext(cwd));
+    parts.push(availabilityContext());
     const context = parts.filter(Boolean).join('\n');
     if (!context) { return; }
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: context } }));

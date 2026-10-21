@@ -18,12 +18,12 @@ async function main() {
     new Function('require', 'module', 'exports', build.outputFiles[0].text)(name => name === 'fs' ? fakeFs : require(name), loaded, loaded.exports);
     const { availabilityPolicy, updatePolicy, TelegramLiveCommentary, telegramTurnTarget } = loaded.exports;
     for (stateRead of ['missing', 'unreadable', 'malformed']) {
-        assert.deepEqual(availabilityPolicy('/fixture-workspace', '/fixture-home'), updatePolicy('here'));
+        assert.deepEqual(availabilityPolicy('/fixture-home'), updatePolicy('here'));
         const sends = [];
         const channel = { isConfigured: () => true, sendLive: async () => { sends.push('start'); return 1; },
             editLive: async () => { sends.push('live'); return true; }, finishLive: async () => { sends.push('final'); return true; },
             postText: async () => { sends.push('final'); return true; }, sendDocument: async () => { sends.push('document'); return true; } };
-        const relay = new TelegramLiveCommentary(() => channel, 'fixture', { policy: () => availabilityPolicy('/fixture-workspace', '/fixture-home') });
+        const relay = new TelegramLiveCommentary(() => channel, 'fixture', { policy: () => availabilityPolicy('/fixture-home') });
         await relay.update({ turnStarts: [1], currentPrompt: 'Build', items: [] });
         const target = telegramTurnTarget(relay, () => channel);
         await target.postText('Final', 'Final', 'handoff:missing'); await target.sendDocument('fixture', 'Final');

@@ -1184,10 +1184,10 @@ export function activate(context: vscode.ExtensionContext) {
         registerTools(context, provider, memory, validatorTool(text => askValidator(memoryProject, text), {
             workspace: memoryProject,
             enabled: () => vscode.workspace.getConfiguration('askaway').get<boolean>('validator.live', false),
-            availability: () => readAvailability(memoryProject),
+            availability: () => readAvailability(),
         }));
         const liveEnabled = () => vscode.workspace.getConfiguration('askaway').get<boolean>('validator.live', false);
-        const availability = () => readAvailability(memoryProject);
+        const availability = () => readAvailability();
         context.subscriptions.push(registerAttentionNotify({ availability: () => availability() ?? undefined, view: () => attentionView }));
         const digest = new LiveDigest(memoryProject, sharedCommentaryStore(), liveEnabled, availability);
         const watch = new CommentaryWatch(memoryProject, sharedCommentaryStore(), liveEnabled, availability,

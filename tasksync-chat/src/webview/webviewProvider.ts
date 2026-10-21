@@ -381,24 +381,25 @@ interface ToolShard {
 const execFileAsync = promisify(execFile);
 // ── availability state (pure; the hook hooks/spec-context-inject.cjs reads the same file) ──
 export type AvailabilityState = { mode: 'here' | 'away' | 'awayValidator' | 'offline'; until?: string; note?: string; setAt: string };
-export function availabilityFile(workspace: string, home: string = os.homedir()): string {
-    return path.join(home, '.askaway', 'availability', `${commentaryKey(workspace)}.json`);
+// One state for every workspace (reviewer, 2026-10-21): availability is the reviewer's, not a workspace's.
+export function availabilityFile(home: string = os.homedir()): string {
+    return path.join(home, '.askaway', 'availability', 'global.json');
 }
-export function readAvailability(workspace: string, home: string = os.homedir()): AvailabilityState | null {
+export function readAvailability(home: string = os.homedir()): AvailabilityState | null {
     try {
-        const state = JSON.parse(fs.readFileSync(availabilityFile(workspace, home), 'utf8'));
-        if (state?.until && Date.parse(state.until) <= Date.now()) return writeAvailability(workspace, { mode: 'here' }, home);
+        const state = JSON.parse(fs.readFileSync(availabilityFile(home), 'utf8'));
+        if (state?.until && Date.parse(state.until) <= Date.now()) return writeAvailability({ mode: 'here' }, home);
         return state;
     } catch { return null; }
 }
-export function writeAvailability(workspace: string, input: { mode?: unknown; until?: unknown; note?: unknown }, home: string = os.homedir()): AvailabilityState {
+export function writeAvailability(input: { mode?: unknown; until?: unknown; note?: unknown }, home: string = os.homedir()): AvailabilityState {
     const mode = input.mode === 'away' || input.mode === 'awayValidator' || input.mode === 'offline' ? input.mode : 'here';
     const state: AvailabilityState = { mode, setAt: new Date().toISOString() };
     const until = typeof input.until === 'string' && Number.isFinite(Date.parse(input.until)) ? new Date(input.until).toISOString() : '';
     const note = typeof input.note === 'string' ? input.note.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
     if (mode !== 'here' && until) { state.until = until; }
     if (note) { state.note = note; }
-    const file = availabilityFile(workspace, home);
+    const file = availabilityFile(home);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify(state));
     return state;
@@ -1479,7 +1480,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _availabilityExpiry?: ReturnType<typeof setTimeout>;
     public _pushAvailability(): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const state = root ? readAvailability(root) : null;
+        const state = readAvailability();
         void vscode.commands.executeCommand('setContext', 'askaway.availability', state?.mode || 'here');
         this._broadcast({ type: 'availabilityState', data: state, states: presenceStates });
         if (this._availabilityExpiry) clearTimeout(this._availabilityExpiry);
@@ -4412,7 +4413,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'setAvailability': {
                 const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                if (root) { writeAvailability(root, message); }
+                writeAvailability(message);
                 this._pushAvailability();
                 break;
             }
@@ -4954,9 +4955,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._isUpdatingConfig = true;
         try {
             const copilotConfig = vscode.workspace.getConfiguration('github.copilot.chat');
-            const target = vscode.workspace.workspaceFolders?.length
-                ? vscode.ConfigurationTarget.Workspace
-                : vscode.ConfigurationTarget.Global;
+            // Settings are the reviewer's, not a workspace's (reviewer, 2026-10-21): they apply in every workspace.
+            const target = vscode.ConfigurationTarget.Global;
             await copilotConfig.update('agentDebugLog.fileLogging.enabled', enabled, target);
             this._updateSettingsUI();
         } finally {
@@ -4970,9 +4970,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             // Inverted: checked in the UI means auto-compaction is DISABLED, so we set
             // Copilot's summarizeAgentConversationHistory.enabled to the opposite value.
             const copilotConfig = vscode.workspace.getConfiguration('github.copilot.chat');
-            const target = vscode.workspace.workspaceFolders?.length
-                ? vscode.ConfigurationTarget.Workspace
-                : vscode.ConfigurationTarget.Global;
+            // Settings are the reviewer's, not a workspace's (reviewer, 2026-10-21): they apply in every workspace.
+            const target = vscode.ConfigurationTarget.Global;
             await copilotConfig.update('summarizeAgentConversationHistory.enabled', !disabled, target);
             this._updateSettingsUI();
         } finally {
@@ -4986,9 +4985,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._isUpdatingConfig = true;
         try {
             const copilotConfig = vscode.workspace.getConfiguration('github.copilot.chat');
-            const target = vscode.workspace.workspaceFolders?.length
-                ? vscode.ConfigurationTarget.Workspace
-                : vscode.ConfigurationTarget.Global;
+            // Settings are the reviewer's, not a workspace's (reviewer, 2026-10-21): they apply in every workspace.
+            const target = vscode.ConfigurationTarget.Global;
             await copilotConfig.update(key, value, target);
             if (companionKey) { await copilotConfig.update(companionKey, value, target); }
             this._updateSettingsUI();

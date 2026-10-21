@@ -126,6 +126,7 @@ assert.deepEqual(decide({ model: 'agy/gemini-4-argon-high' }), [], 'agy model: n
         ['agy', 0, 0, false, null], 'agy worker has no cache TTL or ping state and keeps cost unreported');
     // R-TEAM-41: a finished agy task (no cache warmth) is not listed in Team; its card (the shared one) is checked directly.
     const card = browser.summary(projected, projected.workers);
+    projected.members.forEach((member) => { member.turnCost = 0.1; }); // Team shows a member only with Turn spend (R-TEAM-52)
     const ocCard = browser.render(projected, workerId, {});
     const agyCard = browser.card(agyProjected, true, projected.generatedAt, {}, {});
     assert.doesNotMatch(browser.render(projected, agyWorkerId, { [agyWorkerId]: true }), /class="worker-card"/, 'finished agy task is hidden');

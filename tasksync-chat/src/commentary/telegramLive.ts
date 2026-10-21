@@ -196,10 +196,8 @@ export class TelegramLiveCommentary {
         return poster?.isConfigured() && this.options.enabled?.() !== false ? poster : undefined;
     }
 
-    private workspacePath?: string;
-    setWorkspace(workspace: string): void { this.workspacePath = workspace; }
     policy(): ReturnType<typeof updatePolicy> {
-        return this.options.policy?.() ?? (this.workspacePath ? (require('../services/availabilityGate') as typeof import('../services/availabilityGate')).availabilityPolicy(this.workspacePath) : { startAlert: true, liveStatus: true, final: true, endAlert: true, notify: true });
+        return this.options.policy?.() ?? (require('../services/availabilityGate') as typeof import('../services/availabilityGate')).availabilityPolicy();
     }
 
     private async apply(view: CommentaryView): Promise<void> {
@@ -268,7 +266,6 @@ export function telegramTurnTarget(relay: TelegramLiveCommentary, telegram: () =
 
 /** Feeds the relay from commentary posts and from user messages (turns file); `onNewTurn` fires once per new user message. */
 export function relayCommentaryToTelegram(relay: TelegramLiveCommentary, store: CommentaryStore, workspacePath: string, onNewTurn?: () => void): { dispose(): void } {
-    relay.setWorkspace?.(workspacePath);
     let lastStart = Math.max(0, ...store.turnStarts(workspacePath));
     const view = () => commentaryView(store.read(workspacePath), store.turnStarts(workspacePath), store.currentPrompt(workspacePath));
     const push = () => void relay.update(view());

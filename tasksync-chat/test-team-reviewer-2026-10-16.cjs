@@ -86,7 +86,8 @@ function task(workerId, profile, state, extra = {}) {
 }
 const PRIYA = { id: 'priya', name: 'Priya', role: 'Product Owner', kind: 'validator', pinned: true, profile: 'validator', taskIds: [], turnCost: 0, monthCost: 0 };
 const BHASKAR = { id: 'bhaskar', name: 'Bhaskar', role: 'Tech Lead', kind: 'main', active: false, profile: 'AskAway Build', agentFile: '/u/prompts/askaway-build.agent.md', model: 'github-copilot/claude-opus-5.5', taskIds: [], turnCost: 0.08, monthCost: 6.8 };
-const worker = (id, name, role, profile) => ({ id, name, role, kind: 'worker', profile, taskIds: [], turnCost: 0, monthCost: 0 });
+// A worker member that spent this turn (a $0 member is hidden, R-TEAM-52).
+const worker = (id, name, role, profile) => ({ id, name, role, kind: 'worker', profile, taskIds: [], turnCost: 0.05, monthCost: 0 });
 const ANIKA = worker('anika', 'Anika', 'Architect', 'build');
 const visibleText = (el) => el.textContent.replace(/&middot;/g, '·').replace(/\s+/g, ' ').trim();
 const rows = (doc) => doc.querySelectorAll('[data-member-row]').map(r => r.getAttribute('data-member-row'));
@@ -167,10 +168,11 @@ const results = [];
 
 // 5. "i want all members to be vsible in team but the are not" (supersedes "hide members who are not actively working"):
 //    (2026-10-21 supersedes: "instead of showing all members, can we show members whose Turn is non Zero? And Validator will be
-//    shown always."): Priya and the main agent always, then only members that spent this turn or own a shown task, in roster
-//    order. Cold, retired and finished tasks never show; pill count = cards.
+//    shown always." and "Main agent and Validator should be shown always, but main agent will never be 0, so you can hide all
+//    0$."): Priya and the main agent always, then only members with Turn spend above zero, in roster order. Cold, retired and
+//    finished tasks never show; pill count = cards.
 {
-    const { api, doc, click } = createHarness();
+    const { api, doc } = createHarness();
     const TARA = worker('tara', 'Tara', 'Test Engineer', 'verify');
     const members = [PRIYA, ANIKA, TARA, worker('sana', 'Sana', 'Researcher', 'explore'), worker('paolo', 'Paolo', 'Pipeline Expert', 'gradle'), BHASKAR];
     const workers = [
@@ -182,19 +184,20 @@ const results = [];
     ];
     const state = { generatedAt: now, members, workers, turnWorkerIds: ['worker-cold', 'worker-run', 'worker-retired', 'worker-queued'] };
     api.applyWorkersState(state);
-    const order = ['priya', 'bhaskar', 'tara', 'sana'];
-    assert.deepEqual(rows(doc), order, 'Priya, the main agent, then only members with a shown task; Anika and Paolo (cold or retired tasks, no spend) are hidden');
+    assert.deepEqual(rows(doc), ['priya', 'bhaskar', 'anika', 'tara', 'sana', 'paolo'], 'every member that spent shows: Priya, the (idle) main agent, then roster order');
     assert(/^Trace \(\d+\)/.test(doc.querySelector('[data-member-tasks-toggle="priya"]').textContent), 'Priya keeps her Trace button');
-    const pills = () => ['tara', 'sana'].map(id => doc.querySelector(`[data-member-tasks-toggle="${id}"]`).textContent);
-    const cards = () => ['tara', 'sana'].map(id => doc.querySelector(`[data-member-tray="${id}"]`).querySelectorAll('.worker-card').length);
-    assert.deepEqual(pills(), ['1 task \u25b8', '1 task \u25b8'], 'cold and retired tasks stay hidden; other-turn tasks never show');
-    assert.deepEqual(cards(), [1, 1], 'pill count equals the visible cards');
-    const shown = doc.querySelector('[data-member-row="tara"]');
+    const pills = () => ['anika', 'tara', 'sana', 'paolo'].map(id => doc.querySelector(`[data-member-tasks-toggle="${id}"]`).textContent);
+    const cards = () => ['anika', 'tara', 'sana', 'paolo'].map(id => doc.querySelector(`[data-member-tray="${id}"]`).querySelectorAll('.worker-card').length);
+    assert.deepEqual(pills(), ['0 tasks \u25b8', '1 task \u25b8', '1 task \u25b8', '0 tasks \u25b8'], 'cold and retired tasks stay hidden; other-turn tasks never show');
+    assert.deepEqual(cards(), [0, 1, 1, 0], 'pill count equals the visible cards');
+    const shown = doc.querySelector('[data-member-row="paolo"]');
     assert(shown.querySelector('select[data-member-model]') && shown.querySelector('select[data-member-thinking]') && shown.querySelector('[data-open-agent-file]'), 'a shown row has its model, thinking and agent file');
-    api.applyWorkersState({ ...state, members: [PRIYA, { ...ANIKA, turnCost: 0.2 }, TARA, members[3], BHASKAR] });
-    assert.deepEqual(rows(doc), ['priya', 'bhaskar', 'anika', 'tara', 'sana'], 'a member with Turn spend above zero shows, idle');
-    assert.equal(doc.querySelector('[data-member-row="anika"] [data-status-state]').getAttribute('data-status-state'), 'idle');
-    results.push('5 all members visible, tasks filtered: test-team-reviewer-2026-10-16.cjs EV-TEAM-ALL-MEMBERS');
+    assert.equal(shown.querySelector('[data-status-state]').getAttribute('data-status-state'), 'idle');
+    // $0 members hide, even with a running task; Priya and the main agent stay at $0.
+    const free = (m) => ({ ...m, turnCost: 0 });
+    api.applyWorkersState({ ...state, members: [free(PRIYA), free(ANIKA), TARA, free(members[3]), free(members[4]), free(BHASKAR)] });
+    assert.deepEqual(rows(doc), ['priya', 'bhaskar', 'tara'], 'only Priya, the main agent and the members with Turn spend above zero');
+    results.push('5 members by Turn spend, tasks filtered: test-team-reviewer-2026-10-16.cjs EV-TEAM-ALL-MEMBERS');
 }
 
 // 6. "Trace button is also not working." — Priya's Trace loads her validator task traces and expands shared trace rows inline.

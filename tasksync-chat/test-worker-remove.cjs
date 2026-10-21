@@ -57,7 +57,12 @@ const block = (from, to) => webview.slice(webview.indexOf(from), webview.indexOf
 const ctx = vm.createContext({ Date, document: { getElementById: () => null }, traceOpenIds: () => ({}), escapeHtml: (v) => String(v ?? '') });
 vm.runInContext([block('// ── Usage banner', '// ── end Usage banner ──'), block('// ── Turn trace rows: pure render', '// ── end Turn trace rows ──'),
     block('// ── Workers tab: pure render', '// ── end Workers pure render ──')].join('\n'), ctx);
-const cardsOf = (rt) => vm.runInContext('renderWorkersHtml', ctx)(projectWorkersState(rt, workspace), '', {}, {}, {});
+// Team shows a member only with Turn spend (R-TEAM-52), so the projected members get some.
+const cardsOf = (rt) => {
+    const state = projectWorkersState(rt, workspace);
+    state.members.forEach((member) => { member.turnCost = 0.1; });
+    return vm.runInContext('renderWorkersHtml', ctx)(state, '', {}, {}, {});
+};
 
 // The provider's removeWorker handler, extracted from the real source.
 const providerText = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');

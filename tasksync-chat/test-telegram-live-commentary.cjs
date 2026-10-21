@@ -131,10 +131,12 @@ async function runLive() {
 if (process.env.ASKAWAY_TELEGRAM_LIVE === '1') {
     runLive().catch(error => { console.error(String(error.stack).split('\n').slice(0, 5).join('\n')); process.exitCode = 1; });
 } else {
+// Availability is the reviewer's one global state; pin it so the test never reads the real ~/.askaway.
+process.env.ASKAWAY_AVAILABILITY_MODE ??= 'away';
 const buildDir = path.join(__dirname, '.telegram-live-test-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
 require('./tools/transpile-src.cjs').transpileSrc(buildDir);
-for (const name of ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary', 'commentary/telegramLive']) {
+for (const name of ['workers/workerProfiles', 'workers/workerRouter', 'workers/openCodeRuntime', 'workers/workersState', 'workers/workerTools', 'commentary/commentary', 'commentary/telegramLive', 'services/availabilityGate']) {
     const out = path.join(buildDir, `${name}.js`);
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', `${name}.ts`), 'utf8'),

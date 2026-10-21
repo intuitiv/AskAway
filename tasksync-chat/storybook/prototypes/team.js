@@ -578,7 +578,7 @@ export function renderProductionTabBarHtml(activeTab = 'team') {
 // Same rule as production (webview.js groupWorkersByMember): every member row is visible, idle ones included —
 // Priya first, then the selected main agent, then the rest in roster order. Only tasks are filtered.
 export function getActiveTurnMembers(state) {
-	// The production rule (teamMemberShown): Priya and the main agent always, others only with Turn spend or a task.
+	// The production rule (teamMemberShown): Priya and the main agent always, others only with Turn spend.
 	const members = (state.members || []).filter((m) => m.kind !== 'main' || !state.mainMemberId || m.id === state.mainMemberId)
 		.filter((m) => { const { kit, workers, normalized } = memberKitInputs(m, state); return kit.teamMemberShown(normalized, workers); });
 	const rank = (m) => (m.pinnedFirst || m.id === 'priya' || m.kind === 'validator' ? 0 : m.kind === 'main' ? 1 : 2);
@@ -609,7 +609,7 @@ export function memberStatusInfo(member) {
 function memberKitInputs(member, state) {
 	const kit = getWorkersKit();
 	const workers = (member.tasks || []).map((task) => toSharedWorkerRecord(task, state.now || 1_700_000_000_000));
-	const normalized = kit.normalizeTeamMember({ ...member, pinned: member.pinnedFirst, active: memberStatusInfo(member).state === 'working', avatarSrc: avatarFor(member.id, state.avatarOverrides), turnCost: member.turnDollars, monthCost: member.monthDollars, creativeStatus: memberStatusInfo(member).text });
+	const normalized = kit.normalizeTeamMember({ ...member, pinned: member.pinnedFirst, active: memberStatusInfo(member).state === 'working', avatarSrc: avatarFor(member.id, state.avatarOverrides), turnCost: memberCostSummary(member).turnDollars, monthCost: member.monthDollars, creativeStatus: memberStatusInfo(member).text });
 	return { kit, workers, normalized };
 }
 
@@ -1234,14 +1234,14 @@ export function createTeamController(options = {}) {
 				requests: 3,
 			});
 		},
-		// Step 4 (16s): Diego joined (two tasks) -> Team shows Priya, Bhaskar/Mahesh, Anika, Diego `2 tasks`
+		// Step 4 (16s): Diego joined (two tasks: one on Sol with a cost, one on agy at $0) -> Team shows Priya, Bhaskar/Mahesh, Anika, Diego `2 tasks`
 		() => {
 			assignTask('diego', {
 				workerId: 'worker-diego-1',
 				runId: 'run-diego-1',
 				profile: 'code',
-				model: 'agy/gemini-4-argon-high',
-				thinking: 'high',
+				model: 'github-copilot/gpt-6.1-sol',
+				thinking: 'medium',
 				state: 'RUNNING',
 				objective: 'Wire Team tab row controls and model/effort sync',
 				requests: 2,

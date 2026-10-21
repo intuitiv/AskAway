@@ -3447,10 +3447,9 @@
         });
         return { events: events, loading: loading };
     }
-    // A member row shows while it is part of this turn: it spent something (Turn above zero), owns a shown task or is working.
-    // Priya (the Validator) and the main agent are always shown.
+    // A member row shows only with Turn spend above zero (reviewer, 2026-10-21); Priya (the Validator) and the main agent always show.
     function teamMemberShown(member, memberWorkers) {
-        return !!member.pinned || member.kind === 'main' || !!member.active || (memberWorkers || []).length > 0 || memberCostAmounts(member, memberWorkers).turn > 0;
+        return !!member.pinned || member.kind === 'main' || memberCostAmounts(member, memberWorkers).turn > 0;
     }
     function groupWorkersByMember(state, shown, filter) {
         var explicitMembers = state && Array.isArray(state.members) && state.members.length > 0;
@@ -3478,7 +3477,7 @@
                 return [m.id, m.name, m.role, m.profile, m.creativeStatus].join(' ').toLowerCase().indexOf(needle) >= 0;
             });
         }
-        // Priya first (with her Trace), then the main agent, then the rest in roster order; idle members with no Turn spend are hidden.
+        // Priya first (with her Trace), then the main agent, then the rest in roster order; members with no Turn spend are hidden.
         groups = groups.filter(function (g) { return teamMemberShown(g.member, g.workers); });
         var rank = function (m) { return m.pinned ? 0 : m.kind === 'main' ? 1 : 2; };
         return groups.sort(function (a, b) { return rank(a.member) - rank(b.member); });
