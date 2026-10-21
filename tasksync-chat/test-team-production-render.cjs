@@ -344,7 +344,6 @@ function createHarness() {
          ${workersDom}
          return {
               renderWorkersHtml: renderWorkersHtml,
-              teamMemberRowHtml: teamMemberRowHtml,
               normalizeTeamMember: normalizeTeamMember,
               runtimeSettingsHtml: runtimeSettingsHtml,
               initRuntimeSettings: initRuntimeSettings,
@@ -456,10 +455,10 @@ const sampleState = {
 
     // 2. Prototype member row structure assertions
     for (const cls of [
-        'team-member-row-main',
+        'team-compact-row',
         'team-member-portrait',
         'team-avatar-img',
-        'team-member-tasks-col',
+        'team-portrait-28',
         'team-tasks-pill',
         'team-member-status',
         'team-control-field'
@@ -595,15 +594,14 @@ const sampleState = {
     const state = { ...sampleState, validatorTrace: [{ kind: 'tool', id: 'VAL-T1', name: 'askaway_memory', elapsedMs: 140 }] };
     api.applyWorkersState(state);
     const row = doc.querySelector('[data-member-row="anika"]');
-    const main = row.querySelector('.team-member-row-main');
-    assert.deepEqual(main.children.filter(c => c.tagName).map(c => c.className), ['team-member-portrait', 'team-member-body', 'team-member-tasks-col'], '751e50d portrait/body/tasks column structure');
-    const headline = row.querySelector('.team-member-headline');
-    assert(headline.querySelector('.team-member-identity strong.team-member-name'));
-    assert(headline.querySelector('.team-member-status'));
-    assert(headline.querySelector('.team-member-cost strong.team-cost-month'));
+    const top = row.querySelector('.team-compact-top');
+    assert.deepEqual(top.children.filter(c => c.tagName).map(c => c.className.split(' ')[0]), ['team-member-portrait', 'team-member-identity', 'team-member-cost'], 'compact card header: portrait, name and role, Turn over Month');
+    assert(top.querySelector('.team-member-identity strong.team-member-name'));
+    assert(row.querySelector('.team-compact-status.team-member-status'));
+    assert(top.querySelector('.team-member-cost strong.team-cost-month'));
     assert(row.querySelector('.team-member-controls .team-member-profile code'));
     assert(row.querySelector('a.team-agent-file-link[data-agent-file]'));
-    assert(row.querySelector('.team-avatar-badge.team-portrait-72 img.team-avatar-img'));
+    assert(row.querySelector('.team-avatar-badge.team-portrait-28 img.team-avatar-img'));
     let priyaTray = doc.querySelector('[data-member-tasks="priya"]');
     assert.equal(priyaTray, null, 'Priya trace starts collapsed without a drawer');
     const pill = doc.querySelector('[data-member-tasks-toggle="priya"]');
@@ -627,7 +625,7 @@ const sampleState = {
     assert.equal(doc.querySelector('[data-member-row="anika"] img'), image);
     assert.equal(doc.querySelector('[data-member-model="anika"]'), select);
     const member = api.normalizeTeamMember(sampleState.members[1]);
-    assert(api.renderWorkersHtml(sampleState, '', {}, {}, {}).includes(api.teamMemberRowHtml(member, [sampleState.workers[1]], sampleState, {}, {}, {})), 'production contains shared row output');
+    assert(api.renderWorkersHtml(sampleState, '', {}, {}, {}).includes('data-compact-row="anika"'), 'production renders the compact card');
 }
 
 // EV-TEAM-RUNTIME-SETTINGS (R-SETTINGS-15): every integration row has the same switch, one Refresh and "checked";
@@ -748,14 +746,11 @@ const sampleState = {
     const select = doc.querySelector('[data-member-model="anika"]');
     assert(select.textContent.includes('Claude Opus 5.5') && select.textContent.includes('Sol 6.1'));
     assert(!select.textContent.includes('github-copilot/'));
-    // Every member card ends with one actions row holding the Agent file link and Edit as the same kind of chip.
+    // Every card has exactly one Edit button in its header; the Edit panel holds the Agent file link.
     for (const row of doc.querySelectorAll('.team-member-row')) {
-        const actions = row.querySelector('.team-member-actions');
-        assert(actions, `${row.getAttribute('data-member-id')} has an actions row`);
-        const kinds = actions.children.filter(c => c.tagName).map(c => c.className.split(' ')[0]);
-        assert.deepEqual(kinds, ['team-agent-file-link', 'team-edit-member-btn'], 'Agent file then Edit, on every card');
-        assert(!row.querySelector('.team-member-headline [data-edit-member]'), 'Edit is no longer inside the wrapping headline');
-        assert(!row.querySelector('.form-btn.team-edit-member-btn'), 'Edit is the small chip, not the large form button');
+        assert.equal(row.querySelectorAll('[data-edit-member]').length, 1, `${row.getAttribute('data-member-id')} has one Edit button`);
+        assert(row.querySelector('.team-compact-top ~ .team-compact-meta [data-edit-member]') || row.querySelector('.team-compact-meta [data-edit-member]'), 'Edit sits in the card header');
+        assert(row.querySelector('.team-member-edit-form a.team-agent-file-link'), 'Agent file lives in the Edit panel');
     }
     assert(doc.querySelector('.team-member-profile code').classList.contains('worker-state'));
     assert(!doc.getElementById('workers-list').innerHTML.includes('Shared OpenCode server'));

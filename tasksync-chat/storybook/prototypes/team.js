@@ -12,6 +12,21 @@ import {
 	avatarFallbackFor,
 } from '../fixtures/avatars/index.js';
 
+// Face portraits that ship with the extension (media/team/avatars/<memberId>.png, the same files the host serves in production).
+// Vite inlines the glob; plain Node (tests) has no glob, so the lookup is empty there and the fixture portraits stay.
+let teamFaces = {};
+try {
+	teamFaces = import.meta.glob('../../media/team/avatars/*.png', { eager: true, query: '?url', import: 'default' });
+} catch {
+	teamFaces = {};
+}
+function portraitFor(memberId, overrides = null) {
+	const key = String(memberId || '').trim().toLowerCase();
+	const face = Object.entries(teamFaces).find(([file]) => file.endsWith('/' + key + '.png'));
+	if (face && !(overrides && Object.prototype.hasOwnProperty.call(overrides, key))) return face[1];
+	return avatarFor(memberId, overrides);
+}
+
 export {
 	AVATAR_FIXTURES,
 	USER_PROFILE_FIXTURE,
@@ -75,7 +90,7 @@ export function getWorkersKit() {
 	const workers = sliceBetween(webviewSource, '// ── Workers tab: pure render', '// ── end Workers pure render ──');
 	const patch = sliceBetween(webviewSource, '    function patchTeamNode(', "    var workersExpanded =");
 	cachedWorkersKit = new Function(
-		`${banner}\n${trace}\n${workers}\n${patch}\nreturn { wireTeamEvents, patchTeamHtml, teamMemberRowHtml, teamCompactRowHtml, teamEmptyTurnHtml, teamHeaderHtml, teamCompactSummaryHtml, teamShareBarHtml, teamHealthHtml, teamVisibleGroups, teamStatusText, teamStatusPick, teamStatusPhrases, tickTeamStatus, teamAccentSlot, teamMemberShown, normalizeTeamMember, teamMoney, usageBannerHtml, chatBannerHtml, cacheAgeLabel, efficiencyScore, turnTotalsLead, traceRowsHtml, traceGroupsHtml, TRACE_HEAD, workerBannerHtml, workerTraceHtml, workersSummaryHtml, renderWorkersHtml, workersScoreboardHtml, workersBenchmarkHtml };`
+		`${banner}\n${trace}\n${workers}\n${patch}\nreturn { wireTeamEvents, patchTeamHtml, teamCompactRowHtml, teamEmptyTurnHtml, teamHeaderHtml, teamCompactSummaryHtml, teamShareBarHtml, teamHealthHtml, teamVisibleGroups, teamStatusText, teamStatusPick, teamStatusPhrases, tickTeamStatus, teamAccentSlot, teamMemberShown, normalizeTeamMember, teamMoney, usageBannerHtml, chatBannerHtml, cacheAgeLabel, efficiencyScore, turnTotalsLead, traceRowsHtml, traceGroupsHtml, TRACE_HEAD, workerBannerHtml, workerTraceHtml, workersSummaryHtml, renderWorkersHtml, workersScoreboardHtml, workersBenchmarkHtml };`
 	)();
 	return cachedWorkersKit;
 }
@@ -501,7 +516,7 @@ export function memberCostSummary(member) {
 export function avatarMarkup(member, { sizeClass = '', avatarOverrides = null, emptyAlt = false, hideInitialsText = false } = {}) {
 	const id = typeof member === 'string' ? member : member?.id;
 	const name = typeof member === 'string' ? member : (member?.name || member?.id || '?');
-	const src = avatarFor(id, avatarOverrides);
+	const src = portraitFor(id, avatarOverrides);
 	const initials = member?.initials || computeInitials(name);
 	const cls = ['team-avatar-badge', sizeClass, src ? 'has-image' : 'has-initials'].filter(Boolean).join(' ');
 	if (src) {
@@ -609,7 +624,7 @@ export function renderProductionTabBarHtml(activeTab = 'team') {
 export function getActiveTurnMembers(state) {
 	const groups = (state.members || []).filter((m) => m.kind !== 'main' || !state.mainMemberId || m.id === state.mainMemberId)
 		.map((raw) => { const { workers, normalized } = memberKitInputs(raw, state); return { member: normalized, workers, raw }; });
-	return getWorkersKit().teamVisibleGroups(groups, Boolean(state.compact && state.showAll)).map((g) => g.raw);
+	return getWorkersKit().teamVisibleGroups(groups, Boolean(state.showAll)).map((g) => g.raw);
 }
 
 export function memberStatusInfo(member) {
@@ -636,14 +651,14 @@ export function memberStatusInfo(member) {
 function memberKitInputs(member, state) {
 	const kit = getWorkersKit();
 	const workers = (member.tasks || []).map((task) => toSharedWorkerRecord(task, state.now || 1_700_000_000_000));
-	const normalized = kit.normalizeTeamMember({ ...member, pinned: member.pinnedFirst, active: memberStatusInfo(member).state === 'working', avatarSrc: avatarFor(member.id, state.avatarOverrides), turnCost: memberCostSummary(member).turnDollars, monthCost: member.monthDollars, creativeStatus: memberStatusInfo(member).text });
+	const normalized = kit.normalizeTeamMember({ ...member, pinned: member.pinnedFirst, active: memberStatusInfo(member).state === 'working', avatarSrc: portraitFor(member.id, state.avatarOverrides), turnCost: memberCostSummary(member).turnDollars, monthCost: member.monthDollars, creativeStatus: memberStatusInfo(member).text });
 	return { kit, workers, normalized };
 }
 
 export function renderMemberRowHtml(member, state) {
 	const { kit, workers, normalized } = memberKitInputs(member, state);
 	// Compact mode (Storybook prototype only): the production render block teamCompactRowHtml, the Edit panel state in expanded['edit:<id>'].
-	const row = state.compact ? kit.teamCompactRowHtml : kit.teamMemberRowHtml;
+	const row = kit.teamCompactRowHtml;
 	return row(normalized, workers, { generatedAt: state.now, turnTotal: state.turnTotal, memberSettings: { [member.id]: { model: member.model } }, validatorTrace: member.traceEvents || (member.id === 'priya' ? VALIDATOR_TRACE_FIXTURES : []) }, { ...state.expandedTraces, ['member:' + member.id]: Boolean(state.expandedTasksByMember && state.expandedTasksByMember[member.id]), highlightedMember: state.highlightedMemberId, ['edit:' + member.id]: state.editingMemberId === member.id }, state.openTraceIds, {});
 }
 
@@ -655,16 +670,14 @@ export function renderTeamTabHtml(state) {
 	const rowState = { ...state, turnTotal };
 	const rowsHtml = activeMembers.map((m) => renderMemberRowHtml(m, rowState)).join('');
 	// Compact mode: with only Priya and the main agent shown, say why nobody else is (production teamEmptyTurnHtml).
-	const emptyTurnHtml = state.compact && activeMembers.every((m) => m.pinnedFirst || m.kind === 'validator' || m.kind === 'main')
+	const emptyTurnHtml = activeMembers.every((m) => m.pinnedFirst || m.kind === 'validator' || m.kind === 'main')
 		? kit.teamEmptyTurnHtml()
 		: '';
 	// Same summary as production (#panel-team): no filter, no Save cost tips; counts come from the displayed tasks.
 	const now = state.now || 1_700_000_000_000;
 	const tasks = activeMembers.flatMap((m) => (m.tasks || []).map((task) => toSharedWorkerRecord(task, now)));
 	// Compact mode: the production header (the one Show all members toggle), the stacked share bar, the counts and the health strip.
-	const summaryHtml = state.compact
-		? kit.teamHeaderHtml(Boolean(state.showAll)) + kit.teamCompactSummaryHtml({ generatedAt: now }, tasks, groups.map((g) => ({ member: g.member, workers: g.workers })), turnTotal, state.runtimeHealth || null)
-		: kit.workersSummaryHtml({ generatedAt: now }, tasks);
+	const summaryHtml = kit.teamHeaderHtml(Boolean(state.showAll)) + kit.teamCompactSummaryHtml({ generatedAt: now }, tasks, groups.map((g) => ({ member: g.member, workers: g.workers })), turnTotal, state.runtimeHealth || null);
 	return `<div class="team-tab-panel" data-active-member-count="${activeMembers.length}">` +
 		summaryHtml +
 		`<div class="team-member-list" role="list">${rowsHtml}</div>` +
@@ -675,7 +688,7 @@ export function renderTeamTabHtml(state) {
 /**
  * Enhances the raw AITalk HTML from media/aitalk/talkRender.js so that:
  * - User bubbles and header presence show "Machs" and the fixture portrait from storybook/fixtures/avatars/machs.svg
- * - Member bubbles, header roster, join/leave notices, and @autocomplete all show avatarFor(memberId)
+ * - Member bubbles, header roster, join/leave notices, and @autocomplete all show the member portrait
  * - Every participant name and avatar carries data-member-id for click-to-Team-row navigation
  * - Duplicate first names in @autocomplete show their role to choose and route by member id
  */
@@ -767,8 +780,7 @@ export function createTeamController(options = {}) {
 		activeTab: options.activeTab || 'team',
 		members: baseMembers,
 		expandedTasksByMember: { ...(options.expandedTasksByMember || {}) },
-		compact: Boolean(options.compact),
-		// "Show all members" toggle (compact only); runtime health feeds the health strip.
+		// "Show all members" toggle; runtime health feeds the health strip.
 		showAll: Boolean(options.showAll),
 		runtimeHealth: options.runtimeHealth || { opencode: { enabled: true, ok: true }, agy: { enabled: true, ok: false, signIn: true }, claude: { enabled: false, ok: false } },
 		expandedTraces: { ...(options.expandedTraces || {}) },
@@ -829,7 +841,7 @@ export function createTeamController(options = {}) {
 				name: m.name,
 				role: m.role,
 				initials: m.initials || computeInitials(m.name),
-				avatarSrc: avatarFor(m.id, state.avatarOverrides),
+				avatarSrc: portraitFor(m.id, state.avatarOverrides),
 				pinnedFirst: Boolean(m.pinnedFirst || m.id === 'priya' || m.kind === 'validator'),
 				colour: m.kind === 'validator' ? 'who-validator' : (m.kind === 'main' ? 'who-agent' : 'who-worker'),
 				rank: m.kind === 'validator' ? 300 : (m.kind === 'main' ? 200 : 100),
@@ -877,7 +889,7 @@ export function createTeamController(options = {}) {
 					name: m.name,
 					role: m.role,
 					initials: m.initials || computeInitials(m.name),
-					avatarSrc: avatarFor(m.id, state.avatarOverrides),
+					avatarSrc: portraitFor(m.id, state.avatarOverrides),
 					pinnedFirst: Boolean(m.pinnedFirst || m.id === 'priya' || m.kind === 'validator'),
 					colour: m.kind === 'validator' ? 'who-validator' : (m.kind === 'main' ? 'who-agent' : 'who-worker'),
 					rank: m.kind === 'validator' ? 300 : (m.kind === 'main' ? 200 : 100),
@@ -903,7 +915,7 @@ export function createTeamController(options = {}) {
 			rm.name = m.name;
 			rm.role = m.role;
 			rm.initials = m.initials || computeInitials(m.name);
-			rm.avatarSrc = avatarFor(m.id, state.avatarOverrides);
+			rm.avatarSrc = portraitFor(m.id, state.avatarOverrides);
 			rm.presence = m.present ? 'online' : 'left';
 		}
 		latestRoomSnapshot = room.snapshot();
@@ -1408,7 +1420,7 @@ export function createTeamController(options = {}) {
 			popover: state.autocompleteCandidates.length > 0,
 			activeMentionIndex: state.acIndex || 0,
 			autocompleteCandidates: state.autocompleteCandidates.map((member) => ({ ...member, memberId: member.id })),
-			avatarFor: (id) => avatarFor(id, state.avatarOverrides),
+			avatarFor: (id) => portraitFor(id, state.avatarOverrides),
 			presence: {
 				mode: 'here',
 				name: USER_PROFILE_FIXTURE.name,
@@ -1438,7 +1450,6 @@ export function createTeamController(options = {}) {
 	} else if (['compact', 'edit-open', 'empty-turn', 'show-all'].includes(scenario)) {
 		// Compact Team prototype (reviewer-picked scope a, collapsed by default). The production rule still decides who shows:
 		// Priya, the main agent and members with Turn spend; passive members (Diego, Pavel, Sana, Shreya, Cathy at $0) only with Show all.
-		state.compact = true;
 		findMember('sana').turnDollars = 0;
 		findMember('tara').turnDollars = 0.04;
 		if (scenario === 'empty-turn') {
@@ -1538,9 +1549,7 @@ export function mountTeamStory(options = {}) {
 	paint();
 	controller.onChange(paint);
 	// The story clock advances each second; the visible status text follows it in place, like the production 1 s tick.
-	if (controller.state.compact) {
-		host._clockTimer = setInterval(() => getWorkersKit().tickTeamStatus(contentEl, controller.advanceClock(1000)), 1000);
-	}
+	host._clockTimer = setInterval(() => getWorkersKit().tickTeamStatus(contentEl, controller.advanceClock(1000)), 1000);
 	getWorkersKit().wireTeamEvents(host, message => {
 		if (message.type === 'teamTasksToggle') controller.toggleMemberTasks(message.memberId);
 		if (message.type === 'teamShowAll') controller.setShowAll(message.value);

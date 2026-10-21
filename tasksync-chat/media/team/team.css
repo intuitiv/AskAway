@@ -254,26 +254,11 @@ body.vscode-light #panel-team {
 	box-shadow: 0 0 0 1px var(--team-accent);
 }
 
-.team-member-row-main {
-	display: grid;
-	grid-template-columns: 72px minmax(0, 1fr);
-	gap: 10px;
-	align-items: start;
-}
-
-/* Left: ~72px portrait block */
+/* Portrait block (the compact card narrows it to 28px) */
 .team-member-portrait {
 	width: 72px;
 	height: 72px;
 	flex-shrink: 0;
-}
-
-.team-portrait-72 {
-	width: 72px;
-	height: 72px;
-	border-radius: 12px;
-	border: 1px solid var(--team-border);
-	background: var(--team-surface-elevated);
 }
 
 .team-portrait-48 {
@@ -281,24 +266,6 @@ body.vscode-light #panel-team {
 	height: 48px;
 	border-radius: 10px;
 	border: 1px solid var(--team-border);
-}
-
-/* Middle: Name · Role, status, model, thinking, agent file */
-.team-member-body {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	min-width: 0;
-}
-
-.team-member-headline {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-start;
-	gap: 3px;
-	line-height: 1.25;
-	/* Room for the tasks pill in the card's top-right corner. */
-	padding-right: 92px;
 }
 
 .team-member-identity {
@@ -349,7 +316,7 @@ body.vscode-light #panel-team {
     font-size: var(--team-font-small);
 }
 
-/* Agent file and Edit: the same small chip, side by side on the last row of every card. */
+/* Agent file link and Reset model, side by side in the Edit panel. */
 .team-member-actions {
 	display: flex;
 	align-items: center;
@@ -486,16 +453,6 @@ body.vscode-light #panel-team {
 	border-color: var(--team-accent);
 }
 
-/* Top-right corner of every card: compact [n tasks ▸] pill. It floats so the controls below get the full width. */
-.team-member-tasks-col {
-	position: absolute;
-	top: 10px;
-	right: 12px;
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-}
-
 .team-tasks-pill {
 	appearance: none;
 	border: 1px solid var(--vscode-input-border);
@@ -531,7 +488,7 @@ body.vscode-light #panel-team {
 	display: none;
 }
 
-/* ── Compact member row (opt-in prototype: teamCompactRowHtml) ─────────
+/* ── Compact member row (the Team layout: teamCompactRowHtml) ─────────
    Three short lines: [avatar] Name · full Role + Turn $ over Month $ / model chip + thinking chip + tasks pill + Edit pencil / rotating status,
    a thin spend-share bar under them. Role, model and Turn never ellipsize (they wrap); only the status line does.
    Surfaces and text use VS Code theme variables; the per-member accent colours are the --team-accent-N variables below. */

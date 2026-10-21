@@ -105,7 +105,7 @@ function loadTsModule(filePath, extraMocks = {}) {
     const sharedMember = protoMod.TEAM_ROSTER_FIXTURES[3];
     const sharedState = { now: 1700000000000, expandedTasksByMember: {} };
     const normalizedMember = sharedKit.normalizeTeamMember({ ...sharedMember, pinned: sharedMember.pinnedFirst, avatarSrc: protoMod.avatarFor(sharedMember.id), turnCost: sharedMember.turnDollars, monthCost: sharedMember.monthDollars, creativeStatus: sharedMember.idleStatus });
-    assert.equal(protoMod.renderMemberRowHtml(sharedMember, sharedState), sharedKit.teamMemberRowHtml(normalizedMember, [], { generatedAt: sharedState.now, memberSettings: { [sharedMember.id]: { model: sharedMember.model } }, validatorTrace: [] }, { ['member:' + sharedMember.id]: false, highlightedMember: undefined }, undefined, {}), 'Storybook uses the production shared pure row renderer');
+    assert.equal(protoMod.renderMemberRowHtml(sharedMember, sharedState), sharedKit.teamCompactRowHtml(normalizedMember, [], { generatedAt: sharedState.now, turnTotal: sharedState.turnTotal, memberSettings: { [sharedMember.id]: { model: sharedMember.model } }, validatorTrace: [] }, { ['member:' + sharedMember.id]: false, highlightedMember: undefined }, undefined, {}), 'Storybook uses the production shared pure row renderer');
 
     assert.ok(Array.isArray(rosterMod.TEAM_ROSTER), 'TEAM_ROSTER must be exported as an array');
     // Rhea (Pega rules authoring) comes from the user's own profiles, not the extension (R-TEAM-46).

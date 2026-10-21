@@ -3455,55 +3455,19 @@
                 '<label class="team-control-field"><span class="team-control-label">Thinking</span>' +
                 '<select class="team-thinking-select" data-member-id="' + workersEsc(member.id) + '" data-member-thinking="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' thinking effort">' + thinkingOptions + '</select></label>';
     }
-    // Agent file and Edit are the same kind of small chip on the same bottom row of every member card.
+    // The Agent file link (main agent: its chat-agent file); it sits in the Edit panel.
     function teamAgentLinkHtml(member, cls, attrs) {
         var main = member.kind === 'main';
         return main
             ? '<a href="#" class="team-agent-file-link' + (cls || '') + '"' + (attrs || '') + ' data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-member-kind="main" data-profile="" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>'
             : '<a href="#" class="team-agent-file-link' + (cls || '') + '"' + (attrs || '') + ' data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>';
     }
-    function teamMemberActionsHtml(member) {
-        return '<div class="team-member-actions">' + teamAgentLinkHtml(member) +
-            '<button type="button" class="team-edit-member-btn" data-edit-member="' + workersEsc(member.id) + '" title="Edit ' + workersEsc(member.name) + '">Edit</button></div>';
-    }
-    // The member's Turn (and Month when asked; 'line' = a muted second line) with the data-member-cost / data-turn-cost / data-month-cost hooks.
-    function teamCostSpanHtml(member, costs, withMonth, extraClass) {
+    // The member's Turn with Month as a muted second line, with the data-member-cost / data-turn-cost / data-month-cost hooks.
+    function teamCostSpanHtml(member, costs, extraClass) {
         var turnCostText = teamMoney(costs.turn);
         var monthCostText = teamMoney(costs.month);
         return '<span class="team-member-cost' + (extraClass ? ' ' + extraClass : '') + '" data-member-cost="' + workersEsc(member.id) + '" data-turn-cost="' + turnCostText + '" data-month-cost="' + monthCostText + '">Turn <strong class="team-cost-turn">' + turnCostText + '</strong>' +
-            (withMonth === 'line' ? '<span class="team-cost-month-line">Month <strong class="team-cost-month">' + monthCostText + '</strong></span>'
-                : withMonth ? ' &middot; Month <strong class="team-cost-month">' + monthCostText + '</strong>' : '') + '</span>';
-    }
-    function teamMemberRowHtml(member, memberWorkers, state, expanded, openIds, traces) {
-        var status = memberDisplayStatus(member, memberWorkers);
-        var costs = memberCostAmounts(member, memberWorkers);
-        var info = teamMemberTasksInfo(member, memberWorkers, state, expanded, traces);
-        var highlighted = (expanded && expanded.highlightedMember === member.id) || (state && state.highlightedMember === member.id);
-        var main = member.kind === 'main';
-        var controlsHtml = teamMemberControlsHtml(member, memberWorkers, state);
-        var actionsHtml = teamMemberActionsHtml(member);
-        return '<div class="team-member-row' + (highlighted ? ' team-member-row-highlighted is-highlighted' : '') + (status.dotState === 'running' ? ' is-working' : '') + '" data-member-id="' + workersEsc(member.id) + '" data-member-row="' + workersEsc(member.id) + '"' +
-            (member.pinned ? ' data-pinned="true"' : main ? ' data-main-agent="true"' : ' data-active-member-row="' + workersEsc(member.id) + '"') +
-            (highlighted ? ' data-highlighted="true"' : '') + '>' +
-            '<div class="team-member-row-main">' +
-            teamPortraitHtml(member, state) +
-            '<div class="team-member-body">' +
-            '<div class="team-member-headline">' +
-            '<span class="team-member-identity">' +
-            '<strong class="team-member-name">' + workersEsc(member.name) + '</strong> &middot; ' +
-            '<span class="team-member-role">' + workersEsc(member.role) + '</span>' +
-            '</span>' +
-            '<span class="team-member-status team-status-' + (status.dotState === 'running' ? 'working' : 'idle') + '" data-status-state="' + (status.dotState === 'running' ? 'working' : 'idle') + '">● ' + workersEsc(status.label) + '</span>' +
-            teamCostSpanHtml(member, costs, true) +
-            '</div>' +
-            '<div class="team-member-controls">' + controlsHtml + '</div>' +
-            actionsHtml +
-            '</div>' +
-            (main ? '' : '<div class="team-member-tasks-col">' + teamTasksPillHtml(member, info) + '</div>') +
-            '</div>' +
-            (main ? '' : teamMemberTrayHtml(member, memberWorkers, state, expanded, openIds, traces, info)) +
-            teamMemberEditFormHtml(member, expanded) +
-            '</div>';
+            '<span class="team-cost-month-line">Month <strong class="team-cost-month">' + monthCostText + '</strong></span></span>';
     }
     // The runtime of a model id, for the model chip colour.
     function teamRuntimeOf(modelId) { return memberIntegration(modelId); }
@@ -3583,7 +3547,7 @@
             (highlighted ? ' data-highlighted="true"' : '') + '>' +
             '<div class="team-compact-line team-compact-top">' + teamPortraitHtml(member, state, 28) +
             '<span class="team-member-identity team-compact-identity"><strong class="team-member-name">' + workersEsc(member.name) + '</strong> &middot; <span class="team-member-role">' + workersEsc(member.role) + '</span></span>' +
-            teamCostSpanHtml(member, costs, 'line', 'team-compact-cost') +
+            teamCostSpanHtml(member, costs, 'team-compact-cost') +
             '</div>' +
             '<div class="team-compact-line team-compact-meta">' +
             '<span class="team-chip team-chip-model team-runtime-' + teamRuntimeOf(sel.selectedFull) + '" data-runtime="' + teamRuntimeOf(sel.selectedFull) + '" title="' + workersEsc(sel.selectedFull) + '">' + workersEsc(modelText) + '</span>' +
@@ -3664,8 +3628,8 @@
             });
         }
         // Priya first (with her Trace), then the main agent, then members by Turn descending (ties in roster order), then
-        // passive members (only with "Show all members", compact opt-in); everyone else with no Turn spend is hidden.
-        return teamVisibleGroups(groups, Boolean(state && state.compact && state.showAll));
+        // passive members (only with "Show all members"); everyone else with no Turn spend is hidden.
+        return teamVisibleGroups(groups, Boolean(state && state.showAll));
     }
     // Settings → Integrations and the Team runtime warning: one name and one status word per integration (reviewer, 2026-10-16).
     // A function so Settings can render before this line runs (the modal is built at startup).
@@ -3711,13 +3675,14 @@
         var groups = hasMembers ? groupWorkersByMember(state, shown, filter) : [];
         var warning = teamRuntimeWarning(state, groups);
         var turnDollars = hasMembers ? groups.reduce(function (n, g) { return n + memberCostAmounts(g.member, g.workers).turn; }, 0) : undefined;
-        // Compact opt-in: header with the one toggle, the stacked share bar, counts and the health strip replace the warning sentence.
-        var compact = Boolean(state.compact && hasMembers);
-        if (compact) state = Object.assign({}, state, { turnTotal: turnDollars });
+        // The compact Team is the only layout (reviewer, 2026-10-21): header with the one toggle, the stacked share bar, counts and
+        // the health strip, then the runtime warning sentence (R-TEAM-36) when a member's runtime is off.
+        if (hasMembers) state = Object.assign({}, state, { turnTotal: turnDollars });
         var health = state.runtimeHealth || (typeof runtimeHealth !== 'undefined' ? runtimeHealth : null);
-        var html = compact
+        var html = (hasMembers
             ? teamHeaderHtml(Boolean(state.showAll)) + teamCompactSummaryHtml(state, shown, groups, turnDollars, health)
-            : workersSummaryHtml(state, shown, turnDollars) + '<div class="workers-approval-notice" data-runtime-warning' + (warning ? '' : ' hidden') + '>' + workersEsc(warning) + '</div>';
+            : workersSummaryHtml(state, shown, turnDollars)) +
+            '<div class="workers-approval-notice" data-runtime-warning' + (warning ? '' : ' hidden') + '>' + workersEsc(warning) + '</div>';
         var pending = workersPendingApprovals(state);
         if (pending) {
             html += '<div class="workers-approval-notice">' + pending + ' worker' + (pending > 1 ? 's' : '') + ' waiting for approval. Open the session in OpenCode to answer.</div>';
@@ -3727,14 +3692,10 @@
                 return workerCardHtml(w, expanded && expanded[w.workerId], state.generatedAt, openIds, traces);
             }).join('') + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
         }
-        var rowHtml = compact ? teamCompactRowHtml : teamMemberRowHtml;
         var rows = '<div class="team-members-list team-member-list">' + groups.map(function (g) {
-            return rowHtml(g.member, g.workers, state, expanded, openIds, traces);
+            return teamCompactRowHtml(g.member, g.workers, state, expanded, openIds, traces);
         }).join('') + '</div>';
-        if (compact && groups.every(function (g) { return g.member.pinned || g.member.kind === 'main'; })) rows += teamEmptyTurnHtml();
-        if (!shown.length && !compact) {
-            rows += '<div class="workers-empty">' + ((state.workers || []).length && String(filter || '').trim() ? 'No worker matches the filter.' : (state.workers || []).length ? 'No active tasks this turn.' : 'No live workers in this workspace.') + '</div>';
-        }
+        if (groups.every(function (g) { return g.member.pinned || g.member.kind === 'main'; })) rows += teamEmptyTurnHtml();
         return html + rows + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
     }
     // Eval results by mode × model: the evidence for picking a worker tier. Same expander and table as Metrics.

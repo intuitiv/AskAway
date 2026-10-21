@@ -50,6 +50,9 @@ AskAway.code-workspace
 # Include askaway resources for bundling in VSIX
 !askaway-resources/**
 
+# Team member face portraits (media/team/avatars/<memberId>.png) ship with the extension
+!media/team/avatars/*.png
+
 # Test output and caches that tests leave in the working folder (tens of thousands of files)
 build/**
 .webex-cache/**

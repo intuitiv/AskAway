@@ -166,7 +166,7 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 	// Production tick: the visible text changes in place, the card is not re-rendered (same nodes).
 	{
 		const { api, doc } = createHarness();
-		api.applyWorkersState(prodState({ compact: true, runtimeHealth: HEALTH }));
+		api.applyWorkersState(prodState({ runtimeHealth: HEALTH }));
 		const list = doc.getElementById('workers-list');
 		const card = list.querySelector('[data-member-row="diego"]');
 		assert.equal(card, null, 'passive Diego is not listed while Show all is off');
@@ -184,7 +184,7 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 	// ── (2) Not in the edit card: no status field; the save message and the roster ignore a status ──
 	{
 		const { api, doc, messages, click } = createHarness();
-		api.applyWorkersState(prodState({ compact: true }));
+		api.applyWorkersState(prodState());
 		const form = doc.querySelector('[data-member-edit-form="anika"]');
 		const fields = form.querySelectorAll('[data-member-edit-field]').map((f) => f.getAttribute('data-member-edit-field'));
 		assert.deepEqual(fields, ['name', 'role'], 'the Edit form keeps name and role (picture button stays)');
@@ -304,14 +304,12 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 	assert.deepEqual(memberIds(compact), ['priya', 'bhaskar', 'anika', 'tara', 'paolo'], 'Storybook: Priya, main agent, then Turn descending');
 	assert.deepEqual(memberIds(showAll), ['priya', 'bhaskar', 'anika', 'tara', 'paolo', 'diego', 'pavel', 'sana', 'shreya', 'cathy'], 'passive members last, in roster order');
 	{
-		const html = kit.renderWorkersHtml(prodState({ compact: true }), '', {}, {}, {});
+		const html = kit.renderWorkersHtml(prodState(), '', {}, {}, {});
 		assert.deepEqual(memberIds(html), ['priya', 'bhaskar', 'tara', 'paolo', 'anika'], 'production: Turn descending, ties in roster order (Tara before Paolo)');
-		const full = kit.renderWorkersHtml(prodState(), '', {}, {}, {});
-		assert.deepEqual(memberIds(full), ['priya', 'bhaskar', 'tara', 'paolo', 'anika'], 'the full rows use the same ordering function');
 		const groups = PROD_MEMBERS.map((m) => ({ member: kit.normalizeTeamMember(m), workers: [] }));
 		assert.deepEqual(kit.teamVisibleGroups(groups, true).map((g) => g.member.id), ['priya', 'bhaskar', 'tara', 'paolo', 'anika', 'diego', 'pavel']);
 		assert.deepEqual(kit.teamVisibleGroups(groups, false).map((g) => g.member.id), ['priya', 'bhaskar', 'tara', 'paolo', 'anika']);
-		assert.ok(/teamVisibleGroups\(groups, Boolean\(state && state\.compact && state\.showAll\)\)/.test(webviewSrc) && /teamVisibleGroups\(groups, Boolean\(state\.compact && state\.showAll\)\)/.test(fs.readFileSync(path.join(ROOT, 'storybook', 'prototypes', 'team.js'), 'utf8')), 'both call the one ordering function');
+		assert.ok(/teamVisibleGroups\(groups, Boolean\(state && state\.showAll\)\)/.test(webviewSrc) && /teamVisibleGroups\(groups, Boolean\(state\.showAll\)\)/.test(fs.readFileSync(path.join(ROOT, 'storybook', 'prototypes', 'team.js'), 'utf8')), 'both call the one ordering function');
 	}
 
 	// ── (7) Show all members: one toggle, off by default, passive members quiet and editable ──
@@ -335,22 +333,20 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 		assert.ok(/message\.type === 'teamShowAll'\) controller\.setShowAll/.test(fs.readFileSync(path.join(ROOT, 'storybook', 'prototypes', 'team.js'), 'utf8')), 'mountTeamStory routes the toggle');
 		// Production: opt-in; the toggle repaints with the passive members; the full rows ignore it.
 		const { api, doc, click, key } = createHarness();
-		api.applyWorkersState(prodState({ compact: true }));
+		api.applyWorkersState(prodState());
 		assert.deepEqual(doc.querySelectorAll('[data-member-row]').map((r) => r.getAttribute('data-member-row')), ['priya', 'bhaskar', 'tara', 'paolo', 'anika']);
 		const sw = doc.querySelector('[data-team-show-all]');
 		assert.equal(sw.getAttribute('aria-checked'), 'false');
 		click(sw);
 		assert.deepEqual(doc.querySelectorAll('[data-member-row]').map((r) => r.getAttribute('data-member-row')), ['priya', 'bhaskar', 'tara', 'paolo', 'anika', 'diego', 'pavel'], 'on: passive members follow');
 		assert.equal(doc.querySelector('[data-team-show-all]').getAttribute('aria-checked'), 'true');
-		api.applyWorkersState(prodState({ compact: true }));
+		api.applyWorkersState(prodState());
 		assert.equal(doc.querySelectorAll('[data-member-row]').length, 7, 'the toggle survives a repaint (workersShowAll)');
 		key(doc.querySelector('[data-team-show-all]'), ' ');
 		assert.equal(doc.querySelectorAll('[data-member-row]').length, 5, 'Space toggles it off again');
 		key(doc.querySelector('[data-team-show-all]'), 'Enter');
 		assert.equal(doc.querySelectorAll('[data-member-row]').length, 7, 'Enter toggles it on');
 		assert.equal(doc.querySelectorAll('[role="switch"]').filter((s) => s.hasAttribute('data-team-show-all')).length, 1);
-		api.applyWorkersState(prodState());
-		assert.ok(!doc.querySelector('[data-team-show-all]') && doc.querySelectorAll('[data-member-row]').length === 5 && !doc.querySelector('[data-member-row="diego"]'), 'compact off: production Team has no header and ignores the toggle');
 	}
 
 	// ── (8) ONE Edit button per card: no chevron, no ⋯ menu; one inline panel holds everything editable ──
@@ -375,7 +371,7 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 		assert.ok(/data-default-model="github-copilot\/claude-sonnet-5\.5"/.test(rowOf(proto.renderTeamTabHtml(ctrl.state), 'anika')), 'defaultModel stays the roster model');
 
 		const { api, doc, messages, click } = createHarness();
-		api.applyWorkersState(prodState({ compact: true, memberSettings: { anika: { model: 'github-copilot/gpt-6-luna', thinking: 'low' } } }));
+		api.applyWorkersState(prodState({ memberSettings: { anika: { model: 'github-copilot/gpt-6-luna', thinking: 'low' } } }));
 		const btn = () => doc.querySelector('[data-edit-member="anika"]');
 		const form = () => doc.querySelector('[data-member-edit-form="anika"]');
 		assert.equal(btn().tagName, 'BUTTON', 'a real button: Enter and Space activate it natively');
@@ -385,7 +381,7 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 		click(btn());
 		assert.ok(!form().hasAttribute('hidden') && btn().getAttribute('aria-expanded') === 'true', 'click opens the single panel');
 		for (const sel of ['[data-member-edit-field="name"]', '[data-member-edit-field="role"]', '[data-member-pick-picture]', '[data-member-model]', '[data-member-thinking]', '[data-open-agent-file]', '[data-member-reset-model]']) assert.ok(form().querySelector(sel), `inside the panel: ${sel}`);
-		api.applyWorkersState(prodState({ compact: true }));
+		api.applyWorkersState(prodState());
 		assert.ok(!form().hasAttribute('hidden'), 'an open panel survives a repaint');
 		// Model and Thinking keep working live (member-level) from inside the panel.
 		const modelSelect = form().querySelector('[data-member-model]');
@@ -420,12 +416,10 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 		assert.equal(state(null), '');
 		for (const [cls, token] of [['ok', 'ok'], ['bad', 'bad'], ['signin', 'signin'], ['off', 'off']]) assert.ok(new RegExp(`\\.team-health-${cls} \\{ --chip-health: var\\(--team-health-${token}\\)`).test(compactCss));
 		assert.deepEqual(chips(compact), { opencode: ['ok', 'OpenCode: working'], agy: ['signin', 'agy: sign in required'], claude: ['off', 'Claude: off'] }, 'Storybook shows the strip under the counts');
-		// Compact replaces the long runtime sentence; production keeps it.
+		// The health chips and the R-TEAM-36 runtime warning sentence both show in production (no flag).
 		const off = { opencode: { enabled: false }, agy: { enabled: false }, claude: { enabled: false } };
-		const compactHtml = kit.renderWorkersHtml(prodState({ compact: true, runtimeHealth: off }), '', {}, {}, {});
-		const fullHtml = kit.renderWorkersHtml(prodState({ runtimeHealth: off }), '', {}, {}, {});
-		assert.ok(!/data-runtime-warning|Workers unavailable/.test(compactHtml) && /data-team-health/.test(compactHtml), 'compact: chips instead of the sentence');
-		assert.ok(/Workers unavailable: turn on an integration in Settings/.test(fullHtml) && !/data-team-health/.test(fullHtml), 'production keeps its sentence');
+		const prodHtml = kit.renderWorkersHtml(prodState({ runtimeHealth: off }), '', {}, {}, {});
+		assert.ok(/data-team-health/.test(prodHtml) && /data-runtime-warning>Workers unavailable: turn on an integration in Settings/.test(prodHtml), 'chips and the warning sentence');
 	}
 
 	// ── (10) Empty state ──
@@ -434,27 +428,35 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 		assert.deepEqual(memberIds(empty), ['priya', 'bhaskar']);
 		assert.ok(text(empty).includes('No workers have spent this turn.') && empty.indexOf('No workers have spent this turn.') > empty.lastIndexOf('data-compact-row='), 'the empty line sits under the rows');
 		assert.ok(!compact.includes('No workers have spent this turn.') && !showAll.includes('No workers have spent this turn.'));
-		assert.ok(kit.renderWorkersHtml(prodState({ compact: true, members: PROD_MEMBERS.slice(0, 2) }), '', {}, {}, {}).includes('No workers have spent this turn.'));
+		assert.ok(kit.renderWorkersHtml(prodState({ members: PROD_MEMBERS.slice(0, 2) }), '', {}, {}, {}).includes('No workers have spent this turn.'));
 	}
 
-	// ── Shared pieces ──
+	// ── The compact Team is the only layout: no flag, no legacy rows ──
 	{
-		const full = kit.teamMemberRowHtml(kit.normalizeTeamMember(PROD_MEMBERS[2]), [], { generatedAt: 1, memberSettings: {} }, {}, {}, {});
-		const small = kit.teamCompactRowHtml(kit.normalizeTeamMember(PROD_MEMBERS[2]), [], { generatedAt: 1, memberSettings: {} }, {}, {}, {});
-		assert.ok(small.includes(between(full, '<div class="team-member-controls">', '<div class="team-member-actions">')), 'compact panel reuses the full row controls');
-		assert.ok(small.includes(between(full, '<div class="team-member-edit-form"', '<div class="form-actions">').replace(/<div class="team-member-edit-form"[^>]*>/, '')), 'compact panel reuses the full row Edit form fields');
-		assert.ok(/data-member-cost="anika" data-turn-cost="\$0\.02" data-month-cost="\$3\.10">Turn <strong class="team-cost-turn">\$0\.02<\/strong> &middot; Month/.test(full), 'the full row keeps Turn and Month');
+		const html = kit.renderWorkersHtml(prodState({ runtimeHealth: HEALTH }), '', {}, {}, {});
+		assert.equal(kit.renderWorkersHtml(prodState({ compact: false, runtimeHealth: HEALTH }), '', {}, {}, {}), html, 'no compact flag: the compact cards always render');
+		assert.ok(/data-team-header/.test(html) && /team-compact-row/.test(html) && /data-team-share-bar/.test(html) && /data-team-health/.test(html) && /data-edit-member="anika"/.test(html), 'header toggle, cards, share bar, health chips, Edit');
+		assert.ok(!/team-portrait-72|team-member-row-main|data-member-tasks-toggle="diego"|team-member-headline/.test(html), 'no legacy 72px rows');
+		assert.ok(!/state\.compact|teamMemberRowHtml|teamMemberActionsHtml/.test(webviewSrc) && !('teamMemberRowHtml' in kit), 'legacy row code is deleted');
+		assert.ok(!/data-diego|data-member-row="diego"/.test(html) && !html.includes('data-member-row="pavel"'), 'Turn $0 members stay hidden without Show all');
+		// Show all state is local to the webview: a fresh webview starts off.
+		const fresh = createHarness();
+		fresh.api.applyWorkersState(prodState());
+		assert.equal(fresh.doc.querySelector('[data-team-show-all]').getAttribute('aria-checked'), 'false', 'Show all resets to off on reload');
+		const full = kit.teamCompactRowHtml(kit.normalizeTeamMember(PROD_MEMBERS[2]), [], { generatedAt: 1, memberSettings: {} }, {}, {}, {});
+		assert.ok(/data-member-cost="anika" data-turn-cost="\$0\.02" data-month-cost="\$3\.10">Turn <strong class="team-cost-turn">\$0\.02<\/strong><span class="team-cost-month-line">Month/.test(full), 'Turn with Month beneath');
 	}
 
-	// ── Production Team is unchanged when compact is off ──
+	// ── Portraits (R-TEAM-68): the image when avatarSrc is set, initials otherwise; the face files ship ──
 	{
-		const before = kit.renderWorkersHtml(prodState(), '', {}, {}, {});
-		kit.renderWorkersHtml(prodState({ compact: true, showAll: true }), '', {}, {}, {});
-		assert.equal(kit.renderWorkersHtml(prodState(), '', {}, {}, {}), before);
-		assert.equal(kit.renderWorkersHtml(prodState({ compact: false, showAll: true }), '', {}, {}, {}), before, 'compact defaults off; showAll alone changes nothing');
-		assert.ok(!/team-compact|data-member-detail|spent this turn|data-team-header|data-accent|team-more|team-compact-edit/.test(before), 'production markup has no compact pieces');
-		assert.ok(before.includes('team-portrait-72') && before.includes('data-member-tasks-toggle="anika"') && before.includes('class="team-member-actions"'), 'production still renders the full 72px rows with Agent file and Edit');
-		assert.ok(!/data-team-header/.test(teamPanelHtml), 'the production panel markup is unchanged');
+		const card = (extra) => kit.teamCompactRowHtml(kit.normalizeTeamMember({ id: 'anika', name: 'Anika', role: 'Architect', model: 'github-copilot/gpt-6-luna', thinking: 'low', ...extra }), [], { generatedAt: 1, memberSettings: {} }, {}, {}, {});
+		const withFace = card({ avatarSrc: 'vscode-resource:/media/team/avatars/anika.png' });
+		assert.ok(/<img class="team-avatar-img" src="vscode-resource:\/media\/team\/avatars\/anika\.png"[^>]*alt="Anika \(Architect\) portrait"/.test(withFace) && /has-image/.test(withFace), 'avatarSrc renders an <img> in the compact card');
+		const noFace = card({});
+		assert.ok(!/<img/.test(noFace) && /has-initials[^>]*data-initials="AN"/.test(noFace) && />AN</.test(noFace), 'no avatarSrc renders the initials');
+		const vscodeIgnore = fs.readFileSync(path.join(ROOT, '.vscodeignore'), 'utf8');
+		assert.ok(/^!media\/team\/avatars\/\*\.png$/m.test(vscodeIgnore), 'the portraits ship in the VSIX');
+		assert.ok(/import\.meta\.glob\('\.\.\/\.\.\/media\/team\/avatars\/\*\.png'/.test(fs.readFileSync(path.join(ROOT, 'storybook', 'prototypes', 'team.js'), 'utf8')), 'Storybook loads the same portraits');
 	}
 
 	// ── Stories, styles, registration ──

@@ -184,8 +184,7 @@ const packet = (overrides = {}) => ({
     const onlyVerify = ui.render(state, 'verify', expandedMembers);
     assert.equal((onlyVerify.match(/class="worker-card"/g) || []).length, 1, 'filter by mode');
     assert.doesNotMatch(onlyVerify, new RegExp(run1.workerId));
-    assert.match(ui.render(state, 'nothing-matches', {}), /No worker matches the filter/);
-    assert.match(ui.render({ ...state, workers: [] }, '', {}), /No live workers in this workspace\./);
+    assert.ok(!/No worker matches the filter|No live workers in this workspace/.test(ui.render(state, 'nothing-matches', {})), 'the compact Team has no filter message; members stay listed');
 
     const openA = ui.render(state, '', { ...expandedMembers, [run1.workerId]: true });
     const openButtons = openA.match(/data-worker-action="open" data-session-id="[^"]*"/g) || [];
@@ -297,13 +296,13 @@ const packet = (overrides = {}) => ({
     assert.match(withBoard, /<details class="obs-tl-item workers-scoreboard" data-eid="evals">[\s\S]*?3 runs · 2 mode\/model pairs/);
     assert.match(withBoard, /<td class="obs-scope">code<\/td><td>gpt-5\.6-luna · low<\/td><td>1\/2<\/td><td class="obs-cache-risk">50%<\/td><td>\$0\.0030<\/td><td>15\.0s<\/td>/, 'low pass rate is flagged like a cache miss');
     assert.match(ui.render({ ...state, scoreboard: board }, '', {}, { evals: true }), /data-eid="evals" open>/, 'stays open across re-renders');
-    assert.match(ui.render({ ...state, workers: [], scoreboard: board }, '', {}), /No live workers[\s\S]*Eval scoreboard/, 'shown even with no workers');
+    assert.match(ui.render({ ...state, workers: [], scoreboard: board }, '', {}), /Eval scoreboard/, 'shown even with no workers');
     assert.doesNotMatch(ui.render(state, '', {}), /Eval scoreboard/, 'hidden when there are no results');
     console.log(`EV-015b WorkersQueueAndEvals: PASS cancelQueued=true refused=3 scoreboardRows=${board.length} malformedSkipped=1`);
 
     // The tab answers "how many are there" from the displayed tasks (R-TEAM-38); no Save cost tips (R-TEAM-40).
     const noSpend = ui.render({ ...state, members: state.members.map((member) => ({ ...member, turnCost: 0 })) }, '', expandedMembers);
-    assert.match(noSpend, /^<div class="workers-summary"><strong>2<\/strong> tasks this turn &middot; 1 running &middot; 1 queued &middot; 1 warm &middot; 1 completed &middot; <strong class="health-cost">\$0\.00<\/strong> this turn<\/div>/, 'no turn started in this projection, so no turn spend');
+    assert.match(noSpend, /<div class="workers-summary"><strong>2<\/strong> tasks this turn &middot; 1 running &middot; 1 queued &middot; 1 warm &middot; 1 completed &middot; <strong class="health-cost">\$0\.00<\/strong> this turn<\/div>/, 'no turn started in this projection, so no turn spend');
     assert.doesNotMatch(all, /Reuse \w+ worker/, 'no reuse tip: each card shows its cache age and warm-for');
     assert.doesNotMatch(all, /workers-tips/, 'no tips block when nothing needs attention');
     const tipsWithBoard = ui.render({ ...state, scoreboard: [

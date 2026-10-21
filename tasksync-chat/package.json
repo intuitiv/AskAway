@@ -2,9 +2,9 @@
   "name": "askaway",
   "publisher": "intuitiv",
   "displayName": "AskAway",
-  "description": "Spec-based development, OpenCode workers to delegate tasks, AITalk with user-owned profile photos, Storybook previews, and Telegram / Webex remote control, with live cost tracing, keep-alive pings and timers.",
+  "description": "Spec-based development, OpenCode workers to delegate tasks, a Team of AI members with spend at a glance, the AITalk room, Telegram / Webex remote control, live cost tracing, keep-alive pings and timers.",
   "icon": "media/askaway-logo.png",
-  "version": "2.3.3",
+  "version": "2.3.4",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -20,6 +20,10 @@
     "opencode",
     "workers",
     "aitalk",
+    "spec-based development",
+    "team",
+    "keep-alive",
+    "tracing",
     "avatars",
     "storybook",
     "argon",

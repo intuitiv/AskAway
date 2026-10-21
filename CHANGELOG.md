@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## AskAway v2.3.4 (10-21-26)
+- **Compact Team cards:** the Team tab shows one compact card per member, with no layout switch: an accent colour, runtime-coloured model chip and thinking chip, a share bar of the turn, a pulsing dot while working, and a status line that rotates every 8 seconds. Order is Priya, the main agent, then members by Turn descending (R-TEAM-58 to R-TEAM-61).
+- **One Edit button per card:** a pencil opens one inline panel with name, role, picture, Model, Thinking, Agent file and Reset model to default; no chevron and no menu (R-TEAM-66).
+- **Month under Turn:** every card shows Turn with a muted Month line beneath; agy members show $0.00 for both (R-TEAM-65).
+- **Show all members** toggle in the Team header (off after every reload) adds the members with no spend this turn so they can be edited; the OpenCode, agy and Claude health chips sit under the turn summary (R-TEAM-62, R-TEAM-64).
+- **Face portraits:** member cards show the realistic face images shipped in `media/team/avatars/<memberId>.png`, and the initials when there is none (R-TEAM-68).
+- **Availability is seeded globally:** if the global file is missing, the newest per-workspace file of an earlier version seeds it once (R-TEAM-67).
+
 ## AskAway v2.3.3 (10-21-26)
 - **Team shows who spent:** Priya and the main agent always, every other member only with Turn spend above zero ($0 members, agy included, are hidden). Worker Turn cost is the measured spend since the turn started, no longer $0 (R-TEAM-51, R-TEAM-52).
 - **Team header row removed:** Show completed, archive and reload are gone with their code (R-TEAM-50).

@@ -238,10 +238,10 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 			html.includes(`<span class="team-avatar-badge aitalk-ac-face has-image" data-member-id="diego" data-initials="DI"><img class="team-avatar-img" src="${diegoUri}"`),
 			'Diego avatar URI renders in @ autocomplete menu'
 		);
-		// (e) Team tab member row (~72px portrait)
+		// (e) Team tab member row (28px compact portrait)
 		assert.ok(
-			html.includes(`<div class="team-member-portrait" data-member-id="diego"><span class="team-avatar-badge team-portrait-72 has-image" data-member-id="diego" data-initials="DI"><img class="team-avatar-img" src="${diegoUri}"`),
-			'Diego avatar URI renders as 72px portrait in Team tab member row'
+			html.includes(`<div class="team-member-portrait team-compact-portrait" data-member-id="diego"><span class="team-avatar-badge team-portrait-28 has-image" data-member-id="diego" data-initials="DI"><img class="team-avatar-img" src="${diegoUri}"`),
+			'Diego avatar URI renders as 28px portrait in Team tab member row'
 		);
 
 		// Override Diego's avatar URI once and verify all 4 avatar surfaces (join notice, bubble, @ menu, Team row) update automatically
@@ -312,7 +312,7 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 		const html = ctrl.renderHtml();
 		assertSingleVisiblePanel(html, 'team', 'After clicking @Anika in AITalk');
 		assert.ok(
-			html.includes('class="team-member-row team-member-row-highlighted is-highlighted is-working" data-member-id="anika"'),
+			/class="team-member-row team-compact-row team-member-row-highlighted is-highlighted is-working" data-member-id="anika"/.test(html),
 			'Anika row in Team tab has .is-highlighted class after clicking @Anika in AITalk'
 		);
 		assert.ok(
