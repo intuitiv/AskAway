@@ -2,9 +2,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+/** Hard-coded status phrases of one member (reviewer, 2026-10-21): the Team card rotates through them every 8 s; the first one is the classic line. */
 export interface CreativeRoleStatus {
-	working: string;
-	idle: string;
+	working: string[];
+	idle: string[];
 }
 
 export interface TeamRosterEntry {
@@ -23,6 +24,12 @@ export interface TeamRosterEntry {
 	agentFile: string;
 	workingStatus: string;
 	idleStatus: string;
+	/** 3 to 4 hard-coded phrases each, rotated by the Team card; the first equals workingStatus / idleStatus. */
+	statusWorking: string[];
+	statusIdle: string[];
+	/** The roster's own model and thinking before the user's dropdown choice (Reset model to default). Set by applyMemberOverride. */
+	defaultModel?: string;
+	defaultThinking?: string;
 	/** The member's picture from the Team Edit form (~/.askaway/profile/avatars/<id>.<ext>); unset shows initials. */
 	avatarFile?: string;
 }
@@ -33,17 +40,17 @@ export interface MainAgentIdentity extends TeamRosterEntry {
 }
 
 export const CREATIVE_ROLE_STATUSES: Record<string, CreativeRoleStatus> = {
-	mahesh: { working: 'Splitting the work…', idle: 'Plan ready' },
-	bhaskar: { working: 'Wiring it up…', idle: 'Reviewing diffs' },
-	priya: { working: 'Thinking like you…', idle: 'On call' },
-	anika: { working: 'Sketching boundaries…', idle: 'Blueprints set' },
-	diego: { working: 'Shipping code…', idle: 'Coffee break' },
-	tara: { working: 'Breaking things…', idle: 'All green' },
-	pavel: { working: 'Profiling hot paths…', idle: 'Frame budget clean' },
-	paolo: { working: 'Waiting on CI…', idle: 'Pipes clear' },
-	sana: { working: 'Digging through code…', idle: 'Notes indexed' },
-	shreya: { working: 'Tracing the fault line…', idle: 'Root cause pinned' },
-	cathy: { working: 'Checking the threads…', idle: 'Inbox zero' },
+	mahesh: { working: ['Splitting the work…', 'Herding the agents…', 'Drawing the dependency map…', 'Sequencing the next packets…'], idle: ['Plan ready', 'Roadmap pinned', 'Waiting for the next ask'] },
+	bhaskar: { working: ['Wiring it up…', 'Reading the diff twice…', 'Merging the loose ends…', 'Pairing with the build…'], idle: ['Reviewing diffs', 'Merge queue calm', 'Tests green, tea hot'] },
+	priya: { working: ['Thinking like you…', 'Checking it against the spec…', 'Asking "would they approve?"…', 'Reading between the lines…'], idle: ['On call', 'Spec in hand', 'Waiting for a verdict to give'] },
+	anika: { working: ['Sketching boundaries…', 'Drawing the module lines…', 'Weighing two designs…', 'Naming the seams…'], idle: ['Blueprints set', 'Diagrams tidy', 'Whiteboard clean'] },
+	diego: { working: ['Shipping code…', 'Typing at full tilt…', 'Refactoring with care…', 'Chasing a stray semicolon…'], idle: ['Coffee break', 'Stretching the fingers', 'Next ticket, please'] },
+	tara: { working: ['Breaking things…', 'Poking the edge cases…', 'Writing the failing test…', 'Hunting flaky tests…'], idle: ['All green', 'Suite is calm', 'Coverage looks happy'] },
+	pavel: { working: ['Profiling hot paths…', 'Counting milliseconds…', 'Squeezing the frame budget…', 'Reading the flame graph…'], idle: ['Frame budget clean', 'Flame graph flat', 'Benchmarks resting'] },
+	paolo: { working: ['Waiting on CI…', 'Untangling the pipeline…', 'Tuning the Gradle cache…', 'Watching the build bar…'], idle: ['Pipes clear', 'Cache is warm', 'Builds on rails'] },
+	sana: { working: ['Digging through code…', 'Following the references…', 'Reading the docs for you…', 'Collecting the evidence…'], idle: ['Notes indexed', 'Library is quiet', 'Sources filed'] },
+	shreya: { working: ['Tracing the fault line…', 'Bisecting the history…', 'Following the stack trace…', 'Asking why, five times…'], idle: ['Root cause pinned', 'Case closed', 'No fires today'] },
+	cathy: { working: ['Checking the threads…', 'Drafting a polite reply…', 'Catching up with the room…', 'Sorting the chatter…'], idle: ['Inbox zero', 'Room is quiet', 'Messages answered'] },
 };
 
 export const MAIN_AGENT_PERSONAS: Record<string, TeamRosterEntry> = {
@@ -60,8 +67,10 @@ export const MAIN_AGENT_PERSONAS: Record<string, TeamRosterEntry> = {
 		turnDollars: 0.06,
 		monthDollars: 4.25,
 		agentFile: '.github/agents/AA.Orchestrator.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.mahesh.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.mahesh.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.mahesh.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.mahesh.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.mahesh.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.mahesh.idle,
 	},
 	'AskAway Build': {
 		id: 'bhaskar',
@@ -76,8 +85,10 @@ export const MAIN_AGENT_PERSONAS: Record<string, TeamRosterEntry> = {
 		turnDollars: 0.08,
 		monthDollars: 6.80,
 		agentFile: '.github/agents/askaway-build.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.bhaskar.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.bhaskar.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.bhaskar.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.bhaskar.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.bhaskar.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.bhaskar.idle,
 	},
 };
 
@@ -95,8 +106,10 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		turnDollars: 0.06,
 		monthDollars: 4.25,
 		agentFile: '.github/agents/AA.Orchestrator.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.mahesh.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.mahesh.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.mahesh.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.mahesh.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.mahesh.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.mahesh.idle,
 	},
 	{
 		id: 'bhaskar',
@@ -111,8 +124,10 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		turnDollars: 0.08,
 		monthDollars: 6.80,
 		agentFile: '.github/agents/askaway-build.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.bhaskar.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.bhaskar.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.bhaskar.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.bhaskar.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.bhaskar.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.bhaskar.idle,
 	},
 	{
 		id: 'priya',
@@ -127,8 +142,10 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		turnDollars: 0.01,
 		monthDollars: 1.42,
 		agentFile: '~/.askaway/validator/validator.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.priya.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.priya.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.priya.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.priya.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.priya.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.priya.idle,
 	},
 	{
 		id: 'anika',
@@ -143,8 +160,10 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		turnDollars: 0.024,
 		monthDollars: 3.10,
 		agentFile: '.github/agents/build.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.anika.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.anika.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.anika.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.anika.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.anika.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.anika.idle,
 	},
 	{
 		id: 'diego',
@@ -159,8 +178,10 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		turnDollars: 0,
 		monthDollars: 0,
 		agentFile: '.github/agents/build-lite.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.diego.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.diego.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.diego.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.diego.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.diego.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.diego.idle,
 	},
 	{
 		id: 'tara',
@@ -174,8 +195,10 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		turnDollars: 0.0042,
 		monthDollars: 0.95,
 		agentFile: '.github/agents/verify.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.tara.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.tara.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.tara.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.tara.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.tara.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.tara.idle,
 	},
 	{
 		id: 'pavel',
@@ -189,8 +212,10 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		turnDollars: 0,
 		monthDollars: 0,
 		agentFile: '.github/agents/perf.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.pavel.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.pavel.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.pavel.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.pavel.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.pavel.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.pavel.idle,
 	},
 	{
 		id: 'paolo',
@@ -204,8 +229,10 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		turnDollars: 0.01,
 		monthDollars: 0.65,
 		agentFile: '.github/agents/gradle.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.paolo.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.paolo.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.paolo.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.paolo.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.paolo.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.paolo.idle,
 	},
 	{
 		id: 'sana',
@@ -219,8 +246,10 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		turnDollars: 0.01,
 		monthDollars: 1.15,
 		agentFile: '.github/agents/explore.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.sana.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.sana.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.sana.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.sana.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.sana.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.sana.idle,
 	},
 	{
 		id: 'shreya',
@@ -234,8 +263,10 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		turnDollars: 0,
 		monthDollars: 0,
 		agentFile: '.github/agents/rca.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.shreya.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.shreya.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.shreya.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.shreya.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.shreya.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.shreya.idle,
 	},
 	{
 		id: 'cathy',
@@ -249,8 +280,10 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		turnDollars: 0,
 		monthDollars: 0,
 		agentFile: '.github/agents/webex.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.cathy.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.cathy.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.cathy.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.cathy.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.cathy.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.cathy.idle,
 	},
 ];
 
@@ -263,7 +296,7 @@ export const USER_PROFILES_DIR = path.join(os.homedir(), '.askaway', 'worker-pro
 export const MEMBERS_FILE = path.join(os.homedir(), '.askaway', 'team', 'members.json');
 export const AVATARS_DIR = path.join(os.homedir(), '.askaway', 'profile', 'avatars');
 /** `model` and `thinking` are the Team dropdowns' choice: kept in this home-level file, so every workspace shows and uses the same one. */
-export interface MemberOverride { name?: string; role?: string; status?: string; avatar?: string; model?: string; thinking?: string }
+export interface MemberOverride { name?: string; role?: string; avatar?: string; model?: string; thinking?: string }
 const MODEL_ID = /^[\w./:-]+$/;
 const THINKING = /^[a-z]+$/;
 const PICTURE_EXT = /^\.(png|jpe?g|gif|webp|svg)$/;
@@ -279,13 +312,12 @@ export function applyMemberOverride<T extends TeamRosterEntry>(entry: T, overrid
 	const override = overrides[entry.id];
 	if (!override) return entry;
 	const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
-	const status = text(override.status);
 	const avatar = text(override.avatar);
 	const model = text(override.model);
 	const thinking = text(override.thinking);
 	return {
 		...entry, name: text(override.name) || entry.name, role: text(override.role) || entry.role,
-		workingStatus: status || entry.workingStatus, idleStatus: status || entry.idleStatus,
+		defaultModel: entry.defaultModel ?? entry.model, defaultThinking: entry.defaultThinking ?? entry.thinking,
 		avatarFile: avatar && fs.existsSync(avatar) ? avatar : entry.avatarFile,
 		model: MODEL_ID.test(model) ? model : entry.model, thinking: THINKING.test(thinking) ? thinking : entry.thinking,
 	};
@@ -321,13 +353,15 @@ export function memberSelectionForProfile(profile: string, dir = USER_PROFILES_D
 	return owner ? selections[owner.id] : undefined;
 }
 
-/** Saves the Edit form: name, role and status line, and copies a picked picture to avatarsDir/<id>.<ext>. */
-export function saveMemberProfile(id: string, profile: { name?: string; role?: string; status?: string; picture?: string },
+/** Saves the Edit form: name and role, and copies a picked picture to avatarsDir/<id>.<ext>. The status line is no longer editable
+ *  (reviewer, 2026-10-21): a `status` value in the message or in the stored file is ignored. */
+export function saveMemberProfile(id: string, profile: { name?: string; role?: string; picture?: string },
 	file = MEMBERS_FILE, avatarsDir = AVATARS_DIR): MemberOverride {
 	if (!/^[a-z0-9][a-z0-9.-]*$/.test(id)) throw new Error(`invalid member id: ${id}`);
 	const overrides = readMemberOverrides(file);
 	const next: MemberOverride = { ...overrides[id] };
-	for (const key of ['name', 'role', 'status'] as const) {
+	delete (next as { status?: string }).status;
+	for (const key of ['name', 'role'] as const) {
 		const value = profile[key];
 		if (typeof value === 'string') next[key] = value.trim().slice(0, 120);
 	}
@@ -371,6 +405,7 @@ export function userRosterEntries(dir = USER_PROFILES_DIR): TeamRosterEntry[] {
 			id, name, role: fields.role || 'Member', kind: 'worker', profile, profiles: [profile],
 			model: fields.model || 'github-copilot/gpt-6-luna', thinking: fields.thinking || 'low',
 			turnDollars: 0, monthDollars: 0, agentFile: source, workingStatus: 'Working on a task…', idleStatus: 'Standing by',
+			statusWorking: ['Working on a task…', 'Heads down on it…', 'Making progress…'], statusIdle: ['Standing by', 'Ready when you are', 'Waiting for a task'],
 		});
 	}
 	return [...byId.values()];
@@ -416,6 +451,8 @@ export function resolveMainAgentIdentity(selectedAgent = 'AskAway Build'): MainA
 		agentFile: `.github/agents/${slug}.agent.md`,
 		workingStatus: 'Working on turn…',
 		idleStatus: 'Standing by',
+		statusWorking: ['Working on turn…', 'Thinking it through…', 'Writing the next step…'],
+		statusIdle: ['Standing by', 'Ready when you are', 'Waiting for the next ask'],
 		initials: initialsOf(key),
 		isUnknownAgent: true,
 	};

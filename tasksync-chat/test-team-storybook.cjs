@@ -553,12 +553,12 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 
 	// ── 10. Member Edit view has only the 5 allowed fields & live updates AITalk ──
 	{
-		assert.deepStrictEqual(ALLOWED_EDIT_FIELDS, ['name', 'role', 'status'], 'Edit is the profile: name, role and status line (plus picture)');
+		assert.deepStrictEqual(ALLOWED_EDIT_FIELDS, ['name', 'role'], 'Edit is the profile: name and role (plus picture); the status phrases are fixed');
 		const editCtrl = createTeamController({ scenario: 'member-edit', editingMemberId: 'diego' });
 		const editHtml = editCtrl.renderHtml();
 		const form = /<div class="team-member-edit-form" data-member-edit-form="diego">[\s\S]*?<\/div><\/div>/.exec(editHtml);
 		assert.ok(form, 'Edit opens the shared inline profile form under the row (no modal)');
-		assert.deepStrictEqual([...form[0].matchAll(/data-member-edit-field="([^"]+)"/g)].map((m) => m[1]), ['name', 'role', 'status'], 'form fields');
+		assert.deepStrictEqual([...form[0].matchAll(/data-member-edit-field="([^"]+)"/g)].map((m) => m[1]), ['name', 'role'], 'form fields');
 		assert.ok(form[0].includes('data-member-pick-picture="diego"'), 'form picks a picture');
 		assert.ok(!/team-edit-modal|data-edit-field|agentFile/.test(editHtml), 'no Storybook-only modal');
 		assert.ok(!/temperature|permissions|tool checkboxes|system prompt/i.test(form[0]), 'MemberEdit does not expose forbidden fields');
@@ -571,8 +571,8 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 		const [updatedTalkHtml, updatedTeamHtml] = updatedHtml.split('id="panel-team"');
 		assert.ok(updatedTalkHtml.includes('DiegoV'), 'Editing member name updates AITalk pane live');
 		assert.ok(updatedTeamHtml.includes('DiegoV'), 'Editing member name updates Team pane live');
-		assert.ok(updatedTeamHtml.includes('Pairing on the parser'), 'Editing the status line shows on the row');
-		pass('10. Member Edit is the shared inline profile form (name, role, status, picture) and updates AITalk live');
+		assert.ok(!updatedTeamHtml.includes('Pairing on the parser'), 'A status edit is ignored: the status phrases are fixed');
+		pass('10. Member Edit is the shared inline profile form (name, role, picture) and updates AITalk live');
 	}
 
 	// ── 11. All 6 stories exist, show one active tab panel at a time, and ActiveTurn timeline covers full multi-agent flow ──
@@ -605,11 +605,11 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 
 		// Play through ActiveTurn from step 0 to step 10
 		const turnCtrl = createTeamController({ scenario: 'active-turn', initialStep: 0 });
-		// At step 0 Team shows Priya, the selected main agent Bhaskar, then the members with Turn spend, in roster order (R-TEAM-52)
+		// At step 0 Team shows Priya, the selected main agent Bhaskar, then the members with Turn spend by Turn descending, ties in roster order (R-TEAM-52, order by weight 2026-10-21)
 		const step0Html = turnCtrl.renderHtml();
 		const [, step0TeamHtml] = step0Html.split('id="panel-team"');
 		const step0RowIds = [...step0TeamHtml.matchAll(/class="team-member-row[^"]*" data-member-id="([^"]+)"/g)].map((m) => m[1]);
-		assert.deepStrictEqual(step0RowIds, ['priya', 'bhaskar', 'anika', 'tara', 'paolo', 'sana'], 'At turn start, Team shows Priya, the main agent, then only the members with Turn spend, in roster order');
+		assert.deepStrictEqual(step0RowIds, ['priya', 'bhaskar', 'anika', 'paolo', 'sana', 'tara'], 'At turn start, Team shows Priya, the main agent, then only the members with Turn spend, by Turn descending (ties in roster order)');
 
 		// Advance through step 10
 		turnCtrl.stepTo(10);

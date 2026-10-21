@@ -3201,9 +3201,11 @@
             creativeStatus: (m && m.creativeStatus) || (pinned ? 'Reviewing spec compliance' : 'Ready for next packet'),
             agentFile: (m && m.agentFile) || (pinned ? '~/.askaway/validator/validator.md' : '.opencode/agent/askaway-' + String(role).toLowerCase() + '.md'),
             model: model,
-            defaultModel: model,
+            defaultModel: (m && m.defaultModel) || model,
             thinking: thinking,
-            defaultThinking: thinking,
+            defaultThinking: (m && m.defaultThinking) || thinking,
+            statusWorking: Array.isArray(m && m.statusWorking) ? m.statusWorking.slice() : [],
+            statusIdle: Array.isArray(m && m.statusIdle) ? m.statusIdle.slice() : [],
             turnCost: Number(m && m.turnCost) || 0,
             monthCost: Number(m && m.monthCost) || 0,
             taskIds: rawIds.slice(),
@@ -3283,6 +3285,55 @@
         var label = member.creativeStatus || (dotState === 'running' ? 'Running task' : 'Idle');
         return { stateKey: stateKey, dotState: dotState, label: label };
     }
+    // Hard-coded status phrases rotate every 8 s (reviewer, 2026-10-21): the phrase index is floor(now / 8000) % count, so
+    // adjacent windows never repeat when a member has two or more phrases, and every viewer shows the same phrase.
+    var TEAM_STATUS_PERIOD_MS = 8000;
+    function teamStatusPhrases(member, working) {
+        var list = (working ? member.statusWorking : member.statusIdle) || [];
+        list = list.filter(function (p) { return typeof p === 'string' && p; });
+        return list.length ? list : [member.creativeStatus || (working ? 'Working on a task\u2026' : 'Standing by')];
+    }
+    function teamStatusPick(phrases, nowMs) {
+        var slot = Math.floor(Math.max(0, Number(nowMs) || 0) / TEAM_STATUS_PERIOD_MS);
+        return phrases[slot % phrases.length];
+    }
+    function teamStatusText(member, working, nowMs) {
+        return teamStatusPick(teamStatusPhrases(member, working), nowMs);
+    }
+    // Updates the visible status text in place (no re-render of the card); called from the 1 s tick.
+    function tickTeamStatus(root, nowMs) {
+        if (!root || typeof root.querySelectorAll !== 'function') return;
+        Array.from(root.querySelectorAll('[data-status-phrases]')).forEach(function (el) {
+            var phrases;
+            try { phrases = JSON.parse(el.getAttribute('data-status-phrases')); } catch (e) { return; }
+            if (!Array.isArray(phrases) || !phrases.length) return;
+            var text = teamStatusPick(phrases, nowMs);
+            var label = el.querySelector('.team-status-text');
+            if (label && label.textContent !== text) label.textContent = text;
+            if (el.getAttribute('title') !== text) el.setAttribute('title', text);
+        });
+    }
+    // One stable accent colour per member id (fixed palette; the colours are the --team-accent-N variables in team.css).
+    var TEAM_ACCENT_SLOTS = { priya: 0, mahesh: 1, bhaskar: 2, anika: 3, diego: 4, tara: 5, pavel: 6, paolo: 7, sana: 8, shreya: 9, cathy: 10 };
+    var TEAM_ACCENT_COUNT = 12;
+    function teamAccentSlot(id) {
+        var key = String(id || '').toLowerCase();
+        if (TEAM_ACCENT_SLOTS.hasOwnProperty(key)) return TEAM_ACCENT_SLOTS[key];
+        var sum = 0;
+        for (var i = 0; i < key.length; i++) sum = (sum * 31 + key.charCodeAt(i)) % 9973;
+        return sum % TEAM_ACCENT_COUNT;
+    }
+    // Order by weight (reviewer, 2026-10-21): Priya, the main agent, members by Turn descending (ties in roster order), then
+    // passive members (no Turn) in roster order. Passive members are dropped unless showAll. Shared by production and Storybook.
+    function teamVisibleGroups(groups, showAll) {
+        var items = groups.map(function (g, index) { return { g: g, index: index, turn: memberCostAmounts(g.member, g.workers).turn }; })
+            .filter(function (x) { return showAll || teamMemberShown(x.g.member, x.g.workers); });
+        var rank = function (x) { return x.g.member.pinned ? 0 : x.g.member.kind === 'main' ? 1 : x.turn > 0 ? 2 : 3; };
+        items.sort(function (a, b) {
+            return (rank(a) - rank(b)) || (rank(a) === 2 ? b.turn - a.turn : 0) || (a.index - b.index);
+        });
+        return items.map(function (x) { return x.g; });
+    }
     // Inline Remove confirm (one line in the card, no modal): worker ids whose Remove button was clicked once.
     var workersRemoveConfirm = {};
     function workerRemoveHtml(w, labels) {
@@ -3320,25 +3371,28 @@
         html += '</div>';
         return html;
     }
-    function teamPortraitHtml(member, state) {
+    function teamPortraitHtml(member, state, size) {
+        var px = size || 72;
         var unsafe = ((state && state.workers) || []).some(function (w) { return String(w.profile || '').indexOf('<') !== -1; });
         var base = (state && state.avatarBase) ? state.avatarBase.replace(/\/$/, '') : 'avatars';
         var rawAvatar = String(member.avatarSrc || member.avatar || '');
         var src = !rawAvatar ? '' : (/^(https?:|vscode-[a-z-]+:|data:|\/)/i.test(rawAvatar) ? rawAvatar : (base + '/' + rawAvatar));
         var initials = member.initials || memberInitials(member.name, member.id);
         var altText = member.name + ' (' + member.role + ') portrait';
+        var wrapCls = px === 72 ? 'team-member-portrait' : 'team-member-portrait team-compact-portrait';
         if (unsafe || !src) {
-            return '<div class="team-member-portrait" data-member-id="' + workersEsc(member.id) + '">' +
-                '<span class="team-avatar-badge team-portrait-72 has-initials" data-initials="' + workersEsc(initials) + '"><span class="team-avatar-initials team-portrait-initials" role="img" aria-label="' + workersEsc(altText) + '">' + workersEsc(initials) + '</span></span></div>';
+            return '<div class="' + wrapCls + '" data-member-id="' + workersEsc(member.id) + '">' +
+                '<span class="team-avatar-badge team-portrait-' + px + ' has-initials" data-initials="' + workersEsc(initials) + '"><span class="team-avatar-initials team-portrait-initials" role="img" aria-label="' + workersEsc(altText) + '">' + workersEsc(initials) + '</span></span></div>';
         }
-        return '<div class="team-member-portrait" data-member-id="' + workersEsc(member.id) + '">' +
-            '<span class="team-avatar-badge team-portrait-72 has-image" data-member-id="' + workersEsc(member.id) + '" data-initials="' + workersEsc(initials) + '"><img class="team-avatar-img" src="' + workersEsc(src) + '" alt="' + workersEsc(altText) + '" width="72" height="72" loading="eager" decoding="sync" /></span></div>';
+        return '<div class="' + wrapCls + '" data-member-id="' + workersEsc(member.id) + '">' +
+            '<span class="team-avatar-badge team-portrait-' + px + ' has-image" data-member-id="' + workersEsc(member.id) + '" data-initials="' + workersEsc(initials) + '"><img class="team-avatar-img" src="' + workersEsc(src) + '" alt="' + workersEsc(altText) + '" width="' + px + '" height="' + px + '" loading="eager" decoding="sync" /></span></div>';
     }
     function effectiveMemberModel(member, memberWorkers, state) {
         var settings = state && state.memberSettings && state.memberSettings[member.id] || {};
         return settings.model || (memberWorkers[0] || {}).model || member.model || 'github-copilot/gpt-6.1-sol';
     }
-    function teamMemberRowHtml(member, memberWorkers, state, expanded, openIds, traces) {
+    // The member's effective model and thinking plus the Model and Thinking <option> lists: shared by the full row and the compact row.
+    function teamModelControls(member, memberWorkers, state) {
         var settings = (state && state.memberSettings && state.memberSettings[member.id]) || {};
         var firstWorker = memberWorkers[0] || {};
         var selectedFull = effectiveMemberModel(member, memberWorkers, state);
@@ -3361,26 +3415,38 @@
         var thinkingOptions = efforts.map(function (ef) {
             return '<option value="' + workersEsc(ef) + '"' + (ef === selectedThinking ? ' selected' : '') + '>' + workersEsc(ef) + '</option>';
         }).join('');
-        var status = memberDisplayStatus(member, memberWorkers);
-        var costs = memberCostAmounts(member, memberWorkers);
+        return { selectedFull: selectedFull, selectedModel: selectedModel, selectedThinking: selectedThinking, modelOptions: modelOptions, thinkingOptions: thinkingOptions };
+    }
+    // Tasks tray state of one member: open flag, pill label and (Priya) the Validator trace events.
+    function teamMemberTasksInfo(member, memberWorkers, state, expanded, traces) {
         var memberKey = 'member:' + member.id;
         var tasksOpen = Boolean(expanded && (expanded[memberKey] === true || expanded[member.id] === true));
         var taskCount = memberWorkers.length;
         var validator = member.pinned ? validatorTraceEvents(memberWorkers, state, traces) : { events: [], loading: false };
-        var validatorEvents = validator.events;
-        var pillLabel = (member.pinned ? 'Trace (' + validatorEvents.length + ')' : taskCount + ' ' + (taskCount === 1 ? 'task' : 'tasks')) + ' ' + (tasksOpen ? '\u25be' : '\u25b8');
-        var highlighted = (expanded && expanded.highlightedMember === member.id) || (state && state.highlightedMember === member.id);
+        var pillLabel = (member.pinned ? 'Trace (' + validator.events.length + ')' : taskCount + ' ' + (taskCount === 1 ? 'task' : 'tasks')) + ' ' + (tasksOpen ? '\u25be' : '\u25b8');
+        return { tasksOpen: tasksOpen, pillLabel: pillLabel, validator: validator, validatorEvents: validator.events };
+    }
+    function teamTasksPillHtml(member, info) {
+        return '<button type="button" class="team-tasks-pill' + (info.tasksOpen ? ' expanded' : '') + '" data-member-tasks-toggle="' + workersEsc(member.id) + '" data-toggle-tasks="' + workersEsc(member.id) + '" data-toggle-trace="' + workersEsc(member.id) + '" aria-expanded="' + (info.tasksOpen ? 'true' : 'false') + '">' + info.pillLabel + '</button>';
+    }
+    function teamMemberTrayHtml(member, memberWorkers, state, expanded, openIds, traces, info) {
+        var validatorEvents = info.validatorEvents;
         var cardsHtml = memberWorkers.map(function (w) {
             return workerCardHtml(w, expanded && expanded[w.workerId], state.generatedAt, openIds, traces, { one: 'task', many: 'tasks' });
         }).join('');
-        var turnCostText = teamMoney(costs.turn);
-        var monthCostText = teamMoney(costs.month);
         var validatorTraceHtml = validatorEvents.length
             ? '<table class="observability-table obs-timeline-table team-validator-trace" data-validator-trace="' + workersEsc(member.id) + '">' +
                 TRACE_HEAD + '<tbody>' + traceRowsHtml(validatorEvents, { openIds: openIds || {}, now: state.generatedAt }) + '</tbody></table>'
-            : '<div class="workers-empty" data-validator-trace-empty="' + workersEsc(member.id) + '">' + (validator.loading ? 'Loading trace\u2026' : 'No Validator trace this turn.') + '</div>';
+            : '<div class="workers-empty" data-validator-trace-empty="' + workersEsc(member.id) + '">' + (info.validator.loading ? 'Loading trace\u2026' : 'No Validator trace this turn.') + '</div>';
+        return '<div class="team-member-tasks-panel' + (member.pinned ? ' team-member-trace-panel' : '') + '" data-member-tray="' + workersEsc(member.id) + '"' + (info.tasksOpen ? ' data-member-tasks="' + workersEsc(member.id) + '"' : ' hidden') + '>' + (member.pinned ? validatorTraceHtml : cardsHtml) + '</div>';
+    }
+    // Profile line, Model and Thinking selects (the main agent shows them as text).
+    function teamMemberControlsHtml(member, memberWorkers, state) {
         var main = member.kind === 'main';
-        var controlsHtml = main
+        var sel = teamModelControls(member, memberWorkers, state);
+        var modelOptions = sel.modelOptions;
+        var thinkingOptions = sel.thinkingOptions;
+        return main
             ? '<span class="team-member-profile">Chat agent: <code class="worker-state">' + workersEsc(member.profile) + '</code></span>' +
                 '<span class="team-member-profile" data-main-model="' + workersEsc(member.id) + '">Model: ' + workersEsc(member.model ? workerShortModel(member.model) : 'chat model') + '</span>'
             : '<span class="team-member-profile">Profile: <code class="worker-state">' + workersEsc(member.profile) + '</code></span>' +
@@ -3388,12 +3454,34 @@
                 '<select class="team-model-select" data-member-id="' + workersEsc(member.id) + '" data-member-model="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' model">' + modelOptions + '</select></label>' +
                 '<label class="team-control-field"><span class="team-control-label">Thinking</span>' +
                 '<select class="team-thinking-select" data-member-id="' + workersEsc(member.id) + '" data-member-thinking="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" aria-label="' + workersEsc(member.name) + ' thinking effort">' + thinkingOptions + '</select></label>';
-        // Agent file and Edit are the same kind of small chip on the same bottom row of every member card.
-        var agentLinkHtml = main
-            ? '<a href="#" class="team-agent-file-link" data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-member-kind="main" data-profile="" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>'
-            : '<a href="#" class="team-agent-file-link" data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>';
-        var actionsHtml = '<div class="team-member-actions">' + agentLinkHtml +
+    }
+    // Agent file and Edit are the same kind of small chip on the same bottom row of every member card.
+    function teamAgentLinkHtml(member, cls, attrs) {
+        var main = member.kind === 'main';
+        return main
+            ? '<a href="#" class="team-agent-file-link' + (cls || '') + '"' + (attrs || '') + ' data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-member-kind="main" data-profile="" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>'
+            : '<a href="#" class="team-agent-file-link' + (cls || '') + '"' + (attrs || '') + ' data-agent-file="' + workersEsc(member.agentFile) + '" data-open-agent-file="' + workersEsc(member.agentFile) + '" data-member-id="' + workersEsc(member.id) + '" data-profile="' + workersEsc(member.profile) + '" title="Open ' + workersEsc(member.agentFile) + '">Agent file &#8599;</a>';
+    }
+    function teamMemberActionsHtml(member) {
+        return '<div class="team-member-actions">' + teamAgentLinkHtml(member) +
             '<button type="button" class="team-edit-member-btn" data-edit-member="' + workersEsc(member.id) + '" title="Edit ' + workersEsc(member.name) + '">Edit</button></div>';
+    }
+    // The member's Turn (and Month when asked; 'line' = a muted second line) with the data-member-cost / data-turn-cost / data-month-cost hooks.
+    function teamCostSpanHtml(member, costs, withMonth, extraClass) {
+        var turnCostText = teamMoney(costs.turn);
+        var monthCostText = teamMoney(costs.month);
+        return '<span class="team-member-cost' + (extraClass ? ' ' + extraClass : '') + '" data-member-cost="' + workersEsc(member.id) + '" data-turn-cost="' + turnCostText + '" data-month-cost="' + monthCostText + '">Turn <strong class="team-cost-turn">' + turnCostText + '</strong>' +
+            (withMonth === 'line' ? '<span class="team-cost-month-line">Month <strong class="team-cost-month">' + monthCostText + '</strong></span>'
+                : withMonth ? ' &middot; Month <strong class="team-cost-month">' + monthCostText + '</strong>' : '') + '</span>';
+    }
+    function teamMemberRowHtml(member, memberWorkers, state, expanded, openIds, traces) {
+        var status = memberDisplayStatus(member, memberWorkers);
+        var costs = memberCostAmounts(member, memberWorkers);
+        var info = teamMemberTasksInfo(member, memberWorkers, state, expanded, traces);
+        var highlighted = (expanded && expanded.highlightedMember === member.id) || (state && state.highlightedMember === member.id);
+        var main = member.kind === 'main';
+        var controlsHtml = teamMemberControlsHtml(member, memberWorkers, state);
+        var actionsHtml = teamMemberActionsHtml(member);
         return '<div class="team-member-row' + (highlighted ? ' team-member-row-highlighted is-highlighted' : '') + (status.dotState === 'running' ? ' is-working' : '') + '" data-member-id="' + workersEsc(member.id) + '" data-member-row="' + workersEsc(member.id) + '"' +
             (member.pinned ? ' data-pinned="true"' : main ? ' data-main-agent="true"' : ' data-active-member-row="' + workersEsc(member.id) + '"') +
             (highlighted ? ' data-highlighted="true"' : '') + '>' +
@@ -3406,20 +3494,117 @@
             '<span class="team-member-role">' + workersEsc(member.role) + '</span>' +
             '</span>' +
             '<span class="team-member-status team-status-' + (status.dotState === 'running' ? 'working' : 'idle') + '" data-status-state="' + (status.dotState === 'running' ? 'working' : 'idle') + '">● ' + workersEsc(status.label) + '</span>' +
-            '<span class="team-member-cost" data-member-cost="' + workersEsc(member.id) + '" data-turn-cost="' + turnCostText + '" data-month-cost="' + monthCostText + '">Turn <strong class="team-cost-turn">' + turnCostText + '</strong> &middot; Month <strong class="team-cost-month">' + monthCostText + '</strong></span>' +
+            teamCostSpanHtml(member, costs, true) +
             '</div>' +
             '<div class="team-member-controls">' + controlsHtml + '</div>' +
             actionsHtml +
             '</div>' +
-            (main ? '' : '<div class="team-member-tasks-col"><button type="button" class="team-tasks-pill' + (tasksOpen ? ' expanded' : '') + '" data-member-tasks-toggle="' + workersEsc(member.id) + '" data-toggle-tasks="' + workersEsc(member.id) + '" data-toggle-trace="' + workersEsc(member.id) + '" aria-expanded="' + (tasksOpen ? 'true' : 'false') + '">' + pillLabel + '</button></div>') +
+            (main ? '' : '<div class="team-member-tasks-col">' + teamTasksPillHtml(member, info) + '</div>') +
             '</div>' +
-            (main ? '' : '<div class="team-member-tasks-panel' + (member.pinned ? ' team-member-trace-panel' : '') + '" data-member-tray="' + workersEsc(member.id) + '"' + (tasksOpen ? ' data-member-tasks="' + workersEsc(member.id) + '"' : ' hidden') + '>' + (member.pinned ? validatorTraceHtml : cardsHtml) + '</div>') +
+            (main ? '' : teamMemberTrayHtml(member, memberWorkers, state, expanded, openIds, traces, info)) +
             teamMemberEditFormHtml(member, expanded) +
             '</div>';
     }
-    // Edit = the member's profile (name, role, status line, picture), saved to ~/.askaway/team/members.json; the
-    // prompt stays behind "Agent file" (reviewer, 2026-10-16).
-    function teamMemberEditFormHtml(member, expanded) {
+    // The runtime of a model id, for the model chip colour.
+    function teamRuntimeOf(modelId) { return memberIntegration(modelId); }
+    // "Show all members" header of the compact Team (the one toggle; same switch markup as the Specs tab toggles).
+    function teamHeaderHtml(showAll) {
+        return '<div class="team-compact-header" data-team-header><span class="team-compact-header-title">Team</span>' +
+            '<div class="specs-toggle team-show-all" title="Also show members with no spend this turn, so you can edit them"><span>Show all members</span>' +
+            '<div class="toggle-switch specs-toggle-switch' + (showAll ? ' active' : '') + '" role="switch" tabindex="0" aria-checked="' + (showAll ? 'true' : 'false') + '" aria-label="Show all members" data-team-show-all></div></div></div>';
+    }
+    // One stacked bar of the whole turn: a segment per member in the member's colour, title "Name $x (y%)".
+    function teamShareBarHtml(groups) {
+        var items = groups.map(function (g) { return { member: g.member, turn: memberCostAmounts(g.member, g.workers).turn }; })
+            .filter(function (x) { return x.turn > 0; });
+        var total = items.reduce(function (n, x) { return n + x.turn; }, 0);
+        if (total <= 0) return '';
+        return '<div class="team-share-bar" role="img" aria-label="Turn spend by member" data-team-share-bar>' + items.map(function (x) {
+            var pct = x.turn / total * 100;
+            var label = x.member.name + ' ' + teamMoney(x.turn) + ' (' + Math.round(pct) + '%)';
+            return '<span class="team-share-seg" data-accent="' + teamAccentSlot(x.member.id) + '" data-share-member="' + workersEsc(x.member.id) + '" style="width:' + pct.toFixed(2) + '%" title="' + workersEsc(label) + '"></span>';
+        }).join('') + '</div>';
+    }
+    // Runtime health strip: one chip per integration (green working, red not working, amber sign in, grey off); title text only.
+    function teamHealthHtml(health) {
+        if (!health) return '';
+        return '<div class="team-health" data-team-health>' + integrationItems().map(function (item) {
+            var h = health[item.id];
+            var st = !h || !h.enabled ? 'off' : h.ok ? 'ok' : h.signIn ? 'signin' : 'bad';
+            var word = { ok: 'working', bad: 'not working', signin: 'sign in required', off: 'off' }[st];
+            return '<span class="team-health-chip team-health-' + st + '" data-runtime-chip="' + item.id + '" data-health-state="' + st + '" title="' + workersEsc(item.label + ': ' + word) + '">' +
+                '<span class="team-health-dot" aria-hidden="true"></span>' + workersEsc(item.label) + (st === 'signin' ? ' &middot; sign in' : '') + '</span>';
+        }).join('') + '</div>';
+    }
+    // The compact summary: the stacked share bar, then the counts line, then the health strip (replaces the runtime warning sentence).
+    function teamCompactSummaryHtml(state, shown, groups, turnDollars, health) {
+        return teamShareBarHtml(groups) + workersSummaryHtml(state, shown, turnDollars) + teamHealthHtml(health);
+    }
+    // The one Edit button of a compact card (pencil, same data-edit-member hook as the full row's Edit chip).
+    function teamEditButtonHtml(member, open) {
+        var label = 'Edit ' + workersEsc(member.name);
+        return '<button type="button" class="team-edit-member-btn team-compact-edit" data-edit-member="' + workersEsc(member.id) + '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-label="' + label + '" title="' + label + '"><span class="team-compact-edit-icon" aria-hidden="true">\u270e</span></button>';
+    }
+    // What the compact Edit panel adds to the shared edit form: Profile line, Model and Thinking selects, Agent file link, Reset model.
+    function teamCompactEditExtraHtml(member, memberWorkers, state) {
+        var id = workersEsc(member.id);
+        return '<div class="team-member-controls">' + teamMemberControlsHtml(member, memberWorkers, state) + '</div>' +
+            '<div class="team-member-actions">' + teamAgentLinkHtml(member) +
+            (member.kind === 'main' ? '' : '<button type="button" class="form-btn team-reset-model" data-member-reset-model="' + id + '" data-member-id="' + id + '" data-profile="' + workersEsc(member.profile) + '" data-default-model="' + workersEsc(member.defaultModel || member.model) + '" data-default-thinking="' + workersEsc(member.defaultThinking || member.thinking) + '">Reset model to default</button>') +
+            '</div>';
+    }
+    // Compact member row (opt-in; Storybook prototype), at most three short lines inside 420px:
+    //   [avatar] Name · full Role (wraps)                        Turn $ (weighted)
+    //   [model chip] [thinking chip]                  [tasks pill] [✎ Edit]
+    //   ● rotating status (the only text that ellipsizes)
+    // plus a thin spend-share bar. The one pencil Edit button opens one inline panel with everything editable (name, role, picture,
+    // Model, Thinking, Profile, Agent file, Reset model); Month $ is a muted second line under Turn $. A member's accent colour
+    // (left bar, avatar ring, share bar, status dot) is stable by id.
+    function teamCompactRowHtml(member, memberWorkers, state, expanded, openIds, traces) {
+        var status = memberDisplayStatus(member, memberWorkers);
+        var costs = memberCostAmounts(member, memberWorkers);
+        var info = teamMemberTasksInfo(member, memberWorkers, state, expanded, traces);
+        var highlighted = (expanded && expanded.highlightedMember === member.id) || (state && state.highlightedMember === member.id);
+        var main = member.kind === 'main';
+        var id = workersEsc(member.id);
+        var open = Boolean(expanded && expanded['edit:' + member.id] === true);
+        var passive = !member.pinned && !main && costs.turn <= 0;
+        var working = status.dotState === 'running' && !passive;
+        var sel = teamModelControls(member, memberWorkers, state);
+        var modelText = teamModelLabel(splitModelId(sel.selectedFull).base).replace(/ \((agy|claude)\)$/, '');
+        var phrases = teamStatusPhrases(member, working);
+        var statusText = teamStatusPick(phrases, state && state.generatedAt);
+        var total = Number(state && state.turnTotal) || 0;
+        var sharePct = total > 0 ? Math.min(100, costs.turn / total * 100) : 0;
+        var slot = teamAccentSlot(member.id);
+        return '<div class="team-member-row team-compact-row' + (open ? ' is-open' : '') + (passive ? ' is-passive' : '') + (highlighted ? ' team-member-row-highlighted is-highlighted' : '') + (working ? ' is-working' : '') + '" data-member-id="' + id + '" data-member-row="' + id + '" data-compact-row="' + id + '" data-accent="' + slot + '"' +
+            (member.pinned ? ' data-pinned="true"' : main ? ' data-main-agent="true"' : ' data-active-member-row="' + id + '"') +
+            (passive ? ' data-passive="true"' : '') +
+            (highlighted ? ' data-highlighted="true"' : '') + '>' +
+            '<div class="team-compact-line team-compact-top">' + teamPortraitHtml(member, state, 28) +
+            '<span class="team-member-identity team-compact-identity"><strong class="team-member-name">' + workersEsc(member.name) + '</strong> &middot; <span class="team-member-role">' + workersEsc(member.role) + '</span></span>' +
+            teamCostSpanHtml(member, costs, 'line', 'team-compact-cost') +
+            '</div>' +
+            '<div class="team-compact-line team-compact-meta">' +
+            '<span class="team-chip team-chip-model team-runtime-' + teamRuntimeOf(sel.selectedFull) + '" data-runtime="' + teamRuntimeOf(sel.selectedFull) + '" title="' + workersEsc(sel.selectedFull) + '">' + workersEsc(modelText) + '</span>' +
+            '<span class="team-chip team-chip-thinking" title="Thinking effort">' + workersEsc(sel.selectedThinking) + '</span>' +
+            '<span class="team-compact-spacer"></span>' +
+            (main ? '' : teamTasksPillHtml(member, info)) +
+            teamEditButtonHtml(member, open) +
+            '</div>' +
+            '<div class="team-member-status team-compact-status team-status-' + (working ? 'working' : 'idle') + '" data-status-state="' + (working ? 'working' : 'idle') + '" data-status-phrases="' + workersEsc(JSON.stringify(phrases)) + '" title="' + workersEsc(statusText) + '"><span class="team-status-dot" aria-hidden="true"></span><span class="team-status-text">' + workersEsc(statusText) + '</span></div>' +
+            '<div class="team-share" role="img" data-share="' + Math.round(sharePct) + '" aria-label="' + workersEsc(member.name) + ' spent ' + Math.round(sharePct) + '% of this turn"><span class="team-share-fill" style="width:' + sharePct.toFixed(2) + '%"></span></div>' +
+            (main ? '' : teamMemberTrayHtml(member, memberWorkers, state, expanded, openIds, traces, info)) +
+            teamMemberEditFormHtml(member, expanded, teamCompactEditExtraHtml(member, memberWorkers, state)) +
+            '</div>';
+    }
+    // Shown under the member rows when only Priya and the main agent are shown (nobody else has Turn spend).
+    function teamEmptyTurnHtml() {
+        return '<div class="workers-empty team-empty-turn" data-team-empty-turn>No workers have spent this turn.</div>';
+    }
+    // Edit = the member's profile (name, role, picture), saved to ~/.askaway/team/members.json; the status phrases are fixed
+    // (reviewer, 2026-10-21: "This need not be in edit card") and the prompt stays behind "Agent file" (reviewer, 2026-10-16).
+    function teamMemberEditFormHtml(member, expanded, extraHtml) {
         var id = workersEsc(member.id);
         var open = Boolean(expanded && expanded['edit:' + member.id]);
         var picked = expanded && expanded['picture:' + member.id];
@@ -3428,10 +3613,11 @@
                 '<input type="text" class="form-input" maxlength="120" data-member-edit-field="' + key + '" value="' + workersEsc(value || '') + '"></label>';
         };
         return '<div class="team-member-edit-form" data-member-edit-form="' + id + '"' + (open ? '' : ' hidden') + '>' +
-            field('name', 'Name', member.name) + field('role', 'Role', member.role) + field('status', 'Status line', member.creativeStatus) +
+            field('name', 'Name', member.name) + field('role', 'Role', member.role) +
             '<div class="team-edit-field"><span class="team-control-label">Picture</span>' +
             '<button type="button" class="form-btn" data-member-pick-picture="' + id + '">Choose picture&hellip;</button>' +
             '<span class="team-edit-picture-name" data-member-picture-name="' + id + '">' + workersEsc(picked || '') + '</span></div>' +
+            (extraHtml || '') +
             '<div class="form-actions"><button type="button" class="form-btn form-btn-cancel" data-member-edit-cancel="' + id + '">Cancel</button>' +
             '<button type="button" class="form-btn form-btn-save" data-member-edit-save="' + id + '">Save</button></div>' +
             '</div>';
@@ -3447,9 +3633,9 @@
         });
         return { events: events, loading: loading };
     }
-    // A member row shows only with Turn spend above zero (reviewer, 2026-10-21); Priya (the Validator) and the main agent always show.
-    function teamMemberShown(member, memberWorkers) {
-        return !!member.pinned || member.kind === 'main' || memberCostAmounts(member, memberWorkers).turn > 0;
+    // Shown with Turn spend above zero, or always with "Show all members" (compact opt-in); Priya (the Validator) and the main agent always show.
+    function teamMemberShown(member, memberWorkers, showAll) {
+        return !!showAll || !!member.pinned || member.kind === 'main' || memberCostAmounts(member, memberWorkers).turn > 0;
     }
     function groupWorkersByMember(state, shown, filter) {
         var explicitMembers = state && Array.isArray(state.members) && state.members.length > 0;
@@ -3477,10 +3663,9 @@
                 return [m.id, m.name, m.role, m.profile, m.creativeStatus].join(' ').toLowerCase().indexOf(needle) >= 0;
             });
         }
-        // Priya first (with her Trace), then the main agent, then the rest in roster order; members with no Turn spend are hidden.
-        groups = groups.filter(function (g) { return teamMemberShown(g.member, g.workers); });
-        var rank = function (m) { return m.pinned ? 0 : m.kind === 'main' ? 1 : 2; };
-        return groups.sort(function (a, b) { return rank(a.member) - rank(b.member); });
+        // Priya first (with her Trace), then the main agent, then members by Turn descending (ties in roster order), then
+        // passive members (only with "Show all members", compact opt-in); everyone else with no Turn spend is hidden.
+        return teamVisibleGroups(groups, Boolean(state && state.compact && state.showAll));
     }
     // Settings → Integrations and the Team runtime warning: one name and one status word per integration (reviewer, 2026-10-16).
     // A function so Settings can render before this line runs (the modal is built at startup).
@@ -3526,7 +3711,13 @@
         var groups = hasMembers ? groupWorkersByMember(state, shown, filter) : [];
         var warning = teamRuntimeWarning(state, groups);
         var turnDollars = hasMembers ? groups.reduce(function (n, g) { return n + memberCostAmounts(g.member, g.workers).turn; }, 0) : undefined;
-        var html = workersSummaryHtml(state, shown, turnDollars) + '<div class="workers-approval-notice" data-runtime-warning' + (warning ? '' : ' hidden') + '>' + workersEsc(warning) + '</div>';
+        // Compact opt-in: header with the one toggle, the stacked share bar, counts and the health strip replace the warning sentence.
+        var compact = Boolean(state.compact && hasMembers);
+        if (compact) state = Object.assign({}, state, { turnTotal: turnDollars });
+        var health = state.runtimeHealth || (typeof runtimeHealth !== 'undefined' ? runtimeHealth : null);
+        var html = compact
+            ? teamHeaderHtml(Boolean(state.showAll)) + teamCompactSummaryHtml(state, shown, groups, turnDollars, health)
+            : workersSummaryHtml(state, shown, turnDollars) + '<div class="workers-approval-notice" data-runtime-warning' + (warning ? '' : ' hidden') + '>' + workersEsc(warning) + '</div>';
         var pending = workersPendingApprovals(state);
         if (pending) {
             html += '<div class="workers-approval-notice">' + pending + ' worker' + (pending > 1 ? 's' : '') + ' waiting for approval. Open the session in OpenCode to answer.</div>';
@@ -3536,10 +3727,12 @@
                 return workerCardHtml(w, expanded && expanded[w.workerId], state.generatedAt, openIds, traces);
             }).join('') + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
         }
+        var rowHtml = compact ? teamCompactRowHtml : teamMemberRowHtml;
         var rows = '<div class="team-members-list team-member-list">' + groups.map(function (g) {
-            return teamMemberRowHtml(g.member, g.workers, state, expanded, openIds, traces);
+            return rowHtml(g.member, g.workers, state, expanded, openIds, traces);
         }).join('') + '</div>';
-        if (!shown.length) {
+        if (compact && groups.every(function (g) { return g.member.pinned || g.member.kind === 'main'; })) rows += teamEmptyTurnHtml();
+        if (!shown.length && !compact) {
             rows += '<div class="workers-empty">' + ((state.workers || []).length && String(filter || '').trim() ? 'No worker matches the filter.' : (state.workers || []).length ? 'No active tasks this turn.' : 'No live workers in this workspace.') + '</div>';
         }
         return html + rows + workersScoreboardHtml(state.scoreboard, openIds) + workersBenchmarkHtml(state.benchmark, openIds);
@@ -3612,8 +3805,28 @@
             body + '</details>';
     }
     function wireTeamEvents(root, post) {
+        function toggleShowAll(sw) {
+            var on = sw.getAttribute('aria-checked') !== 'true';
+            sw.setAttribute('aria-checked', String(on));
+            if (sw.classList) sw.classList.toggle('active', on);
+            post({ type: 'teamShowAll', value: on });
+        }
+        root.addEventListener('keydown', function (event) {
+            var key = event.key;
+            var target = event.target;
+            if (!target || typeof target.closest !== 'function') return;
+            var sw = target.closest('[data-team-show-all]');
+            if (sw && (key === 'Enter' || key === ' ')) { event.preventDefault(); toggleShowAll(sw); return; }
+        });
         root.addEventListener('click', function (event) {
             var target = event.target;
+            var showAll = target.closest('[data-team-show-all]');
+            if (showAll) { toggleShowAll(showAll); return; }
+            var reset = target.closest('[data-member-reset-model]');
+            if (reset) {
+                post({ type: 'setMemberModel', memberId: reset.getAttribute('data-member-reset-model'), profile: reset.getAttribute('data-profile'), model: reset.getAttribute('data-default-model'), thinking: reset.getAttribute('data-default-thinking') });
+                return;
+            }
             var pill = target.closest('[data-member-tasks-toggle]');
             if (pill) {
                 var id = pill.getAttribute('data-member-tasks-toggle');
@@ -3639,6 +3852,8 @@
                     post(saved);
                 }
                 if (show) form.removeAttribute('hidden'); else form.setAttribute('hidden', '');
+                var editBtn = root.querySelector('[data-edit-member="' + editId + '"][aria-expanded]');
+                if (editBtn) editBtn.setAttribute('aria-expanded', String(show));
                 post({ type: 'teamEditToggle', memberId: editId, open: show });
                 return;
             }
@@ -3784,6 +3999,8 @@
         node._teamHtml = html;
     }
     var workersExpanded = {};
+    // "Show all members" toggle of the compact Team (default off): also lists members with no spend this turn.
+    var workersShowAll = false;
     var workersPointerDown = false;
     var workersTraces = {};
     var workersClockSkew = 0;
@@ -3820,6 +4037,7 @@
         var list = document.getElementById('workers-list');
         if (!list || !workersState || typeof list.querySelector !== 'function') return;
         var now = Date.now() - workersClockSkew;
+        tickTeamStatus(list, now);
         var all = (workersState.workers || []).concat(workersState.cloudWorkers || []);
         all.forEach(function (w) {
             if (w.adapter === 'agy' || w.cloud) return;
@@ -3838,7 +4056,7 @@
         var list = document.getElementById('workers-list');
         if (!list || !workersState) return;
         // Age ticks locally between polls; the skew keeps it on the extension host's clock.
-        var ticking = Object.assign({}, workersState, { generatedAt: Date.now() - workersClockSkew });
+        var ticking = Object.assign({}, workersState, { generatedAt: Date.now() - workersClockSkew, showAll: workersShowAll });
         // Re-rendering between pointerdown and click drops the click, so the row never toggles.
         if (workersPointerDown) return;
         patchTeam(list, ticking, '', workersExpanded, traceOpenIds(list), workersTraces);
@@ -3917,6 +4135,7 @@
                 if (message.open && toggled && toggled.pinned) requestValidatorTraces(true);
                 return;
             }
+            if (message.type === 'teamShowAll') { workersShowAll = Boolean(message.value); paintWorkers(); return; }
             if (message.type === 'teamEditToggle') {
                 workersExpanded['edit:' + message.memberId] = message.open;
                 if (!message.open) delete workersExpanded['picture:' + message.memberId];
@@ -3980,7 +4199,7 @@
             tickTeamAges();
             if (++workersTicks % 3 === 0) {
                 vscode.postMessage({ type: 'requestWorkersState' });
-                Object.keys(workersExpanded).forEach(function (id) { if (workersExpanded[id] && id.indexOf('member:') !== 0 && id !== 'highlightedMember') vscode.postMessage({ type: 'requestWorkerTrace', workerId: id }); });
+                Object.keys(workersExpanded).forEach(function (id) { if (workersExpanded[id] && id.indexOf('member:') !== 0 && !/^(row|menu):/.test(id) && id !== 'highlightedMember') vscode.postMessage({ type: 'requestWorkerTrace', workerId: id }); });
             }
         }, 1000);
     }

@@ -820,4 +820,17 @@ The Team list scrollbar was fixed in the source (the installed copy was old); AI
 > i removed sandbox.
 > All updates to team like config, user availability is across workspaces.
 
-Rows R-TEAM-50 to R-TEAM-57 (ADR 0027). The Team header row (Show completed, archive, reload) is gone, members show by Turn spend, a member's model and thinking are one choice shared by every workspace, and Settings offers a manual sign-in.
+> Status text can be hard coded, may be we can rotate. This need not be in edit card.
+> I want the UI to be pleasing and like to see more and make sense of something. It should be vibrant.
+> And Now i only see members who are participated in the turn. I need some toggle to show other members also so that we can edit them.
+> In Compact cards, monthly $ is gone. Atleast we should show in full card view.
+> I want to see role, model, Turn cost atleast along with Trace button and Status.
+> Order by weight is also good. Some button to show passive members also. i like Tidy secondary controls part. Sure Health summary is also fine i guess.
+
+> Why cant availability be global?
+> I liked round 2 but one change could be, on expand i get to edit model, and on clcking edit, i get t edit name and other stuff. Cant we keep all edit under oen thing? And move monthly $ in someother place? That way we'll have edit button no chevron?? Thoughts?
+> Yes as of now agy is 0$. So, show 0$ for agy models.
+> instead of images you showed, if they are more like person faces, woudl have been better.
+> go ahead an also give me promprts of all images in one shot. i'll give them
+
+Rows R-TEAM-50 to R-TEAM-68 (ADR 0027, 0028, 0029). The Team header row (Show completed, archive, reload) is gone, members show by Turn spend, a member's model and thinking are one choice shared by every workspace, and Settings offers a manual sign-in.

@@ -62,6 +62,12 @@ export interface TeamMemberState {
     initials: string;
     avatarSrc: string;
     creativeStatus: string;
+    /** Hard-coded status phrases (3 to 4 each); the card rotates through them every 8 s (webview teamStatusText). */
+    statusWorking: string[];
+    statusIdle: string[];
+    /** The roster's own model and thinking, for "Reset model to default". */
+    defaultModel?: string;
+    defaultThinking?: string;
     agentFile: string;
     /** The Edit form's saved picture (absolute path); the provider turns it into a webview URI. */
     avatarFile?: string;
@@ -263,6 +269,10 @@ export function projectTeamMembers(workers: WorkerRow[], roster: TeamRosterEntry
             initials: initialsOf(entry.name),
             avatarSrc: '',
             creativeStatus: active ? entry.workingStatus : entry.idleStatus,
+            statusWorking: entry.statusWorking.slice(),
+            statusIdle: entry.statusIdle.slice(),
+            defaultModel: entry.defaultModel ?? entry.model,
+            defaultThinking: entry.defaultThinking ?? entry.thinking,
             agentFile: entry.agentFile,
             avatarFile: entry.avatarFile ?? '',
             model,

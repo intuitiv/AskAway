@@ -41,4 +41,6 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0024](0024-team-storybook-review-and-model-comparison.md) | Existing Storybook format, simple names/profiles and collapsible tasks; review one prompt before comparing three models | G18, G5, G13 | Proposed |
 | [0025](0025-team-edit-is-profile-and-integrations.md) | Team Edit is the member profile; Integrations (OpenCode, agy, Claude) share switch, Refresh and last-checked | G18, G5 | Proposed |
 | [0027](0027-team-turn-members-and-shared-model-choice.md) | Team shows members by Turn spend; one shared model and thinking choice; sign-in and Grafana | G18, G5 | Proposed |
+| [0028](0028-team-compact-cards.md) | Team compact vibrant cards, rotating status, Show all toggle | G18 | Proposed |
+| [0029](0029-team-one-edit-button.md) | Team cards: one Edit button, Month under Turn, global availability seed | G18 | Proposed |
 | [0026](0026-hooks-and-sk-commands-in-copilot-harness.md) | Hooks fail open and get sandbox grants; /sk.* ship as prompt files (Local), sk-* skills (Copilot) and Claude commands | G15 | Proposed |

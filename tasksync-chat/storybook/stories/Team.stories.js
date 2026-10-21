@@ -69,3 +69,32 @@ export const LightTheme = {
 		theme: 'light',
 	}),
 };
+
+// Compact Team rows (prototype; production Team keeps the full rows). Collapsed by default, the pencil Edit button opens one panel with everything editable.
+export const Compact = {
+	name: '7. Compact (accent colours, share bars, rotating status, health strip)',
+	render: () => mountTeamStory({ scenario: 'compact' }),
+};
+
+export const EditOpen = {
+	name: '8. EditOpen (Anika: name, role, picture, Model, Thinking, Agent file, Reset)',
+	render: () => mountTeamStory({ scenario: 'edit-open' }),
+};
+
+export const EmptyTurn = {
+	name: '9. EmptyTurn (only Priya and Bhaskar: "No workers have spent this turn.")',
+	render: () => mountTeamStory({ scenario: 'empty-turn' }),
+};
+
+export const CompactLight = {
+	name: '10. CompactLight ([data-theme="light"])',
+	parameters: {
+		backgrounds: { default: 'light' },
+	},
+	render: () => mountTeamStory({ scenario: 'compact', theme: 'light' }),
+};
+
+export const ShowAll = {
+	name: '11. ShowAll (toggle on: passive Diego, Pavel, Sana, Shreya, Cathy at $0)',
+	render: () => mountTeamStory({ scenario: 'show-all' }),
+};

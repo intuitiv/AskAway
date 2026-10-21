@@ -671,7 +671,7 @@ const sampleState = {
     assert(doc.querySelector('[data-runtime-warning]').textContent.includes('OpenCode not working: Priya'));
 }
 
-// EV-TEAM-EDIT-PROFILE: Edit opens the member's profile form (name, role, status, picture), never the prompt file.
+// EV-TEAM-EDIT-PROFILE: Edit opens the member's profile form (name, role, picture), never the prompt file.
 {
     const { api, doc, messages } = createHarness();
     api.applyWorkersState(sampleState);
@@ -689,7 +689,7 @@ const sampleState = {
     const saved = messages.filter(m => m.type === 'saveMemberProfile').at(-1);
     assert.equal(saved.memberId, 'anika');
     assert.equal(saved.name, 'Ana');
-    assert('role' in saved && 'status' in saved, 'role and status are sent');
+    assert('role' in saved && !('status' in saved), 'role is sent; the status line is no longer part of the form (reviewer, 2026-10-21)');
     assert(doc.querySelector('[data-member-edit-form="anika"]').hasAttribute('hidden'), 'Save closes the form');
     doc.querySelector('[data-member-row="anika"] [data-open-agent-file]').dispatchEvent({ type: 'click' });
     assert.equal(messages.at(-1).type, 'openAgentFile', 'Agent file still opens the prompt');

@@ -75,7 +75,7 @@ export function getWorkersKit() {
 	const workers = sliceBetween(webviewSource, '// ── Workers tab: pure render', '// ── end Workers pure render ──');
 	const patch = sliceBetween(webviewSource, '    function patchTeamNode(', "    var workersExpanded =");
 	cachedWorkersKit = new Function(
-		`${banner}\n${trace}\n${workers}\n${patch}\nreturn { wireTeamEvents, patchTeamHtml, teamMemberRowHtml, teamMemberShown, normalizeTeamMember, teamMoney, usageBannerHtml, chatBannerHtml, cacheAgeLabel, efficiencyScore, turnTotalsLead, traceRowsHtml, traceGroupsHtml, TRACE_HEAD, workerBannerHtml, workerTraceHtml, workersSummaryHtml, renderWorkersHtml, workersScoreboardHtml, workersBenchmarkHtml };`
+		`${banner}\n${trace}\n${workers}\n${patch}\nreturn { wireTeamEvents, patchTeamHtml, teamMemberRowHtml, teamCompactRowHtml, teamEmptyTurnHtml, teamHeaderHtml, teamCompactSummaryHtml, teamShareBarHtml, teamHealthHtml, teamVisibleGroups, teamStatusText, teamStatusPick, teamStatusPhrases, tickTeamStatus, teamAccentSlot, teamMemberShown, normalizeTeamMember, teamMoney, usageBannerHtml, chatBannerHtml, cacheAgeLabel, efficiencyScore, turnTotalsLead, traceRowsHtml, traceGroupsHtml, TRACE_HEAD, workerBannerHtml, workerTraceHtml, workersSummaryHtml, renderWorkersHtml, workersScoreboardHtml, workersBenchmarkHtml };`
 	)();
 	return cachedWorkersKit;
 }
@@ -107,17 +107,17 @@ export const AVAILABLE_TEAM_MODELS = [
 ];
 
 export const CREATIVE_ROLE_STATUSES = {
-	mahesh: { working: 'Splitting the work…', idle: 'Plan ready' },
-	bhaskar: { working: 'Wiring it up…', idle: 'Reviewing diffs' },
-	priya: { working: 'Thinking like you…', idle: 'On call' },
-	anika: { working: 'Sketching boundaries…', idle: 'Blueprints set' },
-	diego: { working: 'Shipping code…', idle: 'Coffee break' },
-	tara: { working: 'Breaking things…', idle: 'All green' },
-	pavel: { working: 'Profiling hot paths…', idle: 'Frame budget clean' },
-	paolo: { working: 'Waiting on CI…', idle: 'Pipes clear' },
-	sana: { working: 'Digging through code…', idle: 'Notes indexed' },
-	shreya: { working: 'Tracing the fault line…', idle: 'Root cause pinned' },
-	cathy: { working: 'Checking the threads…', idle: 'Inbox zero' },
+	mahesh: { working: ['Splitting the work…', 'Herding the agents…', 'Drawing the dependency map…', 'Sequencing the next packets…'], idle: ['Plan ready', 'Roadmap pinned', 'Waiting for the next ask'] },
+	bhaskar: { working: ['Wiring it up…', 'Reading the diff twice…', 'Merging the loose ends…', 'Pairing with the build…'], idle: ['Reviewing diffs', 'Merge queue calm', 'Tests green, tea hot'] },
+	priya: { working: ['Thinking like you…', 'Checking it against the spec…', 'Asking "would they approve?"…', 'Reading between the lines…'], idle: ['On call', 'Spec in hand', 'Waiting for a verdict to give'] },
+	anika: { working: ['Sketching boundaries…', 'Drawing the module lines…', 'Weighing two designs…', 'Naming the seams…'], idle: ['Blueprints set', 'Diagrams tidy', 'Whiteboard clean'] },
+	diego: { working: ['Shipping code…', 'Typing at full tilt…', 'Refactoring with care…', 'Chasing a stray semicolon…'], idle: ['Coffee break', 'Stretching the fingers', 'Next ticket, please'] },
+	tara: { working: ['Breaking things…', 'Poking the edge cases…', 'Writing the failing test…', 'Hunting flaky tests…'], idle: ['All green', 'Suite is calm', 'Coverage looks happy'] },
+	pavel: { working: ['Profiling hot paths…', 'Counting milliseconds…', 'Squeezing the frame budget…', 'Reading the flame graph…'], idle: ['Frame budget clean', 'Flame graph flat', 'Benchmarks resting'] },
+	paolo: { working: ['Waiting on CI…', 'Untangling the pipeline…', 'Tuning the Gradle cache…', 'Watching the build bar…'], idle: ['Pipes clear', 'Cache is warm', 'Builds on rails'] },
+	sana: { working: ['Digging through code…', 'Following the references…', 'Reading the docs for you…', 'Collecting the evidence…'], idle: ['Notes indexed', 'Library is quiet', 'Sources filed'] },
+	shreya: { working: ['Tracing the fault line…', 'Bisecting the history…', 'Following the stack trace…', 'Asking why, five times…'], idle: ['Root cause pinned', 'Case closed', 'No fires today'] },
+	cathy: { working: ['Checking the threads…', 'Drafting a polite reply…', 'Catching up with the room…', 'Sorting the chatter…'], idle: ['Inbox zero', 'Room is quiet', 'Messages answered'] },
 };
 
 export const MAIN_AGENT_PERSONAS = {
@@ -134,8 +134,10 @@ export const MAIN_AGENT_PERSONAS = {
 		turnDollars: 0.06,
 		monthDollars: 4.25,
 		agentFile: '.github/agents/AA.Orchestrator.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.mahesh.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.mahesh.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.mahesh.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.mahesh.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.mahesh.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.mahesh.idle,
 	},
 	'AskAway Build': {
 		id: 'bhaskar',
@@ -150,8 +152,10 @@ export const MAIN_AGENT_PERSONAS = {
 		turnDollars: 0.08,
 		monthDollars: 6.80,
 		agentFile: '.github/agents/askaway-build.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.bhaskar.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.bhaskar.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.bhaskar.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.bhaskar.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.bhaskar.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.bhaskar.idle,
 	},
 };
 
@@ -187,8 +191,10 @@ export const TEAM_ROSTER_FIXTURES = [
 		turnDollars: 0.06,
 		monthDollars: 4.25,
 		agentFile: '.github/agents/AA.Orchestrator.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.mahesh.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.mahesh.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.mahesh.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.mahesh.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.mahesh.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.mahesh.idle,
 	},
 	{
 		id: 'bhaskar',
@@ -203,8 +209,10 @@ export const TEAM_ROSTER_FIXTURES = [
 		turnDollars: 0.08,
 		monthDollars: 6.80,
 		agentFile: '.github/agents/askaway-build.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.bhaskar.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.bhaskar.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.bhaskar.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.bhaskar.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.bhaskar.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.bhaskar.idle,
 	},
 	{
 		id: 'priya',
@@ -220,8 +228,10 @@ export const TEAM_ROSTER_FIXTURES = [
 		monthDollars: 1.42,
 		traceEvents: VALIDATOR_TRACE_FIXTURES,
 		agentFile: '~/.askaway/validator/validator.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.priya.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.priya.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.priya.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.priya.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.priya.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.priya.idle,
 	},
 	{
 		id: 'anika',
@@ -235,8 +245,10 @@ export const TEAM_ROSTER_FIXTURES = [
 		turnDollars: 0.024,
 		monthDollars: 3.10,
 		agentFile: '.github/agents/build.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.anika.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.anika.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.anika.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.anika.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.anika.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.anika.idle,
 	},
 	{
 		id: 'diego',
@@ -251,8 +263,10 @@ export const TEAM_ROSTER_FIXTURES = [
 		turnDollars: 0,
 		monthDollars: 0,
 		agentFile: '.github/agents/build-lite.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.diego.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.diego.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.diego.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.diego.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.diego.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.diego.idle,
 	},
 	{
 		id: 'tara',
@@ -266,8 +280,10 @@ export const TEAM_ROSTER_FIXTURES = [
 		turnDollars: 0.0042,
 		monthDollars: 0.95,
 		agentFile: '.github/agents/verify.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.tara.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.tara.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.tara.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.tara.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.tara.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.tara.idle,
 	},
 	{
 		id: 'pavel',
@@ -281,8 +297,10 @@ export const TEAM_ROSTER_FIXTURES = [
 		turnDollars: 0,
 		monthDollars: 0,
 		agentFile: '.github/agents/perf.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.pavel.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.pavel.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.pavel.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.pavel.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.pavel.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.pavel.idle,
 	},
 	{
 		id: 'paolo',
@@ -296,8 +314,10 @@ export const TEAM_ROSTER_FIXTURES = [
 		turnDollars: 0.01,
 		monthDollars: 0.65,
 		agentFile: '.github/agents/gradle.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.paolo.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.paolo.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.paolo.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.paolo.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.paolo.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.paolo.idle,
 	},
 	{
 		id: 'sana',
@@ -311,8 +331,10 @@ export const TEAM_ROSTER_FIXTURES = [
 		turnDollars: 0.01,
 		monthDollars: 1.15,
 		agentFile: '.github/agents/explore.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.sana.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.sana.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.sana.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.sana.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.sana.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.sana.idle,
 	},
 	{
 		id: 'shreya',
@@ -326,8 +348,10 @@ export const TEAM_ROSTER_FIXTURES = [
 		turnDollars: 0,
 		monthDollars: 0,
 		agentFile: '.github/agents/rca.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.shreya.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.shreya.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.shreya.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.shreya.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.shreya.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.shreya.idle,
 	},
 	{
 		id: 'cathy',
@@ -341,13 +365,16 @@ export const TEAM_ROSTER_FIXTURES = [
 		turnDollars: 0,
 		monthDollars: 0,
 		agentFile: '.github/agents/webex.agent.md',
-		workingStatus: CREATIVE_ROLE_STATUSES.cathy.working,
-		idleStatus: CREATIVE_ROLE_STATUSES.cathy.idle,
+		workingStatus: CREATIVE_ROLE_STATUSES.cathy.working[0],
+		idleStatus: CREATIVE_ROLE_STATUSES.cathy.idle[0],
+		statusWorking: CREATIVE_ROLE_STATUSES.cathy.working,
+		statusIdle: CREATIVE_ROLE_STATUSES.cathy.idle,
 	},
 ];
 
-// Edit = the member's profile (reviewer, 2026-10-16); model and thinking stay on the row, the prompt behind Agent file.
-export const ALLOWED_EDIT_FIELDS = ['name', 'role', 'status'];
+// Edit = the member's profile (reviewer, 2026-10-16): name and role (the status phrases are fixed, 2026-10-21); model and
+// thinking stay on the row, the prompt behind Agent file.
+export const ALLOWED_EDIT_FIELDS = ['name', 'role'];
 
 export function esc(value) {
 	return String(value ?? '').replace(/[&<>"']/g, (ch) => (
@@ -436,6 +463,8 @@ export function resolveMainAgentIdentity(selectedAgent = 'AskAway Build') {
 		agentFile: `.github/agents/${slug}.agent.md`,
 		workingStatus: 'Working on turn…',
 		idleStatus: 'Standing by',
+		statusWorking: ['Working on turn…', 'Thinking it through…', 'Writing the next step…'],
+		statusIdle: ['Standing by', 'Ready when you are', 'Waiting for the next ask'],
 		initials: computeInitials(key),
 		isUnknownAgent: true,
 	};
@@ -575,14 +604,12 @@ export function renderProductionTabBarHtml(activeTab = 'team') {
 	return `<nav class="widget-tabs tab-bar" id="widget-tabs" role="tablist" aria-label="Main Tabs">${btns}</nav>`;
 }
 
-// Same rule as production (webview.js groupWorkersByMember): every member row is visible, idle ones included —
-// Priya first, then the selected main agent, then the rest in roster order. Only tasks are filtered.
+// Same rule as production (webview.js groupWorkersByMember): the one shared ordering function teamVisibleGroups decides who shows
+// and in which order (Priya, the main agent, members by Turn descending, then passive members when "Show all members" is on).
 export function getActiveTurnMembers(state) {
-	// The production rule (teamMemberShown): Priya and the main agent always, others only with Turn spend.
-	const members = (state.members || []).filter((m) => m.kind !== 'main' || !state.mainMemberId || m.id === state.mainMemberId)
-		.filter((m) => { const { kit, workers, normalized } = memberKitInputs(m, state); return kit.teamMemberShown(normalized, workers); });
-	const rank = (m) => (m.pinnedFirst || m.id === 'priya' || m.kind === 'validator' ? 0 : m.kind === 'main' ? 1 : 2);
-	return members.slice().sort((a, b) => rank(a) - rank(b));
+	const groups = (state.members || []).filter((m) => m.kind !== 'main' || !state.mainMemberId || m.id === state.mainMemberId)
+		.map((raw) => { const { workers, normalized } = memberKitInputs(raw, state); return { member: normalized, workers, raw }; });
+	return getWorkersKit().teamVisibleGroups(groups, Boolean(state.compact && state.showAll)).map((g) => g.raw);
 }
 
 export function memberStatusInfo(member) {
@@ -615,18 +642,33 @@ function memberKitInputs(member, state) {
 
 export function renderMemberRowHtml(member, state) {
 	const { kit, workers, normalized } = memberKitInputs(member, state);
-	return kit.teamMemberRowHtml(normalized, workers, { generatedAt: state.now, memberSettings: { [member.id]: { model: member.model } }, validatorTrace: member.traceEvents || (member.id === 'priya' ? VALIDATOR_TRACE_FIXTURES : []) }, { ...state.expandedTraces, ['member:' + member.id]: Boolean(state.expandedTasksByMember && state.expandedTasksByMember[member.id]), highlightedMember: state.highlightedMemberId, ['edit:' + member.id]: state.editingMemberId === member.id }, state.openTraceIds, {});
+	// Compact mode (Storybook prototype only): the production render block teamCompactRowHtml, the Edit panel state in expanded['edit:<id>'].
+	const row = state.compact ? kit.teamCompactRowHtml : kit.teamMemberRowHtml;
+	return row(normalized, workers, { generatedAt: state.now, turnTotal: state.turnTotal, memberSettings: { [member.id]: { model: member.model } }, validatorTrace: member.traceEvents || (member.id === 'priya' ? VALIDATOR_TRACE_FIXTURES : []) }, { ...state.expandedTraces, ['member:' + member.id]: Boolean(state.expandedTasksByMember && state.expandedTasksByMember[member.id]), highlightedMember: state.highlightedMemberId, ['edit:' + member.id]: state.editingMemberId === member.id }, state.openTraceIds, {});
 }
 
 export function renderTeamTabHtml(state) {
 	const activeMembers = getActiveTurnMembers(state);
-	const rowsHtml = activeMembers.map((m) => renderMemberRowHtml(m, state)).join('');
-	// Same summary as production (#panel-team): no header row, no filter, no Save cost tips; counts come from the displayed tasks.
+	const kit = getWorkersKit();
+	const groups = activeMembers.map((raw) => { const { workers, normalized } = memberKitInputs(raw, state); return { member: normalized, workers, raw }; });
+	const turnTotal = groups.reduce((sum, g) => sum + memberCostSummary(g.raw).turnDollars, 0);
+	const rowState = { ...state, turnTotal };
+	const rowsHtml = activeMembers.map((m) => renderMemberRowHtml(m, rowState)).join('');
+	// Compact mode: with only Priya and the main agent shown, say why nobody else is (production teamEmptyTurnHtml).
+	const emptyTurnHtml = state.compact && activeMembers.every((m) => m.pinnedFirst || m.kind === 'validator' || m.kind === 'main')
+		? kit.teamEmptyTurnHtml()
+		: '';
+	// Same summary as production (#panel-team): no filter, no Save cost tips; counts come from the displayed tasks.
 	const now = state.now || 1_700_000_000_000;
 	const tasks = activeMembers.flatMap((m) => (m.tasks || []).map((task) => toSharedWorkerRecord(task, now)));
+	// Compact mode: the production header (the one Show all members toggle), the stacked share bar, the counts and the health strip.
+	const summaryHtml = state.compact
+		? kit.teamHeaderHtml(Boolean(state.showAll)) + kit.teamCompactSummaryHtml({ generatedAt: now }, tasks, groups.map((g) => ({ member: g.member, workers: g.workers })), turnTotal, state.runtimeHealth || null)
+		: kit.workersSummaryHtml({ generatedAt: now }, tasks);
 	return `<div class="team-tab-panel" data-active-member-count="${activeMembers.length}">` +
-		getWorkersKit().workersSummaryHtml({ generatedAt: now }, tasks) +
+		summaryHtml +
 		`<div class="team-member-list" role="list">${rowsHtml}</div>` +
+		emptyTurnHtml +
 	`</div>`;
 }
 
@@ -684,6 +726,8 @@ export function createTeamController(options = {}) {
 	const baseMembers = TEAM_ROSTER_FIXTURES.map((m) => ({
 		...m,
 		initials: computeInitials(m.name),
+		defaultModel: m.model,
+		defaultThinking: m.thinking,
 		activeInTurn: false,
 		present: false,
 		working: false,
@@ -723,6 +767,10 @@ export function createTeamController(options = {}) {
 		activeTab: options.activeTab || 'team',
 		members: baseMembers,
 		expandedTasksByMember: { ...(options.expandedTasksByMember || {}) },
+		compact: Boolean(options.compact),
+		// "Show all members" toggle (compact only); runtime health feeds the health strip.
+		showAll: Boolean(options.showAll),
+		runtimeHealth: options.runtimeHealth || { opencode: { enabled: true, ok: true }, agy: { enabled: true, ok: false, signIn: true }, claude: { enabled: false, ok: false } },
 		expandedTraces: { ...(options.expandedTraces || {}) },
 		openTraceIds: {},
 		highlightedMemberId: options.highlightedMemberId || null,
@@ -1018,6 +1066,20 @@ export function createTeamController(options = {}) {
 		return state.expandedTasksByMember[memberId];
 	}
 
+	function setShowAll(value) {
+		state.showAll = Boolean(value);
+		notify();
+		return state.showAll;
+	}
+
+	// The story clock: the rotating status phrase of every card follows it (floor(clock / 8000) % phrases). No repaint here;
+	// mountTeamStory updates the visible text in place with the shared tickTeamStatus.
+	function advanceClock(ms) {
+		clock += Number(ms) || 0;
+		state.now = clock;
+		return clock;
+	}
+
 	function toggleTaskTrace(workerId) {
 		state.expandedTraces[workerId] = !state.expandedTraces[workerId];
 		notify();
@@ -1029,7 +1091,7 @@ export function createTeamController(options = {}) {
 		if (!m) return null;
 		state.editingMemberId = m.id;
 		state.modelDropdownOpen = Boolean(modelDropdownOpen);
-		state.editDraft = { name: m.name, role: m.role, status: memberStatusInfo(m).text };
+		state.editDraft = { name: m.name, role: m.role };
 		notify();
 		return state.editDraft;
 	}
@@ -1051,7 +1113,6 @@ export function createTeamController(options = {}) {
 			setMemberThinking(memberId, synced.thinking);
 			return state.editDraft;
 		}
-		if (field === 'status') { state.editDraft.status = String(value ?? ''); return state.editDraft; }
 		if (field === 'name' || field === 'role') {
 			state.editDraft[field] = String(value ?? '');
 			const m = findMember(memberId);
@@ -1071,8 +1132,7 @@ export function createTeamController(options = {}) {
 		if (m) {
 			if (state.editDraft.name?.trim()) m.name = state.editDraft.name.trim();
 			if (state.editDraft.role?.trim()) m.role = state.editDraft.role.trim();
-			// Same as the product's Edit form: one status line for working and idle.
-			if (state.editDraft.status?.trim()) { m.workingStatus = state.editDraft.status.trim(); m.idleStatus = m.workingStatus; }
+			// Same as the product's Edit form: name and role (the status phrases are fixed).
 			m.initials = computeInitials(m.name);
 			syncTalkRoster();
 		}
@@ -1375,6 +1435,24 @@ export function createTeamController(options = {}) {
 		state.activeTab = 'aitalk';
 		stepTo(options.initialStep !== undefined ? options.initialStep : 4);
 		selectMemberFromTalk(options.clickedMemberId || 'priya');
+	} else if (['compact', 'edit-open', 'empty-turn', 'show-all'].includes(scenario)) {
+		// Compact Team prototype (reviewer-picked scope a, collapsed by default). The production rule still decides who shows:
+		// Priya, the main agent and members with Turn spend; passive members (Diego, Pavel, Sana, Shreya, Cathy at $0) only with Show all.
+		state.compact = true;
+		findMember('sana').turnDollars = 0;
+		findMember('tara').turnDollars = 0.04;
+		if (scenario === 'empty-turn') {
+			for (const id of ['anika', 'tara', 'paolo']) findMember(id).turnDollars = 0;
+		} else {
+			assignTask('priya', { workerId: 'worker-priya-1', runId: 'run-priya-1', profile: 'validator', objective: 'Checking R-TEAM-52 against the compact row', dollars: 0.01, elapsedMs: 18_000, requests: 2 });
+			assignTask('bhaskar', { workerId: 'worker-bhaskar-1', runId: 'run-bhaskar-1', profile: 'AskAway Build', objective: 'Wiring the compact Team row into the Storybook prototype', dollars: 0.08, elapsedMs: 212_000, requests: 5 });
+			assignTask('anika', { workerId: 'worker-anika-1', runId: 'run-anika-1', profile: 'build', objective: 'Sketching the collapsed row boundaries and the inline Edit panel for the whole Team tab', dollars: 0.12, elapsedMs: 94_000, requests: 3 });
+			// Idle members with Turn spend: no running task, their rotating status shows.
+			for (const id of ['tara', 'paolo']) { const m = findMember(id); m.activeInTurn = true; m.present = true; }
+			if (scenario === 'edit-open') openMemberEdit('anika');
+			if (scenario === 'show-all') state.showAll = true;
+		}
+		if (options.theme === 'light') state.theme = 'light';
 	}
 
 	return {
@@ -1394,6 +1472,8 @@ export function createTeamController(options = {}) {
 		setMemberThinking,
 		openAgentFile,
 		toggleMemberTasks,
+		setShowAll,
+		advanceClock,
 		toggleMemberTrace: toggleMemberTasks,
 		toggleTaskTrace,
 		openMemberEdit,
@@ -1457,8 +1537,13 @@ export function mountTeamStory(options = {}) {
 
 	paint();
 	controller.onChange(paint);
+	// The story clock advances each second; the visible status text follows it in place, like the production 1 s tick.
+	if (controller.state.compact) {
+		host._clockTimer = setInterval(() => getWorkersKit().tickTeamStatus(contentEl, controller.advanceClock(1000)), 1000);
+	}
 	getWorkersKit().wireTeamEvents(host, message => {
 		if (message.type === 'teamTasksToggle') controller.toggleMemberTasks(message.memberId);
+		if (message.type === 'teamShowAll') controller.setShowAll(message.value);
 		if (message.type === 'setMemberModel') { controller.setMemberModel(message.memberId, message.model); controller.setMemberThinking(message.memberId, message.thinking); }
 		if (message.type === 'openAgentFile') controller.openAgentFile(message.memberId);
 		if (message.type === 'teamEditToggle') { if (message.open) controller.openMemberEdit(message.memberId); else controller.closeMemberEdit(); }

@@ -91,6 +91,12 @@ const hook = () => childProcess.execFileSync(process.execPath, [path.join(__dirn
 });
 try {
     assert.equal(readAvailability(home), null);
+    const legacyDir = path.dirname(mod.exports.availabilityFile(home)); fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(path.join(legacyDir, 'old-workspace.json'), JSON.stringify({ mode: 'away', setAt: new Date().toISOString() }));
+    assert.equal(readAvailability(home).mode, 'away', 'a per-workspace state of an earlier version seeds the global one');
+    assert.equal(JSON.parse(fs.readFileSync(mod.exports.availabilityFile(home), 'utf8')).mode, 'away');
+    fs.rmSync(path.join(legacyDir, 'old-workspace.json')); fs.rmSync(mod.exports.availabilityFile(home));
+    assert.equal(readAvailability(home), null);
     const until = new Date(Date.now() + 3600000).toISOString();
     writeAvailability({ mode: 'away', until, note: 'back\nsoon' }, home);
     assert.deepEqual({ ...readAvailability(home), setAt: 0 }, { mode: 'away', until, note: 'back soon', setAt: 0 });

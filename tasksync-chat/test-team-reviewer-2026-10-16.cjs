@@ -101,6 +101,11 @@ const results = [];
     assert(!/workers-header|workers-show-expired|workers-archive-btn|workers-refresh-btn|Show completed/.test(teamPanelHtml), 'the Team panel has no Show completed, Archive or Refresh controls');
     assert(!/workers-show-expired|workers-archive-btn|workers-refresh-btn|archiveWorkers|workersShowExpired|showExpired/.test(webviewSrc), 'webview.js has no code for the removed Team controls');
     assert(!/archiveWorkers|_archiveWorkers|setWorkerArchiveSource/.test(providerSrc), 'the provider has no archive handler');
+    // The compact opt-in path (2026-10-21) may carry a header with exactly ONE toggle, "Show all members"; the production panel markup has none.
+    const headerFn = webviewSrc.slice(webviewSrc.indexOf('function teamHeaderHtml('), webviewSrc.indexOf('function teamShareBarHtml('));
+    assert.equal((headerFn.match(/role="switch"/g) || []).length, 1, 'the compact header has exactly one toggle');
+    assert(/Show all members/.test(headerFn) && !/Show completed|archive|reload|refresh/i.test(headerFn), 'the one toggle is Show all members; Show completed, archive and reload stay forbidden');
+    assert(!/data-team-header|data-team-show-all/.test(teamPanelHtml), 'the production panel markup stays without the compact header');
     // A worker badge in the Trace tab now focuses the owning member instead of filling a filter.
     api.applyWorkersState({ generatedAt: now, members: [PRIYA, ANIKA], workers: [task('worker-b1', 'build', 'RUNNING')], turnWorkerIds: ['worker-b1'] });
     const badge = doc.createElement('span'); badge.setAttribute('data-worker-ref', 'worker-b1'); doc.body.appendChild(badge);

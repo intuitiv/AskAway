@@ -385,7 +385,18 @@ export type AvailabilityState = { mode: 'here' | 'away' | 'awayValidator' | 'off
 export function availabilityFile(home: string = os.homedir()): string {
     return path.join(home, '.askaway', 'availability', 'global.json');
 }
+// The per-workspace files of earlier versions seed the global state once, newest first, so Away carries over.
+function legacyAvailability(home: string): AvailabilityState | null {
+    try {
+        const dir = path.dirname(availabilityFile(home));
+        const newest = fs.readdirSync(dir).filter(name => name.endsWith('.json') && name !== 'global.json')
+            .map(name => ({ file: path.join(dir, name), at: fs.statSync(path.join(dir, name)).mtimeMs }))
+            .sort((a, b) => b.at - a.at)[0];
+        return newest ? writeAvailability(JSON.parse(fs.readFileSync(newest.file, 'utf8')), home) : null;
+    } catch { return null; }
+}
 export function readAvailability(home: string = os.homedir()): AvailabilityState | null {
+    if (!fs.existsSync(availabilityFile(home))) return legacyAvailability(home);
     try {
         const state = JSON.parse(fs.readFileSync(availabilityFile(home), 'utf8'));
         if (state?.until && Date.parse(state.until) <= Date.now()) return writeAvailability({ mode: 'here' }, home);
@@ -470,7 +481,7 @@ type ToWebviewMessage =
 type FromWebviewMessage =
     | { type: 'openAgentFile'; memberId?: string; profile?: string; path?: string; agentFile?: string }
     | { type: 'pickMemberPicture'; memberId: string }
-    | { type: 'saveMemberProfile'; memberId: string; name?: string; role?: string; status?: string }
+    | { type: 'saveMemberProfile'; memberId: string; name?: string; role?: string }
     | { type: 'requestAITalk' }
     | { type: 'aitalkPost' | 'aitalkReply'; text: string; replyTo?: string; attachments?: Array<{ name: string; path: string }> }
     | { type: 'aitalkAttach' }
@@ -1988,7 +1999,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const requests = this._turnRequests.filter(request => !request.subagent);
         return {
             id: persona.id, name: persona.name, role: persona.role, profile: persona.nativeAgent || persona.profile, kind: 'main', active,
-            pinned: false, initials: initialsOf(persona.name), avatarSrc: '', avatarFile: persona.avatarFile ?? '', creativeStatus: active ? persona.workingStatus : persona.idleStatus,
+            pinned: false, initials: initialsOf(persona.name), avatarSrc: '', avatarFile: persona.avatarFile ?? '', creativeStatus: active ? persona.workingStatus : persona.idleStatus, statusWorking: persona.statusWorking.slice(), statusIdle: persona.statusIdle.slice(), defaultModel: persona.defaultModel ?? persona.model, defaultThinking: persona.defaultThinking ?? persona.thinking,
             agentFile, model: requests[requests.length - 1]?.model ?? '', thinking: '', adapter: 'copilot', taskIds: [],
             turnCost: this._deriveLastRequest().nanoAiu / 1e9 / AIU_PER_DOLLAR,
             monthCost: (this._observabilityCache.monthCredits?.aiu ?? 0) / 100,
@@ -2006,9 +2017,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /** Saves the Edit form to ~/.askaway/team/members.json (+ the picture to ~/.askaway/profile/avatars) and repaints Team. */
-    private _saveMemberProfile(message: { memberId: string; name?: string; role?: string; status?: string }): void {
+    private _saveMemberProfile(message: { memberId: string; name?: string; role?: string }): void {
         try {
-            saveMemberProfile(message.memberId, { name: message.name, role: message.role, status: message.status, picture: this._pickedPictures.get(message.memberId) });
+            saveMemberProfile(message.memberId, { name: message.name, role: message.role, picture: this._pickedPictures.get(message.memberId) });
             this._pickedPictures.delete(message.memberId);
             this._memberAvatarUris.delete(message.memberId);
         } catch (error) {

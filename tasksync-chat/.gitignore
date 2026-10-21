@@ -43,3 +43,5 @@ yarn-error.log*
 .pnpm-debug.log*
 *.vsix
 .webex-cache/
+
+.story-shots/

@@ -530,3 +530,386 @@ body.vscode-light #panel-team {
 .team-member-tasks-panel[hidden] {
 	display: none;
 }
+
+/* ── Compact member row (opt-in prototype: teamCompactRowHtml) ─────────
+   Three short lines: [avatar] Name · full Role + Turn $ over Month $ / model chip + thinking chip + tasks pill + Edit pencil / rotating status,
+   a thin spend-share bar under them. Role, model and Turn never ellipsize (they wrap); only the status line does.
+   Surfaces and text use VS Code theme variables; the per-member accent colours are the --team-accent-N variables below. */
+#panel-team,
+.team-storybook-shell,
+.team-proto-root {
+	--team-accent-0: hsl(330 78% 64%);
+	--team-accent-1: hsl(268 72% 70%);
+	--team-accent-2: hsl(212 88% 64%);
+	--team-accent-3: hsl(38 94% 56%);
+	--team-accent-4: hsl(146 62% 50%);
+	--team-accent-5: hsl(174 72% 46%);
+	--team-accent-6: hsl(14 86% 62%);
+	--team-accent-7: hsl(92 56% 50%);
+	--team-accent-8: hsl(192 82% 54%);
+	--team-accent-9: hsl(350 78% 62%);
+	--team-accent-10: hsl(292 62% 66%);
+	--team-accent-11: hsl(56 80% 52%);
+	--team-runtime-opencode: hsl(212 88% 64%);
+	--team-runtime-agy: hsl(272 70% 70%);
+	--team-runtime-claude: hsl(24 92% 58%);
+	--team-health-ok: hsl(146 62% 50%);
+	--team-health-bad: hsl(2 80% 62%);
+	--team-health-signin: hsl(40 94% 56%);
+	--team-health-off: hsl(220 8% 56%);
+}
+
+body.vscode-light #panel-team,
+.team-storybook-shell[data-theme="light"],
+.team-proto-root[data-theme="light"] {
+	--team-accent-0: hsl(330 72% 44%);
+	--team-accent-1: hsl(268 60% 48%);
+	--team-accent-2: hsl(212 82% 42%);
+	--team-accent-3: hsl(32 92% 40%);
+	--team-accent-4: hsl(146 66% 30%);
+	--team-accent-5: hsl(174 80% 28%);
+	--team-accent-6: hsl(14 80% 44%);
+	--team-accent-7: hsl(92 62% 30%);
+	--team-accent-8: hsl(192 86% 32%);
+	--team-accent-9: hsl(350 76% 44%);
+	--team-accent-10: hsl(292 56% 44%);
+	--team-accent-11: hsl(50 90% 32%);
+	--team-runtime-opencode: hsl(212 82% 42%);
+	--team-runtime-agy: hsl(272 56% 46%);
+	--team-runtime-claude: hsl(22 86% 40%);
+	--team-health-ok: hsl(146 66% 30%);
+	--team-health-bad: hsl(2 72% 44%);
+	--team-health-signin: hsl(36 92% 38%);
+	--team-health-off: hsl(220 8% 46%);
+}
+
+[data-accent="0"] { --member-accent: var(--team-accent-0); }
+[data-accent="1"] { --member-accent: var(--team-accent-1); }
+[data-accent="2"] { --member-accent: var(--team-accent-2); }
+[data-accent="3"] { --member-accent: var(--team-accent-3); }
+[data-accent="4"] { --member-accent: var(--team-accent-4); }
+[data-accent="5"] { --member-accent: var(--team-accent-5); }
+[data-accent="6"] { --member-accent: var(--team-accent-6); }
+[data-accent="7"] { --member-accent: var(--team-accent-7); }
+[data-accent="8"] { --member-accent: var(--team-accent-8); }
+[data-accent="9"] { --member-accent: var(--team-accent-9); }
+[data-accent="10"] { --member-accent: var(--team-accent-10); }
+[data-accent="11"] { --member-accent: var(--team-accent-11); }
+
+.team-member-row.team-compact-row {
+	min-width: 0;
+	padding: 8px 10px 6px 10px;
+	gap: 4px;
+	border-left: 4px solid var(--member-accent, var(--team-accent));
+}
+
+.team-member-row.team-compact-row.is-passive {
+	background: transparent;
+	border-left-style: dashed;
+	border-left-color: color-mix(in srgb, var(--member-accent, var(--team-accent)) 45%, var(--team-border));
+}
+
+.team-compact-row.is-passive .team-avatar-badge {
+	filter: grayscale(0.6);
+}
+
+.team-compact-line {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	line-height: 1.25;
+}
+
+.team-compact-top {
+	flex-wrap: nowrap;
+	align-items: flex-start;
+}
+
+.team-compact-portrait {
+	width: 28px;
+	height: 28px;
+	flex: 0 0 28px;
+}
+
+.team-portrait-28 {
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	border: 1px solid var(--team-border);
+	background: var(--team-surface-elevated);
+	font-size: 11px;
+	box-shadow: 0 0 0 2px var(--member-accent, var(--team-accent));
+}
+
+.team-portrait-28 .team-avatar-initials {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.team-compact-identity {
+	flex: 1 1 0;
+	min-width: 0;
+	font-size: 13px;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	padding-top: 1px;
+}
+
+.team-compact-line .team-compact-cost {
+	flex: 0 0 auto;
+	white-space: nowrap;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	font-size: 11px;
+	align-self: center;
+}
+
+.team-compact-line .team-compact-cost .team-cost-turn {
+	font-size: 15px;
+	font-weight: 700;
+	color: var(--vscode-foreground);
+	letter-spacing: 0.01em;
+}
+
+.team-compact-cost {
+	display: block;
+	text-align: right;
+}
+
+.team-compact-cost .team-cost-month-line {
+	display: block;
+	font-size: var(--team-font-small);
+	font-weight: 400;
+	color: var(--vscode-descriptionForeground);
+}
+
+.team-compact-cost .team-cost-month {
+	font-weight: 400;
+	color: inherit;
+}
+
+.team-compact-meta {
+	padding-left: 34px;
+}
+
+.team-compact-spacer {
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+.team-chip {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 0 auto;
+	white-space: nowrap;
+	padding: 1px 7px;
+	border-radius: 999px;
+	font-size: var(--team-font-small);
+	line-height: 1.4;
+	border: 1px solid var(--team-border);
+	background: var(--team-surface-elevated);
+	color: var(--vscode-foreground);
+}
+
+.team-chip-model {
+	font-weight: 600;
+	border-color: var(--chip-runtime, var(--team-border));
+	border-left-width: 3px;
+}
+
+.team-chip-model.team-runtime-opencode { --chip-runtime: var(--team-runtime-opencode); }
+.team-chip-model.team-runtime-agy { --chip-runtime: var(--team-runtime-agy); }
+.team-chip-model.team-runtime-claude { --chip-runtime: var(--team-runtime-claude); }
+
+.team-chip-thinking {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+	text-transform: lowercase;
+}
+.team-compact-line .team-tasks-pill {
+	flex: 0 0 auto;
+	padding: 1px 6px;
+	font-size: var(--team-font-small);
+}
+
+.team-compact-status {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	padding-left: 34px;
+	font-size: var(--team-font-small);
+}
+
+.team-compact-status .team-status-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.team-status-dot {
+	flex: 0 0 8px;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--member-accent, var(--team-idle));
+	opacity: 0.55;
+}
+
+.team-compact-status.team-status-working .team-status-dot {
+	opacity: 1;
+	animation: team-dot-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes team-dot-pulse {
+	0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--member-accent, var(--team-working)) 55%, transparent); }
+	50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--member-accent, var(--team-working)) 0%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.team-compact-status.team-status-working .team-status-dot {
+		animation: none;
+	}
+}
+
+.team-compact-row .team-compact-status.team-status-working {
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+
+.team-share {
+	height: 3px;
+	margin: 2px 0 0 34px;
+	border-radius: 2px;
+	background: var(--team-surface-elevated);
+	overflow: hidden;
+}
+
+.team-share-fill {
+	display: block;
+	height: 100%;
+	border-radius: 2px;
+	background: var(--member-accent, var(--team-accent));
+}
+
+.team-compact-row > .team-member-edit-form {
+	margin: 6px 0 2px 0;
+}
+
+.team-compact-row > .team-member-edit-form .team-member-controls {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+/* The one Edit button of a compact card (pencil). */
+.team-member-row .team-compact-edit {
+	flex: 0 0 22px;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	justify-content: center;
+	font-size: 13px;
+	background: transparent;
+	border-color: transparent;
+}
+
+.team-member-row .team-compact-edit:hover,
+.team-member-row .team-compact-edit[aria-expanded="true"] {
+	background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+}
+
+.team-member-row .team-compact-edit:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, var(--team-accent));
+	outline-offset: 1px;
+}
+
+.team-compact-row .team-member-tasks-panel {
+	margin-top: 6px;
+	padding-top: 6px;
+	min-width: 0;
+}
+
+.team-empty-turn {
+	padding: 8px 4px;
+	text-align: center;
+	font-size: var(--team-font-small);
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Header row with the one "Show all members" toggle (markup and styles shared with the Specs toggles). */
+.team-compact-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+
+.team-compact-header-title {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--vscode-foreground);
+}
+
+.team-show-all {
+	font-size: 11px;
+}
+
+/* One stacked share bar of the whole turn: a segment per member in the member's accent colour. */
+.team-share-bar {
+	display: flex;
+	width: 100%;
+	height: 8px;
+	margin: 2px 0 6px;
+	border-radius: 4px;
+	overflow: hidden;
+	background: var(--team-surface-elevated);
+}
+
+.team-share-seg {
+	display: block;
+	height: 100%;
+	flex: 0 0 auto;
+	background: var(--member-accent, var(--team-accent));
+}
+
+/* Runtime health strip: OpenCode, agy, Claude (title text only, no click action). */
+.team-health {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 4px 0 8px;
+}
+
+.team-health-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 1px 8px;
+	border-radius: 999px;
+	font-size: var(--team-font-small);
+	border: 1px solid var(--chip-health, var(--team-border));
+	background: var(--team-surface-elevated);
+	color: var(--vscode-foreground);
+}
+
+.team-health-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--chip-health, var(--team-idle));
+}
+
+.team-health-ok { --chip-health: var(--team-health-ok); }
+.team-health-bad { --chip-health: var(--team-health-bad); }
+.team-health-signin { --chip-health: var(--team-health-signin); }
+.team-health-off { --chip-health: var(--team-health-off); }
+
