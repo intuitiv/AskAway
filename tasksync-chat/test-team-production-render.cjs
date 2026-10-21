@@ -458,7 +458,7 @@ const sampleState = {
         'team-compact-row',
         'team-member-portrait',
         'team-avatar-img',
-        'team-portrait-28',
+        'team-portrait-56',
         'team-tasks-pill',
         'team-member-status',
         'team-control-field'
@@ -595,13 +595,14 @@ const sampleState = {
     api.applyWorkersState(state);
     const row = doc.querySelector('[data-member-row="anika"]');
     const top = row.querySelector('.team-compact-top');
-    assert.deepEqual(top.children.filter(c => c.tagName).map(c => c.className.split(' ')[0]), ['team-member-portrait', 'team-member-identity', 'team-member-cost'], 'compact card header: portrait, name and role, Turn over Month');
+    assert.deepEqual(top.children.filter(c => c.tagName).map(c => c.className.split(' ')[0]), ['team-member-identity', 'team-member-cost'], 'compact card header: name and role, Turn over Month');
+    assert.deepEqual(row.querySelector('.team-compact-body').children.filter(c => c.tagName).map(c => c.className.split(' ')[0]), ['team-member-portrait', 'team-compact-content'], 'the portrait is the left column, the lines the right column');
     assert(top.querySelector('.team-member-identity strong.team-member-name'));
     assert(row.querySelector('.team-compact-status.team-member-status'));
     assert(top.querySelector('.team-member-cost strong.team-cost-month'));
     assert(row.querySelector('.team-member-controls .team-member-profile code'));
     assert(row.querySelector('a.team-agent-file-link[data-agent-file]'));
-    assert(row.querySelector('.team-avatar-badge.team-portrait-28 img.team-avatar-img'));
+    assert(row.querySelector('.team-avatar-badge.team-portrait-56 img.team-avatar-img'));
     let priyaTray = doc.querySelector('[data-member-tasks="priya"]');
     assert.equal(priyaTray, null, 'Priya trace starts collapsed without a drawer');
     const pill = doc.querySelector('[data-member-tasks-toggle="priya"]');

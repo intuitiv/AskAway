@@ -9,6 +9,7 @@ const document = { addEventListener: (name, listener) => events.addEventListener
 let availability = createPresence();
 let state = { messages: [], members: [] }, reply, draft = '', emoji = false, attachments = [], caret = [0, 0];
 let painted;
+let avatars = (typeof window !== 'undefined' && window.askawayMemberAvatars) || {};
 const root = () => host;
 let composing = false, deferredState;
 const regionOf = key => { const element = host.querySelector?.(`[data-talk-region="${key}"]`); return element?.dataset?.talkRegion === key ? element : undefined; };
@@ -26,8 +27,10 @@ function renderAITalk(next = state) {
     const focused = oldComposer && document.activeElement === oldComposer;
     const selection = focused ? [oldComposer.selectionStart, oldComposer.selectionEnd, oldComposer.selectionDirection] : undefined;
     if (oldComposer && refresh) draft = oldComposer.value;
-    const viewMembers = state.userPhoto ? state.members.map(m => m.kind === 'user' && !m.avatarSrc && !m.photo ? { ...m, photo: state.userPhoto } : m) : state.members;
-    const view = { ...options, typing: state.typing, unread: state.unread, members: viewMembers, reply, draft, emoji, attachments, embedded: options.embedded !== false, presence: { ...availability.snapshot(), name: state.userName || state.members.find(member => member.kind === 'user')?.displayName || '', photo: state.userPhoto || '' } };
+    // Team portraits arrive from the Team tab (memberId -> avatarSrc); users keep their own photo.
+    const faceOf = m => avatars[m.memberId] || avatars[m.id] || '';
+    const viewMembers = state.members.map(m => m.avatarSrc || m.photo ? m : m.kind === 'user' ? (state.userPhoto ? { ...m, photo: state.userPhoto } : m) : faceOf(m) ? { ...m, avatarSrc: faceOf(m) } : m);
+    const view = { ...options, avatarFor: options.avatarFor || (id => avatars[id] || ''), typing: state.typing, unread: state.unread, members: viewMembers, reply, draft, emoji, attachments, embedded: options.embedded !== false, presence: { ...availability.snapshot(), name: state.userName || state.members.find(member => member.kind === 'user')?.displayName || '', photo: state.userPhoto || '' } };
     const parts = talkParts(state.messages, view);
     const changed = painted ? Object.keys(parts).filter(key => parts[key] !== painted[key]) : Object.keys(parts);
     // Patch only changed regions; an unchanged region (an open avatar menu, the composer) is never re-mounted.
@@ -45,11 +48,14 @@ function renderAITalk(next = state) {
 }
 function receive(data) {
     if (data.type === 'aitalkState') renderAITalk(data.data);
+    if (data.type === 'memberAvatars') { avatars = data.data || {}; if (painted) renderAITalk(); }
     if (data.type === 'availabilityState') { availability = createPresence({ ...availability.snapshot(), ...(data.data || { mode: 'here' }), until: data.data?.until || '' }); renderAITalk(); }
     if (data.type === 'openPresence') { if (!availability.snapshot().open) availability.toggle(); renderAITalk(); }
     if (data.type === 'aitalkAttachments') { attachments.push(...data.files); draft = root().querySelector('textarea').value; renderAITalk(); }
 }
 let selectedMentionMemberId;
+// webview.js publishes window.askawayMemberAvatars and fires this event whenever the Team data changes.
+events.addEventListener('askaway-member-avatars', () => receive({ type: 'memberAvatars', data: (typeof window !== 'undefined' && window.askawayMemberAvatars) || {} }));
 // Routing is the room's job: the widget only says what the user wrote and what it replies to.
 function sendMessage() {
     const text = root().querySelector('textarea').value;

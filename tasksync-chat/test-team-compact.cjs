@@ -226,7 +226,7 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 		}
 		const light = css.slice(css.indexOf('body.vscode-light #panel-team,\n.team-storybook-shell[data-theme="light"]'));
 		assert.ok(/--team-accent-0: hsl\(330 72% 44%\)/.test(light) && /--team-runtime-claude/.test(light), 'a darker palette for light themes');
-		for (const use of [/\.team-member-row\.team-compact-row \{[^}]*border-left: 4px solid var\(--member-accent/, /\.team-portrait-28 \{[^}]*box-shadow: 0 0 0 2px var\(--member-accent/, /\.team-share-fill \{[^}]*background: var\(--member-accent/, /\.team-status-dot \{[^}]*background: var\(--member-accent/]) {
+		for (const use of [/\.team-member-row\.team-compact-row \{[^}]*border-left: 4px solid var\(--member-accent/, /\.team-portrait-56 \{[^}]*box-shadow: 0 0 0 2px var\(--member-accent/, /\.team-share-fill \{[^}]*background: var\(--member-accent/, /\.team-status-dot \{[^}]*background: var\(--member-accent/]) {
 			assert.ok(use.test(compactCss), `accent used: ${use}`);
 		}
 		// Model chip by runtime, thinking as a second chip.
@@ -263,8 +263,17 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 		assert.equal((head.match(/class="team-compact-line/g) || []).length, 2, 'two content lines plus the status line = 3 lines');
 		const t = text(head);
 		for (const part of ['Anika', 'Architect', 'Claude Sonnet 5.5', 'high', 'Turn $0.12', '1 task']) assert.ok(t.includes(part), `collapsed card shows "${part}": ${t}`);
-		assert.ok(/team-portrait-28/.test(head) && /class="team-member-status team-compact-status/.test(head), 'avatar and status line');
+		assert.ok(/team-portrait-56/.test(head) && /class="team-member-status team-compact-status/.test(head), 'avatar and status line');
 		assert.ok(!/<select|<br|team-member-edit-form/.test(head), 'no controls in the collapsed card');
+		// Reviewer 2026-10-21: "images look very small": a 56px circular portrait in a left column spanning the three lines.
+		assert.ok(/team-compact-body">\s*<div class="team-member-portrait team-compact-portrait"/.test(head) && head.indexOf('team-compact-content') > head.indexOf('team-portrait-56') && /class="team-compact-line team-compact-top"/.test(head.slice(head.indexOf('team-compact-content'))) && /class="team-member-status team-compact-status/.test(head.slice(head.indexOf('team-compact-content'))), 'portrait left, the three lines in the right column');
+		assert.ok(!/team-portrait-28/.test(webviewSrc + css) && /teamPortraitHtml\(member, state, 56\)/.test(webviewSrc), 'no 28px portrait left');
+		assert.ok(/width: 56px;/.test(cssRule('.team-compact-portrait')) && /flex: 0 0 56px/.test(cssRule('.team-compact-portrait')), 'portrait column is 56px');
+		assert.ok(/width: 56px;[^}]*height: 56px;[^}]*border-radius: 50%;[^}]*box-shadow: 0 0 0 2px var\(--member-accent/.test(cssRule('.team-portrait-56')), 'circular with the member accent ring');
+		assert.ok(/font-size: 20px/.test(cssRule('.team-portrait-56 .team-avatar-initials')), 'initials fallback sized to match');
+		for (const sel of ['.team-compact-body', '.team-compact-content', '.team-compact-portrait', '.team-portrait-56']) assert.ok(!/overflow|white-space: nowrap|text-overflow/.test(cssRule(sel)), `${sel}: no overflow styles`);
+		assert.ok(/min-width: 0/.test(cssRule('.team-compact-content')) && /min-width: 0/.test(cssRule('.team-compact-body')), 'the right column can shrink inside 420px');
+		assert.ok(/team-compact-line team-compact-meta">/.test(head) && !/padding-left: 34px/.test(compactCss), 'the meta line no longer reserves the old 28px avatar indent');
 		assert.ok(text(collapsed(rowOf(compact, 'priya'))).includes('Trace ('), "Priya's button is Trace (n)");
 		const longRole = 'Senior Distributed Systems Reliability Engineer';
 		const longMember = kit.normalizeTeamMember({ id: 'lo', name: 'Longrole', role: longRole, model: 'agy/gemini-4-argon-high', thinking: 'high', turnCost: 0.0042 });

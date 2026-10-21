@@ -832,5 +832,6 @@ The Team list scrollbar was fixed in the source (the installed copy was old); AI
 > Yes as of now agy is 0$. So, show 0$ for agy models.
 > instead of images you showed, if they are more like person faces, woudl have been better.
 > go ahead an also give me promprts of all images in one shot. i'll give them
+> images look very small. And aitalk still has initials, it is not showing photos.
 
-Rows R-TEAM-50 to R-TEAM-68 (ADR 0027, 0028, 0029). The Team header row (Show completed, archive, reload) is gone, members show by Turn spend, a member's model and thinking are one choice shared by every workspace, and Settings offers a manual sign-in.
+Rows R-TEAM-50 to R-TEAM-70 (ADR 0027, 0028, 0029). The Team header row (Show completed, archive, reload) is gone, members show by Turn spend, a member's model and thinking are one choice shared by every workspace, and Settings offers a manual sign-in.

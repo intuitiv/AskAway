@@ -240,7 +240,7 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 		);
 		// (e) Team tab member row (28px compact portrait)
 		assert.ok(
-			html.includes(`<div class="team-member-portrait team-compact-portrait" data-member-id="diego"><span class="team-avatar-badge team-portrait-28 has-image" data-member-id="diego" data-initials="DI"><img class="team-avatar-img" src="${diegoUri}"`),
+			html.includes(`<div class="team-member-portrait team-compact-portrait" data-member-id="diego"><span class="team-avatar-badge team-portrait-56 has-image" data-member-id="diego" data-initials="DI"><img class="team-avatar-img" src="${diegoUri}"`),
 			'Diego avatar URI renders as 28px portrait in Team tab member row'
 		);
 

@@ -3518,7 +3518,8 @@
             '</div>';
     }
     // Compact member row (opt-in; Storybook prototype), at most three short lines inside 420px:
-    //   [avatar] Name · full Role (wraps)                        Turn $ (weighted)
+    //   [portrait 56px, left column spanning the three lines | right column:]
+    //   Name · full Role (wraps)                        Turn $ (weighted)
     //   [model chip] [thinking chip]                  [tasks pill] [✎ Edit]
     //   ● rotating status (the only text that ellipsizes)
     // plus a thin spend-share bar. The one pencil Edit button opens one inline panel with everything editable (name, role, picture,
@@ -3545,7 +3546,8 @@
             (member.pinned ? ' data-pinned="true"' : main ? ' data-main-agent="true"' : ' data-active-member-row="' + id + '"') +
             (passive ? ' data-passive="true"' : '') +
             (highlighted ? ' data-highlighted="true"' : '') + '>' +
-            '<div class="team-compact-line team-compact-top">' + teamPortraitHtml(member, state, 28) +
+            '<div class="team-compact-body">' + teamPortraitHtml(member, state, 56) + '<div class="team-compact-content">' +
+            '<div class="team-compact-line team-compact-top">' +
             '<span class="team-member-identity team-compact-identity"><strong class="team-member-name">' + workersEsc(member.name) + '</strong> &middot; <span class="team-member-role">' + workersEsc(member.role) + '</span></span>' +
             teamCostSpanHtml(member, costs, 'team-compact-cost') +
             '</div>' +
@@ -3557,6 +3559,7 @@
             teamEditButtonHtml(member, open) +
             '</div>' +
             '<div class="team-member-status team-compact-status team-status-' + (working ? 'working' : 'idle') + '" data-status-state="' + (working ? 'working' : 'idle') + '" data-status-phrases="' + workersEsc(JSON.stringify(phrases)) + '" title="' + workersEsc(statusText) + '"><span class="team-status-dot" aria-hidden="true"></span><span class="team-status-text">' + workersEsc(statusText) + '</span></div>' +
+            '</div></div>' +
             '<div class="team-share" role="img" data-share="' + Math.round(sharePct) + '" aria-label="' + workersEsc(member.name) + ' spent ' + Math.round(sharePct) + '% of this turn"><span class="team-share-fill" style="width:' + sharePct.toFixed(2) + '%"></span></div>' +
             (main ? '' : teamMemberTrayHtml(member, memberWorkers, state, expanded, openIds, traces, info)) +
             teamMemberEditFormHtml(member, expanded, teamCompactEditExtraHtml(member, memberWorkers, state)) +
@@ -4030,6 +4033,20 @@
         }
     }
 
+    // AITalk shows the same portraits as the Team tab: publish memberId -> avatarSrc (the host's enriched URI, or the user's own
+    // Edit picture) for the AITalk controller, which merges it into member views that have no photo (reviewer, 2026-10-21).
+    function publishMemberAvatars(state) {
+        var map = {};
+        var base = (state && state.avatarBase) ? String(state.avatarBase).replace(/\/$/, '') : 'avatars';
+        ((state && state.members) || []).forEach(function (m) {
+            var raw = String((m && (m.avatarSrc || m.avatar)) || '');
+            if (!raw || !m.id) return;
+            map[m.id] = /^(https?:|vscode-[a-z-]+:|data:|\/)/i.test(raw) ? raw : (base + '/' + raw);
+        });
+        if (typeof window !== 'undefined') window.askawayMemberAvatars = map;
+        if (typeof document !== 'undefined' && typeof Event === 'function' && typeof document.dispatchEvent === 'function') document.dispatchEvent(new Event('askaway-member-avatars'));
+    }
+
     function applyWorkersState(data) {
         var prevSettings = workersState && workersState.memberSettings;
         var prevValTrace = (data && data.validatorTrace) || (workersState && workersState.validatorTrace);
@@ -4039,6 +4056,7 @@
             validatorTrace: prevValTrace,
             members: prevMembers
         });
+        publishMemberAvatars(workersState);
         if (data && data.generatedAt) workersClockSkew = Date.now() - data.generatedAt;
         paintWorkers();
         requestValidatorTraces(false);

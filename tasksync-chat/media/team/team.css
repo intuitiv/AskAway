@@ -254,7 +254,7 @@ body.vscode-light #panel-team {
 	box-shadow: 0 0 0 1px var(--team-accent);
 }
 
-/* Portrait block (the compact card narrows it to 28px) */
+/* Portrait block (the compact card shrinks it to 56px) */
 .team-member-portrait {
 	width: 72px;
 	height: 72px;
@@ -584,24 +584,39 @@ body.vscode-light #panel-team,
 	align-items: flex-start;
 }
 
-.team-compact-portrait {
-	width: 28px;
-	height: 28px;
-	flex: 0 0 28px;
+.team-compact-body {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
 }
 
-.team-portrait-28 {
-	width: 28px;
-	height: 28px;
+.team-compact-content {
+	flex: 1 1 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.team-compact-portrait {
+	width: 56px;
+	height: 56px;
+	flex: 0 0 56px;
+}
+
+.team-portrait-56 {
+	width: 56px;
+	height: 56px;
 	border-radius: 50%;
 	border: 1px solid var(--team-border);
 	background: var(--team-surface-elevated);
-	font-size: 11px;
+	font-size: 20px;
 	box-shadow: 0 0 0 2px var(--member-accent, var(--team-accent));
 }
 
-.team-portrait-28 .team-avatar-initials {
-	font-size: 11px;
+.team-portrait-56 .team-avatar-initials {
+	font-size: 20px;
 	font-weight: 600;
 	color: var(--vscode-foreground);
 }
@@ -649,10 +664,6 @@ body.vscode-light #panel-team,
 	color: inherit;
 }
 
-.team-compact-meta {
-	padding-left: 34px;
-}
-
 .team-compact-spacer {
 	flex: 1 1 0;
 	min-width: 0;
@@ -698,7 +709,6 @@ body.vscode-light #panel-team,
 	align-items: center;
 	gap: 6px;
 	min-width: 0;
-	padding-left: 34px;
 	font-size: var(--team-font-small);
 }
 
@@ -742,7 +752,7 @@ body.vscode-light #panel-team,
 
 .team-share {
 	height: 3px;
-	margin: 2px 0 0 34px;
+	margin: 2px 0 0;
 	border-radius: 2px;
 	background: var(--team-surface-elevated);
 	overflow: hidden;
