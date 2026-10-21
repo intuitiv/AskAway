@@ -2046,6 +2046,15 @@ button#mic-btn .codicon {
     animation: codicon-spin 1s linear infinite;
 }
 
+.integration-signin {
+    padding: 2px 8px;
+    border: none;
+    border-radius: 3px;
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    cursor: pointer;
+}
+
 .webex-status-badge {
     display: inline-block;
     padding: 2px 8px;
@@ -2429,7 +2438,6 @@ body[class*="avail-"]::before, .availability-frame::before {
 /* ===== Workers tab (OpenCode control plane; no transcript or approval controls) ===== */
 /* The Team panel scrolls like the other tabs: shell fills the panel, header stays, list takes the rest and scrolls. */
 .workers-shell { display: flex; flex-direction: column; flex: 1; gap: 6px; min-height: 0; }
-.workers-header { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 8px; min-height: 28px; }
 .workers-list { display: flex; flex-direction: column; flex: 1; gap: 6px; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
 /* macOS draws overlay scrollbars that only show while scrolling, so the Team list looked unscrollable. A styled
    ::-webkit-scrollbar turns on a classic always-visible one, as in Settings. No scrollbar-width here: it would switch the styling off. */

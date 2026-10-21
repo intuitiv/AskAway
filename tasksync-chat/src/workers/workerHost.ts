@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { CommentaryStore } from '../commentary/commentary';
 import { cacheSafeWaitMs } from '../observability/cacheClock';
+import { memberSelectionForProfile } from '../team/roster';
 import { startKeepWarmTimer } from './keepWarm';
 import { OpenCodeWorkerRuntime, RuntimeOptions } from './openCodeRuntime';
 import { defaultRestartDeps, defaultServerDeps, DEFAULT_OPENCODE_SERVER_URL, ensureSharedOpenCodeServer, restartSharedOpenCodeServer, RestartDeps, ServerStatus } from './sharedServer';
@@ -75,6 +76,7 @@ export function sharedWorkerRuntime(): OpenCodeWorkerRuntime {
         onPresence: (workspace, worker, present) => presenceLifecycle?.(workspace, worker, present),
         agyCommand: agyCommand(),
         claudeCommand: claudeCommand(),
+        memberSelection: (profile) => memberSelectionForProfile(profile),
     });
     return runtime;
 }

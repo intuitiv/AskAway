@@ -11,10 +11,10 @@ import { loadRuntimeModels, namespacedModels, parseOpenCodeModels, recordRuntime
  */
 export type RuntimeName = 'opencode' | 'agy' | 'claude';
 export const RUNTIME_NAMES: RuntimeName[] = ['opencode', 'agy', 'claude'];
-/** The same three facts for every integration; the reason stays internal (logs and tool refusals). */
-export interface RuntimeState { enabled: boolean; ok: boolean; checkedAt: number }
+/** The same facts for every integration; signIn says the CLI needs a manual login (agy, Claude), the rest of the reason stays internal. */
+export interface RuntimeState { enabled: boolean; ok: boolean; checkedAt: number; signIn: boolean }
 export type RuntimeHealth = Record<RuntimeName, RuntimeState>;
-interface CheckedState extends RuntimeState { reason: string; models: string[] }
+interface CheckedState { enabled: boolean; ok: boolean; checkedAt: number; reason: string; models: string[] }
 
 export interface RuntimeHealthDeps {
     enabled: (runtime: RuntimeName) => boolean;
@@ -97,7 +97,11 @@ export function configureRuntimeHealth(overrides: Partial<RuntimeHealthDeps> = {
 
 /** The uniform `{enabled, ok, checkedAt}` per integration that the webview shows. */
 export function getRuntimeHealth(): RuntimeHealth {
-    const view = (name: RuntimeName): RuntimeState => ({ enabled: deps.enabled(name), ok: state[name].ok, checkedAt: state[name].checkedAt });
+    const view = (name: RuntimeName): RuntimeState => {
+        const current = state[name];
+        const enabled = deps.enabled(name);
+        return { enabled, ok: current.ok, checkedAt: current.checkedAt, signIn: enabled && !current.ok && (current.reason === AGY_LOGIN_REASON || current.reason === CLAUDE_LOGIN_REASON) };
+    };
     return { opencode: view('opencode'), agy: view('agy'), claude: view('claude') };
 }
 

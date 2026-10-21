@@ -3095,30 +3095,77 @@
     };
     // Models the enabled integrations offered at their last check (ids as agy/…, claude/…, provider/model); the static list is the fallback.
     var runtimeModelIds = [];
+    // Fallback while no integration has listed its models yet.
     var TEAM_MODELS = [
-        { id: 'github-copilot/claude-opus-5.5', label: 'github-copilot/claude-opus-5.5', efforts: ['high', 'medium', 'low'] },
-        { id: 'github-copilot/claude-sonnet-5.5', label: 'github-copilot/claude-sonnet-5.5', efforts: ['high', 'medium', 'low'] },
-        { id: 'github-copilot/gpt-6.1-sol', label: 'github-copilot/gpt-6.1-sol', efforts: ['high', 'medium', 'low'] },
-        { id: 'github-copilot/gpt-6-luna', label: 'github-copilot/gpt-6-luna', efforts: ['high', 'medium', 'low'] },
-        { id: 'agy/gemini-4-argon-medium', label: 'agy/gemini-4-argon-medium', efforts: ['high', 'medium', 'low'] },
-        { id: 'agy/gemini-4-argon-low', label: 'agy/gemini-4-argon-low', efforts: ['high', 'medium', 'low'] },
-        { id: 'agy/gemini-3.8-flash-high', label: 'agy/gemini-3.8-flash-high', efforts: ['high', 'medium', 'low'] },
-        { id: 'agy/gemini-3.8-flash-medium', label: 'agy/gemini-3.8-flash-medium', efforts: ['high', 'medium', 'low'] },
-        { id: 'agy/gemini-3.8-flash-low', label: 'agy/gemini-3.8-flash-low', efforts: ['high', 'medium', 'low'] },
-        { id: 'agy/gemini-3.1-pro-high', label: 'agy/gemini-3.1-pro-high', efforts: ['high', 'low'] },
-        { id: 'agy/gemini-3.1-pro-low', label: 'agy/gemini-3.1-pro-low', efforts: ['high', 'low'] },
-        { id: 'agy/gemini-4-argon-high', label: 'Gemini 4 Argon High (agy)', efforts: ['medium', 'high'] },
-        { id: 'claude/sonnet', label: 'claude/sonnet', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
-        { id: 'claude/opus', label: 'claude/opus', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
-        { id: 'claude/haiku', label: 'claude/haiku', efforts: ['low', 'medium', 'high'] },
-        { id: 'github-copilot/claude-opus-4.6', label: 'Claude Opus 4.6', efforts: ['low', 'medium', 'high'] },
-        { id: 'github-copilot/claude-sonnet-4.6', label: 'Claude Sonnet 4.6', efforts: ['low', 'medium', 'high'] },
-        { id: 'github-copilot/gpt-5.6-terra', label: 'GPT-5.6 Terra', efforts: ['low', 'medium', 'high', 'max'] },
-        { id: 'github-copilot/gpt-5.6-luna', label: 'GPT-5.6 Luna', efforts: ['low', 'medium', 'high'] }
+        'github-copilot/claude-sonnet-5.5', 'github-copilot/claude-opus-5.5', 'github-copilot/gpt-6.1-sol', 'github-copilot/gpt-6-luna',
+        'github-copilot/claude-sonnet-4.6', 'github-copilot/claude-opus-4.6', 'github-copilot/gpt-5.6-terra', 'github-copilot/gpt-5.6-luna',
+        'agy/gemini-4-argon-high', 'agy/gemini-4-argon-medium', 'agy/gemini-4-argon-low',
+        'agy/gemini-3.8-flash-high', 'agy/gemini-3.8-flash-medium', 'agy/gemini-3.8-flash-low',
+        'agy/gemini-3.1-pro-high', 'agy/gemini-3.1-pro-low',
+        'claude/sonnet', 'claude/opus', 'claude/haiku'
     ];
-    function effortsForModel(modelId) {
-        var found = TEAM_MODELS.find(function (m) { return m.id === modelId; });
-        return found ? found.efforts.slice() : ['low', 'medium', 'high'];
+    // A model name may carry its thinking (agy's gemini-4-argon-high): split it so the Model dropdown lists the model once
+    // and the Thinking dropdown lists its efforts, merged across every integration.
+    var EFFORT_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+    var EFFORT_SUFFIX = /-(minimal|low|medium|high|xhigh|max)$/;
+    var KNOWN_EFFORTS = {
+        'claude/haiku': ['low', 'medium', 'high'],
+        'github-copilot/gpt-5.6-terra': ['low', 'medium', 'high', 'max']
+    };
+    function modelSource(id) { return String(id).indexOf('agy/') === 0 ? 'agy' : String(id).indexOf('claude/') === 0 ? 'claude' : 'opencode'; }
+    function splitModelId(id) {
+        var hit = EFFORT_SUFFIX.exec(String(id));
+        return hit ? { base: String(id).slice(0, hit.index), effort: hit[1] } : { base: String(id), effort: '' };
+    }
+    function sortedEfforts(efforts) {
+        return efforts.slice().sort(function (a, b) {
+            var ia = EFFORT_ORDER.indexOf(a); var ib = EFFORT_ORDER.indexOf(b);
+            return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+        });
+    }
+    function defaultEfforts(base, source) {
+        return (KNOWN_EFFORTS[base] || (source === 'claude' ? ['low', 'medium', 'high', 'xhigh', 'max'] : ['low', 'medium', 'high'])).slice();
+    }
+    // One entry per model: its id without thinking, its source, the efforts it offers, and for models whose name carries
+    // its effort, the full id of each effort (variants).
+    function teamModelCatalog() {
+        var ids = runtimeModelIds.length ? runtimeModelIds : TEAM_MODELS;
+        var byBase = {};
+        var list = [];
+        ids.forEach(function (id) {
+            var part = splitModelId(id);
+            var entry = byBase[part.base];
+            if (!entry) {
+                entry = byBase[part.base] = { id: part.base, source: modelSource(part.base), efforts: [], variants: {} };
+                list.push(entry);
+            }
+            if (part.effort) {
+                entry.variants[part.effort] = id;
+                if (entry.efforts.indexOf(part.effort) === -1) entry.efforts.push(part.effort);
+            }
+        });
+        list.forEach(function (entry) {
+            if (!entry.efforts.length) entry.efforts = defaultEfforts(entry.id, entry.source);
+            entry.efforts = sortedEfforts(entry.efforts);
+        });
+        return list;
+    }
+    function teamModelEntry(modelId) {
+        var part = splitModelId(modelId);
+        var found = teamModelCatalog().find(function (entry) { return entry.id === part.base; });
+        if (found) return found;
+        var source = modelSource(part.base);
+        var efforts = defaultEfforts(part.base, source);
+        if (part.effort && efforts.indexOf(part.effort) === -1) efforts.push(part.effort);
+        return { id: part.base, source: source, efforts: sortedEfforts(efforts), variants: {} };
+    }
+    function effortsForModel(modelId) { return teamModelEntry(modelId).efforts.slice(); }
+    // The id saved for a model and effort: the full name when the model's name carries its effort, else the model id.
+    function composeModelId(modelId, effort) { return teamModelEntry(modelId).variants[effort] || splitModelId(modelId).base; }
+    function teamModelLabel(id) {
+        if (modelSource(id) === 'claude') return 'Claude ' + id.slice(7).charAt(0).toUpperCase() + id.slice(8) + ' (claude)';
+        var label = id.replace(/^github-copilot\//, '').replace(/^agy\//, '').replace(/^claude-opus-/, 'Claude Opus ').replace(/^claude-sonnet-/, 'Claude Sonnet ').replace(/^gpt-6.1-sol$/, 'Sol 6.1').replace(/^gpt-6-luna$/, 'GPT-6 Luna').replace(/^gemini-4-argon$/, 'Gemini 4 Argon').replace(/^gemini-/, 'Gemini ').replace(/-/g, ' ');
+        return modelSource(id) === 'agy' ? label + ' (agy)' : label;
     }
     function isValidatorWorker(w) {
         return !!(w && (w.kind === 'validator' || w.profile === 'validator' || w.track === 'validator'));
@@ -3289,27 +3336,27 @@
     }
     function effectiveMemberModel(member, memberWorkers, state) {
         var settings = state && state.memberSettings && state.memberSettings[member.id] || {};
-        return settings.model || (memberWorkers[0] || {}).model || 'github-copilot/gpt-6.1-sol';
+        return settings.model || (memberWorkers[0] || {}).model || member.model || 'github-copilot/gpt-6.1-sol';
     }
     function teamMemberRowHtml(member, memberWorkers, state, expanded, openIds, traces) {
         var settings = (state && state.memberSettings && state.memberSettings[member.id]) || {};
         var firstWorker = memberWorkers[0] || {};
-        var selectedModel = effectiveMemberModel(member, memberWorkers, state);
-        var efforts = effortsForModel(selectedModel);
-        var rawThinking = settings.thinking || member.thinking || member.defaultThinking || firstWorker.thinking || efforts[0];
+        var selectedFull = effectiveMemberModel(member, memberWorkers, state);
+        var selectedEntry = teamModelEntry(selectedFull);
+        var selectedModel = selectedEntry.id;
+        var efforts = selectedEntry.efforts;
+        var nameEffort = splitModelId(selectedFull).effort;
+        var rawThinking = nameEffort || settings.thinking || member.thinking || member.defaultThinking || firstWorker.thinking || efforts[0];
         var selectedThinking = efforts.indexOf(rawThinking) !== -1 ? rawThinking : (efforts[efforts.length - 1] || 'medium');
-        var modelList = runtimeModelIds.length ? runtimeModelIds.map(function (id) {
-            var known = TEAM_MODELS.find(function (m) { return m.id === id; });
-            return known || { id: id, label: id, efforts: ['low', 'medium', 'high'] };
-        }) : TEAM_MODELS.slice();
-        if (selectedModel && !modelList.some(function (m) { return m.id === selectedModel; })) {
-            modelList.unshift({ id: selectedModel, label: workerShortModel(selectedModel), efforts: efforts });
-        }
-        var modelOptions = modelList.map(function (m) {
-            var label = m.label.replace(/^github-copilot\//, '').replace(/^agy\//, '').replace(/^claude\//, '').replace(/^claude-opus-/, 'Claude Opus ').replace(/^claude-sonnet-/, 'Claude Sonnet ').replace(/^gpt-6.1-sol$/, 'Sol 6.1').replace(/^gpt-6-luna$/, 'GPT-6 Luna').replace(/^gemini-4-argon-/, 'Argon ').replace(/^gemini-/, 'Gemini ').replace(/-/g, ' ');
-            if (m.id.indexOf('agy/') === 0 && label.indexOf('(agy)') === -1) label += ' (agy)';
-            if (m.id.indexOf('claude/') === 0) label = 'Claude ' + m.id.slice(7).charAt(0).toUpperCase() + m.id.slice(8) + ' (claude)';
-            return '<option value="' + workersEsc(m.id) + '"' + (m.id === selectedModel ? ' selected' : '') + '>' + workersEsc(label) + '</option>';
+        var catalog = teamModelCatalog();
+        if (!catalog.some(function (m) { return m.id === selectedModel; })) catalog = [selectedEntry].concat(catalog);
+        var SOURCE_LABEL = { opencode: 'OpenCode', agy: 'agy', claude: 'Claude' };
+        var modelOptions = ['opencode', 'agy', 'claude'].map(function (source) {
+            var group = catalog.filter(function (m) { return m.source === source; });
+            if (!group.length) return '';
+            return '<optgroup label="' + SOURCE_LABEL[source] + '">' + group.map(function (m) {
+                return '<option value="' + workersEsc(m.id) + '"' + (m.id === selectedModel ? ' selected' : '') + '>' + workersEsc(teamModelLabel(m.id).replace(/ \((agy|claude)\)$/, '')) + '</option>';
+            }).join('') + '</optgroup>';
         }).join('');
         var thinkingOptions = efforts.map(function (ef) {
             return '<option value="' + workersEsc(ef) + '"' + (ef === selectedThinking ? ' selected' : '') + '>' + workersEsc(ef) + '</option>';
@@ -3400,6 +3447,11 @@
         });
         return { events: events, loading: loading };
     }
+    // A member row shows while it is part of this turn: it spent something (Turn above zero), owns a shown task or is working.
+    // Priya (the Validator) and the main agent are always shown.
+    function teamMemberShown(member, memberWorkers) {
+        return !!member.pinned || member.kind === 'main' || !!member.active || (memberWorkers || []).length > 0 || memberCostAmounts(member, memberWorkers).turn > 0;
+    }
     function groupWorkersByMember(state, shown, filter) {
         var explicitMembers = state && Array.isArray(state.members) && state.members.length > 0;
         var baseList = stateMembersList(state);
@@ -3426,8 +3478,8 @@
                 return [m.id, m.name, m.role, m.profile, m.creativeStatus].join(' ').toLowerCase().indexOf(needle) >= 0;
             });
         }
-        // Every member row is always visible, idle ones included: Priya first (with her Trace), then the main agent,
-        // then the rest in roster order. Only tasks are filtered (teamDisplayedTasks).
+        // Priya first (with her Trace), then the main agent, then the rest in roster order; idle members with no Turn spend are hidden.
+        groups = groups.filter(function (g) { return teamMemberShown(g.member, g.workers); });
         var rank = function (m) { return m.pinned ? 0 : m.kind === 'main' ? 1 : 2; };
         return groups.sort(function (a, b) { return rank(a.member) - rank(b.member); });
     }
@@ -3455,22 +3507,22 @@
             return names.length ? item.label + ' ' + (h.enabled ? integrationStatus(h).toLowerCase() : 'off') + ': ' + names.join(', ') : '';
         }).filter(Boolean).join(' · ');
     }
-    // The turn's displayed tasks: tasks of this turn that are running, queued or warm (Show completed adds the cold,
-    // retired and finished ones). Validator tasks always count: they are Priya's trace.
-    function teamDisplayedTasks(state, filter, showExpired) {
+    // The turn's displayed tasks: tasks of this turn that are running, queued or warm (cold, retired and finished ones
+    // are not shown). Validator tasks always count: they are Priya's trace.
+    function teamDisplayedTasks(state, filter) {
         var turnIds = Array.isArray(state.turnWorkerIds) ? state.turnWorkerIds : null;
         var now = state.generatedAt;
         return (state.workers || []).filter(function (w) {
             if (turnIds && turnIds.indexOf(w.workerId) === -1) return false;
             // Cloud tasks have no cache warmth: they stay until they expire.
             var live = isValidatorWorker(w) || teamTaskActive(w) || teamTaskQueuedRuns(w) > 0 || workerIsWarm(w, now) || (w.cloud && !w.expired);
-            return (showExpired || live) && workersMatch(w, filter);
+            return live && workersMatch(w, filter);
         }).sort(function (a, b) { return Number(isValidatorWorker(b)) - Number(isValidatorWorker(a)); });
     }
-    function renderWorkersHtml(state, filter, expanded, showExpired, openIds, traces) {
+    function renderWorkersHtml(state, filter, expanded, openIds, traces) {
         if (!state) return '<div class="workers-empty">Worker runtime not available.</div>';
         state = Object.assign({}, state, { workers: (state.workers || []).concat(state.cloudWorkers || []) });
-        var shown = teamDisplayedTasks(state, filter, showExpired);
+        var shown = teamDisplayedTasks(state, filter);
         var hasMembers = Array.isArray(state.members) && state.members.length > 0;
         var groups = hasMembers ? groupWorkersByMember(state, shown, filter) : [];
         var warning = teamRuntimeWarning(state, groups);
@@ -3621,7 +3673,8 @@
             var effort = effortSelect.value;
             if (efforts.indexOf(effort) === -1) effort = efforts[efforts.length - 1];
             if (model) { effortSelect.innerHTML = efforts.map(function (value) { return '<option value="' + value + '"' + (value === effort ? ' selected' : '') + '>' + value + '</option>'; }).join(''); effortSelect.value = effort; }
-            post({ type: 'setMemberModel', memberId: select.getAttribute('data-member-id'), profile: select.getAttribute('data-profile'), model: modelSelect.value, thinking: effort });
+            // A model whose name carries its effort (agy) is saved with the chosen effort in its name.
+            post({ type: 'setMemberModel', memberId: select.getAttribute('data-member-id'), profile: select.getAttribute('data-profile'), model: composeModelId(modelSelect.value, effort), thinking: effort });
         });
     }
     // ── end Workers pure render ──
@@ -3638,22 +3691,30 @@
                 '<div class="settings-section-title"><span class="codicon codicon-' + item.icon + '"></span> ' + item.label + '</div>' +
                 '<div class="integration-actions"><button type="button" class="integration-refresh" data-refresh-integration="' + item.id + '" title="Refresh ' + item.label + '" aria-label="Refresh ' + item.label + '"><span class="codicon codicon-refresh"></span></button>' +
                 '<div class="toggle-switch' + (on ? ' active' : '') + '" role="switch" tabindex="0" aria-label="Enable ' + item.label + '" aria-checked="' + on + '" data-runtime-toggle="' + item.id + '"></div></div></div>' +
-                '<div class="settings-status" data-runtime-health="' + item.id + '">' + workersEsc(runtimeHealthLabel(health)) + '</div></div>';
+                '<div class="settings-status" data-runtime-health="' + item.id + '">' + workersEsc(runtimeHealthLabel(health)) + '</div>' + runtimeSignInHtml(item, health) + '</div>';
         }).join('');
+    }
+    // agy and Claude need a manual login now and then: the button opens a terminal with the login command; Refresh rechecks.
+    function runtimeSignInHtml(item, health) {
+        return health && health.signIn ? '<div class="settings-status"><button type="button" class="integration-signin" data-signin-integration="' + item.id + '">Sign in to ' + workersEsc(item.label) + '</button> then press Refresh</div>' : '';
     }
     function runtimeHealthLabel(health) {
         if (!health) return 'Not checked yet';
         var when = health.checkedAt ? new Date(health.checkedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'not yet';
-        return (health.enabled ? (health.ok ? 'Working' : 'Not working') : 'Off') + ' · checked ' + when;
+        return (health.enabled ? (health.ok ? 'Working' : health.signIn ? 'Sign in required' : 'Not working') : 'Off') + ' · checked ' + when;
     }
     function initRuntimeSettings(section) {
         function activate(event) {
             if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
-            var target = event.target.closest ? event.target.closest('[data-runtime-toggle],[data-refresh-integration]') : event.target;
+            var target = event.target.closest ? event.target.closest('[data-runtime-toggle],[data-refresh-integration],[data-signin-integration]') : event.target;
             if (!target) return;
             var name = target.getAttribute('data-runtime-toggle');
             var refresh = target.getAttribute('data-refresh-integration');
-            if (name) {
+            var signIn = target.getAttribute('data-signin-integration');
+            if (signIn) {
+                event.preventDefault();
+                vscode.postMessage({ type: 'signInIntegration', runtime: signIn });
+            } else if (name) {
                 event.preventDefault();
                 vscode.postMessage({ type: 'setRuntimeEnabled', runtime: name, enabled: target.getAttribute('aria-checked') !== 'true' });
             } else if (refresh) {
@@ -3679,6 +3740,12 @@
             }
             if (refresh) refresh.classList.remove('is-busy');
             if (line && line.textContent !== runtimeHealthLabel(h)) line.textContent = runtimeHealthLabel(h);
+            var section = document.querySelector('[data-integration="' + item.id + '"]');
+            var signInRow = section && section.querySelector('[data-signin-integration]');
+            if (section && !!signInRow !== !!h.signIn) {
+                if (signInRow) signInRow.parentNode.remove();
+                else if (line) line.insertAdjacentHTML('afterend', runtimeSignInHtml(item, h));
+            }
         });
         paintWorkers();
     }
@@ -3720,7 +3787,6 @@
     var workersExpanded = {};
     var workersPointerDown = false;
     var workersTraces = {};
-    var workersShowExpired = false;
     var workersClockSkew = 0;
     var workersTicks = 0;
 
@@ -3738,13 +3804,13 @@
     }
     if (typeof window !== 'undefined') window.focusTeamMember = focusTeamMember;
 
-    function patchTeam(list, state, filter, expanded, showExpired, openIds, traces) {
+    function patchTeam(list, state, filter, expanded, openIds, traces) {
         if (!list) return;
-        var rendered = renderWorkersHtml(state, filter, expanded, showExpired, openIds, traces);
+        var rendered = renderWorkersHtml(state, filter, expanded, openIds, traces);
         if (list._teamRendered === rendered) return;
         list._teamRendered = rendered;
         if (!state || typeof list.querySelectorAll !== 'function' || typeof document === 'undefined' || typeof document.createElement !== 'function') {
-            list.innerHTML = renderWorkersHtml(state, filter, expanded, showExpired, openIds, traces);
+            list.innerHTML = renderWorkersHtml(state, filter, expanded, openIds, traces);
             return;
         }
         // The patch removes attributes the fresh root lacks, so the root keeps the class that makes the list scroll.
@@ -3776,12 +3842,7 @@
         var ticking = Object.assign({}, workersState, { generatedAt: Date.now() - workersClockSkew });
         // Re-rendering between pointerdown and click drops the click, so the row never toggles.
         if (workersPointerDown) return;
-        patchTeam(list, ticking, '', workersExpanded, workersShowExpired, traceOpenIds(list), workersTraces);
-        var toggle = document.getElementById('workers-show-expired');
-        if (toggle) {
-            toggle.setAttribute('aria-checked', workersShowExpired ? 'true' : 'false');
-            toggle.classList.toggle('active', workersShowExpired);
-        }
+        patchTeam(list, ticking, '', workersExpanded, traceOpenIds(list), workersTraces);
         var serverBtn = document.getElementById('workers-server-btn');
         if (serverBtn) {
             var up = !!(workersState.server && workersState.server.state === 'ATTACHED');
@@ -3834,20 +3895,8 @@
             workersExpanded['member:' + resolveTeamMemberId(ref, workersState)] = true;
             focusTeamMember(ref);
         });
-        var refresh = document.getElementById('workers-refresh-btn');
-        if (refresh) refresh.addEventListener('click', function () { vscode.postMessage({ type: 'requestWorkersState' }); });
-        var archive = document.getElementById('workers-archive-btn');
-        if (archive) archive.addEventListener('click', function () { vscode.postMessage({ type: 'archiveWorkers' }); });
         var serverBtn = document.getElementById('workers-server-btn');
         if (serverBtn) serverBtn.addEventListener('click', function () { vscode.postMessage({ type: 'restartOpenCodeServer' }); });
-        var showExpired = document.getElementById('workers-show-expired');
-        if (showExpired) {
-            var toggleExpired = function () { workersShowExpired = !workersShowExpired; paintWorkers(); };
-            showExpired.addEventListener('click', toggleExpired);
-            showExpired.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleExpired(); }
-            });
-        }
         var list = document.getElementById('workers-list');
         if (list) {
             list.addEventListener('pointerdown', function () { workersPointerDown = true; });
@@ -3924,34 +3973,6 @@
                 if (workersExpanded[id] && id.indexOf('cloud:') !== 0) vscode.postMessage({ type: 'requestWorkerTrace', workerId: id });
                 paintWorkers();
             }
-        });
-        if (list && list.addEventListener) list.addEventListener('change', function (e) {
-            return;
-            var modelSel = e.target.closest && e.target.closest('[data-member-model]');
-            var thinkSel = e.target.closest && e.target.closest('[data-member-thinking]');
-            if (!modelSel && !thinkSel) return;
-            var sel = modelSel || thinkSel;
-            var memberId = sel.getAttribute(modelSel ? 'data-member-model' : 'data-member-thinking');
-            var profile = sel.getAttribute('data-profile') || memberId;
-            var row = sel.closest && sel.closest('[data-member-row]');
-            var mSelect = row && row.querySelector ? row.querySelector('[data-member-model]') : null;
-            var tSelect = row && row.querySelector ? row.querySelector('[data-member-thinking]') : null;
-            var model = modelSel ? modelSel.value : (mSelect ? mSelect.value : '');
-            var efforts = effortsForModel(model);
-            var thinking = thinkSel ? thinkSel.value : (tSelect ? tSelect.value : efforts[0]);
-            if (efforts.indexOf(thinking) === -1) thinking = efforts[efforts.length - 1] || 'medium';
-            if (mSelect && modelSel && tSelect) {
-                tSelect.innerHTML = efforts.map(function (ef) {
-                    return '<option value="' + workersEsc(ef) + '"' + (ef === thinking ? ' selected' : '') + '>' + workersEsc(ef) + '</option>';
-                }).join('');
-                tSelect.value = thinking;
-            }
-            if (workersState) {
-                workersState.memberSettings = Object.assign({}, workersState.memberSettings || {});
-                workersState.memberSettings[memberId] = { model: model, thinking: thinking };
-            }
-            vscode.postMessage({ type: 'setMemberModel', memberId: memberId, profile: profile, model: model, thinking: thinking });
-            paintWorkers();
         });
         // Runs whenever the panel is visible, however it became visible (click, restore, badge link).
         setInterval(function () {

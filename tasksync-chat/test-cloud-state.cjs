@@ -157,7 +157,7 @@ const view = async () => (await controller.refresh(root, { specs: [{ slug: '006-
         ctx.spec = scan.specs[0];
         const specHtml = vm.runInContext('renderSpecWork(spec)', ctx);
         const shared = ctx.traceRowsHtml(scan.specs[0].tasks[0].cloud.events);
-        const workerHtml = ctx.renderWorkersHtml({ workers: [worker], generatedAt: now }, '', { [worker.workerId]: true }, false, {}, {});
+        const workerHtml = ctx.renderWorkersHtml({ workers: [worker], generatedAt: now }, '', { [worker.workerId]: true }, {}, {});
         assert.ok(specHtml.includes(shared)); assert.ok(workerHtml.includes(shared));
         for (const html of [specHtml, workerHtml]) {
             assert.ok(html.includes(run.state)); assert.ok(html.includes(run.model)); assert.ok(html.includes(run.report.url));
@@ -166,13 +166,13 @@ const view = async () => (await controller.refresh(root, { specs: [{ slug: '006-
             assert.doesNotMatch(html.replace(/<span class="team-member-cost"[^>]*>.*?<\/span> this month<\/span>/g, ''), /\$|health-cost|Credits|price/);
         }
         assert.ok(workerHtml.includes('Trace') || workerHtml.includes('Hide'));
-        assert.ok(!ctx.renderWorkersHtml({ workers: [worker], generatedAt: now }, '', {}, false, {}, {}).includes(shared));
+        assert.ok(!ctx.renderWorkersHtml({ workers: [worker], generatedAt: now }, '', {}, {}, {}).includes(shared));
         const eid = scan.specs[0].tasks[0].cloud.events[0].id;
         const opened = ctx.traceRowsHtml(scan.specs[0].tasks[0].cloud.events, { openIds: { [eid]: true } });
-        assert.ok(ctx.renderWorkersHtml({ workers: [worker], generatedAt: now }, '', { [worker.workerId]: true }, false, { [eid]: true }, {}).includes(opened));
+        assert.ok(ctx.renderWorkersHtml({ workers: [worker], generatedAt: now }, '', { [worker.workerId]: true }, { [eid]: true }, {}).includes(opened));
         assert.equal(worker.runs[0].elapsedMs, scan.specs[0].tasks[0].cloud.events[0].durMs);
     }
-    const both = ctx.renderWorkersHtml({ workers, generatedAt: now }, '', {}, false, {}, {});
+    const both = ctx.renderWorkersHtml({ workers, generatedAt: now }, '', {}, {}, {});
     assert.ok(both.indexOf('data-worker-id="' + workers[0].workerId) < both.indexOf('data-worker-id="' + workers[1].workerId));
     const provider = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
     assert.ok(provider.includes('await this._cloudSpecs.workers(root)'));

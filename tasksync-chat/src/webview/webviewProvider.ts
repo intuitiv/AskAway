@@ -18,7 +18,7 @@ import { defaultIO } from '../cloud/cloudQueue';
 import { PacketTask } from '../cloud/packet';
 import { projectWorkersState, sessionOpenCommand, TeamMemberState, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
 import { getRuntimeHealth, getRuntimeModelIds, handleRuntimeHealthMessage, onDidChangeRuntimeHealth, recheckRuntimeHealth, refreshIntegration, RUNTIME_NAMES, RuntimeHealth, RuntimeHealthMessage } from '../workers/runtimeHealth';
-import { applyMemberOverride, AVATARS_DIR, initialsOf, readMemberOverrides, saveMemberProfile } from '../team/roster';
+import { applyMemberOverride, AVATARS_DIR, initialsOf, memberSelections, readMemberOverrides, saveMemberProfile, saveMemberSelection } from '../team/roster';
 import { AITalkStore } from '../aitalk/store'; import { roomFor } from '../aitalk/actors';
 import { approveDraft } from '../services/webexDrafts';
 import { lastUserMessage, rewindPlan } from '../observability/turnReplay';
@@ -493,8 +493,9 @@ type FromWebviewMessage =
     | { type: 'requestWorkersState' }
     | { type: 'requestWorkerTrace'; workerId: string }
     | { type: 'cancelQueuedWorkerRun'; runId: string }
-    | { type: 'archiveWorkers' }
     | { type: 'removeWorker'; workerId: string }
+    | { type: 'setMemberModel'; memberId: string; model: string; thinking: string }
+    | { type: 'signInIntegration'; runtime: string }
     | { type: 'restartOpenCodeServer' }
     | RuntimeHealthMessage
     | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
@@ -1336,9 +1337,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         try { sharedCommentaryStore().markTurnStart(root, text); } catch (error) { console.warn('[AskAway] Could not record the turn start:', error); }
     }
 
-    private _workersStateSource: ((workspacePath: string) => WorkersState) | undefined;
+    /** The source gets the turn start, so each member's Turn spend counts the ledger since then (as turn_budget does). */
+    private _workersStateSource: ((workspacePath: string, turnStartedAt: number) => WorkersState) | undefined;
 
-    public setWorkersStateSource(source: (workspacePath: string) => WorkersState): void {
+    public setWorkersStateSource(source: (workspacePath: string, turnStartedAt: number) => WorkersState): void {
         this._workersStateSource = source;
     }
 
@@ -1375,8 +1377,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         };
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         // Team rows: worker members own worker tasks; the main agent row is the selected chat agent, never a worker profile.
-        const withMainAgent = (state: WorkersState): WorkersState => ({ ...state, members: [...(state.members ?? []).filter(member => member.kind !== 'main'), this._mainAgentMember(root ?? '')] });
-        const data = enrichMembers(root ? withMainAgent(this._workersStateSource ? this._workersStateSource(root) : projectWorkersState(sharedWorkerRuntime(), root, Date.now, this._lastSubmitTs)) : null);
+        const withMainAgent = (state: WorkersState): WorkersState => ({ ...state, members: [...(state.members ?? []).filter(member => member.kind !== 'main'), this._mainAgentMember(root ?? '')], memberSettings: memberSelections() });
+        const data = enrichMembers(root ? withMainAgent(this._workersStateSource ? this._workersStateSource(root, this._lastSubmitTs) : projectWorkersState(sharedWorkerRuntime(), root, Date.now, this._lastSubmitTs)) : null);
         if (root && !this._workersStateSource) {
             void observeWorkers(root).then(() => {
                 const observed = enrichMembers(withMainAgent(projectWorkersState(sharedWorkerRuntime(), root, Date.now, this._lastSubmitTs)))!;
@@ -1421,7 +1423,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private async _restartOpenCodeServer(): Promise<void> {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root || !this._serverRestartSource || !this._workersStateSource) { return; }
-        const state = this._workersStateSource(root);
+        const state = this._workersStateSource(root, this._lastSubmitTs);
         if (state.server.state === 'ATTACHED') {
             const running = state.workers.filter((w) => ['RUNNING', 'STARTING', 'WAITING_APPROVAL'].includes(w.state)).length;
             const choice = await vscode.window.showWarningMessage(
@@ -1435,20 +1437,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         } else {
             void vscode.window.showErrorMessage(`OpenCode server not started: ${status.reason}. Details: /tmp/aa/opencode-serve.err`);
         }
-        this._refreshWorkersState();
-    }
-
-    private _workerArchiveSource: ((workspacePath: string) => { archived: string[]; kept: Array<{ workerId: string; reason: string }> }) | undefined;
-
-    public setWorkerArchiveSource(source: (workspacePath: string) => { archived: string[]; kept: Array<{ workerId: string; reason: string }> }): void {
-        this._workerArchiveSource = source;
-    }
-
-    private _archiveWorkers(): void {
-        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!root || !this._workerArchiveSource) { return; }
-        const result = this._workerArchiveSource(root);
-        void vscode.window.showInformationMessage(`Archived ${result.archived.length} worker(s); kept ${result.kept.length} still running, queued, or reusable.`);
         this._refreshWorkersState();
     }
 
@@ -1524,7 +1512,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _openWorkerSession(sessionId: string, external: boolean): void {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root || !this._workersStateSource) { return; }
-        const command = sessionOpenCommand(this._workersStateSource(root), sessionId);
+        const command = sessionOpenCommand(this._workersStateSource(root, this._lastSubmitTs), sessionId);
         if (!command) { return; }
         if (external) { openInTerminalApp(command, root); return; }
         const terminal = vscode.window.createTerminal({ name: `OpenCode ${sessionId}`, cwd: root });
@@ -2026,6 +2014,25 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             void vscode.window.showWarningMessage(`Team profile not saved: ${(error as Error).message}`);
         }
         this._refreshWorkersState();
+    }
+
+    /** A Team dropdown choice: saved once for every workspace, then used by the member's worker tasks and shown everywhere. */
+    private _setMemberModel(message: { memberId: string; model: string; thinking: string }): void {
+        try {
+            saveMemberSelection(String(message.memberId), { model: String(message.model), thinking: String(message.thinking) });
+        } catch (error) {
+            void vscode.window.showWarningMessage(`Team model not saved: ${(error as Error).message}`);
+        }
+        this._refreshWorkersState();
+    }
+
+    /** The CLI login an integration needs by hand; the user finishes it in the terminal, then presses Refresh. */
+    private _signInIntegration(runtime: string): void {
+        const command = ({ agy: 'agy', claude: 'claude auth login' } as Record<string, string>)[runtime];
+        if (!command) { return; }
+        const terminal = vscode.window.createTerminal({ name: `Sign in: ${runtime}` });
+        terminal.show();
+        terminal.sendText(command);
     }
 
     public async getTurnMetricsSnapshot(): Promise<import('../services/handoffNotifier').TurnMetricsSnapshot> {
@@ -4341,8 +4348,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'removeWorker':
                 this._removeWorker(message.workerId);
                 break;
-            case 'archiveWorkers':
-                this._archiveWorkers();
+            case 'setMemberModel':
+                this._setMemberModel(message);
+                break;
+            case 'signInIntegration':
+                this._signInIntegration(message.runtime);
                 break;
             case 'restartOpenCodeServer':
                 void this._restartOpenCodeServer();
@@ -5549,18 +5559,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         <!-- Team Panel (OpenCode worker control plane) -->
         <div class="tab-panel" id="panel-team">
             <div class="workers-shell">
-                <div class="workers-header">
-                    <div class="specs-toggle" title="Include workers whose cache went cold or that retired">
-                        <span>Show completed</span>
-                        <div class="toggle-switch specs-toggle-switch" id="workers-show-expired" role="switch" aria-checked="false" tabindex="0"></div>
-                    </div>
-                    <button class="specs-refresh-btn" id="workers-archive-btn" title="Archive completed workers (not running, nothing queued, cache cold or retired). Their cost history is kept." aria-label="Archive completed workers">
-                        <svg class="team-header-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.5 2h13l.5.5v3l-.5.5H14v7.5l-.5.5h-11l-.5-.5V6h-.5L1 5.5v-3zM3 6v7h10V6zm-.5-1h11V3h-11zM6 8h4v1H6z"/></svg>
-                    </button>
-                    <button class="specs-refresh-btn" id="workers-refresh-btn" title="Refresh workers" aria-label="Refresh workers">
-                        <svg class="team-header-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 0 5.5 5.5H12A4 4 0 1 1 8 4c1.1 0 2.1.45 2.83 1.17L9 7h5V2l-1.6 1.6A5.48 5.48 0 0 0 8 2.5z"/></svg>
-                    </button>
-                </div>
                 <div class="workers-list" id="workers-list"></div>
             </div>
         </div><!-- End panel-team -->

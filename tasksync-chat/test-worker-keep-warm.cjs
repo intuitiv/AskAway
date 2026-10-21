@@ -18,7 +18,7 @@ const { OpenCodeWorkerRuntime } = require(path.join(buildDir, 'workers', 'openCo
 const { workersToPing, keepWarmTick, startKeepWarmTimer, KEEP_WARM_PROMPT } = require(path.join(buildDir, 'workers', 'keepWarm.js'));
 const { projectWorkersState } = require(path.join(buildDir, 'workers', 'workersState.js'));
 const browser = { acquireVsCodeApi: () => ({ getState: () => ({}), setState() {}, postMessage() {} }), document: { readyState: 'loading', addEventListener() {}, querySelectorAll: () => [], getElementById: () => null }, window: {}, console, setTimeout() {}, setInterval() {} };
-require('node:vm').runInNewContext(fs.readFileSync(__dirname + '/media/webview.js', 'utf8').replace(/\}\(\)\);\s*$/, 'globalThis.render = renderWorkersHtml; }());'), browser);
+require('node:vm').runInNewContext(fs.readFileSync(__dirname + '/media/webview.js', 'utf8').replace(/\}\(\)\);\s*$/, 'globalThis.render = renderWorkersHtml; globalThis.card = workerCardHtml; globalThis.summary = workersSummaryHtml; }());'), browser);
 
 const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'worker-keep-warm-fixture-'));
 const ledgerDir = path.join(fixtureDir, 'ledger');
@@ -124,11 +124,11 @@ assert.deepEqual(decide({ model: 'agy/gemini-4-argon-high' }), [], 'agy model: n
     assert.equal(ocProjected.cacheExpiresAt - clock, 300000);
     assert.deepEqual([agyProjected.adapter, agyProjected.cacheExpiresAt, agyProjected.lastPingAt, agyProjected.expired, agyProjected.banner.dollars],
         ['agy', 0, 0, false, null], 'agy worker has no cache TTL or ping state and keeps cost unreported');
-    // R-TEAM-41: a finished agy task (no cache warmth) shows under Show completed.
-    const card = browser.render(projected, '', { [agyWorkerId]: true }, true);
-    const ocCard = browser.render(projected, workerId, {}, false);
-    const agyCard = browser.render(projected, agyWorkerId, { [agyWorkerId]: true }, true);
-    assert.doesNotMatch(browser.render(projected, agyWorkerId, { [agyWorkerId]: true }, false), /class="worker-card"/, 'finished agy task is hidden by default');
+    // R-TEAM-41: a finished agy task (no cache warmth) is not listed in Team; its card (the shared one) is checked directly.
+    const card = browser.summary(projected, projected.workers);
+    const ocCard = browser.render(projected, workerId, {});
+    const agyCard = browser.card(agyProjected, true, projected.generatedAt, {}, {});
+    assert.doesNotMatch(browser.render(projected, agyWorkerId, { [agyWorkerId]: true }), /class="worker-card"/, 'finished agy task is hidden');
     assert.match(ocCard, /pinged 0m ago/);
     assert.match(ocCard, /warm for 5m0s/);
     assert.match(ocCard, /Age: 0:00 warm/);

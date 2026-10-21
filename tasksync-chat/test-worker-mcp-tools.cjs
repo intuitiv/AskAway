@@ -139,24 +139,8 @@ const call = viaWorkerTool(tools);
     assert.match(tooBig.reason, /context 300006/);
     const { projectWorkersState } = require(path.join(buildDir, 'workers', 'workersState.js'));
     const shown = projectWorkersState(aged, workspace, () => clock).workers.find((w) => w.workerId === cold.workerId);
-    assert.deepEqual([shown.state, shown.blocker, shown.expired], ['RETIRED', 'retired: cache expired', true], 'the tab shows why, under Show completed');
+    assert.deepEqual([shown.state, shown.blocker, shown.expired], ['RETIRED', 'retired: cache expired', true], 'the tab row says why it retired');
     console.log('EV-019 RetirementBoundary: PASS coldCache=RETIRED context300k=RETIRED reuseRefused=true freshStart=newWorker');
-
-    // T020 archive-only prune: only inactive, empty-queue, non-reusable workers go; active work is never touched.
-    const busy = await agedCall('worker_start', { ...packet, dispatchTurnId: 'turn-busy' });
-    const busyQueued = await agedCall('worker_submit', { workerId: busy.workerId, ...packet });
-    assert.equal(busyQueued.queuePosition, 1);
-    const pruned = aged.archive(workspace);
-    assert.deepEqual(pruned.archived.sort(), [big.workerId, cold.workerId].sort());
-    assert.deepEqual(pruned.kept, [{ workerId: busy.workerId, reason: 'running or queued work' }]);
-    assert.deepEqual([(await agedCall('worker_status', { runId: busy.runId })).state, (await agedCall('worker_status', { runId: busyQueued.runId })).state], ['STARTING', 'STARTING'], 'nothing cancelled');
-    assert.deepEqual(projectWorkersState(aged, workspace, () => clock).workers.map((w) => w.workerId), [busy.workerId], 'archived workers leave the tab');
-    assert.equal((await agedCall('worker_submit', { workerId: cold.workerId, ...packet })).status, 'INELIGIBLE', 'an archived worker cannot be reused');
-    const reloaded = new OpenCodeWorkerRuntime([profile], { ledgerDir, now: () => clock, spawner });
-    reloaded.rehydrate(workspace, true);
-    assert.ok(!reloaded.list(workspace).some((run) => [cold.workerId, big.workerId].includes(run.workerId)), 'a reload does not bring them back');
-    assert.ok(reloaded.usageByTurn(workspace)['turn-9'].cost >= 0.003, 'their measured cost stays in the ledger');
-    console.log(`EV-020 InactiveOnlyArchivePrune: PASS archived=${pruned.archived.length} keptActive=1 cancelled=0 reloadRestores=0 costKept=true`);
 
     for (const dir of [buildDir, ledgerDir, workspace]) { fs.rmSync(dir, { recursive: true, force: true }); }
     console.log('EV-012 WorkerMcpSurface: PASS tools=1 actions=8 askRespond=0 waitSchemaMax=240 perActionValidation=true boundedReplies=true');

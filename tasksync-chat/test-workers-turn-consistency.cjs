@@ -54,7 +54,7 @@ const bridge = {};
 // The method is TypeScript (typed helpers inside it): transpile the sliced class, never run TS as plain JS.
 const providerClass = ts.transpileModule('out.Provider = class { ' + push + ' };', { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 vm.runInNewContext(providerClass, {
-    out: bridge, vscode: { workspace: { workspaceFolders: [{ uri: { fsPath: workspace } }] } }
+    out: bridge, memberSelections: () => ({}), vscode: { workspace: { workspaceFolders: [{ uri: { fsPath: workspace } }] } }
 });
 const p = new bridge.Provider();
 p._workersStateSource = () => projectWorkersState(runtime, workspace, () => 400000, 100);
@@ -79,17 +79,11 @@ assert.equal(banner, ui.banner({ requests: 3, dollars: .03, mainContext: true, l
     lastCached: 2600, cacheInput: 3000, turnOut: 30, workers: { workers: 2, requests: 1, dollars: .02 },
     timer: 'Turn 0:00', averagePrompt: 0, cacheMisses: spend.cacheMisses }));
 assert.match(banner, />Score 3<\/span> &middot; 3 reqs/);
-// Reviewer 2026-10-16 (R-TEAM-41): cold tasks of the turn hide by default; Show completed reveals exactly the banner's workers.
+// Reviewer 2026-10-16 (R-TEAM-41), 2026-10-21: cold, retired and finished tasks of the turn are never listed (the Show completed toggle is gone).
 assert.ok(state.workers.filter((w) => spend.workerIds.includes(w.workerId)).every((w) => w.expired));
-assert.equal((ui.render(state, '', {}, false).match(/class="worker-card"/g) || []).length, 0);
-const cards = ui.render(state, '', {}, true);
-assert.equal((cards.match(/class="worker-card"/g) || []).length, spend.workers);
-assert.match(cards, /data-worker-id="cancelled"/);
-assert.match(cards, /data-worker-id="failed"/);
-assert.match(cards, /worker-state-cancelled">CANCELLED|worker-state-orphaned">ORPHANED/);
-assert.doesNotMatch(cards, /data-worker-id="old"|data-worker-id="queued"/);
-// R-TEAM-38: the Team summary counts the same tasks and the same turn spend as the banner.
-assert.match(cards, new RegExp(`<strong>${spend.workers}</strong> tasks this turn[\\s\\S]*?\\$${spend.dollars.toFixed(2)}</strong> this turn`));
+const cards = ui.render(state, '', {});
+assert.equal((cards.match(/class="worker-card"/g) || []).length, 0);
+assert.match(cards, /<strong>0<\/strong> tasks this turn/);
 assert.match(ui.chat({ lastRequest: { inputTokens: 2000, outputTokens: 0 }, workers: { ...spend, outputTokens: 0 } }, 200), />Score 1<\/span> &middot;/);
 assert.match(ui.chat({ lastRequest: { inputTokens: 4, outputTokens: 3 }, workers: { inputTokens: 4, outputTokens: 0 } }, 200), />Score –<\/span> &middot;/);
 console.log('PASS EV-WORKERS-TURN-CONSISTENCY');

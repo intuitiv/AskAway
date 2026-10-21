@@ -36,7 +36,8 @@ export interface WorkerProfile {
     steps: number;
     prompt: string;
     source: string;
-}
+    /** Set when the model and thinking come from the Team member's own choice, so an agy model is honored. */
+    selected?: boolean;}
 
 export interface WorkerSelection {
     model?: string;
@@ -155,8 +156,20 @@ export function workerProfileRefresh(profiles: WorkerProfile[]): () => WorkerPro
 export const INTERIM_DEFAULT_MODEL = 'github-copilot/gpt-6.1-sol';
 
 /** The model a packet without an explicit model runs on: the profile default, except that agy is only ever chosen explicitly. */
-export function defaultModel(profile: Pick<WorkerProfile, 'model'>): string {
-    return profile.model.startsWith('agy/') ? INTERIM_DEFAULT_MODEL : profile.model;
+export function defaultModel(profile: Pick<WorkerProfile, 'model'> & { selected?: boolean }): string {
+    return !profile.selected && profile.model.startsWith('agy/') ? INTERIM_DEFAULT_MODEL : profile.model;
+}
+
+/** A profile running the model and thinking its Team member picked (a Team choice is allowed even when the file's lists do not name it). */
+export function withSelection(profile: WorkerProfile, selection: { model?: string; thinking?: string } | undefined): WorkerProfile {
+    if (!selection) { return profile; }
+    const model = selection.model || profile.model;
+    const thinking = selection.thinking || profile.thinking;
+    return {
+        ...profile, model, thinking, selected: true,
+        models: profile.models.includes(model) ? profile.models : [...profile.models, model],
+        thinkingOptions: profile.thinkingOptions.includes(thinking) ? profile.thinkingOptions : [...profile.thinkingOptions, thinking],
+    };
 }
 
 /** Resolves the requested selection exactly. There is no fallback to another model or thinking level. */

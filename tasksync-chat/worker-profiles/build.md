@@ -2,9 +2,9 @@
 name: build
 description: "AskAway Build equivalent in OpenCode, high intelligence: one self-contained multi-step job (edit, build, test, fix) inside the declared scope, verified with exact evidence."
 tier: heavy
-model: github-copilot/claude-opus-5.5
+model: github-copilot/claude-sonnet-5.5
 thinking: high
-models: [github-copilot/claude-opus-5.5, github-copilot/claude-sonnet-5.5, github-copilot/gpt-6.1-sol, github-copilot/gpt-6-luna, agy/gemini-4-argon-high]
+models: [github-copilot/claude-sonnet-5.5, agy/gemini-4-argon-high]
 thinkingOptions: [low, medium, high]
 edit: allow
 bash: ask

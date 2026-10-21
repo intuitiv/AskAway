@@ -87,6 +87,8 @@ export interface WorkersState {
     turnWorkerIds?: string[];
     /** Eval results by mode × model, from `~/.askaway/evals/results.jsonl`. */
     scoreboard?: ScoreRow[];
+    /** The Team dropdown choices by member id, shared by every workspace (~/.askaway/team/members.json). */
+    memberSettings?: Record<string, { model: string; thinking: string }>;
 }
 
 const TERMINAL: RunState[] = ['COMPLETED', 'FAILED', 'CANCELLED'];

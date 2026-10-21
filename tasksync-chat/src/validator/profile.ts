@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { parseWorkerProfile, WorkerProfile, SHARED_VOICE } from '../workers/workerProfiles';
+import { parseWorkerProfile, WorkerProfile, SHARED_VOICE, withSelection } from '../workers/workerProfiles';
+import { MEMBERS_FILE, memberSelections } from '../team/roster';
 
 /**
  * The read-only validator worker profile (portable spec, R-5/A18): purpose, model, prompt, MCP tool policy, file scope,
@@ -33,11 +34,13 @@ Evidence contract: emit exactly ONE JSON object on ONE line with these exact key
 /** Priya's agent file: the user's copy of the profile above. Editing it changes the validator's prompt, model and thinking. */
 export const VALIDATOR_AGENT_FILE = path.join(os.homedir(), '.askaway', 'validator', 'validator.md');
 
-export function validatorProfile(file = VALIDATOR_AGENT_FILE): WorkerProfile {
+export function validatorProfile(file = VALIDATOR_AGENT_FILE, membersFile = MEMBERS_FILE): WorkerProfile {
+    // Priya's Team dropdowns choose her model and thinking, in every workspace.
+    const chosen = (profile: WorkerProfile) => withSelection(profile, memberSelections(membersFile).priya);
     try {
-        if (fs.existsSync(file)) { return parseWorkerProfile(fs.readFileSync(file, 'utf8'), file); }
+        if (fs.existsSync(file)) { return chosen(parseWorkerProfile(fs.readFileSync(file, 'utf8'), file)); }
     } catch { /* A broken edit never stops the validator: the built-in profile applies. */ }
-    return parseWorkerProfile(VALIDATOR_PROFILE_MARKDOWN, 'validator-profile');
+    return chosen(parseWorkerProfile(VALIDATOR_PROFILE_MARKDOWN, 'validator-profile'));
 }
 
 /** Writes the default agent file on first use so the Team card's Agent file link always opens something. */

@@ -92,17 +92,14 @@ const visibleText = (el) => el.textContent.replace(/&middot;/g, '·').replace(/\
 const rows = (doc) => doc.querySelectorAll('[data-member-row]').map(r => r.getAttribute('data-member-row'));
 const results = [];
 
-// 1. "Do we need filter now?" — no filter input or JS; Show completed + archive + refresh in one header row.
+// 1. "Do we need filter now?" — no filter input or JS; and (2026-10-21) no header row: Show completed, Archive and Refresh are gone.
 {
     assert(!/workers-filter/.test(teamPanelHtml), 'the provider Team panel has no filter input');
     assert(!/getElementById\('workers-filter'\)|workersFilterText/.test(webviewSrc), 'webview.js has no Team filter JS');
     const { api, doc, messages, click } = createHarness();
-    const header = doc.querySelector('.workers-header');
-    assert.deepEqual(header.children.filter(c => c.tagName).map(c => c.id || c.className), ['specs-toggle', 'workers-archive-btn', 'workers-refresh-btn']);
-    assert(header.querySelector('#workers-show-expired'), 'Show completed lives in the header row');
-    click(doc.getElementById('workers-refresh-btn'));
-    click(doc.getElementById('workers-archive-btn'));
-    assert.deepEqual(messages.map(m => m.type), ['requestWorkersState', 'archiveWorkers']);
+    assert(!/workers-header|workers-show-expired|workers-archive-btn|workers-refresh-btn|Show completed/.test(teamPanelHtml), 'the Team panel has no Show completed, Archive or Refresh controls');
+    assert(!/workers-show-expired|workers-archive-btn|workers-refresh-btn|archiveWorkers|workersShowExpired|showExpired/.test(webviewSrc), 'webview.js has no code for the removed Team controls');
+    assert(!/archiveWorkers|_archiveWorkers|setWorkerArchiveSource/.test(providerSrc), 'the provider has no archive handler');
     // A worker badge in the Trace tab now focuses the owning member instead of filling a filter.
     api.applyWorkersState({ generatedAt: now, members: [PRIYA, ANIKA], workers: [task('worker-b1', 'build', 'RUNNING')], turnWorkerIds: ['worker-b1'] });
     const badge = doc.createElement('span'); badge.setAttribute('data-worker-ref', 'worker-b1'); doc.body.appendChild(badge);
@@ -169,8 +166,9 @@ const results = [];
 }
 
 // 5. "i want all members to be vsible in team but the are not" (supersedes "hide members who are not actively working"):
-//    every member row is visible, idle ones included (model, thinking, agent file); Priya first, then the main agent, then
-//    roster order. Tasks keep the rule: cold, retired and finished ones hide unless Show completed; pill count = cards.
+//    (2026-10-21 supersedes: "instead of showing all members, can we show members whose Turn is non Zero? And Validator will be
+//    shown always."): Priya and the main agent always, then only members that spent this turn or own a shown task, in roster
+//    order. Cold, retired and finished tasks never show; pill count = cards.
 {
     const { api, doc, click } = createHarness();
     const TARA = worker('tara', 'Tara', 'Test Engineer', 'verify');
@@ -184,20 +182,18 @@ const results = [];
     ];
     const state = { generatedAt: now, members, workers, turnWorkerIds: ['worker-cold', 'worker-run', 'worker-retired', 'worker-queued'] };
     api.applyWorkersState(state);
-    const order = ['priya', 'bhaskar', 'anika', 'tara', 'sana', 'paolo'];
-    assert.deepEqual(rows(doc), order, 'every member is visible: Priya, the (idle) main agent, then roster order');
+    const order = ['priya', 'bhaskar', 'tara', 'sana'];
+    assert.deepEqual(rows(doc), order, 'Priya, the main agent, then only members with a shown task; Anika and Paolo (cold or retired tasks, no spend) are hidden');
     assert(/^Trace \(\d+\)/.test(doc.querySelector('[data-member-tasks-toggle="priya"]').textContent), 'Priya keeps her Trace button');
-    const pills = () => ['anika', 'tara', 'sana', 'paolo'].map(id => doc.querySelector(`[data-member-tasks-toggle="${id}"]`).textContent);
-    const cards = () => ['anika', 'tara', 'sana', 'paolo'].map(id => doc.querySelector(`[data-member-tray="${id}"]`).querySelectorAll('.worker-card').length);
-    assert.deepEqual(pills(), ['0 tasks \u25b8', '1 task \u25b8', '1 task \u25b8', '0 tasks \u25b8'], 'cold and retired tasks stay hidden; other-turn tasks never show');
-    assert.deepEqual(cards(), [0, 1, 1, 0], 'pill count equals the visible cards');
-    const idle = doc.querySelector('[data-member-row="paolo"]');
-    assert(idle.querySelector('select[data-member-model]') && idle.querySelector('select[data-member-thinking]') && idle.querySelector('[data-open-agent-file]'), 'an idle row shows its model, thinking and agent file');
-    assert.equal(idle.querySelector('[data-status-state]').getAttribute('data-status-state'), 'idle');
-    click(doc.getElementById('workers-show-expired'));
-    assert.deepEqual(rows(doc), order, 'Show completed changes tasks, not members');
-    assert.deepEqual(pills(), ['1 task \u25b8', '1 task \u25b8', '1 task \u25b8', '1 task \u25b8'], 'Show completed reveals cold and retired tasks of this turn');
-    assert.deepEqual(cards(), [1, 1, 1, 1]);
+    const pills = () => ['tara', 'sana'].map(id => doc.querySelector(`[data-member-tasks-toggle="${id}"]`).textContent);
+    const cards = () => ['tara', 'sana'].map(id => doc.querySelector(`[data-member-tray="${id}"]`).querySelectorAll('.worker-card').length);
+    assert.deepEqual(pills(), ['1 task \u25b8', '1 task \u25b8'], 'cold and retired tasks stay hidden; other-turn tasks never show');
+    assert.deepEqual(cards(), [1, 1], 'pill count equals the visible cards');
+    const shown = doc.querySelector('[data-member-row="tara"]');
+    assert(shown.querySelector('select[data-member-model]') && shown.querySelector('select[data-member-thinking]') && shown.querySelector('[data-open-agent-file]'), 'a shown row has its model, thinking and agent file');
+    api.applyWorkersState({ ...state, members: [PRIYA, { ...ANIKA, turnCost: 0.2 }, TARA, members[3], BHASKAR] });
+    assert.deepEqual(rows(doc), ['priya', 'bhaskar', 'anika', 'tara', 'sana'], 'a member with Turn spend above zero shows, idle');
+    assert.equal(doc.querySelector('[data-member-row="anika"] [data-status-state]').getAttribute('data-status-state'), 'idle');
     results.push('5 all members visible, tasks filtered: test-team-reviewer-2026-10-16.cjs EV-TEAM-ALL-MEMBERS');
 }
 
@@ -325,19 +321,13 @@ const results = [];
     assert(!/width:\s*var\(--team-widget-width\)/.test(teamCss) && /width:\s*var\(--team-widget-width, 420px\)/.test(teamCss), 'every widget width falls back to 420px');
     const teamProto = fs.readFileSync(path.join(ROOT, 'storybook', 'prototypes', 'team.js'), 'utf8');
     assert(/patchTeamHtml\(contentEl, `<div style="--team-widget-width:\$\{TEAM_WIDGET_WIDTH\}">/.test(teamProto), 'the width rides on the patched root, not a style the patch removes');
-    // c) Archive and refresh icons draw without the codicon font, in production and (sliced from it) in Storybook.
-    const { doc } = createHarness();
-    for (const id of ['workers-archive-btn', 'workers-refresh-btn']) {
-        const button = doc.getElementById(id);
-        assert(button.querySelector('svg path'), `${id} draws an inline icon`);
-        assert(button.getAttribute('aria-label'), `${id} has an accessible name`);
-    }
-    assert(/sliceBetween\(providerSource, '<div class="workers-header">'/.test(teamProto), 'Storybook reuses the production header row');
+    // c) The Team header row is gone in production and Storybook alike.
+    assert(!/workers-header/.test(teamProto), 'Storybook has no header row either');
     // d) One money formatter: $0.00 for zero, 4 decimals under a cent, never a bare $0.
     const money = createHarness();
-    money.api.applyWorkersState({ generatedAt: now, members: [{ ...PRIYA, turnCost: 0, monthCost: 0 }, BHASKAR, { ...ANIKA, monthCost: 0.004 }], workers: [], turnWorkerIds: [] });
+    money.api.applyWorkersState({ generatedAt: now, members: [{ ...PRIYA, turnCost: 0, monthCost: 0 }, BHASKAR, { ...ANIKA, turnCost: 0.003, monthCost: 0.004 }], workers: [], turnWorkerIds: [] });
     const costs = money.doc.querySelectorAll('[data-member-cost]').map(el => [el.getAttribute('data-member-cost'), el.getAttribute('data-turn-cost'), el.getAttribute('data-month-cost')]);
-    assert.deepEqual(costs, [['priya', '$0.00', '$0.00'], ['bhaskar', '$0.08', '$6.80'], ['anika', '$0.00', '$0.0040']]);
+    assert.deepEqual(costs, [['priya', '$0.00', '$0.00'], ['bhaskar', '$0.08', '$6.80'], ['anika', '$0.0030', '$0.0040']]);
     assert(/teamMoney\(dollars\)/.test(webviewSrc), 'the summary uses the same formatter');
     assert(!/'\$0'/.test(webviewSrc.slice(webviewSrc.indexOf('// ── Workers tab: pure render'), webviewSrc.indexOf('// ── end Workers pure render ──'))), 'no second "$0" format in the Team render');
     results.push('12 Storybook panes/width/icons/money: test-team-reviewer-2026-10-16.cjs EV-TEAM-STORYBOOK-REVIEW');

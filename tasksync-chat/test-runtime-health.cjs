@@ -257,7 +257,7 @@ function tool(host, workers = {}, runs = {}) {
     modelView.dispose();
     const webview = fs.readFileSync(path.join(__dirname, 'media', 'webview.js'), 'utf8');
     assert.match(webview, /runtimeModelIds = Array\.isArray\(message\.models\) \? message\.models : runtimeModelIds/);
-    assert.match(webview, /var modelList = runtimeModelIds\.length \? runtimeModelIds\.map/);
+    assert.match(webview, /var ids = runtimeModelIds\.length \? runtimeModelIds : TEAM_MODELS;/);
     console.log('EV-RUNTIME-HEALTH model discovery: PASS');
 
     // Integrations (reviewer 2026-10-16): Claude is checked through its CLI login; every integration shows the same
@@ -266,11 +266,11 @@ function tool(host, workers = {}, runs = {}) {
     const integrationsView = [];
     const integrations = health.bindRuntimeHealthView((message) => integrationsView.push(message));
     await health.handleRuntimeHealthMessage({ type: 'setRuntimeEnabled', runtime: 'claude', enabled: true });
-    assert.deepEqual(integrationsView.at(-1).health.claude, { enabled: true, ok: true, checkedAt: host.clock });
+    assert.deepEqual(integrationsView.at(-1).health.claude, { enabled: true, ok: true, checkedAt: host.clock, signIn: false });
     host.claude = '{"loggedIn":false,"authMethod":"none"}';
     host.clock += 1000;
     await health.handleRuntimeHealthMessage({ type: 'refreshIntegration', runtime: 'claude' });
-    assert.deepEqual(integrationsView.at(-1).health.claude, { enabled: true, ok: false, checkedAt: host.clock });
+    assert.deepEqual(integrationsView.at(-1).health.claude, { enabled: true, ok: false, checkedAt: host.clock, signIn: true }, 'a signed-out CLI asks for a manual sign-in');
     assert.equal(health.runtimeDetail('claude').reason, 'Claude is not signed in');
     host.claudeError = 'timed out after 20s';
     await health.refreshIntegration('claude');
@@ -298,7 +298,7 @@ function tool(host, workers = {}, runs = {}) {
     assert.equal(host.restarts, 2, 'a disabled OpenCode is checked, not restarted');
     const uniform = health.getRuntimeHealth();
     assert.deepEqual(Object.keys(uniform).sort(), ['agy', 'claude', 'opencode']);
-    for (const name of ['opencode', 'agy', 'claude']) { assert.deepEqual(Object.keys(uniform[name]).sort(), ['checkedAt', 'enabled', 'ok'], name); }
+    for (const name of ['opencode', 'agy', 'claude']) { assert.deepEqual(Object.keys(uniform[name]).sort(), ['checkedAt', 'enabled', 'ok', 'signIn'], name); }
     integrations.dispose();
     console.log('EV-RUNTIME-HEALTH integrations: claude check, refreshIntegration per runtime, uniform state: PASS');
     fs.rmSync(buildDir, { recursive: true, force: true });

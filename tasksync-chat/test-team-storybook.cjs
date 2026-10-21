@@ -596,11 +596,11 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 
 		// Play through ActiveTurn from step 0 to step 10
 		const turnCtrl = createTeamController({ scenario: 'active-turn', initialStep: 0 });
-		// At step 0 every member row is visible (R-TEAM-45): Priya first, the selected main agent Bhaskar, then roster order
+		// At step 0 Team shows Priya, the selected main agent Bhaskar, then the members with Turn spend, in roster order (R-TEAM-52)
 		const step0Html = turnCtrl.renderHtml();
 		const [, step0TeamHtml] = step0Html.split('id="panel-team"');
 		const step0RowIds = [...step0TeamHtml.matchAll(/class="team-member-row[^"]*" data-member-id="([^"]+)"/g)].map((m) => m[1]);
-		assert.deepStrictEqual(step0RowIds, ['priya', 'bhaskar', 'anika', 'diego', 'tara', 'pavel', 'paolo', 'sana', 'shreya', 'cathy'], 'At turn start, Team shows every member: Priya, the main agent, then roster order');
+		assert.deepStrictEqual(step0RowIds, ['priya', 'bhaskar', 'anika', 'tara', 'paolo', 'sana'], 'At turn start, Team shows Priya, the main agent, then only the members with Turn spend, in roster order');
 
 		// Advance through step 10
 		turnCtrl.stepTo(10);

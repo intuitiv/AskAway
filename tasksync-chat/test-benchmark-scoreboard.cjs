@@ -59,11 +59,11 @@ assert.match(lines[3], /score=– cost=\$unavailable /);
 assert.strictEqual(lines[4], `SCOREBOARD runs=4 comparable=3 version=${version.slice(0, 12)} results=${results}`);
 
 // T014: the Workers tab Benchmark section renders each row with the exact shared banner output plus completion.
-const html = ui.renderWorkersHtml({ workers: [], server: { state: 'ATTACHED', endpoint: 'x' }, benchmark: [single, mixed, older] }, '', {}, false, {}, {});
+const html = ui.renderWorkersHtml({ workers: [], server: { state: 'ATTACHED', endpoint: 'x' }, benchmark: [single, mixed, older] }, '', {}, {}, {});
 for (const r of [single, mixed, older]) { assert.ok(html.includes(ui.usageBannerHtml(ui.benchmarkBanner(r))), 'exact usageBannerHtml(b) output'); }
 assert.ok(html.includes('data-eid="benchmark"') && html.includes('23/23 accepted') && html.includes('22/23 accepted'));
 assert.ok(html.includes('benchmark-row benchmark-incomplete') && html.includes('>incomplete 22/23<') && html.includes('>not comparable<'));
-assert.strictEqual(ui.renderWorkersHtml({ workers: [], server: {} }, '', {}, false, {}, {}).includes('workers-benchmark'), false, 'no section without rows');
+assert.strictEqual(ui.renderWorkersHtml({ workers: [], server: {} }, '', {}, {}, {}).includes('workers-benchmark'), false, 'no section without rows');
 assert.strictEqual(childProcess.spawnSync(process.execPath, ['--check', path.join(__dirname, 'media', 'webview.js')]).status, 0, 'node --check media/webview.js');
 const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8');
 assert.ok(provider.includes('benchmark: this._benchmarkRows()') && !/[^\r]\n/.test(provider), 'provider sends rows and keeps CRLF');

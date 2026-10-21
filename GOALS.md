@@ -801,3 +801,18 @@ The Team list now shows a styled, always-visible scrollbar (R-TEAM-39).
 > Is turn budget being honoured, using Sonnet model?
 
 The Team list scrollbar was fixed in the source (the installed copy was old); AITalk gets a Clear chat button (R-AITALK-33), a bounded reply wait with a callback (R-AITALK-34), concrete actor kinds (R-AITALK-35) and Priya an agent file (R-TEAM-49). Claude became a worker runtime (R-WTOOL-43) and the integrations' models are discovered, stored and shown in Team (R-WTOOL-44).
+
+### 2026-10-21, Team model/thinking, Turn cost, member list, header controls, sign-in, build and Grafana
+
+> I see scrolbar now.
+> Turn cost for each team member still shows only 0$, except for Bhaskar(main agent).
+> Show completed toggle button is doing something. I asked to remove that, Delete and reload buttons and their related code, if not used anywhere.
+> And i am thinking, instead of showing all members, can we show members whose Turn is non Zero? And Validator will be shown always.
+> When i update model for one member from one workspace, it is not reflecting in another workspace. All members are same.
+> For all the 3 providers, agy, claude, opencode, we need to know models and their thinking. we should list all teh models from them and show for each members. We should spearate out model and thinking. in models, even thinking is appended and in thinking we ask again. strip them and show separately. And on selection, merge all models and sources, show models separately and their thinking effort separately.
+> When `agy models` says "Please sign in". or something, it needs auth or something manually.
+> Turn cost is shown as 0$. Fix that.
+> I added `grafana` mcp to my user. add that toool to Test Engineer, Performance analyst, and Developer.
+> build should be either sonnet or argon, not Opus.
+
+Rows R-TEAM-50 to R-TEAM-56 (ADR 0027). The Team header row (Show completed, archive, reload) is gone, members show by Turn spend, a member's model and thinking are one choice shared by every workspace, and Settings offers a manual sign-in.

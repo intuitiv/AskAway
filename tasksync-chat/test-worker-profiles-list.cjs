@@ -47,7 +47,7 @@ fs.writeFileSync(path.join(userDir, 'gemini.md'), profile('gemini', 'agy/gemini-
     setWorkerProfileCatalog({ builtinDir, userDir, enabled: (runtime) => enabled[runtime] });
     const listed = await call({ action: 'profiles' });
     const by = Object.fromEntries(listed.map((entry) => [entry.profile, entry]));
-    assert.deepEqual(by.build, { profile: 'build', member: 'Anika', role: by.build.role, model: 'github-copilot/claude-opus-5.5', thinking: 'high', runtime: 'opencode', source: 'builtin' });
+    assert.deepEqual(by.build, { profile: 'build', member: 'Anika', role: by.build.role, model: 'github-copilot/claude-sonnet-5.5', thinking: 'high', runtime: 'opencode', source: 'builtin' });
     assert.deepEqual([by['build-lite'].model, by['build-lite'].thinking, by['build-lite'].source], ['github-copilot/gpt-6.1-sol', 'medium', 'builtin']);
     assert.deepEqual([by.devx.member, by.devx.role, by.devx.source], ['Dev Expert', 'DevX Engineer', 'user']);
     assert.deepEqual([by.explore.member, by.explore.source], ['Sana', 'user']);
@@ -59,7 +59,11 @@ fs.writeFileSync(path.join(userDir, 'gemini.md'), profile('gemini', 'agy/gemini-
     const { parseWorkerProfile } = require(path.join(buildDir, 'workers', 'workerProfiles.js'));
     const read = (name) => parseWorkerProfile(fs.readFileSync(path.join(builtinDir, `${name}.md`), 'utf8'));
     const policy = ({ edit, bash, webfetch, mcp, skills, steps }) => ({ edit, bash, webfetch, mcp, skills, steps });
-    assert.deepEqual(policy(read('build-lite')), policy(read('build')));
+    // Reviewer 2026-10-21: the Developer (build-lite) also gets the Grafana MCP tools; nothing else differs.
+    const lite = policy(read('build-lite'));
+    assert.deepEqual(lite.mcp.filter((tool) => tool !== 'grafana_*'), read('build').mcp);
+    assert.ok(lite.mcp.includes('grafana_*'));
+    assert.deepEqual({ ...lite, mcp: [] }, { ...policy(read('build')), mcp: [] });
     console.log('EV-WORKER-PROFILES-LIST build-lite shares build tool policy: PASS');
 
     // A user file overrides the shipped one of the same name and keeps source builtin.

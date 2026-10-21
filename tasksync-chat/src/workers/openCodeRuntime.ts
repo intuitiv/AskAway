@@ -162,6 +162,8 @@ export interface RuntimeOptions {
     claudeCommand?: string;
     /** The AskAway MCP URL handed to Claude with --mcp-config; defaults to the URL the extension registers for MCP clients. */
     claudeMcpUrl?: () => string;
+    /** The Team member's chosen model and thinking for a worker profile (see RouterOptions.memberSelection). */
+    memberSelection?: (profile: string) => { model: string; thinking: string } | undefined;
 }
 
 interface RunRecord extends RunView {
@@ -377,7 +379,7 @@ export class OpenCodeWorkerRuntime {
         this.agyVerifyLoop = typeof verifyLoop === 'function' ? verifyLoop : () => verifyLoop ?? defaultAgyVerifyLoop();
         this.now = options.now ?? Date.now;
         this.onPresence = options.onPresence;
-        this.router = new WorkerRouter(profiles, { now: this.now });
+        this.router = new WorkerRouter(profiles, { now: this.now, memberSelection: options.memberSelection });
         this.ledgerDir = options.ledgerDir ?? path.join(os.homedir(), '.askaway', 'worker-ledger');
         this.spawner = options.spawner ?? defaultSpawner;
         this.attachUrl = options.attachUrl;
@@ -669,36 +671,6 @@ export class OpenCodeWorkerRuntime {
                 this.sessionsByWorker.set(workerId, adopted.sessionId);
                 result.reconnected.push(workerId);
             }
-        }
-        return result;
-    }
-
-    /**
-     * Archive-only prune. Takes only workers that are not running, have an empty queue, and can no longer be reused
-     * (retired, orphaned, or cache cold). Their ledger facts stay (cost history is never deleted); live views drop them.
-     */
-    archive(workspacePath: string): { archived: string[]; kept: Array<{ workerId: string; reason: string }> } {
-        const workspace = canonical(workspacePath);
-        const byWorker = new Map<string, RunRecord[]>();
-        for (const run of this.runs.values()) {
-            if (run.workspace !== workspace) { continue; }
-            byWorker.set(run.workerId, [...(byWorker.get(run.workerId) ?? []), run]);
-        }
-        const result = { archived: [] as string[], kept: [] as Array<{ workerId: string; reason: string }> };
-        for (const [workerId, runs] of byWorker) {
-            const routed = this.router.worker(workerId);
-            const busy = runs.some((run) => !this.terminal(run.state)) || !!routed?.active || (routed?.queue.length ?? 0) > 0;
-            const expires = routed ? this.router.cacheExpiresAt(routed) : 0;
-            const reusable = !!routed && routed.state !== 'RETIRED' && routed.state !== 'ORPHANED'
-                && (isAgyModel(routed.model) || (expires > 0 && this.now() < expires));
-            if (busy || reusable) { result.kept.push({ workerId, reason: busy ? 'running or queued work' : 'still reusable (cache warm)' }); continue; }
-            const latest = runs.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a));
-            this.record(latest, { type: 'archive' });
-            for (const run of runs) { this.runs.delete(run.runId); }
-            this.router.forget(workerId);
-            this.sessionsByWorker.delete(workerId);
-            this.adopted.delete(workerId);
-            result.archived.push(workerId);
         }
         return result;
     }

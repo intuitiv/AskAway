@@ -75,7 +75,7 @@ export function getWorkersKit() {
 	const workers = sliceBetween(webviewSource, '// ── Workers tab: pure render', '// ── end Workers pure render ──');
 	const patch = sliceBetween(webviewSource, '    function patchTeamNode(', "    var workersExpanded =");
 	cachedWorkersKit = new Function(
-		`${banner}\n${trace}\n${workers}\n${patch}\nreturn { wireTeamEvents, patchTeamHtml, teamMemberRowHtml, normalizeTeamMember, teamMoney, usageBannerHtml, chatBannerHtml, cacheAgeLabel, efficiencyScore, turnTotalsLead, traceRowsHtml, traceGroupsHtml, TRACE_HEAD, workerBannerHtml, workerTraceHtml, workersSummaryHtml, renderWorkersHtml, workersScoreboardHtml, workersBenchmarkHtml };`
+		`${banner}\n${trace}\n${workers}\n${patch}\nreturn { wireTeamEvents, patchTeamHtml, teamMemberRowHtml, teamMemberShown, normalizeTeamMember, teamMoney, usageBannerHtml, chatBannerHtml, cacheAgeLabel, efficiencyScore, turnTotalsLead, traceRowsHtml, traceGroupsHtml, TRACE_HEAD, workerBannerHtml, workerTraceHtml, workersSummaryHtml, renderWorkersHtml, workersScoreboardHtml, workersBenchmarkHtml };`
 	)();
 	return cachedWorkersKit;
 }
@@ -230,7 +230,7 @@ export const TEAM_ROSTER_FIXTURES = [
 		kind: 'worker',
 		profile: 'build',
 		profiles: ['build', 'plan', 'architect'],
-		model: 'github-copilot/claude-opus-5.5',
+		model: 'github-copilot/claude-sonnet-5.5',
 		thinking: 'high',
 		turnDollars: 0.024,
 		monthDollars: 3.10,
@@ -578,7 +578,9 @@ export function renderProductionTabBarHtml(activeTab = 'team') {
 // Same rule as production (webview.js groupWorkersByMember): every member row is visible, idle ones included —
 // Priya first, then the selected main agent, then the rest in roster order. Only tasks are filtered.
 export function getActiveTurnMembers(state) {
-	const members = (state.members || []).filter((m) => m.kind !== 'main' || !state.mainMemberId || m.id === state.mainMemberId);
+	// The production rule (teamMemberShown): Priya and the main agent always, others only with Turn spend or a task.
+	const members = (state.members || []).filter((m) => m.kind !== 'main' || !state.mainMemberId || m.id === state.mainMemberId)
+		.filter((m) => { const { kit, workers, normalized } = memberKitInputs(m, state); return kit.teamMemberShown(normalized, workers); });
 	const rank = (m) => (m.pinnedFirst || m.id === 'priya' || m.kind === 'validator' ? 0 : m.kind === 'main' ? 1 : 2);
 	return members.slice().sort((a, b) => rank(a) - rank(b));
 }
@@ -603,24 +605,26 @@ export function memberStatusInfo(member) {
 	};
 }
 
-export function renderMemberRowHtml(member, state) {
+// The shared row inputs of one member: the normalized member and its tasks, as the production list builds them.
+function memberKitInputs(member, state) {
 	const kit = getWorkersKit();
 	const workers = (member.tasks || []).map((task) => toSharedWorkerRecord(task, state.now || 1_700_000_000_000));
 	const normalized = kit.normalizeTeamMember({ ...member, pinned: member.pinnedFirst, active: memberStatusInfo(member).state === 'working', avatarSrc: avatarFor(member.id, state.avatarOverrides), turnCost: member.turnDollars, monthCost: member.monthDollars, creativeStatus: memberStatusInfo(member).text });
+	return { kit, workers, normalized };
+}
+
+export function renderMemberRowHtml(member, state) {
+	const { kit, workers, normalized } = memberKitInputs(member, state);
 	return kit.teamMemberRowHtml(normalized, workers, { generatedAt: state.now, memberSettings: { [member.id]: { model: member.model } }, validatorTrace: member.traceEvents || (member.id === 'priya' ? VALIDATOR_TRACE_FIXTURES : []) }, { ...state.expandedTraces, ['member:' + member.id]: Boolean(state.expandedTasksByMember && state.expandedTasksByMember[member.id]), highlightedMember: state.highlightedMemberId, ['edit:' + member.id]: state.editingMemberId === member.id }, state.openTraceIds, {});
 }
 
 export function renderTeamTabHtml(state) {
 	const activeMembers = getActiveTurnMembers(state);
 	const rowsHtml = activeMembers.map((m) => renderMemberRowHtml(m, state)).join('');
-	// Same header row and summary as production (#panel-team): no filter, no Save cost tips; counts come from the displayed tasks.
+	// Same summary as production (#panel-team): no header row, no filter, no Save cost tips; counts come from the displayed tasks.
 	const now = state.now || 1_700_000_000_000;
 	const tasks = activeMembers.flatMap((m) => (m.tasks || []).map((task) => toSharedWorkerRecord(task, now)));
-	// The production #panel-team header row itself (Show completed, archive, refresh), sliced from webviewProvider.ts.
-	const headerHtml = sliceBetween(providerSource, '<div class="workers-header">', '<div class="workers-list"').replace(/\r?\n\s*/g, '');
-
 	return `<div class="team-tab-panel" data-active-member-count="${activeMembers.length}">` +
-		headerHtml +
 		getWorkersKit().workersSummaryHtml({ generatedAt: now }, tasks) +
 		`<div class="team-member-list" role="list">${rowsHtml}</div>` +
 	`</div>`;

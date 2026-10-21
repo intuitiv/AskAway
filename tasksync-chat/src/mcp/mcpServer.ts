@@ -133,14 +133,13 @@ export class McpServerManager {
         const observe = (workspacePath: string) => {
             void observeWorkers(workspacePath).then(republish).catch(error => console.warn('[AskAway] Worker server observation failed:', error));
         };
-        provider.setWorkersStateSource((workspacePath) => {
+        provider.setWorkersStateSource((workspacePath, turnStartedAt) => {
             if (!republishing) { observe(workspacePath); }
-            return { ...projectWorkersState(this.getWorkerRuntime(), workspacePath), scoreboard: loadEvalScoreboard() };
+            return { ...projectWorkersState(this.getWorkerRuntime(), workspacePath, Date.now, turnStartedAt), scoreboard: loadEvalScoreboard() };
         });
         provider.setWorkerTraceSource((workspacePath, workerId) =>
             loadWorkerTrace(this.getWorkerRuntime(), workspacePath, workerId, fetchSessionMessages));
         provider.setWorkerCancelSource((workspacePath, runId) => cancelQueuedRun(this.getWorkerRuntime(), workspacePath, runId));
-        provider.setWorkerArchiveSource((workspacePath) => this.getWorkerRuntime().archive(workspacePath));
         provider.setWorkerRemoveSource((workspacePath, workerId) => this.getWorkerRuntime().remove(workspacePath, workerId));
         provider.setServerRestartSource((workspacePath) => restartSharedServer(workspacePath));
         onSharedServerAttached(republish);

@@ -138,7 +138,7 @@ export const TEAM_ROSTER: TeamRosterEntry[] = [
 		// Owns the `build` worker profile; Bhaskar is the AskAway Build chat agent and never owns worker tasks.
 		profile: 'build',
 		profiles: ['build', 'plan', 'architect'],
-		model: 'github-copilot/claude-opus-5.5',
+		model: 'github-copilot/claude-sonnet-5.5',
 		thinking: 'high',
 		turnDollars: 0.024,
 		monthDollars: 3.10,
@@ -262,7 +262,10 @@ export const USER_PROFILES_DIR = path.join(os.homedir(), '.askaway', 'worker-pro
 /** Team Edit form overrides, keyed by stable member id; outside the repo and the extension (reviewer, 2026-10-16). */
 export const MEMBERS_FILE = path.join(os.homedir(), '.askaway', 'team', 'members.json');
 export const AVATARS_DIR = path.join(os.homedir(), '.askaway', 'profile', 'avatars');
-export interface MemberOverride { name?: string; role?: string; status?: string; avatar?: string }
+/** `model` and `thinking` are the Team dropdowns' choice: kept in this home-level file, so every workspace shows and uses the same one. */
+export interface MemberOverride { name?: string; role?: string; status?: string; avatar?: string; model?: string; thinking?: string }
+const MODEL_ID = /^[\w./:-]+$/;
+const THINKING = /^[a-z]+$/;
 const PICTURE_EXT = /^\.(png|jpe?g|gif|webp|svg)$/;
 
 export function readMemberOverrides(file = MEMBERS_FILE): Record<string, MemberOverride> {
@@ -278,11 +281,44 @@ export function applyMemberOverride<T extends TeamRosterEntry>(entry: T, overrid
 	const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 	const status = text(override.status);
 	const avatar = text(override.avatar);
+	const model = text(override.model);
+	const thinking = text(override.thinking);
 	return {
 		...entry, name: text(override.name) || entry.name, role: text(override.role) || entry.role,
 		workingStatus: status || entry.workingStatus, idleStatus: status || entry.idleStatus,
 		avatarFile: avatar && fs.existsSync(avatar) ? avatar : entry.avatarFile,
+		model: MODEL_ID.test(model) ? model : entry.model, thinking: THINKING.test(thinking) ? thinking : entry.thinking,
 	};
+}
+
+/** Saves a member's model and thinking choice for every workspace. */
+export function saveMemberSelection(id: string, selection: { model: string; thinking: string }, file = MEMBERS_FILE): MemberOverride {
+	if (!/^[a-z0-9][a-z0-9.-]*$/.test(id)) throw new Error(`invalid member id: ${id}`);
+	if (!MODEL_ID.test(selection.model)) throw new Error(`invalid model: ${selection.model}`);
+	if (!THINKING.test(selection.thinking)) throw new Error(`invalid thinking: ${selection.thinking}`);
+	const overrides = readMemberOverrides(file);
+	const next: MemberOverride = { ...overrides[id], model: selection.model, thinking: selection.thinking };
+	overrides[id] = next;
+	fs.mkdirSync(path.dirname(file), { recursive: true });
+	fs.writeFileSync(file, JSON.stringify(overrides, null, 2) + '\n');
+	return next;
+}
+
+/** The dropdown choices by member id, for the Team state. */
+export function memberSelections(file = MEMBERS_FILE): Record<string, { model: string; thinking: string }> {
+	const result: Record<string, { model: string; thinking: string }> = {};
+	for (const [id, override] of Object.entries(readMemberOverrides(file))) {
+		if (MODEL_ID.test(String(override?.model)) && THINKING.test(String(override?.thinking))) result[id] = { model: String(override.model), thinking: String(override.thinking) };
+	}
+	return result;
+}
+
+/** The Team dropdown choice of the member that owns a worker profile, or undefined (the profile's own default applies). */
+export function memberSelectionForProfile(profile: string, dir = USER_PROFILES_DIR, file = MEMBERS_FILE): { model: string; thinking: string } | undefined {
+	const selections = memberSelections(file);
+	if (!Object.keys(selections).length) return undefined;
+	const owner = teamRoster(dir, file).find((entry) => entry.kind !== 'main' && (entry.profile === profile || entry.profiles.includes(profile)));
+	return owner ? selections[owner.id] : undefined;
 }
 
 /** Saves the Edit form: name, role and status line, and copies a picked picture to avatarsDir/<id>.<ext>. */

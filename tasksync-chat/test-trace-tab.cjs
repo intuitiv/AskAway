@@ -37,7 +37,7 @@ assert.equal(JSON.stringify(costRows), JSON.stringify([
 ]));
 for (const tracks of [false, true]) for (const identity of [{ kind: 'validator', profile: 'explore' }, { profile: 'validator' }, { profile: 'explore', track: 'validator' }]) {
     const workers = [{ workerId: 'new-build', profile: 'build', track: tracks ? 'a' : '' }, { workerId: 'old-proxy', track: tracks ? 'z' : '', ...identity }, { workerId: 'named-Validator', profile: 'verify', track: '' }].map(w => ({ ...w, state: 'RUNNING', runs: [] }));
-    const html = browser.ui.renderWorkersHtml({ workers, generatedAt: start }, '', {}, false);
+    const html = browser.ui.renderWorkersHtml({ workers, generatedAt: start }, '', {});
     assert.equal([...html.matchAll(/class="worker-card" data-worker-id="([^"]+)"/g)][0][1], 'old-proxy');
 }
 const tool = { kind: 'tool', id: 'record-1234567890:answer', ts: 20, tool: 'answer', outputPreview: 'Ready', inputTokens: 0, outputTokens: 1 };
@@ -51,7 +51,7 @@ assert.ok(!source.includes('id="obs-cost-categories"'), 'Trace does not create t
 const members = costRows.map((row, index) => ({ id: 'member-' + index, name: row.category, role: row.category, pinned: index === 1, taskIds: ['task-' + index], turnCost: row.dollars, monthCost: row.dollars }));
 // R-TEAM-38: a member's Turn is the turn spend of its displayed tasks.
 const activeTasks = members.map((member, index) => ({ workerId: 'task-' + index, profile: member.id, state: 'RUNNING', runs: [], turnCost: member.turnCost }));
-const teamHtml = browser.ui.renderWorkersHtml({ members, workers: activeTasks, turnWorkerIds: activeTasks.map(task => task.workerId), generatedAt: start }, '', {}, false);
+const teamHtml = browser.ui.renderWorkersHtml({ members, workers: activeTasks, turnWorkerIds: activeTasks.map(task => task.workerId), generatedAt: start }, '', {});
 for (const member of members) assert.ok(teamHtml.includes('data-member-cost="' + member.id + '" data-turn-cost="$' + member.turnCost.toFixed(2) + '" data-month-cost="$' + member.monthCost.toFixed(2) + '"'), 'Team associates costs with ' + member.name);
 assert.deepEqual([...month.innerHTML.matchAll(/<span class="obs-month-amount">([^<]+)<\/span>/g)].map(match => match[1]), ['$102.00', '$70.00', '$1.00']);
 assert.equal(month.innerHTML.replace(/<[^>]+>/g, ''), 'October · this workspace: $102.00 ($70.00 workers · $1.00 cloud est.)');

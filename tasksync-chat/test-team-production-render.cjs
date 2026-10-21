@@ -94,7 +94,7 @@ function createMiniDom() {
         get value() {
             if (this._value !== undefined) return this._value;
             if (this.tagName === 'SELECT') {
-                const opts = this.children.filter(c => c.tagName === 'OPTION');
+                const opts = this.children.flatMap(c => c.tagName === 'OPTGROUP' ? c.children : [c]).filter(c => c.tagName === 'OPTION');
                 const sel = opts.find(c => c.hasAttribute('selected')) || opts[0];
                 return sel ? sel.getAttribute('value') || '' : '';
             }
@@ -306,10 +306,7 @@ function createHarness() {
         '<button class="widget-tab" data-tab="observability">Metrics</button>',
         '</div>',
         '<div id="panel-team" class="tab-panel active">',
-        '<button id="workers-refresh-btn"></button>',
-        '<button id="workers-archive-btn"></button>',
         '<button id="workers-server-btn"><span class="codicon"></span></button>',
-        '<div id="workers-show-expired"></div>',
         '<div class="workers-list" id="workers-list"></div>',
         '</div>'
     ].join('');
@@ -444,7 +441,7 @@ const sampleState = {
 // 1. Pure render assertions: only state.members (Priya + Anika), no static roster, no category table, no Track lanes, no unreported.
 {
     const { api } = createHarness();
-    const html = api.renderWorkersHtml(sampleState, '', {}, false, {}, {});
+    const html = api.renderWorkersHtml(sampleState, '', {}, {}, {});
 
     assert(html.includes('data-member-row="priya"'), 'renders Priya row');
     assert(html.includes('data-member-row="anika"'), 'renders Anika row');
@@ -587,7 +584,7 @@ const sampleState = {
             thinking: 'medium', adapter: 'copilot', taskIds: [], turnCost: 0, monthCost: 0
         }],
         workers: []
-    }, '', {}, false, {}, {});
+    }, '', {}, {}, {});
     assert(hostContractHtml.includes('team-portrait-initials'), 'empty avatarSrc renders .team-portrait-initials');
     assert(hostContractHtml.includes('>PR<'), 'empty avatarSrc renders member initials');
 }
@@ -630,7 +627,7 @@ const sampleState = {
     assert.equal(doc.querySelector('[data-member-row="anika"] img'), image);
     assert.equal(doc.querySelector('[data-member-model="anika"]'), select);
     const member = api.normalizeTeamMember(sampleState.members[1]);
-    assert(api.renderWorkersHtml(sampleState, '', {}, false, {}, {}).includes(api.teamMemberRowHtml(member, [sampleState.workers[1]], sampleState, {}, {}, {})), 'production contains shared row output');
+    assert(api.renderWorkersHtml(sampleState, '', {}, {}, {}).includes(api.teamMemberRowHtml(member, [sampleState.workers[1]], sampleState, {}, {}, {})), 'production contains shared row output');
 }
 
 // EV-TEAM-RUNTIME-SETTINGS (R-SETTINGS-15): every integration row has the same switch, one Refresh and "checked";
@@ -731,20 +728,23 @@ const sampleState = {
     assert.equal(doc.querySelector('.worker-knowledge').textContent, state.workers[1].knowledge, 'task labels never rewrite authored text');
     state.memberSettings = { anika: { model: 'agy/gemini-4-argon-high' } };
     api.applyWorkersState(state);
-    assert.equal(doc.querySelector('[data-member-model="anika"]').value, 'agy/gemini-4-argon-high');
+    assert.equal(doc.querySelector('[data-member-model="anika"]').value, 'agy/gemini-4-argon', 'the model dropdown lists the model without its thinking');
+    assert.equal(doc.querySelector('[data-member-thinking="anika"]').value, 'high', 'the thinking dropdown carries the effort of the saved name');
     assert(doc.querySelector('[data-runtime-warning]').textContent.includes('agy off: Anika'));
     const idle = { ...state, workers: [], memberSettings: {} };
     const fresh = createHarness();
     fresh.api.applyWorkersState(idle);
-    assert.equal(fresh.doc.querySelector('[data-member-model="anika"]').value, 'github-copilot/gpt-6.1-sol', 'an idle member stays visible (R-TEAM-45) with the omitted-model default');
-    assert.equal(fresh.doc.querySelector('[data-member-model="priya"]').value, 'github-copilot/gpt-6.1-sol', 'omitted model uses Sol, not agy profile');
-    assert.equal(fresh.doc.querySelector('[data-runtime-warning]').textContent, '');
+    assert.equal(fresh.doc.querySelector('[data-member-model="anika"]').value, 'agy/gemini-4-argon', 'an idle member that spent nothing is hidden, so Priya stays; Anika shows her own model (EV-TEAM-ALL-MEMBERS)');
+    assert.equal(fresh.doc.querySelector('[data-member-model="priya"]').value, 'github-copilot/claude-sonnet-4.6', 'a member without a saved choice shows its own model, not a shared default');
+    assert(fresh.doc.querySelector('[data-runtime-warning]').textContent.includes('agy off: Anika'), 'the warning follows the model the row shows');
 }
 
 {
     const { api, doc, root, messages } = createHarness();
     api.applyWorkersState({ ...sampleState, turnWorkerIds: ['worker-build-1'], members: [...sampleState.members, { id: 'idle', name: 'Idle', role: 'Developer', taskIds: [] }] });
-    assert(doc.querySelector('[data-member-row="idle"]'), 'an idle member row is visible (R-TEAM-45)');
+    assert(!doc.querySelector('[data-member-row="idle"]'), 'an idle member with no Turn spend is hidden (R-TEAM-52)');
+    api.applyWorkersState({ ...sampleState, turnWorkerIds: ['worker-build-1'], members: [...sampleState.members, { id: 'idle', name: 'Idle', role: 'Developer', taskIds: [], turnCost: 0.5 }] });
+    assert(doc.querySelector('[data-member-row="idle"]'), 'a member with Turn spend shows');
     const select = doc.querySelector('[data-member-model="anika"]');
     assert(select.textContent.includes('Claude Opus 5.5') && select.textContent.includes('Sol 6.1'));
     assert(!select.textContent.includes('github-copilot/'));

@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { resolveSelection, workerRegistryKey, WorkerProfile, workerProfileRefresh } from './workerProfiles';
+import { resolveSelection, workerRegistryKey, WorkerProfile, workerProfileRefresh, withSelection } from './workerProfiles';
 
 export const MAX_QUEUE_WAIT_SECONDS = 120;
 export const MAX_CONTEXT_TOKENS = 300000;
@@ -88,6 +88,8 @@ export type RouteResult =
 export interface RouterOptions {
     now?: () => number;
     cacheTtlSeconds?: number;
+    /** The model and thinking the Team member that owns a profile picked, if any; they replace the profile's own defaults. */
+    memberSelection?: (profile: string) => { model: string; thinking: string } | undefined;
 }
 
 /** Routes packets to workspace-bound serial workers, reusing a warm worker only when every eligibility rule holds. */
@@ -99,6 +101,7 @@ export class WorkerRouter {
     private readonly refreshProfiles: () => WorkerProfile[] | undefined;
     private readonly now: () => number;
     private readonly cacheTtlMs: number;
+    private readonly memberSelection: NonNullable<RouterOptions['memberSelection']>;
     private sequence = 0;
     private readonly hostId = Math.random().toString(36).slice(2, 8);
     dispatches = 0;
@@ -108,11 +111,13 @@ export class WorkerRouter {
         this.refreshProfiles = workerProfileRefresh(profiles);
         this.now = options.now ?? Date.now;
         this.cacheTtlMs = (options.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS) * 1000;
+        this.memberSelection = options.memberSelection ?? (() => undefined);
     }
 
-    /** The installed profile by name (as last refreshed by route). */
+    /** The installed profile by name (as last refreshed by route), running the Team member's chosen model and thinking. */
     profile(name: string): WorkerProfile | undefined {
-        return this.profiles.get(name);
+        const profile = this.profiles.get(name);
+        return profile && withSelection(profile, this.memberSelection(name));
     }
 
     route(request: RouteRequest): RouteResult {
@@ -121,7 +126,7 @@ export class WorkerRouter {
             this.profiles.clear();
             for (const profile of refreshed) { this.profiles.set(profile.name, profile); }
         }
-        const profile = this.profiles.get(request.profile);
+        const profile = this.profile(request.profile);
         if (!profile) {
             return { status: 'SELECTION_UNAVAILABLE', reason: `unknown profile ${request.profile}` };
         }
@@ -336,11 +341,6 @@ export class WorkerRouter {
     /** Takes a worker out of rotation for good: it is no longer routed, listed or submitted to (submit answers REMOVED). */
     markRemoved(workerId: string): void {
         this.removedIds.add(workerId);
-        this.workersById.delete(workerId);
-    }
-
-    /** Drops an archived worker from routing; it can never be selected or submitted to again. */
-    forget(workerId: string): void {
         this.workersById.delete(workerId);
     }
 

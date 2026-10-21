@@ -264,14 +264,6 @@ async function endToEndFlow() {
     const cold = await reHost.call('worker_submit', { workerId: a.workerId, ...pkt('code', 'too late') });
     assert.deepEqual([cold.status, cold.reason], ['RETIRED', 'cache expired; start a fresh worker (action start)']);
 
-    // 11. Protected prune: running work is kept, finished non-reusable workers are archived, costs stay.
-    const running = await reHost.call('worker_start', pkt('verify', 'still going', { track: 'B' }));
-    const pruned = reloaded.archive(ws);
-    assert.ok(pruned.archived.includes(a.workerId));
-    assert.ok(pruned.kept.some((k) => k.workerId === running.workerId));
-    assert.equal((await reHost.call('worker_status', { runId: running.runId })).state, 'STARTING', 'prune never cancels');
-    assert.ok(reloaded.usageByTurn(ws)['turn-flow'].cost >= turnCost.cost, 'archived cost history is kept');
-
     fs.rmSync(toolsDir, { recursive: true, force: true });
-    console.log('EV-021 EndToEndAsyncWorkerFlow: PASS tool=worker actions=8 askRespond=0 selectionRefused=2 parallelTracks=2 sharedServer=true progress=nonBlocking queue+cancel=true sessionReuse=true cacheBoundary=true resume=sameSession ledgerText=0 trace=metricsEvents reload=reconnect retire=coldCache prune=protected');
+    console.log('EV-021 EndToEndAsyncWorkerFlow: PASS tool=worker actions=8 askRespond=0 selectionRefused=2 parallelTracks=2 sharedServer=true progress=nonBlocking queue+cancel=true sessionReuse=true cacheBoundary=true resume=sameSession ledgerText=0 trace=metricsEvents reload=reconnect retire=coldCache');
 }

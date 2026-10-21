@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { MAX_WAIT_SECONDS, OpenCodeWorkerRuntime, WorkerPacket } from './openCodeRuntime';
 import { projectWorkersState } from './workersState';
-import { catalogWorkerProfiles, defaultModel } from './workerProfiles';
-import { teamRoster } from '../team/roster';
+import { catalogWorkerProfiles, defaultModel, withSelection } from './workerProfiles';
+import { memberSelectionForProfile, teamRoster } from '../team/roster';
 import type { TurnBudget } from './turnBudget';
 type Caller = { recipient: string; workspace?: string };
 let delivery: ((result: string, caller?: Caller) => string) | undefined;
@@ -37,7 +37,8 @@ export function setWorkerProfileCatalog(catalog: WorkerProfileCatalog | undefine
 /** The enabled profiles (their default model's runtime is on), each with its Team member and role. */
 export function enabledWorkerProfiles(catalog: WorkerProfileCatalog): Array<{ profile: string; member: string; role: string; model: string; thinking: string; runtime: RuntimeName; source: 'builtin' | 'user' }> {
     const roster = teamRoster(catalog.userDir);
-    return catalogWorkerProfiles(catalog.builtinDir, catalog.userDir).map((profile) => {
+    return catalogWorkerProfiles(catalog.builtinDir, catalog.userDir).map((listed) => {
+        const profile = { ...withSelection(listed, memberSelectionForProfile(listed.name, catalog.userDir)), origin: listed.origin };
         const model = defaultModel(profile);
         const member = roster.find((entry) => entry.kind === 'worker' && entry.profiles.includes(profile.name));
         return { profile: profile.name, member: member?.name ?? '', role: member?.role ?? '', model, thinking: profile.thinking, runtime: runtimeOfModel(model), source: profile.origin };

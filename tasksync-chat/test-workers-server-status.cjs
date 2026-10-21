@@ -23,7 +23,7 @@ const vscode = { workspace: { workspaceFolders: [{ uri: { fsPath: root } }], get
 const host = load('workers/workerHost.ts', {
     vscode, './sharedServer': shared, './openCodeRuntime': { OpenCodeWorkerRuntime: class { constructor() { return runtime; } } },
     './workerProfiles': { loadWorkerProfiles: () => [], syncOpenCodeAgents: () => [], syncAgyPermissions: () => [] }, './keepWarm': { startKeepWarmTimer: () => () => {} },
-    '../commentary/commentary': {}, '../observability/cacheClock': {}
+    '../commentary/commentary': {}, '../observability/cacheClock': {}, '../team/roster': {}
 });
 const source = fs.readFileSync(path.join(__dirname, 'src/mcp/mcpServer.ts'), 'utf8');
 const imports = {};
@@ -39,7 +39,7 @@ const start = providerText.indexOf('    private _refreshWorkersState(): void {')
 const end = providerText.indexOf('\n    }', start) + 6;
 const output = {};
 // The sliced method is TypeScript: transpile it before running.
-vm.runInNewContext(ts.transpileModule('out.Provider = class {' + providerText.slice(start, end) + '};', { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, { out: output, vscode, ...host, ...projection, console });
+vm.runInNewContext(ts.transpileModule('out.Provider = class {' + providerText.slice(start, end) + '};', { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, { out: output, vscode, memberSelections: () => ({}), ...host, ...projection, console });
 const webview = fs.readFileSync(path.join(__dirname, 'media/webview.js'), 'utf8');
 const ui = {}, icon = { className: '' }, button = { querySelector: () => icon }, list = { innerHTML: '', querySelectorAll: () => [] };
 const blocks = [['// ── Usage banner', '// ── end Usage banner ──'], ['// ── Turn trace rows: pure render', '// ── end Turn trace rows ──'], ['// ── Workers tab: pure render', '// ── end Workers pure render ──']];
@@ -54,7 +54,7 @@ provider._mainAgentMember = () => ({ id: 'bhaskar', name: 'Bhaskar', role: 'Tech
 provider._broadcast = message => { pushed.push(message.data); ui.apply(message.data); };
 provider.refreshWorkersState = () => provider._refreshWorkersState();
 provider.setWorkersStateSource = source => { provider._workersStateSource = source; };
-for (const name of ['setWorkerTraceSource', 'setWorkerCancelSource', 'setWorkerArchiveSource', 'setWorkerRemoveSource', 'setServerRestartSource']) provider[name] = () => {};
+for (const name of ['setWorkerTraceSource', 'setWorkerCancelSource', 'setWorkerRemoveSource', 'setServerRestartSource']) provider[name] = () => {};
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setTimeout(resolve, 5)); };
 const server = http.createServer((req, res) => { assert.equal(req.url, '/config'); res.end('{}'); });
 (async () => {
