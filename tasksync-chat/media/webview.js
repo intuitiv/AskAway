@@ -3285,20 +3285,28 @@
         var label = member.creativeStatus || (dotState === 'running' ? 'Running task' : 'Idle');
         return { stateKey: stateKey, dotState: dotState, label: label };
     }
-    // Hard-coded status phrases rotate every 8 s (reviewer, 2026-10-21): the phrase index is floor(now / 8000) % count, so
-    // adjacent windows never repeat when a member has two or more phrases, and every viewer shows the same phrase.
-    var TEAM_STATUS_PERIOD_MS = 8000;
+    // Status phrases rotate per member (reviewer, 2026-10-21: "Be random"): each member id hashes to its own period
+    // (7-13 s) and offset inside that period, so members never flip together. The index is floor((now + offset) /
+    // period) % count: deterministic for a given time, and adjacent windows never repeat with two or more phrases.
+    function teamStatusClock(memberId) {
+        var h = 5381, key = String(memberId || '');
+        for (var i = 0; i < key.length; i++) h = ((h * 33) ^ key.charCodeAt(i)) >>> 0;
+        var period = 7000 + (h % 6001);
+        var offset = (Math.imul(h, 2654435761) >>> 0) % period;
+        return { period: period, offset: offset };
+    }
     function teamStatusPhrases(member, working) {
         var list = (working ? member.statusWorking : member.statusIdle) || [];
         list = list.filter(function (p) { return typeof p === 'string' && p; });
         return list.length ? list : [member.creativeStatus || (working ? 'Working on a task\u2026' : 'Standing by')];
     }
-    function teamStatusPick(phrases, nowMs) {
-        var slot = Math.floor(Math.max(0, Number(nowMs) || 0) / TEAM_STATUS_PERIOD_MS);
+    function teamStatusPick(phrases, nowMs, memberId) {
+        var clock = teamStatusClock(memberId);
+        var slot = Math.floor((Math.max(0, Number(nowMs) || 0) + clock.offset) / clock.period);
         return phrases[slot % phrases.length];
     }
     function teamStatusText(member, working, nowMs) {
-        return teamStatusPick(teamStatusPhrases(member, working), nowMs);
+        return teamStatusPick(teamStatusPhrases(member, working), nowMs, member.id);
     }
     // Updates the visible status text in place (no re-render of the card); called from the 1 s tick.
     function tickTeamStatus(root, nowMs) {
@@ -3307,7 +3315,7 @@
             var phrases;
             try { phrases = JSON.parse(el.getAttribute('data-status-phrases')); } catch (e) { return; }
             if (!Array.isArray(phrases) || !phrases.length) return;
-            var text = teamStatusPick(phrases, nowMs);
+            var text = teamStatusPick(phrases, nowMs, el.getAttribute('data-status-member'));
             var label = el.querySelector('.team-status-text');
             if (label && label.textContent !== text) label.textContent = text;
             if (el.getAttribute('title') !== text) el.setAttribute('title', text);
@@ -3538,7 +3546,7 @@
         var sel = teamModelControls(member, memberWorkers, state);
         var modelText = teamModelLabel(splitModelId(sel.selectedFull).base).replace(/ \((agy|claude)\)$/, '');
         var phrases = teamStatusPhrases(member, working);
-        var statusText = teamStatusPick(phrases, state && state.generatedAt);
+        var statusText = teamStatusPick(phrases, state && state.generatedAt, member.id);
         var total = Number(state && state.turnTotal) || 0;
         var sharePct = total > 0 ? Math.min(100, costs.turn / total * 100) : 0;
         var slot = teamAccentSlot(member.id);
@@ -3558,7 +3566,7 @@
             (main ? '' : teamTasksPillHtml(member, info)) +
             teamEditButtonHtml(member, open) +
             '</div>' +
-            '<div class="team-member-status team-compact-status team-status-' + (working ? 'working' : 'idle') + '" data-status-state="' + (working ? 'working' : 'idle') + '" data-status-phrases="' + workersEsc(JSON.stringify(phrases)) + '" title="' + workersEsc(statusText) + '"><span class="team-status-dot" aria-hidden="true"></span><span class="team-status-text">' + workersEsc(statusText) + '</span></div>' +
+            '<div class="team-member-status team-compact-status team-status-' + (working ? 'working' : 'idle') + '" data-status-state="' + (working ? 'working' : 'idle') + '" data-status-phrases="' + workersEsc(JSON.stringify(phrases)) + '" data-status-member="' + id + '" title="' + workersEsc(statusText) + '"><span class="team-status-dot" aria-hidden="true"></span><span class="team-status-text">' + workersEsc(statusText) + '</span></div>' +
             '</div></div>' +
             '<div class="team-share" role="img" data-share="' + Math.round(sharePct) + '" aria-label="' + workersEsc(member.name) + ' spent ' + Math.round(sharePct) + '% of this turn"><span class="team-share-fill" style="width:' + sharePct.toFixed(2) + '%"></span></div>' +
             (main ? '' : teamMemberTrayHtml(member, memberWorkers, state, expanded, openIds, traces, info)) +

@@ -35,5 +35,6 @@ The reviewer's goals, decisions and requirements live in one place: [GOALS.md](.
   never pkill mid-run.
 
 ## Communication (this repo)
+- About every couple of minutes, post a short status with commentary (action aitalk, kind update): what you are doing, what is done, where blocked. Ask decisions immediately as heads-up with options and your recommended default; leave waitSeconds at its default. Unless truly blocked, continue with the default; answers arrive under ADDITIONAL MESSAGES FROM THE USER in a later tool result. Put still-open questions in the single Response Handoff batch at turn end.
 - Be honest about boundaries: you cannot rewrite Copilot's closed system prompt; guide behavior via this agent, tool descriptions, tool results, and worker prompts.
 - Explain credit math plainly when asked.

@@ -109,7 +109,7 @@ Steps:
 5. Implement with a test written from the caller's point of view, run the verification, and show the real output. Zero tests matched, or a check that did not run, counts as failure.
 6. Only then check the task off and append an entry to implementation-log.md: task ID, files changed, the command, its result, and the date.
 7. At a story Checkpoint run its Independent Test, prove each Given/When/Then scenario and verify its success metrics. Merge through the spec's one active PR; never open a PR per day.
-8. Report what was done with evidence, what is next, and anything blocked.
+8. About every couple of minutes, post a short AITalk status using commentary (action aitalk, kind update): what you are doing, what is done, where blocked. At decisions or when reviewer input is needed, ask immediately (kind heads-up), with options and your recommended default; leave waitSeconds at its default. Unless truly blocked, continue with the default; answers arrive in a later tool result under ADDITIONAL MESSAGES FROM THE USER. At turn end, put still-open questions in the single Response Handoff batch and report evidence, next steps and blockers.
 `,
     'sk.check.prompt.md': `---
 agent: AskAway Build

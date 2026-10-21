@@ -224,6 +224,7 @@ export class ValidatorObserver {
     async observe(response: ObservedResponse): Promise<ValidatorResponse & { risk?: 'low' | 'high'; reversible?: boolean; confidence?: number }> {
         const specSlug = response.specSlug ?? null;
         const base: ValidatorResponse = {
+            ...(response.batch ? { turnEnd: true } : {}),
             id: (this.ports.newId ?? randomUUID)(), observedId: response.id, source: response.source, specSlug, answer: null,
             observations: '', summary: '', impact: '', sources: [], contextSuggestions: [],
             usage: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }, skipped: false, error: null, ts: this.now(),
@@ -248,7 +249,8 @@ export class ValidatorObserver {
             'Observed response:', text, '',
             'Sources (cite by EXACT id, or say "no source answers"):',
             ...sources.map((s) => `--- ${s.id}\n${s.text}`),
-            '', 'Reply as JSON: {"answer": string|null, "sources": string[], "observations": string, "summary": string, "impact": string, "risk": "low"|"high", "reversible": boolean, "confidence": number (0..1)}. High risk or irreversible questions must be held for the reviewer; never authorize destructive actions.',
+            '', 'Write the "answer" as the answer body only: no greeting, no self-introduction, and do not say who or what you are answering; the room adds a context line first.' + (response.batch ? ' This is the end-of-turn pass over the agent\'s final response: no question was asked, so write the answer as the reply the reviewer would give ("If I were you I would say: ..."), which is shown as a guess.' : ''),
+            'Reply as JSON: {"answer": string|null, "sources": string[], "observations": string, "summary": string, "impact": string, "risk": "low"|"high", "reversible": boolean, "confidence": number (0..1)}. High risk or irreversible questions must be held for the reviewer; never authorize destructive actions.',
             'The sources array MUST contain only exact ids from this list: ' + JSON.stringify(sources.map(s => s.id)) + '. Do not append sections, line numbers, quotes or descriptions to ids. For GOALS.md use exactly "GOALS.md"; put section detail in observations instead. All JSON keys above are required.',
         ].join('\n');
 
@@ -306,7 +308,8 @@ export class ValidatorObserver {
 
     /** Records, posts to Commentary only (FR-018), and counts cost once under `validator:<id>`. */
     private finish(response: ValidatorResponse, specSlug: string | null): ValidatorResponse {
-        try { this.records(specSlug).appendResponse(response); } catch { /* a disk failure must not block the flow */ }
+        const { turnEnd, ...record } = response;
+        try { this.records(specSlug).appendResponse(record); } catch { /* a disk failure must not block the flow */ }
         if (response.skipped) { return response; }
         const headline = response.error ? `Validator could not check this: ${response.error}`
             : response.answer ? `Validator: ${response.answer} (source: ${response.sources.join(', ')})`
@@ -314,7 +317,7 @@ export class ValidatorObserver {
         try {
             this.ports.commentary.postValidator(this.ports.workspaceRoot, {
                 text: headline,
-                detail: { observedId: response.observedId, source: response.source, answer: response.answer, sources: response.sources,
+                detail: { ...(turnEnd ? { turnEnd } : {}), observedId: response.observedId, source: response.source, answer: response.answer, sources: response.sources,
                     observations: response.observations, summary: response.summary, impact: response.impact, error: response.error,
                     contextSuggestions: response.contextSuggestions,
                     usage: response.usage, workerId: response.workerId, sessionId: response.sessionId },

@@ -213,10 +213,10 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
         description: 'Live commentary: the trace of your execution for the reviewer, so they know what is happening, can guide you in time, and are prepared for questions coming their way. '
             + 'One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. '
             + 'Speak to the reviewer in plain first-person sentences, like updating a colleague. Use one or two short sentences, not emoji-led bold banners or headlines. '
-            + 'kind `update` for everything that is just happening. kind `heads-up` when you will need something from the reviewer soon, or something is unclear to you, so they can prepare. '
-            + 'You hold the context the reviewer lacks, so a heads-up asks the exact question with options, or asks for the input you need. Never just "something is unclear". '
-             + '10-20 words. Batch it with the step\'s real tool call; do not repeat it in chat. action aitalk posts a crisp question or reply; optional details appear under Read more. '
-             + 'A heads-up asked with action aitalk waits up to 45 seconds for a reply (waitSeconds changes it, 0 skips it). If none comes, carry on: the reply is delivered with your next tool call.',
+            + 'About every couple of minutes, post a status line with action aitalk, kind update: what you are doing, what is done, and where blocked or waiting. '
+            + 'At a decision or when reviewer input is needed, ask right away with action aitalk, kind heads-up: a heads-up asks the exact question with options and your recommended default, never just "something is unclear"; leave waitSeconds at its default (45 seconds). '
+            + 'Do not wait beyond that unless you truly cannot continue; carry on with the recommended default. Answers arrive in a later tool result under ADDITIONAL MESSAGES FROM THE USER. '
+            + 'Keep it short; optional details go under Read more. Put questions still open at turn end in the single Response Handoff batch.',
         inputSchema: z.object({
             action: z.enum(['post', 'aitalk']).optional(),
             details: z.string().max(8000).optional(),

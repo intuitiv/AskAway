@@ -853,3 +853,14 @@ Rows R-TEAM-50 to R-TEAM-70 (ADR 0027, 0028, 0029). The Team header row (Show co
 > Validator agent is something live always, so it gets that message and repons should be posted directly in the chat.
 
 Rows R-AITALK-36 to R-AITALK-41.
+
+### 2026-10-21 (night), AITalk clicks, Webex workspace, status reminder, Validator context, status timing
+
+> When i click on anywhere on the aitalk, it is taking me to Team. Even when i am reacting to it. I am not able to react to it. What is the issue?
+> And i see Cathy message in a different workspace, about sending message to Vinayak, whereas i asked for that in this workspace.
+> And we use this messaging framework, to ask main agent to post frequent updates in aitalk about what it is doing. Otherwise user is oblivious of whats happening. May be every 2 mins if we dont get any response. Main idea behind aitalk is for agent to communcicate not very freuqntly but once in a couple of min atleast to say what it is doing and where it is blocked and all. This is just a reminder. So agent will talk using the tool. This is like a status update, so message should be in that tone.
+> And we should update our prompts to ask questions in aitalk about deicsions so that agent need not hold all questions/updates till last turn to post all questions.
+> Sometimes Validator responds just like that can we have some context like responding to some question form main agent or amember and so on?And sometimes it tries to answer main agent final response. Tag if there is some message or in case of turn response, it can say, I would respond as below or my response or my guess and so on.
+> Team tab is replacing status message exactly at the same time for all members. Be random.
+
+Rows R-AITALK-42 to R-AITALK-44, R-ORCH-32, R-ORCH-33, R-TEAM-71 (ADR 0031).

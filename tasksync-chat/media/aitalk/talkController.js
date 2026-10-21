@@ -66,8 +66,11 @@ function sendMessage() {
 document.addEventListener('click', event => {
     const trace = event.target.closest('a.talk-trace-link[data-tab]');
     if (trace?.dataset?.tab) { event.preventDefault(); post({ type: 'talkTab', tab: trace.dataset.tab }); return; }
-    const memberEl = event.target.closest?.('[data-member-id], .talk-mention, [data-member]');
-    const memberId = !memberEl?.dataset?.mention && (memberEl?.dataset?.memberId || memberEl?.dataset?.member || (memberEl?.classList?.contains?.('talk-mention') ? String(memberEl.textContent || '').replace(/^@/, '').trim().toLowerCase() : ''));
+    // Only a member's face or name opens Team (reviewer, 2026-10-21). The whole message row carries data-member-id, so
+    // matching any [data-member-id] ancestor made every click on a bubble, reaction or chip switch tabs.
+    const memberEl = event.target.closest?.('.talk-sender, .talk-avatar, .talk-quote-who, .talk-mention, .aitalk-roster-name, .aitalk-presence-label');
+    const selected = typeof window !== 'undefined' && typeof window.getSelection === 'function' ? String(window.getSelection() || '') : '';
+    const memberId = memberEl && !selected && !event.target.closest?.('button') && !memberEl.dataset?.mention && (memberEl?.dataset?.memberId || memberEl?.dataset?.member || (memberEl?.classList?.contains?.('talk-mention') ? String(memberEl.textContent || '').replace(/^@/, '').trim().toLowerCase() : ''));
     if (memberId) {
         if (typeof window !== 'undefined' && typeof window.focusTeamMember === 'function') window.focusTeamMember(memberId);
         post({ type: 'talkMember', member: memberId, memberId });

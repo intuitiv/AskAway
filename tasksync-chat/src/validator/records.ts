@@ -7,6 +7,8 @@ export interface ValidatorUsage { input: number; output: number; reasoning: numb
 export interface ContextAddition { id: string; ref: string; reason: string; dismissed: boolean }
 
 export interface ValidatorResponse {
+    /** Set for the end-of-turn pass over the agent's final response; not persisted. */
+    turnEnd?: boolean;
     id: string;
     observedId: string;
     /** `agent` or `worker:<workerId>`. */

@@ -340,7 +340,7 @@ const vm = require('node:vm');
 			handler({
 				target: {
 					closest: (selector) =>
-						selector === '[data-member-id], .talk-mention, [data-member]'
+						selector.startsWith('.talk-sender, .talk-avatar')
 							? { dataset: { memberId: 'priya' }, classList: { contains: () => false } }
 							: null,
 				},
@@ -358,7 +358,7 @@ const vm = require('node:vm');
 			handler({
 				target: {
 					closest: (selector) =>
-						selector === '[data-member-id], .talk-mention, [data-member]'
+						selector.startsWith('.talk-sender, .talk-avatar')
 							? { dataset: {}, textContent: '@Bhaskar', classList: { contains: (c) => c === 'talk-mention' } }
 							: null,
 				},

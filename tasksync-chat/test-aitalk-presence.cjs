@@ -109,7 +109,7 @@ const vm = require('node:vm');
     release(); await routing.flush();
     const snapshot = store.snapshot();
     assert.equal(snapshot.messages.find(item => item.id === asked.id).tick, 'read');
-    assert.ok(snapshot.messages.some(item => item.author === member('validator').id && item.replyTo === asked.id && item.text === 'Use green'));
+    assert.ok(snapshot.messages.some(item => item.author === member('validator').id && item.replyTo === asked.id && /^Re: .*\n/.test(item.text) && item.text.endsWith('\nUse green')));
     assert.equal(api.roomFor(root).typingText(), '');
     routing.dispose(); assert.equal(member('validator').presence, 'left');
     const nativeBlock = provider.slice(provider.indexOf('                    if (!isChildLog && line.indexOf(\'"type":"user_message"\')'), provider.indexOf('// ── Sub-agent linkage:'));

@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { AITalkStore } from './store';
 import { roomFor } from './actors';
+import { validatorContextLine, withValidatorContext } from './validatorContext';
 import { setCommentaryAITalkMirror, setCommentaryAITalkWait } from '../commentary/commentary';
 let workspace: string | undefined;
 const mcpCaller = new AsyncLocalStorage<AITalkCaller>();
@@ -33,8 +34,14 @@ export function configureAITalkDelivery(root: string): void {
             typeof detail.impact === 'string' && detail.impact ? `Impact: ${detail.impact}` : '',
         ].filter(Boolean).join('\n');
         const questionId = input.replyTo ?? (typeof detail.observedId === 'string' ? detail.observedId : undefined);
-        const replyTo = state.messages.some(message => message.id === questionId) ? questionId : undefined;
-        return room.post(author.id, crisp, { replyTo, details: details || input.details, kind: input.kind }).message;
+        const parent = state.messages.find(message => message.id === questionId);
+        const replyTo = parent?.id;
+        const person = (id: string | undefined) => state.members.find(member => member.id === id);
+        const agent = state.members.find(member => member.kind === 'agent');
+        const line = detail.turnEnd === true ? validatorContextLine({ authorName: agent?.displayName ?? '' }, 'turnEnd')
+            : parent ? validatorContextLine({ authorName: person(parent.author)?.displayName ?? '', authorKind: person(parent.author)?.kind, text: parent.text, kind: parent.kind }, 'message')
+                : validatorContextLine(undefined, 'observation');
+        return room.post(author.id, withValidatorContext(line, crisp), { replyTo, details: details || input.details, kind: input.kind }).message;
     });
 }
 /** The asker waits briefly for a reply; a reply that arrives in time is handed over now, otherwise it comes with the next tool call. */

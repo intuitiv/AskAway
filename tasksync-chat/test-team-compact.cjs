@@ -119,7 +119,7 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 	const compact = tabHtml('compact');
 	const showAll = tabHtml('show-all');
 
-	// ── (1) Status text is hard-coded and rotates every 8 s; no knowledge/profile line; production data carries the phrases ──
+	// ── (1) Status text is hard-coded and rotates per member (7-13 s); no knowledge/profile line; production data carries the phrases ──
 	const projected = workersStateMod.projectTeamMembers([], rosterMod.TEAM_ROSTER);
 	assert.equal(projected.length, 9, 'every non-main roster member is projected');
 	for (const entry of [...rosterMod.TEAM_ROSTER, ...Object.values(rosterMod.MAIN_AGENT_PERSONAS)]) {
@@ -134,18 +134,34 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 		assert.deepEqual(m.statusWorking, entry.statusWorking, `${m.name}: statusWorking reaches the webview`);
 		assert.deepEqual(m.statusIdle, entry.statusIdle, `${m.name}: statusIdle reaches the webview`);
 	}
-	// teamStatusText: index floor(now / 8000) % length; adjacent 8 s windows never repeat with 2+ phrases.
-	for (const m of projected.map((p) => kit.normalizeTeamMember(p))) {
+	// teamStatusText: every member flips on its own clock (period 7-13 s, hashed offset); deterministic for a given
+	// time; a flip always changes the phrase (never the same phrase twice in a row with 2+ phrases).
+	const members = projected.map((p) => kit.normalizeTeamMember(p));
+	const flipsOf = (m, working) => {
+		const flips = [];
+		let prev = kit.teamStatusText(m, working, 0);
+		for (let t = 100; t <= 60000; t += 100) {
+			const now = kit.teamStatusText(m, working, t);
+			assert.equal(now, kit.teamStatusText(m, working, t), `${m.name}: same time, same phrase`);
+			if (now !== prev) flips.push(t);
+			prev = now;
+		}
+		return flips;
+	};
+	for (const m of members) {
 		for (const working of [true, false]) {
+			const flips = flipsOf(m, working);
+			assert.ok(flips.length >= 4 && flips.length <= 9, `${m.name}: flips every 7-13 s (${flips.length} in 60 s)`);
+			assert.ok(flips[0] <= 13100, `${m.name}: first flip within one period`);
+			for (let i = 1; i < flips.length; i++) assert.ok(flips[i] - flips[i - 1] >= 6900 && flips[i] - flips[i - 1] <= 13100, `${m.name}: period between 7 and 13 s`);
 			const list = working ? m.statusWorking : m.statusIdle;
-			for (let slot = 0; slot < 9; slot++) {
-				const at = (offset) => kit.teamStatusText(m, working, slot * 8000 + offset);
-				assert.equal(at(0), list[slot % list.length], `${m.name} ${working ? 'working' : 'idle'}: index floor(now/8000) % length`);
-				assert.equal(at(7999), at(0), 'the phrase holds for the whole 8 s window');
-				assert.notEqual(kit.teamStatusText(m, working, (slot + 1) * 8000), at(0), `${m.name}: adjacent windows never repeat`);
-			}
+			for (const t of [0, 5000, 20000, 41000]) assert.ok(list.includes(kit.teamStatusText(m, working, t)));
 		}
 	}
+	const five = members.slice(0, 5);
+	assert.equal(five.length, 5);
+	const firstFlips = new Set(five.map((m) => flipsOf(m, false)[0]));
+	assert.ok(firstFlips.size >= 3, `at least 3 of 5 members flip at different moments (${[...firstFlips].join(', ')})`);
 	assert.equal(kit.teamStatusText({ statusWorking: [], statusIdle: [], creativeStatus: 'Fallback line' }, false, NOW), 'Fallback line', 'a member without phrases keeps its single line');
 	// The compact row: no knowledge/profile status line; the text is the rotating phrase and follows the clock.
 	const tara = rowOf(compact, 'tara');
@@ -161,8 +177,8 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 	const first = phraseNow();
 	ctl.advanceClock(7000);
 	const second = phraseNow();
-	ctl.advanceClock(1000 + 8000 * 3);
-	assert.notEqual(first, second, 'the Storybook clock moves the status across an 8 s boundary');
+	ctl.advanceClock(1000 + 13000 * 3);
+	assert.notEqual(first, second, 'the Storybook clock moves the status across a member boundary');
 	assert.ok(taraPhrases.includes(first) && taraPhrases.includes(second));
 
 	// Production tick: the visible text changes in place, the card is not re-rendered (same nodes).
@@ -175,7 +191,7 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 		const taraCard = list.querySelector('[data-member-row="tara"]');
 		const label = taraCard.querySelector('.team-status-text');
 		const seen = new Set();
-		for (let slot = 0; slot < 3; slot++) { api.tickTeamStatus(list, slot * 8000); seen.add(label.textContent); assert.equal(taraCard.querySelector('.team-status-text'), label, 'same text node owner: no re-render'); }
+		for (let slot = 0; slot < 3; slot++) { api.tickTeamStatus(list, slot * 13000); seen.add(label.textContent); assert.equal(taraCard.querySelector('.team-status-text'), label, 'same text node owner: no re-render'); }
 		assert.deepEqual([...seen].sort(), ['I1', 'I2', 'I3'], 'the tick walks the idle phrases');
 		assert.equal(taraCard.querySelector('.team-compact-status').getAttribute('title'), label.textContent, 'the title follows too');
 		api.tickTeamAges();
