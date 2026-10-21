@@ -18,7 +18,7 @@ import { registerToolDefinitions, registerWorkerTools, ToolDefinition } from '..
 import { commentaryToolDefinitions } from '../commentary/commentary';
 import { registerVsCodeToolBridge, registerWindow } from '../workers/vscodeToolBridge';
 import { loadEvalScoreboard } from '../workers/evalScoreboard';
-import { withAITalkMcpDelivery } from '../aitalk/delivery';
+import { callMeta, setAITalkSessionResolver, withAITalkMcpDelivery } from '../aitalk/delivery';
 import { registerWebexToolsHost } from '../services/webexToolsHost';
 export { createWorkerOperationFacade, type WorkerOperationFacade } from './workerOperationFacade';
 
@@ -182,15 +182,24 @@ export class McpServerManager {
                 }
             }
 
+            // OpenCode workers carry their session id (AskAway plugin); the runtime knows which worker runs in it.
+            setAITalkSessionResolver(sessionId => this.getWorkerRuntime().workerForSession(sessionId));
             const createMcpServer = (): McpServer => {
                 const mcpServer = new McpServer({
                     name: "AskAway Sidebar Chat",
                     version: "2.0.0"
                 });
                 const register = (mcpServer as any).registerTool.bind(mcpServer);
-                (mcpServer as any).registerTool = (name: string, config: any, handler: any) => register(name, config,
-                    (args: any, extra: any) => withAITalkMcpDelivery(handler, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd())(
-                        args, { ...extra, _meta: extra?._meta ?? args?._meta }));
+                // Every tool's schema lets `_meta` through (a plain object schema drops unknown keys), so the OpenCode plugin's session id reaches the wrapper.
+                (mcpServer as any).registerTool = (name: string, config: any, handler: any) => register(name,
+                    typeof config?.inputSchema?.passthrough === 'function' ? { ...config, inputSchema: config.inputSchema.passthrough() } : config,
+                    (args: any, extra: any) => {
+                        // Identity comes from the transport `_meta`; the arguments may add only the OpenCode session id. `_meta` never reaches the tool.
+                        const hasMeta = args && typeof args === 'object' && '_meta' in args;
+                        const { _meta: _argsMeta, ...rest } = hasMeta ? args : { _meta: undefined };
+                        return withAITalkMcpDelivery(handler, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd())(
+                            hasMeta ? rest : args, { ...extra, _meta: callMeta(args, extra) });
+                    });
 
             // Register gradle tool (async id-based Gradle build control).
             // Backed by the standalone, VS Code-free engine so any MCP client

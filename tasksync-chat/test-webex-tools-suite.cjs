@@ -54,6 +54,9 @@ async function main() {
     } });
     assert.equal(sampled.messages.length, 200); assert.equal(saved, sampled); assert.ok(sampled.messages.every(row => row.text === 'ok')); assert.match(pages[1], /sortBy=lastactivity/);
     console.log('PASS style sampler 200 own messages; paging; quote/signature stripping; zero model calls');
+    await fs.rm(path.join(cacheDir, 'style-card.md'), { force: true });
+    const noCard = await run('webex_style_card', {});
+    assert.equal(noCard.status, 'ok'); assert.equal(noCard.text, ''); assert.match(noCard.note, /No style card yet/);
     await fs.writeFile(path.join(cacheDir, 'style-card.md'), 'plain short replies');
     assert.equal((await run('webex_style_card', {})).text, 'plain short replies');
     registerWebexDraftHook();

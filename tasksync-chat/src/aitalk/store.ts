@@ -115,7 +115,19 @@ export class AITalkStore {
         const received = state.messages.filter((message: any) => message.recipients?.includes(recipient) && !message.receivedBy?.includes(recipient))
             .sort((a: any, b: any) => (rules.participant(state.members, b.author)?.rank ?? 0) - (rules.participant(state.members, a.author)?.rank ?? 0));
         this.track('delivered', recipient, received.map((message: any) => message.id));
-        return received.map((message: any) => ({ id: message.id, author: message.author, text: message.text, ...(message.attachments ? { attachments: message.attachments } : {}), ...(message.details ? { details: message.details } : {}), ...(message.replyTo ? { replyTo: message.replyTo } : {}) }));
+        return received.map((message: any) => {
+            const original = this.inReplyTo(state, message.replyTo);
+            return { id: message.id, from: this.nameOf(state.members, message.author), text: message.text, ...(message.attachments ? { attachments: message.attachments } : {}), ...(message.details ? { details: message.details } : {}), ...(message.replyTo ? { replyTo: message.replyTo } : {}), ...(original ? { inReplyTo: original } : {}) };
+        });
+    }
+    /** The earlier message a delivered answer replies to, so the receiving agent knows the question it answers. */
+    inReplyTo(state: { messages: any[]; members: any[] }, replyTo?: string): { id: string; from: string; text: string } | undefined {
+        const original = replyTo ? state.messages.find((message: any) => message.id === replyTo) : undefined;
+        return original ? { id: original.id, from: this.nameOf(state.members, original.author), text: String(original.text).slice(0, 500) } : undefined;
+    }
+    nameOf(members: any[], id: string): string {
+        const found = rules.participant(members, id);
+        return found ? rules.displayName(found) : id;
     }
     react(replyTo: string, emoji: string, author?: string) {
         const state = this.snapshot(true);

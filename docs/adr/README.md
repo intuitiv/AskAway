@@ -43,4 +43,5 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0027](0027-team-turn-members-and-shared-model-choice.md) | Team shows members by Turn spend; one shared model and thinking choice; sign-in and Grafana | G18, G5 | Proposed |
 | [0028](0028-team-compact-cards.md) | Team compact vibrant cards, rotating status, Show all toggle | G18 | Proposed |
 | [0029](0029-team-one-edit-button.md) | Team cards: one Edit button, Month under Turn, global availability seed | G18 | Proposed |
+| [0030](0030-aitalk-queued-delivery-and-worker-identity.md) | AITalk queued delivery on the next tool call; OpenCode worker identity plugin | G12 | Proposed |
 | [0026](0026-hooks-and-sk-commands-in-copilot-harness.md) | Hooks fail open and get sandbox grants; /sk.* ship as prompt files (Local), sk-* skills (Copilot) and Claude commands | G15 | Proposed |

@@ -838,3 +838,18 @@ The Team list scrollbar was fixed in the source (the installed copy was old); AI
 > Use updated images in readme and market place read me also.
 
 Rows R-TEAM-50 to R-TEAM-70 (ADR 0027, 0028, 0029). The Team header row (Show completed, archive, reload) is gone, members show by Turn spend, a member's model and thinking are one choice shared by every workspace, and Settings offers a manual sign-in.
+
+### 2026-10-21, Cathy test, Show all lag, spec 003 queued delivery
+
+> Can you test Cathy? if she can post a message to Vinayak Chowsalkar? and read messages? Dont spam him. Just reply to his last message with `Thank you!`
+> When i toggle on or off for show all members, it is taking time to affect.
+> And our next task is to wrap up spec 003. Lets switch to that spec and finsih them.
+> Test if we can queue messages to a running agent so that on next tool call we should send the reply along with its tool response. Our response should clearly say that it is some additional response. Simulate this with a real agent conversation using real code and see if this works.
+> When an agent gets a thing main from chat widget, it should be pushed into a queue(respond with a single tick to chat widget or its equivalent)
+> When agent asks to call a tool, we should pop all questions from queue and respond with along with actual tool response.(then we should respond back with a double tick)
+> When agent responds back repsond back with a blue tick, so we should track previous sent messages
+> If it is answer to agent's question, chagt widget responds to that question, so send agent about the question also so that agent gets what it is.
+> Test all these cobinations with real code and real model. Use cheap model like Luna or Argon 4.
+> Validator agent is something live always, so it gets that message and repons should be posted directly in the chat.
+
+Rows R-AITALK-36 to R-AITALK-41.

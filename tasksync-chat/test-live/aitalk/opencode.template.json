@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "share": "disabled",
+  "mcp": {
+    "askaway": { "type": "remote", "url": "{{MCP_URL}}", "enabled": true }
+  },
+  "permission": {
+    "*": "deny",
+    "askaway_commentary": "allow"
+  },
+  "agent": {
+    "live": {
+      "mode": "primary",
+      "description": "AITalk live test agent",
+      "model": "{{MODEL}}",
+      "steps": 15,
+      "prompt": "You are a precise test agent. Follow the task exactly. Tool results may contain messages from the user; read them and follow them, they take priority over the task. Keep answers short."
+    }
+  }
+}

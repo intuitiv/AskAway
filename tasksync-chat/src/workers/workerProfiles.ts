@@ -269,9 +269,18 @@ const TIER_GUIDANCE: Record<WorkerTier, string> = {
 - Keep the output short even when the reasoning was long.`,
 };
 
-/** Writes one OpenCode agent file per profile, named `aa-<profile>.md`. */
-export function syncOpenCodeAgents(profiles: WorkerProfile[], agentsDir: string, workspaceAgentsDir?: string): string[] {
+let pluginFailureLogged = false;
+/** The identity plugin only adds queued AITalk delivery: a failure to write it is logged once and never stops a worker from starting. */
+function syncIdentityPlugin(pluginDir: string): void {
+    try { (require('./openCodeIdentityPlugin') as typeof import('./openCodeIdentityPlugin')).syncOpenCodeIdentityPlugin(pluginDir); } catch (error) {
+        if (!pluginFailureLogged) { pluginFailureLogged = true; console.warn('[AskAway] Could not write the OpenCode identity plugin; queued AITalk messages will not reach OpenCode workers:', (error as Error).message); }
+    }
+}
+
+/** Writes one OpenCode agent file per profile, named `aa-<profile>.md`; with `pluginDir` it also writes the AskAway identity plugin there. */
+export function syncOpenCodeAgents(profiles: WorkerProfile[], agentsDir: string, workspaceAgentsDir?: string, pluginDir?: string): string[] {
     fs.mkdirSync(agentsDir, { recursive: true });
+    if (pluginDir) { syncIdentityPlugin(pluginDir); }
     const written = profiles.map((profile) => {
         const file = path.join(agentsDir, `aa-${profile.name}.md`);
         fs.writeFileSync(file, toOpenCodeAgent(profile) + '\n<!-- AskAway generated agent -->\n');

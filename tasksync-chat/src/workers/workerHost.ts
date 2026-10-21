@@ -91,7 +91,8 @@ export function workerSpendSince(workspacePath: string | undefined, sinceMs: num
 export async function sharedWorkerRuntimeReady(workspacePath?: string): Promise<OpenCodeWorkerRuntime> {
     const profiles = hostWorkerProfiles();
     syncOpenCodeAgents(profiles,
-        path.join(os.homedir(), '.config', 'opencode', 'agents'), workspacePath ? path.join(workspacePath, '.opencode', 'agents') : undefined);
+        path.join(os.homedir(), '.config', 'opencode', 'agents'), workspacePath ? path.join(workspacePath, '.opencode', 'agents') : undefined,
+        path.join(os.homedir(), '.config', 'opencode', 'plugins'));
     syncAgyPermissions(profiles,
         path.join(os.homedir(), '.gemini', 'antigravity-cli', 'settings.json'));
     // A server that stopped since it was attached must be started again, not attached to.

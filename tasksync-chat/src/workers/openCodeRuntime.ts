@@ -397,6 +397,18 @@ export class OpenCodeWorkerRuntime {
         this.attachUrl = url || undefined;
     }
 
+    /** The worker (and its owner workspace) running in an OpenCode session this runtime started; undefined for any other session. */
+    workerForSession(sessionId: string): { workerId: string; workspace: string } | undefined {
+        if (!sessionId) { return undefined; }
+        for (const [workerId, session] of this.sessionsByWorker) {
+            if (session !== sessionId) { continue; }
+            const run = [...this.runs.values()].reverse().find((item) => item.workerId === workerId);
+            const workspace = run?.workspace ?? this.adopted.get(workerId)?.workspace;
+            return workspace ? { workerId, workspace } : undefined;
+        }
+        return undefined;
+    }
+
     private capRefusal(adding: number): { status: 'PARALLEL_CAP'; running: number; max: number; reason: string } | undefined {
         const running = this.router.runningCount();
         if (running + adding <= MAX_PARALLEL_WORKERS) { return undefined; }

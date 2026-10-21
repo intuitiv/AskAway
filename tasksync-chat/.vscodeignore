@@ -58,6 +58,7 @@ build/**
 .webex-cache/**
 test-fixtures/**
 .test-fixtures/**
+test-live/**
 .*-build/**
 .askaway/**
 .gate.tmp

@@ -84,6 +84,8 @@ export class Room {
         return this.handle(actor.id);
     }
     unregister(id: string, announce = true): void {
+        // The turn or run is over: everything delivered to this actor has been read.
+        this.store.markRead(id);
         this.actors.delete(id); this.store.setTyping(id, false);
         const known = this.store.snapshot().members.find(item => item.id === id);
         if (known) this.store.setPresence(known, false, announce);
@@ -182,7 +184,7 @@ export class Room {
     unregisterAgent(): void { this.unregister(member('agent').id); }
     /** Workers are only known while they run; they register when they post and leave once all their messages are answered. */
     workerLifecycle(worker: { id: string; displayName: string }, running: boolean): void {
-        if (running) this.workerNames.set(worker.id, worker.displayName);
+        if (running) this.workerNames.set(worker.id, worker.displayName); else this.store.markRead(worker.id);
         this.releaseAnswered();
     }
     workerPost(workerId: string, text: string, options: PostOptions = {}): Posted {

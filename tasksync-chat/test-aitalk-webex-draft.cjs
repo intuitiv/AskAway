@@ -149,14 +149,17 @@ const load = () => { const mod = { exports: {} }; new Function('require', 'modul
     for (const location of ['transport', 'arguments']) {
         const meta = { workerId: `mcp-webex-${location}`, workspacePath: root };
         const args = { roomId: 'room-1', text: 'Can you review this draft?' };
-        const result = await mcp.get('webex_send')(location === 'arguments' ? { ...args, _meta: meta } : args, location === 'transport' ? { _meta: meta } : undefined);
+        // The arguments carry only the OpenCode session id (the plugin's word); the worker is whoever the runtime says runs in that session.
+        api.setAITalkSessionResolver(location === 'arguments' ? id => id === 'ses-webex' ? { workerId: meta.workerId, workspace: root } : undefined : undefined);
+        const result = await mcp.get('webex_send')(location === 'arguments' ? { ...args, _meta: { openCodeSessionId: 'ses-webex' } } : args, location === 'transport' ? { _meta: meta } : undefined);
         const draft = JSON.parse(result.content[0].text);
         assert.equal(draft.status, 'pending');
         assert.equal(cardFor(draft.draftId).author, meta.workerId);
         assert.notEqual(cardFor(draft.draftId).author, 'webex');
         assert.equal(api.currentAITalkCaller(), undefined, 'caller identity does not leak after the call');
     }
-    console.log('PASS EV-WEBEX-MCP-CALLER transport and argument metadata attribute drafts to the calling worker');
+    api.setAITalkSessionResolver(undefined);
+    console.log('PASS EV-WEBEX-MCP-CALLER transport metadata and the argument session id attribute drafts to the calling worker');
     fs.rmSync(root, { recursive: true, force: true });
     console.log('PASS EV-AITALK-WEBEX-DRAFT');
 })().catch(error => { console.error(error); process.exitCode = 1; });

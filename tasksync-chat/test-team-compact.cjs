@@ -68,9 +68,10 @@ function createHarness() {
 	const textProto = Object.getPrototypeOf(root.querySelector('.widget-tab').children[0]);
 	Object.defineProperty(textProto, 'outerHTML', { configurable: true, get() { return undefined; } });
 	const messages = [];
+	const timers = [];
 	const vscode = { postMessage(msg) { messages.push(msg); } };
 	const traceCase = between(webviewSrc, "            case 'workerTrace':", '                break;');
-	const api = new Function('document', 'window', 'vscode', 'setInterval', `
+	const api = new Function('document', 'window', 'vscode', 'setInterval', 'setTimeout', `
 		var currentTab = 'chat';
 		var observabilityMetrics = {};
 		function escapeHtml(v) { return String(v == null ? '' : v); }
@@ -82,10 +83,11 @@ function createHarness() {
 		function onHostMessage(message) { switch (message.type) { ${traceCase} break; } }
 		return { applyWorkersState: applyWorkersState, initWorkersTab: initWorkersTab, renderWorkersHtml: renderWorkersHtml,
 			tickTeamAges: tickTeamAges, tickTeamStatus: tickTeamStatus, teamStatusText: teamStatusText };
-	`)(doc, {}, vscode, () => 0);
+	`)(doc, {}, vscode, () => 0, (callback) => timers.push(callback));
 	api.initWorkersTab();
 	const fire = (el, type, extra = {}) => el.dispatchEvent({ type, target: el, ...extra });
-	return { api, doc, messages, click: (el) => fire(el, 'click'), key: (el, key) => fire(el, 'keydown', { key }) };
+	return { api, doc, messages, timers, click: (el) => fire(el, 'click'), key: (el, key) => fire(el, 'keydown', { key }),
+		pointerClick: (el) => { fire(el, 'pointerdown'); fire(el, 'pointerup'); fire(el, 'click'); } };
 }
 
 const NOW = 1_700_000_000_000;
@@ -341,14 +343,24 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 		assert.deepEqual(memberIds(proto.renderTeamTabHtml(ctrl.state)), memberIds(compact));
 		assert.ok(/message\.type === 'teamShowAll'\) controller\.setShowAll/.test(fs.readFileSync(path.join(ROOT, 'storybook', 'prototypes', 'team.js'), 'utf8')), 'mountTeamStory routes the toggle');
 		// Production: opt-in; the toggle repaints with the passive members; the full rows ignore it.
-		const { api, doc, click, key } = createHarness();
-		api.applyWorkersState(prodState());
+		const { api, doc, messages, timers, pointerClick, key } = createHarness();
+		api.applyWorkersState(prodState({ members: PROD_MEMBERS.map((m) => ({ ...m, avatarSrc: `vscode-resource:/media/team/avatars/${m.id}.png` })) }));
 		assert.deepEqual(doc.querySelectorAll('[data-member-row]').map((r) => r.getAttribute('data-member-row')), ['priya', 'bhaskar', 'tara', 'paolo', 'anika']);
+		const portraits = doc.querySelectorAll('.team-avatar-img');
+		const beforeMessages = messages.slice();
 		const sw = doc.querySelector('[data-team-show-all]');
 		assert.equal(sw.getAttribute('aria-checked'), 'false');
-		click(sw);
-		assert.deepEqual(doc.querySelectorAll('[data-member-row]').map((r) => r.getAttribute('data-member-row')), ['priya', 'bhaskar', 'tara', 'paolo', 'anika', 'diego', 'pavel'], 'on: passive members follow');
+		pointerClick(sw);
+		assert.equal(timers.length, 1, 'pointerup cleanup is still queued: no timer or host push has run');
+		assert.deepEqual(doc.querySelectorAll('[data-member-row]').map((r) => r.getAttribute('data-member-row')), ['priya', 'bhaskar', 'tara', 'paolo', 'anika', 'diego', 'pavel'], 'pointer click synchronously adds passive members in the same tick');
 		assert.equal(doc.querySelector('[data-team-show-all]').getAttribute('aria-checked'), 'true');
+		portraits.forEach((img, i) => assert.equal(doc.querySelectorAll('.team-avatar-img')[i], img, 'showing all preserves existing portrait elements'));
+		pointerClick(doc.querySelector('[data-team-show-all]'));
+		assert.equal(doc.querySelectorAll('[data-member-row]').length, 5, 'pointer click synchronously hides passive members in the same tick');
+		assert.equal(doc.querySelector('[data-team-show-all]').getAttribute('aria-checked'), 'false');
+		portraits.forEach((img, i) => assert.equal(doc.querySelectorAll('.team-avatar-img')[i], img, 'hiding passive members preserves existing portrait elements'));
+		assert.deepEqual(messages, beforeMessages, 'toggle clicks send no host messages or trace requests');
+		pointerClick(doc.querySelector('[data-team-show-all]'));
 		api.applyWorkersState(prodState());
 		assert.equal(doc.querySelectorAll('[data-member-row]').length, 7, 'the toggle survives a repaint (workersShowAll)');
 		key(doc.querySelector('[data-team-show-all]'), ' ');

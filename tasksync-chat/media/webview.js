@@ -4114,7 +4114,13 @@
                 if (message.open && toggled && toggled.pinned) requestValidatorTraces(true);
                 return;
             }
-            if (message.type === 'teamShowAll') { workersShowAll = Boolean(message.value); paintWorkers(); return; }
+            if (message.type === 'teamShowAll') {
+                workersShowAll = Boolean(message.value);
+                // The click has committed; do not wait for pointerup's deferred guard reset to repaint.
+                workersPointerDown = false;
+                paintWorkers();
+                return;
+            }
             if (message.type === 'teamEditToggle') {
                 workersExpanded['edit:' + message.memberId] = message.open;
                 if (!message.open) delete workersExpanded['picture:' + message.memberId];

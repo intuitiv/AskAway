@@ -120,16 +120,22 @@ export async function invokeDefinition(definition: ToolDefinition, input: unknow
 
 export function registerToolDefinitions(register: Register, definitions: ToolDefinition[]): void {
     for (const definition of definitions) {
-        register(definition.name, { description: definition.description, inputSchema: definition.inputSchema },
+        // `_meta` (the caller's identity) rides in the arguments, so the host schema must let it through instead of stripping it.
+        const schema: any = definition.inputSchema;
+        register(definition.name, { description: definition.description, inputSchema: typeof schema.passthrough === 'function' ? schema.passthrough() : schema },
             async (args: any, extra?: any) => {
-                const meta = extra?._meta ?? args?._meta;
-                const recipient = meta?.recipient ?? meta?.workerId ?? meta?.agentId;
-                const caller = typeof recipient === 'string' ? { recipient, workspace: meta.workspacePath } : undefined;
+                // Identity: the transport `_meta`, plus the OpenCode session id from the arguments; nothing else in `args._meta` is trusted.
+                const aitalk = args?._meta || extra?._meta || definition.name === 'commentary' ? require('../aitalk/delivery') as typeof import('../aitalk/delivery') : undefined;
+                const meta = aitalk?.callMeta(args, extra);
                 const input = { ...args }; delete input._meta;
+                // Only a call that names its caller (or a commentary line, which needs a workspace) touches the AITalk delivery boundary.
+                const caller = aitalk?.mcpAITalkCaller({ _meta: meta });
+                // The feed a line belongs to is the worker's own workspace, never the server owner's.
+                const workspace = (caller ?? aitalk?.currentAITalkCaller())?.workspace;
+                if (definition.name === 'commentary' && !input.workspacePath && workspace) input.workspacePath = workspace;
                 const run = async () => ({ content: [{ type: 'text' as const, text: await invokeDefinition(definition, input, false) }] });
-                if (!caller) return run();
-                const { withAITalkMcpDelivery } = require('../aitalk/delivery') as typeof import('../aitalk/delivery');
-                const result = await withAITalkMcpDelivery(run, caller.workspace ?? '')(input, { _meta: meta });
+                if (!caller || !aitalk) return run();
+                const result = await aitalk.withAITalkMcpDelivery(run, caller.workspace ?? '')(input, { _meta: meta });
                 return { content: [{ type: 'text' as const, text: result.content.map((part: any) => part.text).join('\n\n') }] };
             });
     }

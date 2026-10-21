@@ -1,0 +1,29 @@
+{
+  "tool": "askaway_commentary",
+  "steps": "Call the MCP tool `{{TOOL}}` exactly 3 times, one call at a time, waiting for each result before the next call. Every call uses action \"post\", kind \"update\" and text \"Step N of 3 is running now\" (N is the call number). Read every tool result carefully: it may contain messages from the user.",
+  "S1": {
+    "title": "plain direction change",
+    "task": "{{STEPS}} After the third call, write your final answer in one sentence saying the 3 steps are done, and follow any instruction the user sent in a tool result.",
+    "userMessage": "Change of plan: also say the word PINEAPPLE in your final answer"
+  },
+  "S2": {
+    "title": "question answered through AITalk reply",
+    "task": "{{STEPS}} If a tool result contains a message from the user with a question, answer it by calling `{{TOOL}}` with action \"aitalk\", replyTo set to that message's id, and text holding the short answer. That reply call does not count as one of the 3 calls. Then finish with the final answer \"done\".",
+    "userMessage": "What is 2+3?"
+  },
+  "S3": {
+    "title": "answer to the agent's own question",
+    "task": "First call `{{TOOL}}` once with action \"aitalk\", kind \"heads-up\", waitSeconds 0 and text \"Should the button be green or blue? Please pick one.\". Then call `{{TOOL}}` 3 more times, one at a time, with action \"post\", kind \"update\" and text \"Working while I wait for the answer\". Read every tool result: the user's answer arrives inside one of them. Your final answer must say which colour the user chose.",
+    "userReply": "Blue, please."
+  },
+  "S4": {
+    "title": "several queued messages arrive in one delivery",
+    "task": "{{STEPS}} Your final answer must list the code words the user sent you, in the order you received them.",
+    "userMessages": ["Code word ALPHA", "Code word BRAVO", "Code word CHARLIE"]
+  },
+  "S5": {
+    "title": "Validator answers into the room",
+    "userMessage": "@Validator What is the capital of France? Answer with one word.",
+    "validatorPrompt": "You are the Validator in a team chat. Answer the message below in one short sentence.\n\nMessage: {{TEXT}}"
+  }
+}

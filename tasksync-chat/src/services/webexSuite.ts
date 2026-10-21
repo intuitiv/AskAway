@@ -89,6 +89,10 @@ export function webexSuiteTools(deps: WebexSuiteDeps): ToolDefinition[] {
         }
         return { status: 'ok', items };
     });
-    add('webex_style_card', z.object({}).strict(), async () => ({ status: 'ok', text: (await fs.readFile(path.join(deps.cacheDir, 'style-card.md'), 'utf8')).split('\n').slice(0, 40).join('\n') }));
+    add('webex_style_card', z.object({}).strict(), async () => {
+        // A missing card is normal on a fresh workspace: the worker then writes plainly instead of failing.
+        const card = await fs.readFile(path.join(deps.cacheDir, 'style-card.md'), 'utf8').catch(() => '');
+        return card ? { status: 'ok', text: card.split('\n').slice(0, 40).join('\n') } : { status: 'ok', text: '', note: 'No style card yet; write short, plain replies.' };
+    });
     return definitions;
 }

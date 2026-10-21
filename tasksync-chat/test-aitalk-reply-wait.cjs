@@ -31,6 +31,10 @@ const esbuild = require('esbuild');
     let result = JSON.parse(await asked);
     assert.equal(result.reply.text, 'Yes, include them.');
     assert.equal(result.reply.author, user.id);
+    assert.equal(result.reply.from, store.nameOf(store.snapshot().members, user.id), 'the wait path names the sender like the queued path');
+    assert.notEqual(result.reply.from, user.id);
+    assert.equal(result.reply.inReplyTo.id, question.id);
+    assert.equal(result.reply.inReplyTo.text, 'Should the export include archived rows?', 'the answer carries the question it answers');
     assert.doesNotMatch(await invokeDefinition(tool, {}), /Yes, include them/, 'a reply handed over in the wait is not delivered again');
 
     // 2. Nobody replies in time: the agent carries on and the reply comes with its next tool call, once.
@@ -43,6 +47,7 @@ const esbuild = require('esbuild');
     room.userPost('Use the replica.', second.id);
     const next = await invokeDefinition(tool, {});
     assert.match(next, /Use the replica\./);
+    assert.match(next, /"inReplyTo":\{"id":"[^"]+","from":"[^"]+","text":"Which database should the report use\?"\}/, 'the late answer carries the question too');
     assert.doesNotMatch(await invokeDefinition(tool, {}), /Use the replica\./, 'delivered once');
 
     // 3. A plain update never waits, and a reply is never waited on.

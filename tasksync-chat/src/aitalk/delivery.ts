@@ -45,16 +45,40 @@ export function configureAITalkReplyWait(): void {
         if (!reply) return { pending: true, note: 'No reply yet. Carry on with your work; a reply is delivered with your next tool call.' };
         const recipient = mcpCaller.getStore()?.recipient ?? room.store.agentId();
         if (recipient) room.store.track('delivered', recipient, [reply.id]);
-        return { reply: { id: reply.id, author: reply.author, text: reply.text } };
+        const inReplyTo = room.store.inReplyTo(room.store.snapshot(true), posted.id);
+        return { reply: { id: reply.id, author: reply.author, from: room.store.nameOf(room.store.snapshot(true).members, reply.author), text: reply.text, ...(inReplyTo ? { inReplyTo } : {}) } };
     });
 }
 export interface AITalkCaller { recipient: string; workspace?: string; displayName?: string }
+/** Maps an OpenCode session id to the AskAway worker running in it; set by the host that owns the worker runtime. */
+export type AITalkSessionResolver = (sessionId: string) => { workerId: string; workspace?: string; displayName?: string } | undefined;
+let sessionResolver: AITalkSessionResolver | undefined;
+export function setAITalkSessionResolver(resolver: AITalkSessionResolver | undefined): void { sessionResolver = resolver; }
 /** The worker whose MCP tool call is running, if any. */
 export function currentAITalkCaller(): AITalkCaller | undefined { return mcpCaller.getStore(); }
+/**
+ * The call's identity metadata. The transport `_meta` is the host's word and is trusted; the model controls the arguments, so from
+ * them only the OpenCode session id is taken (the plugin overwrites `args._meta` with it). A recipient or workspace in the arguments is never read.
+ */
+export function callMeta(args: any, extra: any): any {
+    const session = args?._meta?.openCodeSessionId;
+    return typeof session === 'string' && session ? { ...extra?._meta, openCodeSessionId: session } : extra?._meta;
+}
 export function mcpAITalkCaller(extra: any): AITalkCaller | undefined {
     const meta = extra?._meta;
+    // OpenCode workers send no worker id; the AskAway plugin adds the session id and the runtime knows who runs in it.
+    // A session id always goes through the resolver: it never falls back to a recipient.
+    const session = meta?.openCodeSessionId;
+    if (session !== undefined) return resolveSession(session);
     const recipient = meta?.recipient ?? meta?.workerId ?? meta?.agentId;
     return typeof recipient === 'string' && recipient ? { recipient, workspace: meta.workspacePath, displayName: meta.memberId || meta.profile || meta.displayName } : undefined;
+}
+function resolveSession(session: unknown): AITalkCaller | undefined {
+    if (typeof session !== 'string' || !session || !sessionResolver) return undefined;
+    try {
+        const worker = sessionResolver(session);
+        return worker ? { recipient: worker.workerId, workspace: worker.workspace, displayName: worker.displayName } : undefined;
+    } catch { return undefined; }
 }
 export function withAITalkMcpDelivery(handler: (args: any, extra: any) => Promise<any>, defaultWorkspace: string) {
     return async (args: any, extra: any) => {
@@ -73,10 +97,9 @@ export function beginAITalkTool(caller?: AITalkCaller): void {
     if (!root) return;
     if (caller?.displayName) roomFor(root).workerLifecycle({ id: caller.recipient, displayName: caller.displayName }, true);
     if (!caller || caller.recipient === new AITalkStore(root).agentId()) roomFor(root).registerAgent();
-    const store = new AITalkStore(root);
-    const recipient = caller?.recipient ?? store.agentId();
-    if (recipient) store.markRead(recipient);
 }
+export const AITALK_QUEUE_LABEL = 'ADDITIONAL MESSAGES FROM THE USER. These are NOT part of the tool result above; the user sent them while you were working. They take priority: answer each one by calling the AITalk reply tool (commentary action aitalk) with replyTo set to the message id.';
+/** Pops every queued message for the recipient and appends them, clearly apart from the tool result. */
 export function appendAITalkDelivery(result: string, caller?: AITalkCaller): string {
     const root = caller?.workspace ?? workspace;
     if (!root) return result;
@@ -84,5 +107,6 @@ export function appendAITalkDelivery(result: string, caller?: AITalkCaller): str
     const recipient = caller?.recipient ?? store.agentId();
     if (!recipient) return result;
     const received = store.takeForTool(recipient);
-    return received.length ? `${result}\n\nAITalk addressed messages (user instructions take priority):\n${JSON.stringify(received)}` : result;
+    return received.length ? `${result}\n\n${AITALK_QUEUE_LABEL}\n${JSON.stringify(received)}` : result;
 }
+
