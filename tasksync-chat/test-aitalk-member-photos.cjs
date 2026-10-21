@@ -142,6 +142,16 @@ const snapshot = () => JSON.parse(JSON.stringify({
 		assert.equal(imgFor(host.innerHTML, 'sana'), 'vscode-webview://x/sana-own.png', 'a picture chosen later reaches AITalk');
 	}
 
+	// Reviewer 2026-10-21: "No need to show photo when person joined or left."
+	{
+		const { systemHtml } = await import('./media/aitalk/talkRender.js');
+		const members = snapshot().members.map((m) => ({ ...m, avatarSrc: FACE(m.memberId || m.id) }));
+		for (const text of ['Diego joined', 'Priya left']) {
+			const row = systemHtml({ kind: 'system', text }, members, { avatarFor: FACE });
+			assert.ok(!/<img|team-avatar-badge/.test(row) && row.includes('aitalk-presence-label') && /data-actor="[a-z]+" data-member-id="[a-z]+"/.test(row) && row.includes(text), `"${text}": text only with its hooks`);
+		}
+	}
+
 	const scripts = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).scripts['test:workers'];
 	assert.ok(scripts.includes('node test-aitalk-member-photos.cjs'), 'registered in test:workers');
 	console.log('PASS EV-AITALK-MEMBER-PHOTOS Team portraits reach AITalk bubbles, mentions and roster in either arrival order; initials without an image');

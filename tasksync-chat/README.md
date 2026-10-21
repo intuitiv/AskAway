@@ -35,13 +35,13 @@ You say what you need in plain words. AskAway runs it through Spec Kit, hands th
 
 One room per workspace, with the team by name: Bhaskar (the main agent) asks Priya (the Validator), Anika and Diego join as they pick up work, and you can @mention any of them.
 
-![AITalk room with Bhaskar, Priya, Anika and Diego joining, replying and answering a question](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/aitalk-live.gif)
+![AITalk room where Bhaskar, Priya, Anika and Diego, each with a face photo, join, reply and answer a question](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/aitalk-live.gif)
 
 ### Team
 
 Every member on one screen: model, thinking, cost and an Agent file link. Tasks appear under their owner as work starts and finish, and the list scrolls.
 
-![Team tab showing members, their costs and tasks starting and finishing during a turn](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/team-tab.gif)
+![Team tab showing members with large face portraits, their costs and tasks starting and finishing during a turn](https://raw.githubusercontent.com/intuitiv/TaskSync/main/tasksync-chat/docs/screenshots/team-tab.gif)
 
 ### Trace
 

@@ -218,10 +218,10 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 			'AITalk header lists present names with clickable data-member-id and no images'
 		);
 
-		// (b) AITalk join/leave notices keep avatars
+		// (b) AITalk join/leave notices are text only (reviewer, 2026-10-21: "No need to show photo when person joined or left")
 		assert.ok(
-			html.includes(`<div class="talk-pill-row aitalk-presence" data-actor="diego" data-member-id="diego"><span class="team-avatar-badge aitalk-inline-face has-image" data-member-id="diego" data-initials="DI"><img class="team-avatar-img" src="${diegoUri}"`),
-			'Diego avatar URI renders in AITalk join/leave notices'
+			html.includes(`<div class="talk-pill-row aitalk-presence" data-actor="diego" data-member-id="diego"><span class="aitalk-presence-label" data-member-id="diego">`),
+			'Diego join/leave notice is text only'
 		);
 		// (c) AITalk message bubbles (Machs user bubble with /user-profile/avatar.png + user.svg fallback, and Diego member bubble)
 		assert.ok(
@@ -255,7 +255,7 @@ function assertSingleVisiblePanel(html, expectedActiveTab, contextLabel) {
 		overrideCtrl.state.members.find((m) => m.id === 'diego').turnDollars = 0.05;
 		const overrideHtml = overrideCtrl.renderHtml();
 		const occurrences = overrideHtml.split(`src="${customUri}"`).length - 1;
-		assert.ok(occurrences >= 4, `Overriding avatarFor("diego") updates all avatar surfaces (observed ${occurrences} occurrences)`);
+		assert.ok(occurrences >= 3, `Overriding avatarFor("diego") updates all avatar surfaces (observed ${occurrences} occurrences)`);
 		pass('3. AITalk header lists names without <img>; Machs uses /user-profile/avatar.png with user.svg fixture fallback; member avatars resolve via avatarFor(memberId)');
 	}
 

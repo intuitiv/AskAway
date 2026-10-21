@@ -463,8 +463,6 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
     font-size: 11px;
     text-align: center;
 }
-.talk-pill-row.aitalk-presence .aitalk-inline-face { width: 14px; height: 14px; margin: 0; flex: 0 0 14px; }
-.team-avatar-badge.aitalk-inline-face,
 .team-avatar-badge.aitalk-bubble-face,
 .team-avatar-badge.aitalk-ac-face {
     display: inline-flex;
@@ -474,11 +472,6 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
     height: 100%;
     border-radius: 50%;
     overflow: hidden;
-}
-.team-avatar-badge.aitalk-inline-face {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
 }
 .team-avatar-badge .team-avatar-img {
     width: 100%;

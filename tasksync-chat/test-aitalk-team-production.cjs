@@ -157,11 +157,11 @@ const vm = require('node:vm');
 		);
 		assert.match(
 			joinHtml,
-			/<div class="talk-pill-row aitalk-presence" data-actor="bhaskar" data-member-id="bhaskar"><span class="team-avatar-badge aitalk-inline-face has-image" data-member-id="bhaskar" data-initials="BH"><img class="team-avatar-img" src="https:\/\/example\.test\/bhaskar\.svg"[^>]*><\/span><span class="aitalk-presence-label" data-member-id="bhaskar">Bhaskar joined<\/span><\/div>/
+			/<div class="talk-pill-row aitalk-presence" data-actor="bhaskar" data-member-id="bhaskar"><span class="aitalk-presence-label" data-member-id="bhaskar">Bhaskar joined<\/span><\/div>/
 		);
 		assert.match(
 			leaveHtml,
-			/<div class="talk-pill-row aitalk-presence" data-actor="diego" data-member-id="diego"><span class="team-avatar-badge aitalk-inline-face has-image" data-member-id="diego" data-initials="DI"><img class="team-avatar-img" src="https:\/\/example\.test\/diego\.svg"[^>]*><\/span><span class="aitalk-presence-label" data-member-id="diego">Diego left<\/span><\/div>/
+			/<div class="talk-pill-row aitalk-presence" data-actor="diego" data-member-id="diego"><span class="aitalk-presence-label" data-member-id="diego">Diego left<\/span><\/div>/
 		);
 	}
 

@@ -833,5 +833,8 @@ The Team list scrollbar was fixed in the source (the installed copy was old); AI
 > instead of images you showed, if they are more like person faces, woudl have been better.
 > go ahead an also give me promprts of all images in one shot. i'll give them
 > images look very small. And aitalk still has initials, it is not showing photos.
+> No need to show photo when person joined or left. That is annoying.
+> Added few more photos in worker-profiles, pick them also.
+> Use updated images in readme and market place read me also.
 
 Rows R-TEAM-50 to R-TEAM-70 (ADR 0027, 0028, 0029). The Team header row (Show completed, archive, reload) is gone, members show by Turn spend, a member's model and thinking are one choice shared by every workspace, and Settings offers a manual sign-in.
