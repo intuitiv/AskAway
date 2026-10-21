@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## AskAway Unreleased (10-21-26)
+## AskAway v2.3.3 (10-21-26)
 - **Team shows who spent:** Priya and the main agent always, every other member only with Turn spend above zero ($0 members, agy included, are hidden). Worker Turn cost is the measured spend since the turn started, no longer $0 (R-TEAM-51, R-TEAM-52).
 - **Team header row removed:** Show completed, archive and reload are gone with their code (R-TEAM-50).
 - **One model choice for every workspace:** a member's model and thinking are saved in `~/.askaway/team/members.json`, shown in every workspace and used by that member's workers (R-TEAM-53). Model and Thinking are separate dropdowns: each OpenCode, agy and Claude model is listed once with its thinking stripped, and agy models keep their effort in the saved name (R-TEAM-54).

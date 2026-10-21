@@ -4,7 +4,7 @@
   "displayName": "AskAway",
   "description": "Spec-based development, OpenCode workers to delegate tasks, AITalk with user-owned profile photos, Storybook previews, and Telegram / Webex remote control, with live cost tracing, keep-alive pings and timers.",
   "icon": "media/askaway-logo.png",
-  "version": "2.3.2",
+  "version": "2.3.3",
   "engines": {
     "vscode": "^1.90.0"
   },
