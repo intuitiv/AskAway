@@ -56,9 +56,9 @@ Optional agy runtime is available to any profile; the reviewer policy selects `a
 
 ## Notes
 Future add-member → specs/BACKLOG.md TEAM-FUTURE. Original and updated exact quotes live in GOALS.md section 4. The older per-ask coverage table (asks 1–19 → T024–T035) is closed by the Done/Obsolete lines above.
-- [ ] T047 [request] Webex idea: a daily report (digest) of what matters to the reviewer Waiting 2026-10-22: reviewer answers to the Webex digest questions (Q1-Q7); belongs with spec 009, not Team.
-- [ ] T048 [request] Webex idea: read messages for the reviewer in personal (1:1) rooms and in threads where he is tagged Waiting 2026-10-22: same questions, incl. privacy scope for 1:1 rooms.
-- [ ] T049 [request] Webex idea: watch threads where he sent a message and report when someone responds; also after Cathy posts for him, report when someone replies Waiting 2026-10-22: same questions, incl. which sent messages count (AskAway-sent only or all).
-- [ ] T050 [request] Webex idea: eliminate spam, show only what needs him Waiting 2026-10-22: same questions, incl. what counts as spam.
-- [ ] T051 [side remark] Ideas only, nothing fancy; any conflict with his earlier decisions or the specs must be checked with him first Waiting 2026-10-22: conflicts listed in the reply for the reviewer.
-- [ ] T052 [side remark] A lot more than spec 010 was done outside the spec; the spec bookkeeping must be reconciled, not just the open tasks Waiting 2026-10-22: reviewer choice on how to record off-spec work (ledger vs rewriting spec.md/plan.md).
+- [x] T047 [request] Webex ideas moved to spec 009 US9 (T057–T063): the reviewer answered 2026-10-22; see specs/009-webex-remote-channel/tasks.md.
+- [x] T048 [request] Webex idea: read his 1:1 and tagged threads. Moved to spec 009 US9 (R-CATHY-09, T058–T059); reviewer: consider everything, not just AskAway-sent.
+- [x] T049 [request] Webex idea: watch replies. Moved to spec 009 US9 (R-CATHY-13, T062): replies show in the digest; push alert waits ("I am not very clear about reply alert yet.").
+- [x] T050 [request] Webex idea: cut spam. Moved to spec 009 US9 (R-CATHY-12, T061): mute list plus six-month quiet rule; spam, not privacy.
+- [x] T051 [side remark] Ideas only, nothing fancy; conflicts checked with him first. Done 2026-10-22: he answered; the digest is report-only, uses no polling loop (sync before a tool call) and no new tool (mode of `inbox`).
+- [x] T052 [side remark] A lot more than spec 010 was done outside the spec; the spec bookkeeping must be reconciled, not just the open tasks. Done 2026-10-22: reviewer chose the update ("Sure go ahead and update 010 spec and plan accordingly"); spec.md status and presence rules updated, plan.md "Built outside the original plan" ledger added.

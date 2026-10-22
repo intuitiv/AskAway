@@ -6,6 +6,8 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 
 "We have few open specs 009, 010, 007 followed by 008 once 003 is complete." (2026-10-22, morning) Then, later the same day: "Finsih these gaps in agy and claude and then wrap up 003, switch to 009, 010, 007, 005, in that order." Current order: finish the agy and Claude gaps, wrap up 003, then 009 (Webex remote channel), 010 (Team), 007 (Validator agent), 005 (Spec Kit guided flow). 008 (harness benchmark) was in the morning order and is not in the later one: it stays after 005 until he says otherwise. 004 and 006 are not in this order.
 
+Latest (2026-10-22, evening): "Yeah 005 then 007, and then 008." So the order is now 005, then 007, then 008. 009 and 010 stay open only for the Webex digest (009 US9, T057 to T063, does not block 005) and the reviewer sign-offs (010 T042, T043, T045, T046).
+
 ## Local tooling bugs — 2026-10-08
 
 | ID | What | State | Evidence / next check | Source |

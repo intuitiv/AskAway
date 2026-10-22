@@ -162,3 +162,15 @@ Lane B step 1 (`roster.ts` + contract) → Lanes A, B, C in parallel → deploy 
 ### Decisions pending reviewer
 - No generated portraits are shipped. Members show initials (`avatarSrc: ''`) until real portraits are approved (R-TEAM-06 open). Pending reviewer.
 - The eval scoreboard and benchmark stay in the Team tab, since no decision removes them. Pending reviewer.
+
+## Built outside the original plan (ledger, 2026-10-22)
+Each line: what, rows/ADR, test. Details in [evidence/reconciliation-2026-10-22.md](evidence/reconciliation-2026-10-22.md) and the commits since `deacdcc`.
+- Chat tab and `ask_user` retired; autopilot prompt, response-timeout, human-like-delay and max-auto-response settings and the pending-request queue deleted (ADRs 0027–0031; R-LIVE-27, ADR 0032 keeps worker-autopilot, `remoteChannel` and the plan editor).
+- Members post only questions in AITalk; a worker `update` is refused (R-AITALK-45; `test-aitalk-members-questions-only.cjs`).
+- agy members show $0.00 and appear when active (R-TEAM-72).
+- `commentary` tool renamed `aitalk`, with the old names kept as aliases (ADR 0034, R-AITALK-48; `test-aitalk-tool-name.cjs`).
+- agy and Claude workers identified like OpenCode workers (agy by MCP `_meta` conversation id, Claude by `X-AskAway-Run`; ADR 0033, R-AITALK-46/47), Claude fork with `--resume --fork-session` (R-WTOOL-48), "Open in terminal" viewer (R-WTOOL-47), worker-tool guard: read-only profiles, at most 2 children, one level (R-WTOOL-45/46). Live proof `npm run test:live-aitalk` S1–S7.
+- Cathy's 12 assistant tools with AITalk approval cards and the provider seam (spec 009 US8; ADR 0035, R-CATHY-01..08; `test-webex-no-ids.cjs`).
+- AITalk fixes: join/leave flapping (R-AITALK-50), Priya's guess visible (R-AITALK-49), Cathy leaves when answered and presence from the shared store (R-AITALK-51, ADR 0036); `@member` routing by stable id (T044).
+- Outside the extension: Grafana login `~/.local/bin/grafana-login` and wrapper `~/.local/bin/grafana-mcp` (user level, not in this repo).
+- Webex ideas (daily report, spam, reply watch) → spec 009 US9, R-CATHY-09..14, ADR 0037.

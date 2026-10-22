@@ -219,6 +219,22 @@ Write caller-view command tests first using fake APIs, bounded data and seeded f
 
 ---
 
+## Phase 12: User Story 9 - Webex digest from one shared in-memory sync (Priority: P2)
+
+**Goal**: One sync into in-memory structures, shared by all workspaces; on-demand daily report through `inbox mode: digest`; spam excluded by mute list and a six-month quiet rule. Rows R-CATHY-09..14; FR-046..050; ADR 0037. Reply push alert stays open (R-CATHY-13).
+
+**Independent Test**: `rtk node tasksync-chat/test-webex-digest.cjs` with a fake Webex API; written first and shown red.
+
+- [ ] T057 [US9] Design: `specs/009-webex-remote-channel/contracts/assistant-tools.md` gets the digest mode, the index shape and the freshness limit; reviewer words and ADR 0037 recorded. Done 2026-10-22: spec US9, FR-046..050, R-CATHY-09..14, ADR 0037 (Proposed), GOALS section 4 quotes; the contract file is updated in T058.
+- [ ] T058 [US9] Test first: `tasksync-chat/test-webex-digest.cjs` (EV-WEBEX-DIGEST) with a fake Webex API: all-space coverage incl. 1:1 and tagged threads, one sync for two workspaces, freshness skip, no disk write of message text, replies to the reviewer's threads, mention shows in a quiet space, mute list, quiet-space count line, no send call. Wired into `pretest:workers`. Update `contracts/assistant-tools.md`.
+- [ ] T059 [US9] Index and sync: new `tasksync-chat/src/services/assistant/webexIndex.ts` (in-memory structures, one sync, freshness limit, owner-process only; other workspaces read through the MCP tool). Owns that file only.
+- [ ] T060 [US9] Digest mode: `inbox` gets `mode: digest` in `tasksync-chat/src/services/assistant/webexRead.ts`, output through the id scrubber; extend `test-webex-no-ids.cjs`; tool count stays at most 12.
+- [ ] T061 [US9] Spam rule: mute list (persisted in AskAway storage, edited by the reviewer) and the six-month quiet rule in the index; `N quiet spaces skipped` line.
+- [ ] T062 [US9] Replies to threads the reviewer sent appear in the digest. Push reply alert: NOT built, waiting for the reviewer ("I am not very clear about reply alert yet.").
+- [ ] T063 [US9] Live check, explicit opt-in only (`ASKAWAY_WEBEX_LIVE=1`): one sync and one digest read-only; sanitized evidence in `specs/009-webex-remote-channel/evidence/digest-live.md`; flip the R-CATHY-09..14 gap rows to their tests; update both READMEs and CHANGELOG (R-DOCS-01).
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

@@ -2,8 +2,14 @@
 
 **Feature Branch**: `010-team` (planning identifier; no branch created)
 **Created**: 2026-10-15
-**Status**: Revision draft — previous prototype technically verified but not design-approved; shared comparison prompt awaiting review, production Team deferred
-**Input**: GOALS.md G18 and section 4 latest Team decisions; ADR 0023 and superseding ADR 0024; requirements/team.md R-TEAM-01–25 (superseded rows retained as history).
+**Status**: Implemented and in use (reconciled 2026-10-22). Open: T042 live agy proof, T043 and T046 reviewer sign-offs, T045 reviewer-facing gap rows. See plan.md "Built outside the original plan".
+**Input**: GOALS.md G18 and section 4 latest Team decisions; ADR 0023 and superseding ADR 0024; requirements/team.md R-TEAM-01–72 (superseded rows retained as history).
+
+## Presence and posting rules in force (2026-10-22)
+- AITalk presence: the reviewer and Priya are always in the room; the main agent joins at turn start and leaves at turn end; every other member joins only while it has an open question or approval card (R-AITALK-51, ADR 0036; supersedes the assignment-time presence of R-TEAM-09).
+- Members post only questions in AITalk; progress goes in the worker's final report (R-AITALK-45).
+- agy members show $0.00 cost and appear when active (R-TEAM-72). Claude and agy workers are identified and forked like OpenCode workers (ADR 0033, R-AITALK-46/47, R-WTOOL-45..48).
+- Cathy's assistant tools and approval cards are spec 009 US8 (R-CATHY-01..08).
 
 ## User Scenarios & Testing
 

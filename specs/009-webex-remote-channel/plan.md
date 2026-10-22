@@ -89,3 +89,17 @@ Build slices and file ownership (full list in tasks.md T044 to T047; every file 
 3. S3 (T046): `src/services/webexSuite.ts`, `webexToolsHost.ts`, `webexTools.ts` (removed), `src/workers/workerTools.ts` (`webexTool` removed), `src/services/webexStatus.ts`, `webexService.ts` (hint text), `package.json` (setting text, manifest), `worker-profiles/webex.md`, tests `test-webex-assistant-tools.cjs`, `test-webex-no-ids.cjs`, `test-webex-tools.cjs` (retired or rewritten), `test-webex-prompt-graders.cjs`.
 4. S4 (T047): live smoke, opt-in only; never spam: reply only to the reviewer-named message with his "Thank you!".
 
+
+## US9 Webex digest (reviewer 2026-10-22)
+
+Rows R-CATHY-09..14; [ADR 0037](../../docs/adr/0037-webex-digest-in-memory-index.md). Reviewer answers: location does not matter; exclude spaces only as spam; consider everything he is in; one sync, served from memory, reused across workspaces; daily report on the fly like a tool call; reply alert not clear yet.
+
+| Decision | Plan |
+|---|---|
+| One sync, in memory, shared | `webexIndex.ts` lives in the process that owns the AskAway MCP server (port 3579); other windows reach it through the same tools. Sync runs before a Webex tool call when older than a few minutes; a recurring refresh may follow later. No message text on disk. |
+| Report as a tool call | `inbox` gets `mode: digest`; tool count stays at most 12 (R-CATHY-01). |
+| Everything he is in | 1:1, group, tagged and posted-in threads; not only AskAway-sent. |
+| Spam, not privacy | Mute list plus six-month quiet rule; mention or reply to him always shows. Webex has no read receipts, so his own posts and mentions are the proxy for "read". |
+| Reply alert | Digest shows replies; push alert waits for his words. |
+
+Order: T058 test first, then T059 (index) and T061 (spam rule) on disjoint parts, T060 (digest mode), T062, then T063 live opt-in. It does not block spec 005.

@@ -196,6 +196,24 @@ Reviewer, 2026-10-22: "After this finsih spec 009. And i need to have all possib
 
 ---
 
+### User Story 9 - Webex digest from one shared in-memory sync (Priority: P2)
+
+Reviewer, 2026-10-22: "I think we should consider everything not just what we sent thru askaway." "Our webex thing can be a 1 sync call may be recurring if not before any tool call, and store stuff in memory and everything should be served from in memory data structures, so we can reuse across workspaces." "From in memry we can do daily report on the fly(when asked, like a tool. call)." "Sure we can exclude some spaces. But not becaue of privacy but because they will become spam." "See the spaces which are recurring and i havent read them or i havent posted anything in them in the past 5-6 months." "I am not very clear about reply alert yet." "I dont care where it will be."
+
+**Why this priority**: It follows the Cathy tools (US8) and replaces many id-free but chatty reads with one report; it does not block spec 005.
+
+**Independent Test**: Fake Webex API caller-view test `test-webex-digest.cjs`; no live call without the reviewer's opt-in.
+
+**Acceptance Scenarios**:
+
+1. **Given** 1:1 spaces, group spaces and threads where the reviewer is tagged or posted, **When** the sync runs, **Then** they are all in one in-memory index held by the process that owns the AskAway MCP server; a second workspace's tool call reads the same data with no second sync, and no message text is written to disk.
+2. **Given** the index is older than a few minutes, **When** any Webex tool is called, **Then** one sync runs first; a fresh index causes no Webex call.
+3. **Given** the reviewer asks for the report, **When** `inbox` runs with `mode: digest`, **Then** it lists mentions, replies to his threads and unanswered direct messages by name, built from memory, with no id and no send.
+4. **Given** a space where he posted nothing and was not mentioned for six months but that stays active, **When** the report runs, **Then** it is left out and counted in one line; a direct mention or a reply to his message in that space still shows; a space on his mute list is left out the same way.
+5. **Given** someone replies to a thread he sent, **When** the report runs, **Then** the reply appears; no push alert is sent (open until he clarifies).
+
+---
+
 ### Edge Cases
 
 - Missing or ambiguous team `self` or General destination: report the unresolved destination, never guess another team/space.
@@ -257,6 +275,12 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 - **FR-044**: Every outbound action MUST be an AITalk approval card showing the target name, thread context, full text and files; 👍 executes once; no code path sends without it; the R-TELE-43 modal is only the explicit AITalk-unavailable fallback (R-CATHY-05/06; US8; S2).
 - **FR-045**: Webex MUST be one provider behind `src/services/assistant/provider.ts` (provider, approval request without an id field, registry) so an Outlook provider can be added without changing the card (R-CATHY-07; US8).
 
+- **FR-046**: One sync MUST load rooms, memberships' last activity, the reviewer's own messages and mentions into in-memory structures in the process that owns the AskAway MCP server; it MUST run before a Webex tool call when the data is older than the freshness limit, and MUST NOT write message text to disk (R-CATHY-10; US9).
+- **FR-047**: The digest MUST cover all spaces and threads the reviewer is in, not only AskAway-sent messages, and MUST be read-only (R-CATHY-09; US9).
+- **FR-048**: `inbox` MUST gain `mode: digest`, built from memory on demand; the tool set stays at most 12 (R-CATHY-11; US9).
+- **FR-049**: Excluded spaces (mute list or the six-month quiet rule) MUST be skipped as spam, never for privacy; a mention or a reply to the reviewer MUST still show, and the skipped count is shown in one line (R-CATHY-12; US9).
+- **FR-050**: Replies to threads the reviewer sent MUST appear in the digest; a push alert MUST NOT be built until the reviewer clarifies (R-CATHY-13; US9).
+
 ### Key Entities *(include if feature involves data)*
 - **FR-039**: Availability is evaluated at each turn send: Here sends nothing; away-prefixed modes send the full flow; Offline sends only the silent reply-tracked final; entering Away mid-turn opens the thread. Reply polling remains available (2026-10-10; test-availability-updates.cjs).
 
@@ -266,6 +290,7 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 - **Remote turn**: Workspace, conversation/turn identity, active live/final message and reply-polling state.
 - **Message ledger**: Posted IDs and processed reply IDs scoped to workspace/space for self-post exclusion and reload-safe deduplication.
 - **Response document**: Whole final response converted to mobile-friendly PDF, with Markdown fallback.
+- **Webex index**: In-memory rooms, last activity, the reviewer's own posts, mentions and replies, with a sync time; shared by every workspace through the MCP owner; mute list and seen watermark are the only persisted parts.
 - **Assistant ref**: A short opaque handle (s3, m12, p4) for a space, message or person, valid for the workspace session and resolved only inside the host; the raw Webex id never leaves the service.
 
 ## Success Criteria *(mandatory)*
