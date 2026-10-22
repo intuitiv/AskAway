@@ -84,6 +84,18 @@ function markTurnStart(cwd, prompt) {
     fs.renameSync(`${file}.tmp`, file);
 }
 
+// Validator spool (ADR 0038): one event per reviewer prompt; the extension drains it into the conversation stack.
+function spoolUserPrompt(sessionId, cwd, prompt) {
+    if (!prompt || prompt.replace(CREDENTIAL, '') !== prompt) { return; }
+    const dir = path.join(os.homedir(), '.askaway', 'validator-spool');
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const at = Date.now();
+    const name = `${String(at).padStart(15, '0')}-${require('crypto').randomBytes(6).toString('hex')}`;
+    const temp = path.join(dir, `.${name}.tmp`);
+    fs.writeFileSync(temp, JSON.stringify({ kind: 'user', sessionId, cwd: String(cwd), text: prompt, at }), { mode: 0o600 });
+    try { fs.renameSync(temp, path.join(dir, `${name}.json`)); } catch (error) { try { fs.rmSync(temp, { force: true }); } catch { /* best effort */ } throw error; }
+}
+
 function activeCycle(specDir) {
     try {
         const match = fs.readFileSync(path.join(specDir, 'tasks.md'), 'utf8').match(/^- \[ \] T\d+\w* \[(CY-\d+)\]/m);
@@ -109,6 +121,7 @@ function main() {
     const sessionId = String(input.session_id || input.sessionId || '');
     const cwd = input.cwd || process.cwd();
     const prompt = String(input.prompt || input.user_prompt || '').trim();
+    try { spoolUserPrompt(sessionId, cwd, prompt); } catch { /* capture is best effort */ }
     if (!sessionId) { return; }
 
     const stateFile = path.join(os.homedir(), '.askaway', 'spec-context-sessions.json');

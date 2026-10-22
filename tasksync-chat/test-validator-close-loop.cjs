@@ -104,4 +104,26 @@ const reply = { id: 'reviewer', text: 'Run independent work in parallel. For exa
     assert.equal(drift.answer, 'Flag drift for the reviewer.');
     assert.deepEqual(drift.sources, ['GOALS.md']);
     console.log('PASS prediction persistence failure preserves repo-wide answer, sources and high-risk drift classification');
+    // Real-model finding 2026-10-22 (live Luna): the first reply came in the observation schema without related/matched/facts.
+    const lazyRuns = [];
+    const lazy = new ValidatorObserver({ ...ports, run: async input => {
+        lazyRuns.push(input.prompt);
+        return lazyRuns.length === 1 ? json({ answer: 'Run sequentially.', sources: ['specs/007-demo/Rules.md'], observations: '', summary: '', impact: '' })
+            : lazyRuns.length === 2 ? json({ answer: null, sources: [], observations: 'The reviewer states a rule.', summary: 's', impact: 'i' })
+            : json({ answer: null, related: true, matched: false, diff: 'Reviewer wants parallel work.', facts: [{ kind: 'rule', text: 'Run independent work in parallel.' }] });
+    } });
+    await lazy.observe({ ...prev, id: 'lazy-prev', source: 'agent' });
+    const before = items.length;
+    await lazy.closeLoop({ ...prev, id: 'lazy-prev' }, { id: 'lazy-reply', text: 'Run independent work in parallel.' });
+    assert.equal(lazyRuns.length, 3, 'one observe, one comparison, one retry for the missing comparison keys');
+    assert.match(lazyRuns.at(-1), /lacked the comparison keys/);
+    assert.equal(items.length, before + 1, 'the fact from the retry is stored');
+    assert.equal(new ValidatorRecords(workspace, '007-demo').predictions().find(p => p.responseId === 'lazy-prev').matched, false);
+    // The optional third argument is the conversation prefix; it sits above the Previous response block.
+    const prompts = [];
+    const ctx = new ValidatorObserver({ ...ports, run: async input => { prompts.push(input.prompt); return json({ answer: null, related: false, matched: null, diff: '', facts: [], sources: [], observations: '', summary: '', impact: '' }); } });
+    await ctx.closeLoop({ ...prev, id: 'ctx-prev' }, { id: 'ctx-reply', text: 'Reply.' }, '[1] Reviewer: EARLIER TURN');
+    assert.ok(prompts[0].includes('[1] Reviewer: EARLIER TURN'));
+    assert.ok(prompts[0].indexOf('EARLIER TURN') < prompts[0].indexOf('Previous response:'));
+    console.log('PASS EV-VALIDATOR-CLOSE-LOOP-RETRY: a reply without the comparison keys is asked once more and then learned');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -44,7 +44,7 @@ export interface TurnMetricsSnapshot {
 }
 
 /** Who wrote the turn-complete stamp (the Stop hook payload); the stamp file itself is shared by every VS Code window. */
-export interface StampInfo { ts: number; sessionId?: string; cwd?: string; transcriptPath?: string; agentId?: string }
+export interface StampInfo { ts: number; sessionId?: string; cwd?: string; transcriptPath?: string; agentId?: string; promptId?: string; lastAssistantMessage?: string }
 
 /** True when the stop came from this window's chat. A stamp that names nobody is accepted (older hook script). */
 export function stampBelongsToWindow(info: StampInfo | undefined, debugLogsDir: string | undefined, folders: string[]): boolean {
@@ -83,6 +83,9 @@ export class HandoffNotifier implements vscode.Disposable {
     private _lastPostedHandoff = '';
     private _watchTimer: NodeJS.Timeout | undefined;
     private _processing = false;
+    private _onAgentFinal: ((input: { sessionId: string; text: string; turnId: string }) => void | Promise<void>) | undefined;
+    /** (sessionId, promptId) or, with no prompt id, (sessionId, text hash) of the finals already handed over, with the time handed over. */
+    private readonly _finalsSeen = new Map<string, number>();
 
     constructor(
         private readonly _targets: HandoffTarget[],
@@ -92,6 +95,11 @@ export class HandoffNotifier implements vscode.Disposable {
         private readonly _validateFinal?: (text: string, id: string) => Promise<void>,
         private readonly _turnEnded?: () => void
     ) { }
+
+    /** ADR 0038: receives each real turn's final agent response (once per distinct text per session). While set, it replaces the old `_validateFinal` path for stamps that name a session. */
+    public setAgentFinal(callback: ((input: { sessionId: string; text: string; turnId: string }) => void | Promise<void>) | undefined): void {
+        this._onAgentFinal = callback;
+    }
 
     public start(): void {
         if (this._watchTimer) { return; }
@@ -162,9 +170,10 @@ ${text}`, `AskAway: ${text}`);
             this._lastEndedTs = ts;
             try { this._turnEnded?.(); } catch (err) { this._log('Handoff notifier: turn-end callback failed', err instanceof Error ? err.message : String(err)); }
         }
+        const captured = this._captureFinal(ts);
         const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         const enabled = this._targets.filter(t => cfg.get<boolean>(t.setting, false));
-        if (!enabled.length && !this._validateFinal) { this._lastPostedTs = ts; return; }
+        if (!enabled.length && (captured || !this._validateFinal)) { this._lastPostedTs = ts; return; }
 
         this._processing = true;
         try {
@@ -172,7 +181,7 @@ ${text}`, `AskAway: ${text}`);
             const parts = this._findHandoff(ts - TURN_LOOKBACK_MS);
             if (!parts) { this._log('Handoff notifier: no Response Handoff section in the final response'); return; }
             const finalText = fullResponseMarkdown(parts);
-            void this._validateFinal?.(finalText, createHash('sha256').update(finalText).digest('hex'));
+            if (!captured) { void this._validateFinal?.(finalText, createHash('sha256').update(finalText).digest('hex')); }
             // The turn-end stamp can be written more than once per turn; the message itself is the
             // real identity, so posting the same text twice is always a duplicate.
             if (parts.handoff === this._lastPostedHandoff) {
@@ -220,6 +229,29 @@ ${text}`, `AskAway: ${text}`);
         } finally {
             this._processing = false;
         }
+    }
+
+    /** Hands the accepted stamp's final response to onAgentFinal. True when the capture path owns this turn (a session id is known). */
+    private _captureFinal(ts: number): boolean {
+        const sessionId = this._readStampInfo(ts)?.sessionId;
+        const promptId = this._readStampInfo(ts)?.promptId;
+        if (!this._onAgentFinal || !sessionId) { return false; }
+        try {
+            let text = this._readStampInfo(ts)?.lastAssistantMessage || '';
+            if (!text) {
+                const parts = this._findHandoff(ts - TURN_LOOKBACK_MS);
+                text = parts ? fullResponseMarkdown(parts) : '';
+            }
+            if (!text) { return true; }
+            // One Stop payload names one prompt: that is the identity of a turn. Without it the same text inside 10 minutes is one turn.
+            const now = Date.now();
+            for (const [seen, at] of this._finalsSeen) { if (now - at > TURN_LOOKBACK_MS) { this._finalsSeen.delete(seen); } }
+            const key = `${sessionId}:${promptId ? `prompt:${promptId}` : `text:${createHash('sha256').update(text).digest('hex')}`}`;
+            if (this._finalsSeen.has(key)) { return true; }
+            this._finalsSeen.set(key, now);
+            Promise.resolve(this._onAgentFinal({ sessionId, text, turnId: String(ts) })).catch(err => this._log('Handoff notifier: final-response callback failed', err instanceof Error ? err.message : String(err)));
+        } catch (err) { this._log('Handoff notifier: final-response capture failed', err instanceof Error ? err.message : String(err)); }
+        return true;
     }
 
     private async _sendResponseDocument(send: (file: string, caption: string) => Promise<boolean>, parts: HandoffParts): Promise<void> {

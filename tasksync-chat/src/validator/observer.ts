@@ -150,7 +150,7 @@ export class ValidatorObserver {
 
     /** Start alongside delivery; completion contains no validator output for an agent tool result. */
     closeLoop(prev: { id: string; text: string; specSlug?: string; storyId?: string; taskId?: string },
-        reply: { id: string; text: string }): Promise<void> {
+        reply: { id: string; text: string }, context?: string): Promise<void> {
         return Promise.resolve().then(async () => {
             const specSlug = prev.specSlug ?? null;
             try {
@@ -158,14 +158,22 @@ export class ValidatorObserver {
                 const records = this.records(specSlug);
                 const prediction = records.predictions().find(p => p.responseId === prev.id);
                 let parsed: Record<string, unknown> | null = null;
+                let lastInput: Parameters<typeof this.ports.run>[0] | undefined;
                 const observer = new ValidatorObserver({ ...this.ports, run: async input => {
+                    lastInput = input;
                     const result = await this.ports.run({ ...input, prompt: input.prompt + '\nCompare prediction with reviewer reply. Extract only knowledge stated by the reviewer and related to the previous response. Bare acknowledgements and unrelated replies yield no facts. Return JSON with answer:null, sources:[], observations, summary, impact, related:boolean, matched:boolean|null, diff:string, facts:[{kind:rule|instruction|goal|fact,text:string,example?:string}].' });
                     parsed = replyObject(result.text);
                     return result;
                 } });
                 const response = await observer.observe({ id: reply.id, source: 'agent', specSlug: prev.specSlug, force: true,
-                    text: `Previous response:\n${prev.text}\nPrediction:\n${prediction?.decision ?? 'No prediction available'}\nReviewer reply:\n${reply.text}` });
+                    text: `${context ? `Conversation so far:\n${context}\n\n` : ''}Previous response:\n${prev.text}\nPrediction:\n${prediction?.decision ?? 'No prediction available'}\nReviewer reply:\n${reply.text}` });
                 if (response.error || !parsed) { return; }
+                // A real model sometimes answers in the observation schema only. The comparison keys are required, so ask once more for exactly them.
+                if (typeof (parsed as Record<string, unknown>).related !== 'boolean' && lastInput) {
+                    const retry = await this.ports.run({ ...lastInput, prompt: lastInput.prompt + '\nYour previous JSON lacked the comparison keys. Reply with ONLY one JSON object that has exactly these keys: answer (always null), related (true when the reviewer reply is about the previous response), matched (true when the prediction agrees with the reply, false when it differs, null when not related), diff (one short sentence on how they differ, empty when matched), facts (array of {kind: rule|instruction|goal|fact, text, example?} for knowledge the reviewer stated; empty array when none).' });
+                    const again = replyObject(retry.text);
+                    if (again && typeof again.related === 'boolean') { parsed = { ...(parsed as Record<string, unknown>), ...again }; }
+                }
                 const comparison = parsed as Record<string, unknown>;
                 if (redactOrDrop(JSON.stringify(comparison)) === null) { return; }
                 const related = comparison.related === true;

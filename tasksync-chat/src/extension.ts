@@ -26,6 +26,9 @@ import { validatorProfile } from './validator/profile';
 import { OpenCodeWorkerRuntime } from './workers/openCodeRuntime';
 import { syncOpenCodeAgents } from './workers/workerProfiles';
 import { ValidatorTriggers } from './validator/validatorTriggers';
+import { ConversationStacks } from './validator/conversationStack';
+import { StackCapture, stackKey } from './validator/stackCapture';
+import { VALIDATOR_CACHE_TTL_MS, VALIDATOR_MAX_INPUT_TOKENS } from './workers/workerRouter';
 import { readActiveSpecSlug } from './specs/specCostLedger';
 import { defaultMemorySources, seedMemories } from './validator/memorySeed';
 import { ensureMemoryServer, localMemorySecret, MEMORY_SERVER_URL } from './validator/memoryServer';
@@ -252,8 +255,16 @@ try {
         // The stamp is one file shared by every VS Code window, so it also records WHO stopped:
         // each window's notifier ignores stops from other windows' chats (R-AITALK-50).
         const info = { ts: Number(now), sessionId: payload.session_id || payload.sessionId || '', cwd: payload.cwd || '',
-            transcriptPath: payload.transcript_path || payload.transcriptPath || '', agentId: payload.agent_id || payload.agentId || '' };
-        fs.writeFileSync(path.join(cfg, 'turn-complete-info.json'), JSON.stringify(info), 'utf8');
+            transcriptPath: payload.transcript_path || payload.transcriptPath || '', agentId: payload.agent_id || payload.agentId || '',
+            promptId: payload.prompt_id || payload.promptId || '' };
+        // The agent's final response feeds the Validator's conversation stack (ADR 0038); a credential-looking text is left out, never masked.
+        const last = String(payload.last_assistant_message || payload.lastAssistantMessage || '');
+        const secret = /(?:^|[^A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{15,}[.][A-Za-z0-9_-]{15,}|squ_[A-Za-z0-9]{20,})|[0-9]{8,}:[A-Za-z0-9_-]{30,}/;
+        if (last && !secret.test(last)) { info.lastAssistantMessage = last.slice(0, 40000); }
+        // It carries the final response text, so only this user may read it.
+        const infoFile = path.join(cfg, 'turn-complete-info.json');
+        fs.writeFileSync(infoFile, JSON.stringify(info), { encoding: 'utf8', mode: 0o600 });
+        try { fs.chmodSync(infoFile, 0o600); } catch (e) {}
         fs.writeFileSync(path.join(cfg, 'turn-complete-ts'), now, 'utf8');
     }
 } catch (e) {}
@@ -1167,8 +1178,18 @@ export function activate(context: vscode.ExtensionContext) {
         };
         let observerReady: Promise<ValidatorObserver> | undefined;
         let validatorRuntime: OpenCodeWorkerRuntime | undefined;
+        const stacks = new ConversationStacks({ dir: path.join(os.homedir(), '.askaway', 'validator-stacks') });
+        // The Validator session the next run would reuse under the router's rule (null: the next run starts a new session, so send the full stack).
+        const validatorSession = (): string | null => {
+            try {
+                const latest = validatorRuntime?.list(memoryProject).filter(run => run.profile === validatorProfile().name).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+                return latest?.sessionId && latest.workerState !== 'RETIRED' && latest.workerState !== 'ORPHANED'
+                    && Date.now() - latest.updatedAt < VALIDATOR_CACHE_TTL_MS && latest.contextTokens <= VALIDATOR_MAX_INPUT_TOKENS ? latest.sessionId : null;
+            } catch { return null; }
+        };
         const triggers = new ValidatorTriggers(memoryProject, () => observerReady ??= getMemory().then(store => new ValidatorObserver({
             workspaceRoot: memoryProject, commentary: sharedCommentaryStore(),
+            knowledgeStore: store, knowledgeScope: { project: memoryProject, agentId: 'validator' },
             recall: async query => (await store.recall(query.text, { project: memoryProject, agentId: 'validator', spec: query.specSlug || undefined }, 20))
                 .map(item => ({ id: item.id, text: item.fact.text })),
             run: validatorWorkerRun(async () => {
@@ -1184,7 +1205,11 @@ export function activate(context: vscode.ExtensionContext) {
             }, memoryProject, () => String(sharedCommentaryStore().turnStarts(memoryProject).at(-1) || Date.now())),
         })).catch(error => { observerReady = undefined; throw error; }), () => readActiveSpecSlug(memoryProject),
         () => { sharedCommentaryStore().postValidator(memoryProject, { text: 'Validator trigger failed; agent flow continued.' }); },
-        () => new AITalkStore(memoryProject).snapshot(true).messages);
+        () => new AITalkStore(memoryProject).snapshot(true).messages, { stacks, validatorSession });
+        const capture = new StackCapture({ spoolDir: path.join(os.homedir(), '.askaway', 'validator-spool'), stacks, workspaceRoot: memoryProject,
+            onUser: input => triggers.onReviewerReply({ conversationKey: input.conversationKey, text: input.text, turnId: input.turnId }) });
+        capture.start();
+        context.subscriptions.push({ dispose: () => capture.stop() });
         provider.setValidatorTurnStart((text, id) => { roomFor(memoryProject).registerAgent(); void triggers.turnStart(triggers.previousFinal(), text, id); });
         context.subscriptions.push(registerAITalkValidator(memoryProject, (text, id) => triggers.validatorCall(text, id)));
         const memory = memoryTool(getMemory, memoryProject, (query, agentId) => triggers.memoryCall(query, agentId));
@@ -1378,6 +1403,7 @@ export function activate(context: vscode.ExtensionContext) {
                     (text, id) => triggers.turnEnd(text, id),
                     () => roomFor(memoryProject).unregisterAgent()
                 );
+                notifier.setAgentFinal(input => triggers.onAgentFinal({ conversationKey: stackKey(memoryProject, input.sessionId), text: input.text, turnId: input.turnId }));
                 notifier.start();
                 context.subscriptions.push(notifier);
                 logRuntime('Handoff notifier watching turn-complete stamp', { debugLogsDir });
