@@ -43,6 +43,11 @@ export class AITalkStore {
                     if (!event.quiet) messages.push({ id: event.id, author: member.id, memberId: member.memberId || member.id, kind: 'system', text: `${member.displayName} ${event.presenceEvent}`, ts: event.ts });
                     continue;
                 }
+                if (event.noticeEvent) {
+                    // A plain line from the room itself (kind system): nobody authors it and nobody receives it.
+                    messages.push({ id: event.id, author: 'system', kind: 'system', text: event.text, ...(event.replyTo ? { replyTo: event.replyTo } : {}), ts: event.ts });
+                    continue;
+                }
                 if (event.updateEvent) {
                     // A card update (e.g. a Webex draft turning Sent) never changes who posted it or its id.
                     messages = messages.map((message: any) => message.id === event.updateEvent ? { ...message, ...event.fields, id: message.id, author: message.author } : message);
@@ -87,6 +92,10 @@ export class AITalkStore {
         this.append({ ...fields, ...message, ...(attachments?.length ? { attachments } : {}), ...(kind ? { kind } : {}), ...(details ? { details: String(details).slice(0, 8000) } : {}), time: new Date().toTimeString().slice(0, 5), ts: stamp() });
         return this.snapshot(true);
     }
+    /** A plain notice from the room (e.g. an @mention nobody could receive); appended after the message it explains. */
+    notice(text: string, replyTo?: string): void {
+        this.append({ id: randomUUID(), noticeEvent: true, text: String(text).slice(0, 500), ...(replyTo ? { replyTo } : {}), time: new Date().toTimeString().slice(0, 5), ts: stamp() });
+    }
     /** Appends a change to an existing message's card fields; the log stays append-only. */
     update(id: string, fields: Record<string, unknown>): void {
         this.append({ updateEvent: id, fields, ts: stamp() });
@@ -111,7 +120,7 @@ export class AITalkStore {
     }
     takeForTool(recipient: string): any[] {
         const state = this.snapshot(true);
-        if (!rules.participant(state.members, recipient)) return [];
+        // A running worker that has not joined (it joins only to ask) is addressed by its stable id and still receives its messages.
         const received = state.messages.filter((message: any) => message.recipients?.includes(recipient) && !message.receivedBy?.includes(recipient))
             .sort((a: any, b: any) => (rules.participant(state.members, b.author)?.rank ?? 0) - (rules.participant(state.members, a.author)?.rank ?? 0));
         this.track('delivered', recipient, received.map((message: any) => message.id));

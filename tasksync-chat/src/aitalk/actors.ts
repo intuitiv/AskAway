@@ -3,7 +3,8 @@ import { AITalkStore } from './store';
 import { rosterIdentity } from './names';
 import { MainAgentActor, UserActor, WorkerActor } from './actorKinds';
 export { MainAgentActor, UserActor, ValidatorActor, WorkerActor } from './actorKinds';
-import { resolveMainAgentIdentity, type MainAgentIdentity } from '../team/roster';
+import { resolveMainAgentIdentity, teamRoster, TEAM_ROSTER, userRosterEntries, type MainAgentIdentity } from '../team/roster';
+import { mentionedMembers, memberOfProfile, type RosterMember } from './memberRouting';
 export { resolveMainAgentIdentity } from '../team/roster';
 const rules = require('../../media/aitalk/talkRules.js');
 
@@ -32,6 +33,12 @@ export interface ActorHandle {
 
 const member = (name: string) => rules.defaultMembers.find((item: any) => item.kind === name);
 
+/** The Team roster as routing sees it: current names (Team Edit renames applied) next to the names before a rename. */
+export function teamRosterForRouting(): RosterMember[] {
+    const base = new Map([...TEAM_ROSTER, ...userRosterEntries()].map(entry => [entry.id, entry.name]));
+    return teamRoster().map(entry => ({ id: entry.id, name: entry.name, role: entry.role, kind: entry.kind, profiles: [entry.profile, ...entry.profiles], baseName: base.get(entry.id) }));
+}
+
 export function mainAgentActor(selectedAgent = 'AskAway Build'): Actor {
     const base = member('agent');
     const persona = resolveMainAgentIdentity(selectedAgent);
@@ -51,6 +58,9 @@ export class Room {
     selectedAgent?: string;
     private readonly actors = new Map<string, Actor>();
     private readonly workerNames = new Map<string, string>();
+    /** Workers running now (id → profile): the targets of an @member mention; a worker that stopped is no longer one. */
+    private readonly runningWorkers = new Map<string, string>();
+    private roster: () => RosterMember[] = teamRosterForRouting;
     private readonly reactionWatchers = new Set<(message: TalkMessage, emoji: string, by: string) => void>();
     private readonly replyWaiters = new Map<string, Set<(reply: TalkMessage) => void>>();
     constructor(readonly workspace: string, selectedAgent?: string) {
@@ -102,9 +112,11 @@ export class Room {
     }
     /** Posts as a registered actor and routes the message: @tag → that actor, reply → owner, user direct → Validator. */
     post(author: string, text: string, options: PostOptions = {}): Posted {
-        const state = this.store.post(text, options.replyTo, author, options.details, options.kind, options.attachments, options.fields);
+        const route = this.routeMentions(author, text, options.replyTo);
+        const state = this.store.post(text, options.replyTo, author, options.details, options.kind, options.attachments, { ...options.fields, ...(route.ids.length ? { routedTo: route.ids } : {}) });
         this.store.setTyping(author, false);
         const message = state.messages.at(-1) as TalkMessage;
+        for (const notice of route.notices) this.store.notice(notice, message.id);
         const parent = message.replyTo ? state.messages.find(item => item.id === message.replyTo) : undefined;
         // Replying to a message you received is the read receipt.
         if (parent?.recipients?.includes(author)) this.store.track('read', author, [parent.id]);
@@ -182,9 +194,38 @@ export class Room {
         return this.handle(agent.id);
     }
     unregisterAgent(): void { this.unregister(member('agent').id); }
+    /** Replaces where the Team roster comes from (tests); the default reads the extension's roster and the user's Team Edit choices. */
+    setRoster(provider: () => RosterMember[]): void { this.roster = provider; }
+    /**
+     * An @member mention names a Team member, not a worker: it resolves by stable member id (id, current or earlier name, first name)
+     * to that member's running workers. A reply to one of those workers goes to that task alone (task correlation); a name that fits two
+     * members is refused, a member with no running task is told so; the message itself stays in the room and the existing rule applies.
+     */
+    private routeMentions(author: string, text: string, replyTo?: string): { ids: string[]; notices: string[] } {
+        const none = { ids: [] as string[], notices: [] as string[] };
+        if (!String(text).includes('@')) return none;
+        const roster = this.roster();
+        const { members, ambiguous } = mentionedMembers(text, roster);
+        const state = this.store.snapshot(true);
+        const fromUser = state.members.find((item: any) => item.id === author)?.kind === 'user';
+        const repliedTo = replyTo ? state.messages.find((item: any) => item.id === replyTo)?.author : undefined;
+        const ids: string[] = [], notices: string[] = [];
+        const nameOf = (entry: RosterMember) => entry.role ? `${entry.name} (${entry.role})` : entry.name;
+        for (const entry of members) {
+            if (entry.kind !== 'worker') continue;
+            const running = [...this.runningWorkers].filter(([id, profile]) => id !== author && memberOfProfile(profile, roster)?.id === entry.id).map(([id]) => id);
+            if (repliedTo && running.includes(repliedTo)) continue;
+            ids.push(...running);
+            const inRoom = state.members.some((item: any) => item.presence === 'joined' && item.memberId === entry.id && item.id !== author);
+            if (!running.length && !inRoom && fromUser) notices.push(`${entry.name} has no running task right now, so this message did not reach ${entry.name}.`);
+        }
+        if (fromUser) for (const item of ambiguous) notices.push(`@${item.token} fits ${item.options.map(nameOf).join(' and ')}: the message was not delivered to either. Pick one from the @ list.`);
+        return { ids: [...new Set(ids)], notices };
+    }
     /** Workers are only known while they run; they register when they post and leave once all their messages are answered. */
     workerLifecycle(worker: { id: string; displayName: string }, running: boolean): void {
-        if (running) this.workerNames.set(worker.id, worker.displayName); else this.store.markRead(worker.id);
+        if (running) { this.workerNames.set(worker.id, worker.displayName); this.runningWorkers.set(worker.id, worker.displayName); }
+        else { this.runningWorkers.delete(worker.id); this.store.markRead(worker.id); }
         this.releaseAnswered();
     }
     workerPost(workerId: string, text: string, options: PostOptions = {}): Posted {

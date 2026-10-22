@@ -60,8 +60,8 @@ Specs 001 and 003 predate numbered user stories/FRs, so their named sections and
 | G10 | Live phase behind a setting, off by default; while Away answers low-risk reversible questions, holds the rest; digest; drift flags (2026-10-08) | [007 US7; T014–T017](../specs/007-validator-agent/tasks.md) | done | T014 [x], T015 [x] (live run: real validator answered 4 with GOALS.md source); T016/T017 test-validator-digest-watch.cjs (EV-VALIDATOR-DIGEST-WATCH) |
 | G17 | Changes keep every requirement row true; contradictions wait for the reviewer's words | [AGENTS.md](../AGENTS.md) "Never break a requirement" | partial | test-requirements-docs.cjs and test-goals-docs.cjs check the documents, not behaviour; rows marked gap have no test |
 
-| G18 | Any profile can use agy/Argon before Team work | [010 US1, T001–T003](../specs/010-team/tasks.md) | planned | R-TEAM-01 gap; model discovery is not runtime proof |
-| G18 | Named editable member profiles, shared faces, task rows, active turn, costs and mention routing | [010 US2–US4, T004–T014](../specs/010-team/tasks.md) | planned | R-TEAM-02–11 gaps; Storybook approval required; future member creation BACKLOG TEAM-FUTURE |
+| G18 | Any profile can use agy/Argon before Team work | [010 US1, T001–T003, T042](../specs/010-team/tasks.md) | partial | test-agy-runtime.cjs PASS EV-WORKER-AGY (fake CLI); test-team-storybook.cjs model choices; R-TEAM-01/16 retain T042 deployed reload/accounting gaps |
+| G18 | Named editable member profiles, shared faces, task rows, active turn, costs and mention routing | [010 US2–US4, T004–T014, T043–T046](../specs/010-team/tasks.md) | partial | test-team-shell.cjs EV-TEAM-SHELL; test-team-storybook.cjs 12 checks; test-team-compact.cjs EV-TEAM-COMPACT; test-aitalk-member-photos.cjs EV-AITALK-MEMBER-PHOTOS; test-profile-avatar-user-folder.cjs EV-PROFILE-AVATAR-USER-FOLDER (two workspaces, upgrade, package privacy); R-TEAM-13/14/17; T043/T046 visual approval and T045 final gate run by lead remain open; mention routing T044 tracked separately; future member creation BACKLOG TEAM-FUTURE |
 
 ## Areas with no spec
 

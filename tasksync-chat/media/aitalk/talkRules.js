@@ -50,6 +50,8 @@ export function routeMessage(message, messages, registry) {
         const names = [p.id, p.memberId, p.name, displayName(p), roster?.name, roster?.id].filter(Boolean).map(name => String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         return names.some(name => new RegExp(`@${name}(?![\\w-])`, 'i').test(message.text));
     }).map(p => p.id);
+    // Stable worker ids the Room resolved from a Team member mention (the worker may not be in the registry: it joins only to ask).
+    for (const id of message.routedTo || []) targets.push(id);
     const parent = messages.find(m => m.id === message.replyTo);
     const replyAuthor = parent?.author || message.quote?.author;
     const recipient = participant(registry, replyAuthor);
