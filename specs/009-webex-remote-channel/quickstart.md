@@ -54,3 +54,9 @@ Latest source packet: WebexService bounds text/edit to 7000 characters and retri
 ### Gate rerun — 2026-10-20 (supersedes the earlier gate failures)
 - `npm --prefix tasksync-chat run test:workers`: exit 0, including `test-webex-remote-adapter.cjs`, `test-remote-channel-parity.cjs`, `test-goals-docs.cjs`, `test-spec-planning-contract.cjs`, the Telegram regressions and `test-release-readiness.cjs`.
 - `test-share-with-me-webex.cjs` is still the default SKIP (`matched=0`, live arrival needs `ASKAWAY_WEBEX_LIVE=1` and a fake credential boundary per FR-036). No live Webex delivery was observed, so T018 and the live part of T022 stay open; US5 live verification stays deferred.
+
+### T018 offline evidence — 2026-10-22 (supersedes the SKIP stub above)
+- Run `rtk node tasksync-chat/test-share-with-me-webex.cjs`: `PASS EV-SHARE-WITH-ME-WEBEX matched=6 offline; real script, fake Keychain and HTTP`.
+- The real installed script runs with fake `security`, `curl`, SSH and SCP boundaries in a temporary HOME/PATH. Document bytes, URL message, bearer provenance, explicit Telegram opt-in, missing credentials, HTTP 401/500 and token-free captured evidence are asserted. No real Keychain or remote service is used offline.
+- Discrepancy: missing credentials and HTTP 401/500 print warnings but exit 0. The test reports this explicitly; it does not claim failure exits or successful delivery for those cases.
+- Default live result: `SKIP live (set ASKAWAY_WEBEX_LIVE=1)`, not a pass. The lead may run `ASKAWAY_WEBEX_LIVE=1 node tasksync-chat/test-share-with-me-webex.cjs` to send one tiny text file using real credentials. A live exit-0 marker is not independent arrival proof; the reviewer must confirm receipt. T018 remains unchecked; live arrival pending the opt-in run.
