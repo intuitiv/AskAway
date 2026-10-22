@@ -947,3 +947,9 @@ Rows R-AITALK-60 to R-AITALK-64 ([aitalk.md](tasksync-chat/docs/requirements/ait
 > Learnign and prediction is every reply. When Priya is in charge, she will answer. One stack per conversation, do not mess up stacks. Test it before deploy. What is Points? yes. Yes. And keep aitalk part minimal, may be only Next part not teh whole hand off also? Still thinking do not start yet.
 
 Answers to questions 1, 2, 4 and 5 of the earlier batch (learning and prediction on every reply, answering only when Priya is in charge; one stack per conversation with a test before deploy; the live Luna test; the AITalk handoff is only the Next part plus the cost). Rows R-PLAN-38, R-AITALK-60 and ADR 0039 carry the words. Questions 3, 6 to 10 stay open and nothing is started: "do not start yet".
+
+### 2026-10-22 (night, answers 2)
+
+> 5. But still send the whole stack for validator 6. yes 7. Yes. And once she answers, she can leave. 8. i think more requests per $ is better. But more requests per task is not good. 9. i think benchmark score and banner score shopuld be same. no 2 scores 10. yes. Yes to Points but not sure how to use it. As it might be less on new workspaces and in one request we could get more questions and user will give answers and not sure how to split and and points. Points in profile header is good.
+
+Rows R-AITALK-62 to 64, R-PLAN-39 and R-PLAN-42, R-SCORE-09 and the new R-SCORE-13; specs 007 and 008 list what is answered and what is still open. Nothing is started.

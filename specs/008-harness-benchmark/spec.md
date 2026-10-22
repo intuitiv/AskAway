@@ -48,7 +48,7 @@
 - Spend alone must not decide: a $20 harness may have worked far more than a $10 one, and doing more work than needed for the same problem is not better either, so a score is read with completion of the same problem.
 - Closing loop: realistic problem statements in different technologies and tools, several tasks each; run every harness; read the score at completion; tune the agents to raise it and debug what goes wrong. When the score settles at a decent baseline (he names 25, 30 or 50 as examples) he monitors his own runs against it to see whether they go well or deviate.
 - This builds on the 2026-10-10 live banner Score (round(100 × CacheHit × ContextFactor × PriceFactor), R-SCORE-08). Nothing is changed until he designs the formula; spec 008 stays third in the order 005, 007, 008.
-- **Open (reviewer's question batch):** (1) "more requests": better or worse? (2) Does the new formula replace the banner Score or add a second, benchmark-only score? (3) How is work done measured so a bigger harness run is not penalised: accepted hidden checks, tasks completed, or both? (4) Is time wall-clock of the run or AI time? (5) Does the baseline (25, 30, 50) become an alert level in the banner when a live run drops below it? (6) Which technologies come first for the problem statements?
+- **Answered 2026-10-22:** more requests per dollar is better, more requests per task is not; one score only (benchmark = banner score, R-SCORE-13); time is AI time, excluding waiting on him. **Still open:** how work done is measured (accepted hidden checks, tasks completed, or both), whether the baseline becomes an alert level in the banner, and which technologies come first. The formula itself is still his to design.
 
 ## User Scenarios & Testing *(mandatory)*
 

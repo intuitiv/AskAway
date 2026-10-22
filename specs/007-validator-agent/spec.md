@@ -273,7 +273,7 @@ Reviewer: "I dont want to design 007 and the rest in a hurry. LEt me design in s
 
 **Tests:** end to end with a cheap model (Luna, or agy Argon 4), scripted conversation, asserting the stack, the predictions, the match records and that a later answer uses something learned earlier.
 
-**Open (reviewer's question batch):** stack size cap and whether it survives a conversation switch; how points are counted and where they show; whether learning runs only when the Validator is in charge or always; whether "respond to A_n" at Here (not in charge) stays a silent prediction; which model the live test may spend on and its budget.
+**Answered 2026-10-22:** learning and prediction on every reply; she answers only when in charge; one stack per conversation, tested not to mix before any deploy; the whole stack is still sent to her; live test on a cheap model (yes); points show in her profile header. **Open:** the stack size cap; how to count points when a workspace is new and one reply answers several questions at once; the code is not started ("do not start yet").
 
 ## Beta limits
 
