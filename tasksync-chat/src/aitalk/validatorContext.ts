@@ -1,5 +1,5 @@
 /** The context lead-in of a Validator post, written by code so every Priya bubble says what it answers. Pure: Storybook and tests reuse it. */
-export type ValidatorContextKind = 'turnEnd' | 'observation' | 'message';
+export type ValidatorContextKind = 'turnEnd' | 'turnEndNoGuess' | 'observation' | 'message';
 export interface ValidatorContextParent { authorName: string; authorKind?: string; text?: string; kind?: string }
 
 const QUOTE_MAX = 60;
@@ -16,6 +16,7 @@ function quote(text: string | undefined): string {
  */
 export function validatorContextLine(parent: ValidatorContextParent | undefined, kind: ValidatorContextKind): string {
     if (kind === 'turnEnd') return `My guess at your reply to ${parent?.authorName || 'the agent'}'s turn summary:`;
+    if (kind === 'turnEndNoGuess') return `Nothing in your goals, ADRs or notes tells me your reply to ${parent?.authorName || 'the agent'}'s turn summary.`;
     if (kind === 'observation' || !parent) return 'Observation:';
     const name = parent.authorName || 'someone';
     const fromAgent = parent.authorKind === 'agent' || parent.authorKind === 'worker';

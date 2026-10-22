@@ -29,7 +29,11 @@ export function configureAITalkDelivery(root: string): void {
         if (!room.isRegistered(author.id)) return { status: 'REJECTED', reason: `${author.displayName} is not registered in AITalk` };
         if (kind !== 'validator') return room.post(author.id, input.text, { replyTo: input.replyTo, details: input.details, kind: input.kind }).message;
         const detail = input.detail ?? {};
-        const crisp = detail.error ? `Could not check this: ${String(detail.error).slice(0, 240)}`
+        const noAnswer = !detail.error && 'answer' in detail && !(typeof detail.answer === 'string' && detail.answer.trim());
+        const plain = (value: unknown) => typeof value === 'string' && value.trim() ? value : '';
+        // No cited source answers: never present that as a guess. A turn-end post carries the Validator's own summary; a reply says so honestly.
+        const crisp = noAnswer ? (detail.turnEnd === true ? plain(detail.summary) || plain(detail.observations) : 'No stored decision of yours covers this.')
+            : detail.error ? `Could not check this: ${String(detail.error).slice(0, 240)}`
             : typeof detail.answer === 'string' && detail.answer.trim() ? detail.answer
                 : typeof detail.summary === 'string' && detail.summary.trim() ? detail.summary : input.text;
         const details = [
@@ -42,10 +46,10 @@ export function configureAITalkDelivery(root: string): void {
         const replyTo = parent?.id;
         const person = (id: string | undefined) => state.members.find(member => member.id === id);
         const agent = state.members.find(member => member.kind === 'agent');
-        const line = detail.turnEnd === true ? validatorContextLine({ authorName: agent?.displayName ?? '' }, 'turnEnd')
+        const line = detail.turnEnd === true ? validatorContextLine({ authorName: agent?.displayName ?? '' }, noAnswer ? 'turnEndNoGuess' : 'turnEnd')
             : parent ? validatorContextLine({ authorName: person(parent.author)?.displayName ?? '', authorKind: person(parent.author)?.kind, text: parent.text, kind: parent.kind }, 'message')
                 : validatorContextLine(undefined, 'observation');
-        return room.post(author.id, withValidatorContext(line, crisp), { replyTo, details: details || input.details, kind: input.kind }).message;
+        return room.post(author.id, crisp ? (noAnswer && detail.turnEnd === true ? `${line} ${crisp}` : withValidatorContext(line, crisp)) : line, { replyTo, details: details || input.details, kind: input.kind }).message;
     });
 }
 /** The asker waits briefly for a reply; a reply that arrives in time is handed over now, otherwise it comes with the next tool call. */

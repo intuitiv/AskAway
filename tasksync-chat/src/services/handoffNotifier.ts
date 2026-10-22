@@ -19,6 +19,11 @@ import type { RemoteChannel } from './remoteChannel';
 
 const STAMP = path.join(os.homedir(), '.askaway', 'turn-complete-ts');
 const TRANSCRIPT = path.join(os.homedir(), '.askaway', 'turn-complete-transcript');
+const STAMP_INFO = path.join(os.homedir(), '.askaway', 'turn-complete-info.json');
+const GATE_STATE = path.join(os.homedir(), '.askaway', 'finish-gate-state.json');
+/** A stamp is acted on this long after it was written, so the Stop gate that may block the stop has recorded its verdict. */
+const SETTLE_MS = 1500;
+const GATE_BLOCK_WINDOW_MS = 5000;
 const TAIL_BYTES = 4 * 1024 * 1024; // agent_response lines are large; the last one is at the end
 const TURN_LOOKBACK_MS = 10 * 60 * 1000;
 const WATCH_INTERVAL_MS = 2000;
@@ -36,6 +41,18 @@ export interface TurnMetricsSnapshot {
     workerIds?: string[];
     cacheHitPct?: number;
     efficiencyScore?: number;
+}
+
+/** Who wrote the turn-complete stamp (the Stop hook payload); the stamp file itself is shared by every VS Code window. */
+export interface StampInfo { ts: number; sessionId?: string; cwd?: string; transcriptPath?: string; agentId?: string }
+
+/** True when the stop came from this window's chat. A stamp that names nobody is accepted (older hook script). */
+export function stampBelongsToWindow(info: StampInfo | undefined, debugLogsDir: string | undefined, folders: string[]): boolean {
+    if (!info || !(info.sessionId || info.transcriptPath || info.cwd)) { return true; }
+    if (info.sessionId && debugLogsDir && fs.existsSync(path.join(debugLogsDir, info.sessionId))) { return true; }
+    if (info.transcriptPath && debugLogsDir && path.resolve(info.transcriptPath).startsWith(path.dirname(path.resolve(debugLogsDir)) + path.sep)) { return true; }
+    const cwd = info.cwd ? path.resolve(info.cwd) : '';
+    return !!cwd && folders.some(folder => { const f = path.resolve(folder); return cwd === f || cwd.startsWith(f + path.sep); });
 }
 
 export type HandoffPoster = Pick<RemoteChannel, 'isConfigured' | 'postText'> & Partial<Pick<RemoteChannel, 'sendDocument' | 'finishTurn'>>;
@@ -106,10 +123,39 @@ ${text}`, `AskAway: ${text}`);
         try { return parseInt(fs.readFileSync(STAMP, 'utf8').trim(), 10) || 0; } catch { return 0; }
     }
 
+    private _readStampInfo(ts: number): StampInfo | undefined {
+        try {
+            const info = JSON.parse(fs.readFileSync(STAMP_INFO, 'utf8')) as StampInfo;
+            return info && info.ts === ts ? info : undefined;
+        } catch { return undefined; }
+    }
+
+    private _gateBlockedAt(): number {
+        try { return Number(JSON.parse(fs.readFileSync(GATE_STATE, 'utf8')).lastBlock) || 0; } catch { return 0; }
+    }
+
+    /** Why this stamp is not the end of this window's turn, or undefined when it is (R-AITALK-50). */
+    private _notThisTurnEnd(ts: number): string | undefined {
+        const info = this._readStampInfo(ts);
+        if (info?.agentId) { return 'a sub-agent stopped'; }
+        if (Math.abs(this._gateBlockedAt() - ts) <= GATE_BLOCK_WINDOW_MS) { return 'the finish gate blocked this stop and the agent continues'; }
+        const folders = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+        if (!stampBelongsToWindow(info, this._debugLogsDir, folders)) { return 'the stop came from another window\'s chat'; }
+        return undefined;
+    }
+
     private async _onTurnEnd(): Promise<void> {
         if (this._processing) { return; }
         const ts = this._readStamp();
         if (!ts || ts <= this._lastPostedTs) { return; }
+        if (Date.now() - ts < SETTLE_MS) { return; }
+        const ignored = this._notThisTurnEnd(ts);
+        if (ignored) {
+            this._lastPostedTs = ts;
+            this._lastEndedTs = Math.max(this._lastEndedTs, ts);
+            this._log(`Handoff notifier: stamp ignored, ${ignored}`);
+            return;
+        }
 
         // The turn ended whether or not its final text carries a handoff, so the agent leaves the room now.
         if (ts > this._lastEndedTs) {

@@ -26,6 +26,8 @@ const esbuild = require('esbuild');
     assert.equal(api.validatorContextLine(undefined, 'observation'), 'Observation:');
     assert.match(api.validatorContextLine({ authorName: 'Ann', text: 'x'.repeat(200) + '?' }, 'message'), /^Re: Ann's question: "x{1,60}…?"$/);
 
+    assert.equal(api.validatorContextLine({ authorName: 'Ann' }, 'turnEndNoGuess'), "Nothing in your goals, ADRs or notes tells me your reply to Ann's turn summary.");
+
     // 1. a direct question from the reviewer
     const asked = room.userPost('@Validator which colour?').message;
     await routing.flush();

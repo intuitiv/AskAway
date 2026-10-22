@@ -234,9 +234,10 @@ const CACHE_TIMER_INJECT_SCRIPT = `// AskAway prompt-cache activity timer. Stamp
 // separate subagent-cache-activity-ts instead.
 const fs = require('fs'), path = require('path'), os = require('os');
 try {
-    let ev = '', tool = '';
+    let ev = '', tool = '', payload = {};
     try {
         const p = JSON.parse(fs.readFileSync(0, 'utf8'));
+        payload = p;
         ev = p.hook_event_name || p.hookEventName || '';
         tool = p.tool_name || p.toolName || '';
     } catch (e) {}
@@ -247,7 +248,14 @@ try {
     const now = String(Date.now());
     const isChild = inflight > 0 && ev === 'PostToolUse' && tool !== 'runSubagent';
     fs.writeFileSync(path.join(cfg, isChild ? 'subagent-cache-activity-ts' : 'cache-activity-ts'), now, 'utf8');
-    if (ev === 'Stop') { fs.writeFileSync(path.join(cfg, 'turn-complete-ts'), now, 'utf8'); }
+    if (ev === 'Stop') {
+        // The stamp is one file shared by every VS Code window, so it also records WHO stopped:
+        // each window's notifier ignores stops from other windows' chats (R-AITALK-50).
+        const info = { ts: Number(now), sessionId: payload.session_id || payload.sessionId || '', cwd: payload.cwd || '',
+            transcriptPath: payload.transcript_path || payload.transcriptPath || '', agentId: payload.agent_id || payload.agentId || '' };
+        fs.writeFileSync(path.join(cfg, 'turn-complete-info.json'), JSON.stringify(info), 'utf8');
+        fs.writeFileSync(path.join(cfg, 'turn-complete-ts'), now, 'utf8');
+    }
 } catch (e) {}
 process.exit(0);
 `;

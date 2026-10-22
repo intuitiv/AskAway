@@ -124,7 +124,13 @@ const SUMMARY_CHARS = 140;
 
 // Short body for a long message: first line, cut at a word boundary.
 function summaryOf(text) {
-    const first = text.split('\n')[0];
+    const lines = text.split('\n');
+    let first = lines[0];
+    // A first line ending in ':' is only a lead-in: the summary carries on with the next non-empty line.
+    if (/:\s*$/.test(first)) {
+        const next = lines.slice(1).find(line => line.trim());
+        if (next) first = `${first.trimEnd()} ${next.trim()}`;
+    }
     if (first.length <= SUMMARY_CHARS && first.length < text.length) return first;
     const cut = first.slice(0, SUMMARY_CHARS);
     return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 40)).trimEnd()}…`;
