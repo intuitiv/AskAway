@@ -965,3 +965,7 @@ Rows R-AITALK-65, R-PLAN-44 and R-SCORE-14; specs 007 and 008 updated. Nothing i
 > Yes, Sonar, code coverage and so on could be static metrics for the verdict. This benchmark should also compare other harnesses people use. Vikrant boasts about his harness saying his is always cheaper and so on. So, keep difficult and medium and easy problems. So we can give score uniformly to all harnesses. Do not cheat based on questions. Adjusting prompts to solve this is not a honest implementation.
 
 Rows R-SCORE-15 to R-SCORE-17; spec 008 updated. R-SCORE-17 narrows R-SCORE-12 ("tune our agents"): tuning stays general and held-out problems decide. Nothing is started.
+
+> Sure
+
+Accepts the training and held-out split for R-SCORE-17 (2026-10-22). Nothing is started.
