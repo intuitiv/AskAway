@@ -953,3 +953,9 @@ Answers to questions 1, 2, 4 and 5 of the earlier batch (learning and prediction
 > 5. But still send the whole stack for validator 6. yes 7. Yes. And once she answers, she can leave. 8. i think more requests per $ is better. But more requests per task is not good. 9. i think benchmark score and banner score shopuld be same. no 2 scores 10. yes. Yes to Points but not sure how to use it. As it might be less on new workspaces and in one request we could get more questions and user will give answers and not sure how to split and and points. Points in profile header is good.
 
 Rows R-AITALK-62 to 64, R-PLAN-39 and R-PLAN-42, R-SCORE-09 and the new R-SCORE-13; specs 007 and 008 list what is answered and what is still open. Nothing is started.
+
+### 2026-10-23 (answers 3)
+
+> Reply injextion, when Priya is not in charge, her message will be with, `My guess...`, `I think...` `My take..` and so on. But when she is in charge, she reply to agent message, as in reply to it, so indicating the difference. Stack size, we can keep cap, but generally i dont go beyond 20, but it is better to keep higher limit. Frankly if we use the same conversation, as we do for Priya, old messages are already in that conversation, so we need not even repeat, i guess. Finshed work is measured by your testbed. You give a workspace and ask team to solve it. And at the end you run some tests and see if that is fixed or not. And you also take amount of code and neatness and so on and give some rank/score..
+
+Rows R-AITALK-65, R-PLAN-44 and R-SCORE-14; specs 007 and 008 updated. Nothing is started.

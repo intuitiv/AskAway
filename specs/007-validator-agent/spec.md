@@ -273,7 +273,7 @@ Reviewer: "I dont want to design 007 and the rest in a hurry. LEt me design in s
 
 **Tests:** end to end with a cheap model (Luna, or agy Argon 4), scripted conversation, asserting the stack, the predictions, the match records and that a later answer uses something learned earlier.
 
-**Answered 2026-10-22:** learning and prediction on every reply; she answers only when in charge; one stack per conversation, tested not to mix before any deploy; the whole stack is still sent to her; live test on a cheap model (yes); points show in her profile header. **Open:** the stack size cap; how to count points when a workspace is new and one reply answers several questions at once; the code is not started ("do not start yet").
+**Answered 2026-10-22 and 2026-10-23:** learning and prediction on every reply; she answers only when in charge, as a real reply to the agent message, while a prediction (not in charge) opens with "My guess...", "I think..." or "My take..." (R-AITALK-65); one stack per conversation, tested not to mix before any deploy; a generous cap (he rarely goes past 20 turns) and, when her session continues, only the new messages are sent because the old ones are already in it (R-PLAN-44); the whole stack is sent when the session is new or retired; live test on a cheap model (yes); points show in her profile header. **Open:** how to count points when a workspace is new and one reply answers several questions at once; the code is not started ("do not start yet").
 
 ## Beta limits
 
