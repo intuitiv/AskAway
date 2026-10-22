@@ -21,7 +21,7 @@ The reviewer proposed a pattern and asked whether it makes sense. An audit of th
 
 The decision below is Proposed until the reviewer answers the open questions.
 
-1. At turn end the main agent's Response Handoff is posted in AITalk as one message, with the turn's total cost.
+1. At turn end the main agent posts the Next part of its Response Handoff in AITalk as one short message, with the turn's total cost (reviewer, 2026-10-22: "keep aitalk part minimal, may be only Next part not teh whole hand off"). The full handoff stays on Telegram and Webex.
 2. The Validator replies to that specific message (a real `replyTo`). If the agent has already left, the reply is still posted under that message.
 3. For the main agent only, a reply to its message can be delivered into the real conversation as the next user message. Priya may use this; other members may not.
 4. A reviewer tag (`@Cathy`) of a member who is not in the room pulls the member in, starts the work, and the member answers and leaves when its question or answer is settled (the presence rule of ADR 0036 still applies).
