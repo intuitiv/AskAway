@@ -1101,8 +1101,8 @@ export class WebexService implements RemoteChannel {
                 hasRoomId: false,
                 isPolling,
                 activeTasks: this._activeTasks.size,
-                message: 'Missing Webex Room ID.',
-                hint: 'Set the room/space ID in Settings → askaway.webex.roomId'
+                message: 'No Webex space is chosen for this workspace.',
+                hint: 'Choose the workspace space: run "AskAway: Discover Webex Spaces".'
             };
         }
 

@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 
 ## AskAway v2.3.4 (10-21-26)
+
+- **Cathy's Webex tools, by name:** twelve Webex tools (inbox, find, read, search, wait, meetings, send, reply, edit message, delete message, edit draft, style card) take space and person names, never ids; send, reply, edit and delete wait for your 👍 on one approval card in AITalk (provider, action, name, thread, full text, files), and the same card is ready for an Outlook provider. Room ids no longer appear in cards, the status file, logs or Settings text (R-CATHY-01 to R-CATHY-07).
+- Renamed the communication tool to `aitalk`: use `say` for room messages and `post` for feed lines; old action and worker policy entries remain compatible.
 - **agy and Claude workers behave like OpenCode workers:** they are identified by carriers the model cannot set (agy's MCP conversation id, a per-run `X-AskAway-Run` header for Claude, kept in a private temp file), so queued AITalk messages reach them on their next tool call and members' questions are attributed to them (R-AITALK-46, R-AITALK-47). Verified live with real agy and Claude runs.
 - **Workers can ask questions:** `commentary` is granted to member profiles (and to agy and Claude when a profile lists it); the `worker` tool is granted only when a profile lists it and a worker may start only read-only children, at most 2, one level deep, its own only (R-WTOOL-45, R-WTOOL-46).
 - **Claude fork and terminal viewers:** a warm Claude worker can be forked for fan-out (`--resume --fork-session`, R-WTOOL-48); agy and Claude cards get an Open in terminal button (R-WTOOL-47). agy still cannot fork (no CLI flag) and reports no cost.

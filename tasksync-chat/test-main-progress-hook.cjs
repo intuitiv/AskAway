@@ -16,7 +16,7 @@ const fire = (event, time, sid = 'main', toolUseId = String(time)) => cp.execFil
 assert.equal(fire('PostToolUse', 500000), '', 'no running turn');
 fire('UserPromptSubmit', 1000);
 assert.equal(fire('PostToolUse', 120999), '', 'before inclusive two-minute boundary');
-assert.match(fire('PostToolUse', 121000), /Status update due.*call commentary \(action aitalk\)/);
+assert.match(fire('PostToolUse', 121000), /Status update due.*call the aitalk tool \(action say\)/);
 assert.equal(fire('PreToolUse', 121001, 'main', '121000'), '', 'pre hook never emits main reminder');
 assert.equal(fire('PostToolUse', 121002, 'main', '121000'), '', 'duplicate result delivery emits no second reminder');
 assert.equal(fire('PostToolUse', 121003, 'main', 'next-result'), '', 'a distinct result cannot repeat the reminder immediately');

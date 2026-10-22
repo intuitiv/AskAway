@@ -48,7 +48,7 @@ thinkingOptions: [low, medium, high]
 edit: allow
 bash: allow
 webfetch: deny
-mcp: [askaway_copilot_memory, askaway_code_nav, askaway_gradle, askaway_worker, askaway_commentary]
+mcp: [askaway_copilot_memory, askaway_code_nav, askaway_gradle, askaway_worker, askaway_aitalk]
 skills: []
 steps: 35
 ---
@@ -66,7 +66,7 @@ thinkingOptions: [low, medium, high]
 edit: deny
 bash: deny
 webfetch: deny
-mcp: [askaway_copilot_memory, askaway_vscode_listCodeUsages, askaway_commentary]
+mcp: [askaway_copilot_memory, askaway_vscode_listCodeUsages, askaway_aitalk]
 skills: []
 steps: 25
 ---
@@ -82,7 +82,7 @@ assert.deepEqual(implRules, [
     'mcp(askaway/code_nav)',
     'mcp(askaway/gradle)',
     'mcp(askaway/worker)',
-    'mcp(askaway/commentary)',
+    'mcp(askaway/aitalk)',
     'command(rtk)',
 ]);
 
@@ -90,7 +90,7 @@ const exploreRules = toAgyPermissions(exploreProfile);
 assert.deepEqual(exploreRules, [
     'mcp(askaway/copilot_memory)',
     'mcp(askaway/vscode_listCodeUsages)',
-    'mcp(askaway/commentary)',
+    'mcp(askaway/aitalk)',
 ]);
 assert.ok(!exploreRules.includes('command(rtk)'), 'bash: deny must not emit command(rtk)');
 assert.ok(!exploreRules.some((r) => /worker/.test(r)), 'a profile that does not list worker gets no worker rule');
@@ -124,7 +124,7 @@ assert.deepEqual(synced.permissions.allow, [
     'mcp(askaway/code_nav)',
     'mcp(askaway/gradle)',
     'mcp(askaway/worker)',
-    'mcp(askaway/commentary)',
+    'mcp(askaway/aitalk)',
     'command(rtk)',
     'mcp(askaway/vscode_listCodeUsages)',
 ]);
@@ -141,7 +141,7 @@ fs.mkdirSync(existingFolder, { recursive: true });
 const freshSettingsPath = path.join(existingFolder, 'settings.json');
 assert.equal(syncAgyPermissions([exploreProfile], freshSettingsPath), true);
 const freshSynced = JSON.parse(fs.readFileSync(freshSettingsPath, 'utf8'));
-assert.deepEqual(freshSynced.permissions.allow, ['mcp(askaway/copilot_memory)', 'mcp(askaway/vscode_listCodeUsages)', 'mcp(askaway/commentary)']);
+assert.deepEqual(freshSynced.permissions.allow, ['mcp(askaway/copilot_memory)', 'mcp(askaway/vscode_listCodeUsages)', 'mcp(askaway/aitalk)']);
 assert.equal(freshSynced.mcpServers, undefined);
 
 // Missing agy settings folder -> do nothing and never create the folder.
@@ -206,6 +206,12 @@ const disallowedEvents = norm({
     },
 });
 assert.ok(disallowedEvents.some((e) => e.type === 'error' && e.outOfPolicy === true && /askaway_gradle/.test(e.error.message)), 'out-of-policy MCP tool must emit outOfPolicy error');
+
+// aitalk is granted by toAgyPermissions when a profile lists it, so a call to it is in policy; without the listing it is out of policy like any other tool.
+const aitalkStep = tool => ({ event: 'step_update', step_update: { conversation_id: 'conv-norm', step_index: 9, step_type: 'tool', state: 'DONE', tool_name: 'call_mcp_tool', tool_info: { parameters: { ServerName: 'askaway', ToolName: tool }, output: 'ok' } } });
+assert.ok(!agyEventNormalizer(exploreProfile.mcp)(aitalkStep('aitalk')).some((e) => e.type === 'error'), 'a listed aitalk call is not out of policy');
+assert.ok(agyEventNormalizer(['askaway_copilot_memory'])(aitalkStep('aitalk')).some((e) => e.outOfPolicy === true), 'an unlisted aitalk call is out of policy');
+assert.ok(agyEventNormalizer(implProfile.mcp)(aitalkStep('worker')).some((e) => e.outOfPolicy === true), 'worker stays blocked even when listed');
 
 // The approval wrapper's own audit step (tool_name askaway_approval) never fails a run; a model calling an MCP tool of that name still does.
 const wrapperEvents = norm({ event: 'step_update', step_update: { conversation_id: 'conv-norm', step_index: 4, step_type: 'tool', state: 'DONE', tool_name: 'askaway_approval', tool_info: { parameters: { CommandLine: 'node -e 1', decision: 'allow' }, output: '' } } });

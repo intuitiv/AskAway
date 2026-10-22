@@ -37,7 +37,7 @@
 
 **Members of your own.** Add `member:` and `role:` to a profile in `~/.askaway/worker-profiles/` and Team shows them, for example a rules-authoring expert. They stay out of the extension itself.
 
-**Runtimes.** Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked. OpenCode and agy start on. Claude runs workers through the `claude` CLI (`claude/sonnet`, `claude/opus`, `claude/haiku`) and reports its real cost. agy runs the `agy/gemini-4-argon-high` family; agy reports no cost, so its tasks show $0 rather than a price. At startup, every morning and on Refresh, each enabled integration's models are discovered and stored, and the Team dropdowns offer them. A signed-out agy or Claude shows a Sign in button that opens the login in a terminal. agy and Claude workers behave like OpenCode ones: each is identified by a carrier the model cannot set (agy's conversation id, a per-run Claude header), so your AITalk messages reach them on their next tool call and they can ask questions in AITalk through `commentary`; a Claude worker can be forked for fan-out; and agy and Claude conversations open in a terminal with Open in terminal.
+**Runtimes.** Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked. OpenCode and agy start on. Claude runs workers through the `claude` CLI (`claude/sonnet`, `claude/opus`, `claude/haiku`) and reports its real cost. agy runs the `agy/gemini-4-argon-high` family; agy reports no cost, so its tasks show $0 rather than a price. At startup, every morning and on Refresh, each enabled integration's models are discovered and stored, and the Team dropdowns offer them. A signed-out agy or Claude shows a Sign in button that opens the login in a terminal. agy and Claude workers behave like OpenCode ones: each is identified by a carrier the model cannot set (agy's conversation id, a per-run Claude header), so your AITalk messages reach them on their next tool call and they can ask questions through the `aitalk` tool (`say` for room messages, `post` for feed lines); a Claude worker can be forked for fan-out; and agy and Claude conversations open in a terminal with Open in terminal.
 
 **Your picture.** AITalk reads `~/.askaway/profile/avatar.png` by default, supports an explicit photo override, and falls back to initials. The photo is never copied into a workspace.
 
@@ -325,7 +325,7 @@ Workers need [OpenCode](https://opencode.ai) and a worker profile; Specs need Sp
 
 1. Enable `askaway.webex.enabled`.
 2. Run `AskAway: Set Webex Token` (or `AskAway: Authorize Webex (OAuth)`); tokens are kept in secret storage.
-3. Run `AskAway: Discover Webex Spaces` and `AskAway: Configure Webex Notifications`, or set `askaway.webex.roomId`.
+3. Run `AskAway: Discover Webex Spaces` and `AskAway: Configure Webex Notifications`, and AskAway chooses a space per workspace by name. Cathy, the Webex assistant, works by space and person names (never ids) and sends only after you 👍 an approval card in AITalk, ready for an Outlook provider.
 
 ### Remote browser UI
 

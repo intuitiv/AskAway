@@ -20,7 +20,7 @@ function fire(event, time, sid = 'main', id = String(time), tool = 'read_file') 
     });
     return out ? JSON.parse(out).hookSpecificOutput.additionalContext : '';
 }
-const reminder = 'Status update due (2+ min since your last AITalk post): call commentary (action aitalk) with one or two plain sentences: what you are doing now, what is done, and where you are blocked or what you are waiting for. This is a status line, not a report.';
+const reminder = 'Status update due (2+ min since your last AITalk post): call the aitalk tool (action say) with one or two plain sentences: what you are doing now, what is done, and where you are blocked or what you are waiting for. This is a status line, not a report.';
 fire('UserPromptSubmit', 1000);
 assert.equal(fire('PostToolUse', 120000), '', 'no reminder at 119 seconds');
 assert.equal(fire('PostToolUse', 122000), reminder, 'status reminder at 121 seconds');

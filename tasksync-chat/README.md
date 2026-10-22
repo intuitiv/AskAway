@@ -17,7 +17,7 @@ You say what you need in plain words. AskAway runs it through Spec Kit, hands th
 
 **Members of your own.** Add `member:` and `role:` to a profile in `~/.askaway/worker-profiles/` and Team shows them, for example a rules-authoring expert. They stay out of the extension itself.
 
-**Runtimes.** Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked. OpenCode and agy start on. Claude runs workers through the `claude` CLI (`claude/sonnet`, `claude/opus`, `claude/haiku`) and reports its real cost. agy runs the `agy/gemini-4-argon-high` family; agy reports no cost, so its tasks show $0 rather than a price. At startup, every morning and on Refresh, each enabled integration's models are discovered and stored, and the Team dropdowns offer them. A signed-out agy or Claude shows a Sign in button that opens the login in a terminal. agy and Claude workers behave like OpenCode ones: each is identified by a carrier the model cannot set (agy's conversation id, a per-run Claude header), so your AITalk messages reach them on their next tool call and they can ask questions in AITalk through `commentary`; a Claude worker can be forked for fan-out; and agy and Claude conversations open in a terminal with Open in terminal.
+**Runtimes.** Settings → Integrations lists OpenCode, agy and Claude, each with an on/off switch, one Refresh button (OpenCode restarts its server after asking) and when it was last checked. OpenCode and agy start on. Claude runs workers through the `claude` CLI (`claude/sonnet`, `claude/opus`, `claude/haiku`) and reports its real cost. agy runs the `agy/gemini-4-argon-high` family; agy reports no cost, so its tasks show $0 rather than a price. At startup, every morning and on Refresh, each enabled integration's models are discovered and stored, and the Team dropdowns offer them. A signed-out agy or Claude shows a Sign in button that opens the login in a terminal. agy and Claude workers behave like OpenCode ones: each is identified by a carrier the model cannot set (agy's conversation id, a per-run Claude header), so your AITalk messages reach them on their next tool call and they can ask questions through the `aitalk` tool (`say` for room messages, `post` for feed lines); a Claude worker can be forked for fan-out; and agy and Claude conversations open in a terminal with Open in terminal.
 
 **Your picture.** AITalk reads `~/.askaway/profile/avatar.png` by default, supports an explicit photo override, and falls back to initials. The photo is never copied into a workspace.
 
@@ -59,7 +59,7 @@ The **AITalk** tab is the workspace group chat. The Agent joins when a turn star
 - **Clear chat** in the header empties the conversation (after a confirmation) and keeps who is in the room.
 - Agent updates read like normal messages, so you can follow the agent's thinking, see where it is stuck, and steer it before it finishes.
 - Set your availability from your avatar (away for 30 minutes, a few hours, or until you are back).
-- Webex drafts appear as a **Draft** card with recipient and full text. Nothing is sent until you 👍 it.
+- Cathy, the Webex assistant, reads, searches, sends, replies, edits and deletes your messages with twelve tools that take space and person names, never ids. Every outbound action is one **Draft** card in AITalk (provider, action, name, thread, full text, files); nothing is sent until you 👍 it, and the same card is ready for an Outlook provider.
 
 ## Spec-Based Development
 
@@ -99,7 +99,7 @@ Get the agent's questions, status, cost and final answers on your phone and repl
 
 1. Enable `askaway.webex.enabled`.
 2. Run **AskAway: Set Webex Token** (or **AskAway: Authorize Webex (OAuth)**); tokens are kept in VS Code secret storage.
-3. Run **AskAway: Discover Webex Spaces** and **AskAway: Configure Webex Notifications**, then set `askaway.webex.roomId` or let AskAway use a space per workspace.
+3. Run **AskAway: Discover Webex Spaces** and **AskAway: Configure Webex Notifications**, and AskAway chooses a space per workspace by name.
 
 Replies are polled, so your laptop is never exposed to the internet.
 
@@ -127,7 +127,7 @@ The **Validator** is a decisioning agent with memory. It learns your answers, pr
 | `rg_search`, `read_doc` | Cheap, structured search and document reads |
 | `turn_budget` | Live cost signal for the current turn |
 | `askaway_memory`, `askaway_validator` | Durable memory and validator questions |
-| `commentary` | Plain-language narration to the room |
+| `aitalk` | Status lines, questions and replies (`say`), or feed lines (`post`) |
 
 If [`rtk`](https://github.com/rtk-ai/rtk) is installed, its token savings show next to the metrics.
 

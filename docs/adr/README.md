@@ -48,3 +48,5 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0032](0032-chat-tab-and-ask-user-retired.md) | Chat tab and ask_user retired | G4 | Proposed |
 | [0026](0026-hooks-and-sk-commands-in-copilot-harness.md) | Hooks fail open and get sandbox grants; /sk.* ship as prompt files (Local), sk-* skills (Copilot) and Claude commands | G15 | Proposed |
 | [0033](0033-agy-and-claude-worker-identity.md) | agy and Claude workers are identified by transport carriers the model cannot set | G12 | Proposed |
+| [0034](0034-commentary-tool-renamed-aitalk.md) | The communication tool is named aitalk, matching the room | G8 | Proposed |
+| [0035](0035-cathy-assistant-tools-and-provider-seam.md) | Cathy's Webex tools use names not ids, macro calls and AITalk approval; provider seam for Outlook | G7, G5 | Proposed |

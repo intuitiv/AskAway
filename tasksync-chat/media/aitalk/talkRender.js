@@ -158,19 +158,29 @@ export function bodyHtml(message, members = defaultMembers) {
     return `${text}${body}<button type="button" class="talk-more" data-more="${id}" aria-expanded="${open}"${open && details ? ` aria-controls="talk-details-${id}"` : ''}>${open ? 'Show less' : 'Show more'}</button>`;
 }
 
-// A Webex draft card: recipient and full text, never collapsed; 👍 sends, 👎 rejects (the same reaction intents).
+// The one approval card for any provider and action: target NAME, details (thread, quoted message), files and the full text, never
+// collapsed; 👍 approves, 👎 rejects (the same reaction intents). Raw ids never appear: only names and quotes are stored for display.
 const DRAFT_LABELS = { pending: 'Draft', sent: 'Sent', failed: 'Not confirmed', rejected: 'Rejected' };
+const SENT_LABELS = { edit: 'Edited', delete: 'Deleted' };
 export function draftCardHtml(message) {
     const draft = message.webexDraft || {};
     const state = DRAFT_LABELS[draft.state] ? draft.state : 'pending';
     const id = escapeHtml(message.id || '');
-    const to = [['Space', draft.space || draft.roomId], ['Person', draft.toPersonEmail], ['Thread', draft.parentId && `reply to ${draft.parentId}`]].filter(([, value]) => value);
-    const actions = state === 'pending' && message.draftId
-        ? `<div class="talk-draft-actions"><button type="button" class="talk-draft-approve" data-react="👍" data-msg="${id}" aria-label="Approve and send">👍 Send</button><button type="button" class="talk-draft-reject" data-react="👎" data-msg="${id}" aria-label="Reject draft">👎 Reject</button></div>` : '';
-    const outcome = state === 'sent' ? `<div class="talk-draft-outcome">Sent · id <code>${escapeHtml(draft.sentId || '')}</code></div>`
+    const generic = Boolean(draft.provider);
+    const provider = generic ? String(draft.provider).charAt(0).toUpperCase() + String(draft.provider).slice(1) : 'Webex';
+    const to = generic
+        ? [['To', draft.recipientLabel], ...Object.entries(draft.details || {}), ['Files', (draft.files || []).join(', ')]]
+        : [['Space', draft.space || draft.recipientLabel], ['Person', draft.toPersonEmail], ['Thread', draft.parentId && 'reply in a thread']];
+    const rows = to.filter(([, value]) => value);
+    const approve = !generic || ['send', 'reply', 'upload'].includes(draft.action) ? '👍 Send' : '👍 Approve';
+    const actions = state === 'pending' && message.draftId && !draft.unresolved
+        ? `<div class="talk-draft-actions"><button type="button" class="talk-draft-approve" data-react="👍" data-msg="${id}" aria-label="Approve and send">${approve}</button><button type="button" class="talk-draft-reject" data-react="👎" data-msg="${id}" aria-label="Reject draft">👎 Reject</button></div>` : '';
+    const unresolved = state === 'pending' && draft.unresolved ? '<div class="talk-draft-outcome">The name is not resolved yet, so this cannot be sent.</div>' : '';
+    const sent = (SENT_LABELS[draft.action] || 'Sent') + (draft.sentId ? ` · id <code>${escapeHtml(draft.sentId)}</code>` : '');
+    const outcome = state === 'sent' ? `<div class="talk-draft-outcome">${sent}</div>`
         : state === 'rejected' ? '<div class="talk-draft-outcome">Rejected · nothing was sent</div>'
-            : state === 'failed' ? '<div class="talk-draft-outcome">Webex did not confirm the send</div>' : '';
-    return `<div class="talk-draft ${state}" data-draft-state="${state}"><div class="talk-draft-head"><span class="talk-draft-badge">${DRAFT_LABELS[state]}</span> Webex message${draft.edited && state === 'pending' ? ' · edited, approve again' : ''}</div><dl class="talk-draft-to">${to.map(([key, value]) => `<dt>${key}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl><div class="talk-draft-text">${escapeHtml(draft.text || '')}</div>${actions}${outcome}</div>`;
+            : state === 'failed' ? `<div class="talk-draft-outcome">${escapeHtml(provider)} did not confirm the ${generic ? escapeHtml(draft.action) : 'send'}</div>` : '';
+    return `<div class="talk-draft ${state}" data-draft-state="${state}"><div class="talk-draft-head"><span class="talk-draft-badge">${DRAFT_LABELS[state]}</span> ${escapeHtml(provider)} ${generic ? escapeHtml(draft.action) : 'message'}${draft.edited && state === 'pending' ? ' · edited, approve again' : ''}</div><dl class="talk-draft-to">${rows.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl><div class="talk-draft-text">${escapeHtml(draft.text || '')}</div>${unresolved}${actions}${outcome}</div>`;
 }
 
 export function bubbleHtml(message, { messages = [], members = defaultMembers, first = true, avatarFor } = {}) {

@@ -103,7 +103,8 @@ export function parseWorkerProfile(markdown: string, source = ''): WorkerProfile
         edit: asAction(fields.edit, 'deny'),
         bash: asAction(fields.bash, 'ask'),
         webfetch: asAction(fields.webfetch, 'deny'),
-        mcp: asList(fields.mcp),
+        // Deprecated tool alias: stale user profiles must grant the renamed tool, not register a second tool.
+        mcp: asList(fields.mcp).map(entry => entry === 'askaway_commentary' ? 'askaway_aitalk' : entry),
         skills: asList(fields.skills),
         steps: Number(fields.steps) > 0 ? Number(fields.steps) : 40,
         prompt: match[2].trim(),
@@ -306,7 +307,7 @@ export function toAgyPermissions(profile: Pick<WorkerProfile, 'mcp' | 'bash'>): 
     const rules: string[] = [];
     for (const entry of profile.mcp ?? []) {
         if (!entry.startsWith('askaway_')) { continue; }
-        const tool = entry.slice('askaway_'.length);
+        const tool = entry === 'askaway_commentary' ? 'aitalk' : entry.slice('askaway_'.length);
         if (!tool) { continue; }
         const rule = AGY_MCP_RULE_FORMAT.replace('<tool>', tool);
         if (!rules.includes(rule)) { rules.push(rule); }
@@ -339,7 +340,7 @@ export function syncAgyPermissions(
         const existingPermissions = parsed.permissions && typeof parsed.permissions === 'object' && !Array.isArray(parsed.permissions)
             ? parsed.permissions as Record<string, any> : {};
         const existingAllow = Array.isArray(existingPermissions.allow) ? existingPermissions.allow.map(String) : [];
-        const allow = [...existingAllow];
+        const allow = [...new Set(existingAllow.map(rule => rule === 'mcp(askaway/commentary)' ? 'mcp(askaway/aitalk)' : rule))];
         for (const profile of profiles) {
             for (const rule of toAgyPermissions(profile)) {
                 if (!allow.includes(rule)) { allow.push(rule); }

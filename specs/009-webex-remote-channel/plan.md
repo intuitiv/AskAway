@@ -70,3 +70,22 @@ Source: [GOALS.md](../../GOALS.md), Webex OAuth confirmation; [proposed ADR 0020
 ## Verification and closure
 
 Builder extends existing `tasksync-chat/test-webex-token-command.cjs` for caller-visible browser/prompt/exchange/storage/rejection/cancellation behavior and absence of a listener; `test-webex-auth-storage.cjs` guards reuse/refresh. Compile/type-check belongs to that implementation packet. Both builder and independent gates must pass before T024–T028 or T007 close. Callback POC and reviewer confirmation are done; implementation/testing are not. Docs verification: `rtk node tasksync-chat/test-goals-docs.cjs`. No deployment claimed.
+
+## US8 Cathy acts for me (reviewer 2026-10-22, after the rest of 009)
+
+Design: [contracts/assistant-tools.md](contracts/assistant-tools.md); decision [ADR 0035](../../docs/adr/0035-cathy-assistant-tools-and-provider-seam.md); rows R-CATHY-01..08. The provider seam (`tasksync-chat/src/services/assistant/provider.ts`, guard `test-assistant-provider-seam.cjs`) is delivered with the design.
+
+| Decision | Source | Plan |
+|---|---|---|
+| Names not ids; short opaque refs | "Room ID is internal so dont show it to me. Space name is what is i see." | One resolver owns the ref table; output mappers serialise `ref` and `label` only; a seeded-id test covers results, cards, status file and logs. |
+| Macro tools, at most 12 | "we need tools to optimise that" | Read macros in S1, outbound actions in S2, registration and removal of the nine old tools plus the LM `askaway_webex` in S3. Nothing outside Cathy uses them. |
+| Approval in AITalk, no fallback send | "Cathy can take persmission from me to send any mesage and all." | S2 implements one generic card behind `requestApproval`; the no-hook `deps.approve` send path is removed; the modal is an explicit fallback only. |
+| Outlook later | "I will add outlook tool also in future" | Provider registry and `ApprovalRequest` already exist; no Outlook code now. |
+
+Build slices and file ownership (full list in tasks.md T044 to T047; every file belongs to exactly one slice, so S1 and S2 run in parallel and S3 follows both):
+
+1. S1 (T044): `src/services/assistant/webexResolver.ts`, `webexRead.ts`, tests `test-webex-name-resolver.cjs`, `test-webex-macro-tools.cjs`.
+2. S2 (T045): `src/services/assistant/webexActions.ts`, `src/aitalk/webexDraftCards.ts`, `src/services/webexDrafts.ts`, tests `test-webex-approval-card.cjs` plus the existing draft tests.
+3. S3 (T046): `src/services/webexSuite.ts`, `webexToolsHost.ts`, `webexTools.ts` (removed), `src/workers/workerTools.ts` (`webexTool` removed), `src/services/webexStatus.ts`, `webexService.ts` (hint text), `package.json` (setting text, manifest), `worker-profiles/webex.md`, tests `test-webex-assistant-tools.cjs`, `test-webex-no-ids.cjs`, `test-webex-tools.cjs` (retired or rewritten), `test-webex-prompt-graders.cjs`.
+4. S4 (T047): live smoke, opt-in only; never spam: reply only to the reviewer-named message with his "Thank you!".
+

@@ -34,9 +34,9 @@ export function createSimulatedRoom({ messages = [], members = defaultMembers, t
         if (action.type === 'aitalkApproveDraft' && pendingDraft(action.draftId)) settleDraft(pendingDraft(action.draftId), 'sent');
     }
     function settleDraft(card, outcome) {
-        const webexDraft = { ...card.webexDraft, state: outcome, ...(outcome === 'sent' ? { sentId: `webex-${sent++}` } : {}) };
+        const webexDraft = { ...card.webexDraft, state: outcome };
         state.messages = state.messages.map(message => message === card ? { ...message, draftId: '', webexDraft } : message);
-        act({ do: 'add', message: { id: `draft-outcome-${sent++}`, author: owner(state.members).id, replyTo: card.id, text: outcome === 'sent' ? `👍 Approved: sent to ${webexDraft.recipientLabel} · id ${webexDraft.sentId}` : `👎 Rejected: nothing was sent to ${webexDraft.recipientLabel}.`, delivery: 'posted' } });
+        act({ do: 'add', message: { id: `draft-outcome-${sent++}`, author: owner(state.members).id, replyTo: card.id, text: outcome === 'sent' ? `👍 Approved: sent to ${webexDraft.recipientLabel}.` : `👎 Rejected: nothing was sent to ${webexDraft.recipientLabel}.`, delivery: 'posted' } });
     }
     return { act, intent, snapshot: () => state, start: emit };
 }

@@ -18,11 +18,17 @@ const load = () => { const mod = { exports: {} }; new Function('require', 'modul
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'aitalk-webex-draft-')));
     const posts = [];
     let modal = 0;
-    // The Webex tool host as the extension builds it, with a fake HTTP request and a modal that would say yes.
-    const host = api => api.webexSuiteTools({ cacheDir: path.join(root, 'cache'), approve: async () => { modal++; return 'approved'; },
+    // The Webex tool host as the extension builds it, with a fake HTTP request and a modal that would say yes (it must never be asked).
+    const host = api => api.webexSuiteTools({ cacheDir: path.join(root, 'cache'), modalFallback: undefined,
         request: async (method, endpoint, body) => {
-            if (method === 'POST') { posts.push(body); return { ok: true, json: async () => ({ id: `msg-${posts.length}` }) }; }
-            return { ok: true, json: async () => endpoint.startsWith('/rooms/') ? { id: 'room-1', title: 'Build Team' } : { items: [] } };
+            const reply = data => ({ ok: true, status: 200, json: async () => data });
+            if (method === 'POST') { posts.push(body); return reply({ id: `msg-${posts.length}` }); }
+            const url = new URL(endpoint, 'https://x.test'), query = url.searchParams;
+            if (url.pathname === '/rooms') return reply({ items: [{ id: 'room-1', title: 'Build Team', type: 'group', lastActivity: '2026-10-22T09:00:00.000Z' }] });
+            if (url.pathname === '/people/me') return reply({ id: 'me', displayName: 'Reviewer' });
+            if (url.pathname === '/people') return reply({ items: query.get('id') ? [{ id: 'p-ana', displayName: 'Ana Smith' }] : [{ id: 'p-ana', displayName: 'Ana Smith', emails: ['ana@example.test'] }] });
+            if (url.pathname === '/messages') return reply({ items: [{ id: 'thread-7', roomId: 'room-1', personId: 'p-ana', personEmail: 'ana@example.test', text: 'Release plan question', created: '2026-10-22T09:00:00.000Z' }] });
+            return reply({ items: [] });
         } });
     const { createTalkController } = await import('./media/aitalk/talkController.js');
     const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -54,15 +60,17 @@ const load = () => { const mod = { exports: {} }; new Function('require', 'modul
 
     // 1. The worker's draft is a card in AITalk: recipient (space, thread) and the full text, marked Draft; nothing is sent.
     const longText = `Deploy plan <b>v1</b>:\n${'step and check '.repeat(30)}\nend of message`;
-    const first = await run('webex_send', { roomId: 'room-1', parentId: 'thread-7', text: longText });
+    const threadRef = (await run('webex_read', { space: 'Build Team' })).messages[0].ref;
+    const first = await run('webex_send', { to: 'Build Team', thread: threadRef, text: longText });
     assert.equal(first.status, 'pending'); assert.equal(posts.length, 0); assert.equal(modal, 0, 'AITalk is the permission, not a modal');
     const firstCard = cardFor(first.draftId);
     assert.equal(firstCard.author, 'webex-worker-1', 'the worker posts its own draft card');
     assert.equal(room.isRegistered('webex-worker-1'), true);
     view.paint();
     assert.match(view.panel.innerHTML, /talk-draft-badge">Draft</);
-    assert.match(view.panel.innerHTML, /<dt>Space<\/dt><dd>Build Team<\/dd>/);
-    assert.match(view.panel.innerHTML, /<dt>Thread<\/dt><dd>reply to thread-7<\/dd>/);
+    assert.match(view.panel.innerHTML, /<dt>To<\/dt><dd>Build Team<\/dd>/);
+    assert.match(view.panel.innerHTML, /<dt>Thread<\/dt><dd>Ana Smith: Release plan question<\/dd>/);
+    assert.doesNotMatch(view.panel.innerHTML, /thread-7|room-1/, 'the card names the thread by its quote, never by id');
     assert.ok(view.panel.innerHTML.includes(`<div class="talk-draft-text">${longText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`), 'full text, escaped, never collapsed');
     assert.match(view.panel.innerHTML, /data-react="👍" data-msg="[^"]+" aria-label="Approve and send"/);
     console.log('PASS draft card shows Draft, space, thread and the full escaped text; nothing sent');
@@ -84,18 +92,18 @@ const load = () => { const mod = { exports: {} }; new Function('require', 'modul
     await flush(); await flush();
     assert.deepEqual(view.intents.slice(-2).map(intent => intent.draftId), [edited.draftId, edited.draftId]);
     assert.deepEqual(posts, [{ roomId: 'room-1', text: 'Deploy at 3pm.', parentId: 'thread-7' }], 'sent exactly once, edited text, in thread');
-    assert.equal(card(firstCard.id).webexDraft.state, 'sent'); assert.equal(card(firstCard.id).webexDraft.sentId, 'msg-1');
-    assert.match(view.panel.innerHTML, /talk-draft-badge">Sent</); assert.match(view.panel.innerHTML, /Sent · id <code>msg-1<\/code>/);
+    assert.equal(card(firstCard.id).webexDraft.state, 'sent'); assert.equal(card(firstCard.id).webexDraft.sentId, undefined);
+    assert.match(view.panel.innerHTML, /talk-draft-badge">Sent</); assert.match(view.panel.innerHTML, /talk-draft-outcome">Sent</); assert.doesNotMatch(view.panel.innerHTML, /msg-1/, 'the sent card carries no message id');
     assert.doesNotMatch(view.panel.innerHTML.slice(view.panel.innerHTML.indexOf(`id="talk-${firstCard.id}"`)).split('talk-row')[0], /Approve and send/);
     let inbox = room.store.takeForTool('webex-worker-1');
-    assert.equal(inbox.length, 1); assert.equal(inbox[0].replyTo, firstCard.id); assert.match(inbox[0].text, /sent to Build Team · id msg-1/);
-    console.log('PASS 👍 double click sends once; card turns Sent with id; worker gets the outcome as the reply');
+    assert.equal(inbox.length, 1); assert.equal(inbox[0].replyTo, firstCard.id); assert.match(inbox[0].text, /Approved: sent to Build Team\.$/);
+    console.log('PASS 👍 double click sends once; card turns Sent (no id shown); worker gets the outcome as the reply');
 
     // 4. 👎 / Reject discards: nothing sent, card Rejected, worker told; a later approval sends nothing.
-    const second = await run('webex_send', { toPersonEmail: 'ana@example.test', text: 'Can you review?' });
+    const second = await run('webex_send', { to: 'Ana Smith', text: 'Can you review?' });
     const secondCard = cardFor(second.draftId);
     view.paint();
-    assert.match(view.panel.innerHTML, /<dt>Person<\/dt><dd>ana@example.test<\/dd>/);
+    assert.match(view.panel.innerHTML, /<dt>To<\/dt><dd>Ana Smith<\/dd>/);
     view.click({ react: '👎', msg: secondCard.id });
     assert.equal(view.intents.at(-1).type, 'aitalkReact');
     assert.equal(card(secondCard.id).webexDraft.state, 'rejected');
@@ -104,11 +112,11 @@ const load = () => { const mod = { exports: {} }; new Function('require', 'modul
     await flush(); assert.match(view.panel.innerHTML, /Rejected · nothing was sent/);
     inbox = room.store.takeForTool('webex-worker-1');
     const outcome = inbox.find(message => /Rejected/.test(message.text));
-    assert.equal(outcome.replyTo, secondCard.id); assert.match(outcome.text, /Rejected: nothing was sent to ana@example.test/);
+    assert.equal(outcome.replyTo, secondCard.id); assert.match(outcome.text, /Rejected: nothing was done for Ana Smith\./);
     console.log('PASS 👎 rejects: nothing sent; card Rejected; worker gets the outcome');
 
     // 5. Never without the user's approval: another actor's 👍 sends nothing.
-    const third = await run('webex_send', { roomId: 'room-1', text: 'Survives reload' });
+    const third = await run('webex_send', { to: 'Build Team', text: 'Survives reload' });
     const thirdCard = cardFor(third.draftId);
     room.registerAgent(); room.react('agent', thirdCard.id, '👍'); await flush();
     assert.equal(posts.length, 1); assert.equal(card(thirdCard.id).webexDraft.state, 'pending');
@@ -138,7 +146,7 @@ const load = () => { const mod = { exports: {} }; new Function('require', 'modul
     assert.match(render.threadHtml(painted.messages, painted.members), /Approve and send/);
     sim.intent({ type: 'aitalkApproveDraft', draftId: 'd1' }); sim.intent({ type: 'aitalkApproveDraft', draftId: 'd1' });
     assert.equal(painted.messages.filter(message => message.replyTo === 'sim-draft').length, 1);
-    assert.match(render.threadHtml(painted.messages, painted.members), /Sent · id/);
+    assert.match(render.threadHtml(painted.messages, painted.members), /talk-draft-outcome">Sent</);
     console.log('PASS Storybook simulated actors feed the same draft card; 👍 settles once');
     api.connectWebexDrafts(room, () => api.currentAITalkCaller()?.recipient);
     const mcp = new Map();
@@ -148,7 +156,7 @@ const load = () => { const mod = { exports: {} }; new Function('require', 'modul
     hostModule.exports.registerWebexToolsHost((name, config, handler) => mcp.set(name, handler), tools);
     for (const location of ['transport', 'arguments']) {
         const meta = { workerId: `mcp-webex-${location}`, workspacePath: root };
-        const args = { roomId: 'room-1', text: 'Can you review this draft?' };
+        const args = { to: 'Build Team', text: 'Can you review this draft?' };
         // The arguments carry only the OpenCode session id (the plugin's word); the worker is whoever the runtime says runs in that session.
         api.setAITalkSessionResolver(location === 'arguments' ? id => id === 'ses-webex' ? { workerId: meta.workerId, workspace: root } : undefined : undefined);
         const result = await mcp.get('webex_send')(location === 'arguments' ? { ...args, _meta: { openCodeSessionId: 'ses-webex' } } : args, location === 'transport' ? { _meta: meta } : undefined);

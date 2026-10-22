@@ -59,16 +59,6 @@ export interface ToolDefinition {
     run: (args: any) => unknown | Promise<unknown>;
 }
 
-export function webexTool(host: (input: unknown) => Promise<Record<string, unknown>>): ToolDefinition {
-    const { webexToolSchema } = require('../services/webexTools') as typeof import('../services/webexTools');
-    return {
-        name: 'askaway_webex',
-        description: 'Webex actions: spaces lists recent spaces; read reads a room (mine:true learns your writing style); thread reads roomId+parentId; search filters recent room messages by query; people finds email/displayName; send posts to roomId or toPersonEmail with optional parentId. Output is bounded to 50 messages and 1000 characters each, with truncation/pagination flags. Sends require approval showing recipient and full text; when not Here they return a draft. Disabled unless Webex is configured. Never supply tokens or secrets.',
-        inputSchema: webexToolSchema,
-        run: host,
-    };
-}
-
 const packetShape = {
     profile: z.string().describe('Worker mode: one of the enabled profiles that `action: "profiles"` lists.'),
     runtime: z.enum(['opencode', 'agy', 'claude']).optional().describe('Worker runtime; default opencode. agy runs `model` (e.g. gemini-4-argon-medium) through the agy CLI for any mode; its cost is unreported and it has no OpenCode viewer. claude runs `model` (sonnet, opus, haiku or any id the Claude CLI accepts) through Claude Code headless; its cost is reported.'),
@@ -125,14 +115,14 @@ export function registerToolDefinitions(register: Register, definitions: ToolDef
         register(definition.name, { description: definition.description, inputSchema: typeof schema.passthrough === 'function' ? schema.passthrough() : schema },
             async (args: any, extra?: any) => {
                 // Identity: the transport `_meta`, plus the OpenCode session id from the arguments; nothing else in `args._meta` is trusted.
-                const aitalk = args?._meta || extra?._meta || definition.name === 'commentary' ? require('../aitalk/delivery') as typeof import('../aitalk/delivery') : undefined;
+                const aitalk = args?._meta || extra?._meta || definition.name === 'aitalk' ? require('../aitalk/delivery') as typeof import('../aitalk/delivery') : undefined;
                 const meta = aitalk?.callMeta(args, extra);
                 const input = { ...args }; delete input._meta;
                 // Only a call that names its caller (or a commentary line, which needs a workspace) touches the AITalk delivery boundary.
                 const caller = aitalk?.mcpAITalkCaller({ _meta: meta });
                 // The feed a line belongs to is the worker's own workspace, never the server owner's.
                 const workspace = (caller ?? aitalk?.currentAITalkCaller())?.workspace;
-                if (definition.name === 'commentary' && !input.workspacePath && workspace) input.workspacePath = workspace;
+                if (definition.name === 'aitalk' && !input.workspacePath && workspace) input.workspacePath = workspace;
                 const run = async () => ({ content: [{ type: 'text' as const, text: await invokeDefinition(definition, input, false) }] });
                 if (!caller || !aitalk) return run();
                 const result = await aitalk.withAITalkMcpDelivery(run, caller.workspace ?? '')(input, { _meta: meta });

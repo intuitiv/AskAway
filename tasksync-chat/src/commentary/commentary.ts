@@ -209,20 +209,20 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
     name: string; description: string; inputSchema: z.ZodObject<any>; run: (args: any) => any;
 }> {
     return [{
-        name: 'commentary',
-        description: 'Live commentary: the trace of your execution for the reviewer, so they know what is happening, can guide you in time, and are prepared for questions coming their way. '
+        name: 'aitalk',
+        description: 'The aitalk tool posts status lines, questions and replies to AITalk and the execution feed for the reviewer. '
             + 'One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. '
             + 'Speak to the reviewer in plain first-person sentences, like updating a colleague. Use one or two short sentences, not emoji-led bold banners or headlines. '
-            + 'Main agent only: about every couple of minutes, post a status line with action aitalk, kind update: what you are doing, what is done, and where blocked or waiting. '
+            + 'Main agent only: about every couple of minutes, post a status line with action say, kind update: what you are doing, what is done, and where blocked or waiting. '
             + 'Workers and other members never post updates on AITalk (refused); they post only questions (kind heads-up) and report progress in their final worker report. '
-            + 'At a decision or when reviewer input is needed, ask right away with action aitalk, kind heads-up: a heads-up asks the exact question with options and your recommended default, never just "something is unclear"; leave waitSeconds at its default (45 seconds). '
+            + 'At a decision or when reviewer input is needed, ask right away with action say, kind heads-up: a heads-up asks the exact question with options and your recommended default, never just "something is unclear"; leave waitSeconds at its default (45 seconds). '
             + 'Do not wait beyond that unless you truly cannot continue; carry on with the recommended default. Answers arrive in a later tool result under ADDITIONAL MESSAGES FROM THE USER. '
             + 'Keep it short; optional details go under Read more. Put questions still open at turn end in the single Response Handoff batch.',
         inputSchema: z.object({
-            action: z.enum(['post', 'aitalk']).optional(),
+            action: z.enum(['post', 'say', 'aitalk']).optional().describe('post writes a feed line; say posts to AITalk; aitalk is a deprecated alias for say.'),
             details: z.string().max(8000).optional(),
             replyTo: z.string().optional(),
-            waitSeconds: z.number().min(0).max(120).optional().describe('action aitalk: seconds to wait for a reply to this question (default 45 for a heads-up, 0 otherwise).'),
+            waitSeconds: z.number().min(0).max(120).optional().describe('action say: seconds to wait for a reply to this question (default 45 for a heads-up, 0 otherwise).'),
             kind: z.enum(COMMENTARY_KINDS).optional(),
             text: z.string().min(1).describe('10-20 plain words: what is happening and why.'),
             turnId: z.string().optional(),
@@ -232,13 +232,13 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
         run: (args) => {
             const workspace = args.workspacePath || defaultWorkspace;
             if (!workspace) return { status: 'REJECTED', reason: 'workspacePath is required: say which workspace this line belongs to' };
-            if (args.action === 'aitalk') {
+            if (args.action === 'say' || args.action === 'aitalk') {
                 if (!talkPost) return { status: 'REJECTED', reason: 'AITalk is not configured' };
                 const posted = talkPost(workspace, args) as { id?: string } | undefined;
                 const seconds = args.waitSeconds ?? (args.kind === 'heads-up' && !args.replyTo ? AITALK_QUESTION_WAIT_SECONDS : 0);
                 return talkWait && posted?.id && seconds > 0 ? talkWait(workspace, { id: posted.id }, seconds).then(waited => ({ ...posted, ...(waited as object) })) : posted;
             }
-            if (!args.kind) return { status: 'INVALID_INPUT', reason: 'kind is required for commentary' };
+            if (!args.kind) return { status: 'INVALID_INPUT', reason: 'kind is required for the aitalk tool feed post' };
             return store().post(workspace, args);
         },
     }];

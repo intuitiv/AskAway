@@ -107,10 +107,10 @@ const close = (a, b) => Math.abs(a - b) < 1e-9;
     assert.equal(arg(first, '--effort'), 'medium');
     assert.equal(arg(first, '--add-dir'), workspace);
     assert.equal(arg(first, '--permission-mode'), 'acceptEdits');
-    assert.deepEqual(arg(first, '--allowedTools').split(','), ['Bash(rtk:*)', 'mcp__askaway__askaway_memory', 'mcp__askaway__commentary', 'mcp__askaway__worker'], 'rtk shell + named MCP tools (commentary for AITalk questions; the worker tool because this profile lists it, bounded by the worker-tool guard)');
+    assert.deepEqual(arg(first, '--allowedTools').split(','), ['Bash(rtk:*)', 'mcp__askaway__askaway_memory', 'mcp__askaway__aitalk', 'mcp__askaway__worker'], 'rtk shell + named MCP tools (aitalk for questions; the worker tool because this profile lists it, bounded by the worker-tool guard)');
     assert.ok(arg(first, '--disallowedTools').split(',').includes('Task'), 'workers never spawn subagents');
     assert.ok(!arg(first, '--disallowedTools').split(',').includes('mcp__askaway__worker'), 'a profile that lists the worker tool may call it');
-    assert.ok(!arg(first, '--disallowedTools').split(',').includes('mcp__askaway__commentary'), 'a profile that lists commentary may call it');
+    assert.ok(!arg(first, '--disallowedTools').split(',').includes('mcp__askaway__aitalk'), 'a stale profile that lists commentary may call aitalk');
     // The identity token is a credential: it is in a private 0600 file read at launch, never in argv, and the file is removed when the run ends.
     const mcpConfig = JSON.parse(first.cfg);
     const token = mcpConfig.mcpServers.askaway.headers['X-AskAway-Run'];

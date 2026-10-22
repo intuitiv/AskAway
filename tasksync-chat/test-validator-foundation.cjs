@@ -33,7 +33,7 @@ const store = new CommentaryStore({ dir: path.join(home, 'commentary'), now: () 
         assert.deepEqual([...COMMENTARY_KINDS], ['update', 'heads-up']);
         const tools = new Map();
         registerToolDefinitions((name, config, handler) => tools.set(name, { config, handler }), commentaryToolDefinitions(() => store, ''));
-        const schema = tools.get('commentary').config.inputSchema;
+        const schema = tools.get('aitalk').config.inputSchema;
         assert.throws(() => schema.parse({ kind: 'validator', text: 'agent tries to post as the validator', workspacePath: workspace }), 'MCP schema refuses kind validator');
         const [definition] = commentaryToolDefinitions(() => store, workspace);
         assert.equal(JSON.parse(await invokeDefinition(definition, { kind: 'validator', text: 'agent tries to post as the validator' })).status, 'INVALID_INPUT');

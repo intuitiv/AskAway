@@ -137,7 +137,7 @@ export function runVerifyCommand(command: string, cwd: string, timeoutMs = VERIF
 }
 
 function isAllowedAgyMcpTool(tool: string, allowedMcp: readonly string[]): boolean {
-    if (/^askaway_(worker|commentary)(?:_|$)/.test(tool)) { return false; }
+    if (/^askaway_worker(?:_|$)/.test(tool)) { return false; }
     return allowedMcp.some((pattern) => pattern === tool || (pattern.endsWith('*') && tool.startsWith(pattern.slice(0, -1))));
 }
 

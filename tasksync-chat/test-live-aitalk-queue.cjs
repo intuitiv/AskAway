@@ -225,7 +225,7 @@ async function runAgy(ctx, prompt) {
     return { ...state, final: final.trim() };
 }
 const agyName = `aitalk-live-${crypto.randomBytes(3).toString('hex')}`;
-function toolPhrase(runtime) { return runtime === 'agy' ? `commentary (the MCP server named ${agyName})` : 'askaway_commentary'; }
+function toolPhrase(runtime) { return runtime === 'agy' ? `aitalk (the MCP server named ${agyName})` : 'askaway_aitalk'; }
 const withTool = (text, runtime) => text.replaceAll('{{STEPS}}', scenarios.steps).replaceAll('{{TOOL}}', toolPhrase(runtime));
 async function runAgent(ctx, task) {
     const prompt = withTool(task, ctx.runtime);
@@ -353,7 +353,7 @@ async function identityScenario(ctx) {
     const progress = 'IDENTITY_PROGRESS';
     const question = 'Should I use green or blue?';
     ctx.onResult = call => { if (call.index === 1) queued = userMessage(ctx, 'What is 2+3? Reply using action aitalk and replyTo this message id.'); };
-    const tool = ctx.runtime === 'agy' ? 'commentary on the askaway-live-identity plugin server live' : 'mcp__askaway__commentary';
+    const tool = ctx.runtime === 'agy' ? 'aitalk on the askaway-live-identity plugin server live' : 'mcp__askaway__aitalk';
     const prompt = `Use only ${tool}. Make these calls sequentially, waiting for every result. First action aitalk, kind update, text ${progress}, waitSeconds 0. This is an intentional refusal test; continue after rejection. Second action aitalk, kind heads-up, text "${question}", waitSeconds 0. Read ADDITIONAL MESSAGES FROM THE USER in every result. Answer its arithmetic question by calling action aitalk with replyTo equal to its id, text "5", no kind, waitSeconds 0. Then finish with done. Do not put identity metadata or workspacePath in arguments.`;
     let run;
     if (ctx.runtime === 'agy') {
@@ -370,7 +370,7 @@ async function identityScenario(ctx) {
         ctx.runToken = crypto.randomBytes(24).toString('hex');
         lib.setAITalkRunTokenResolver(token => token === ctx.runToken ? { workerId: ctx.recipient, workspace: ctx.ws } : undefined);
         const args = lib.claudeArgs({ model: 'haiku', thinking: 'low', message: prompt, mcpUrl: `http://127.0.0.1:${proxyPort}/sse`, runToken: ctx.runToken,
-            profile: { edit: 'deny', bash: 'deny', webfetch: 'deny', mcp: ['askaway_commentary'] } });
+            profile: { edit: 'deny', bash: 'deny', webfetch: 'deny', mcp: ['askaway_aitalk'] } });
         args.splice(args.indexOf('--'), 0, '--max-budget-usd', '0.10', '--setting-sources', '', '--tools', '');
         run = await runProcess(ctx, 'claude', args, { env: { ...process.env, ENABLE_TOOL_SEARCH: 'false' } }, line => {
             let event; try { event = JSON.parse(line); } catch { return; }
@@ -406,7 +406,7 @@ async function withAgyIdentity(test) {
     let installed = false;
     try {
         const settings = JSON.parse(original); settings.permissions ||= {}; settings.permissions.allow ||= [];
-        settings.permissions.allow.push('mcp(askaway-live-identity_live/commentary)');
+        settings.permissions.allow.push('mcp(askaway-live-identity_live/aitalk)');
         fs.writeFileSync(settingsPath, JSON.stringify(settings));
         installed = true; cli(['plugin', 'install', plugin]);
         await test();

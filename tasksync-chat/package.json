@@ -2,7 +2,7 @@
   "name": "askaway",
   "publisher": "intuitiv",
   "displayName": "AskAway",
-  "description": "Spec-based development, OpenCode workers to delegate tasks, a Team of AI members with spend at a glance, the AITalk room, Telegram / Webex remote control, live cost tracing, keep-alive pings and timers.",
+  "description": "Spec-based development, OpenCode workers to delegate tasks, a Team of AI members with spend at a glance, the AITalk room and aitalk tool, Telegram / Webex remote control, live cost tracing, keep-alive pings and timers.",
   "icon": "media/askaway-logo.png",
   "version": "2.3.4",
   "engines": {
@@ -20,6 +20,7 @@
     "opencode",
     "workers",
     "aitalk",
+    "aitalk tool",
     "spec-based development",
     "team",
     "keep-alive",
@@ -561,67 +562,6 @@
         }
       },
       {
-        "name": "commentary",
-        "tags": [
-          "askaway",
-          "commentary",
-          "orchestrator"
-        ],
-        "toolReferenceName": "commentary",
-        "displayName": "Commentary",
-        "modelDescription": "Live commentary: the trace of your execution for the reviewer, so they know what is happening, can guide you in time, and are prepared for questions coming their way. One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. Speak to the reviewer in plain first-person sentences, like updating a colleague. Use one or two short sentences, not emoji-led bold banners or headlines. Main agent only: about every couple of minutes, post a status line with action aitalk, kind update: what you are doing, what is done, and where blocked or waiting. Workers and other members never post updates on AITalk (refused); they post only questions (kind heads-up) and report progress in their final worker report. At a decision or when reviewer input is needed, ask right away with action aitalk, kind heads-up: a heads-up asks the exact question with options and your recommended default, never just \"something is unclear\"; leave waitSeconds at its default (45 seconds). Do not wait beyond that unless you truly cannot continue; carry on with the recommended default. Answers arrive in a later tool result under ADDITIONAL MESSAGES FROM THE USER. Keep it short; optional details go under Read more. Put questions still open at turn end in the single Response Handoff batch.",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(comment-discussion)",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "enum": [
-                "post",
-                "aitalk"
-              ]
-            },
-            "details": {
-              "type": "string",
-              "maxLength": 8000
-            },
-            "replyTo": {
-              "type": "string"
-            },
-            "waitSeconds": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 120,
-              "description": "action aitalk: seconds to wait for a reply to this question (default 45 for a heads-up, 0 otherwise)."
-            },
-            "kind": {
-              "type": "string",
-              "enum": [
-                "update",
-                "heads-up"
-              ]
-            },
-            "text": {
-              "type": "string",
-              "minLength": 1,
-              "description": "10-20 plain words: what is happening and why."
-            },
-            "turnId": {
-              "type": "string"
-            },
-            "workspacePath": {
-              "type": "string",
-              "description": "The workspace this line belongs to. Required over MCP; the VS Code tool defaults to its own window."
-            }
-          },
-          "required": [
-            "text"
-          ],
-          "additionalProperties": false
-        }
-      },
-      {
         "name": "worker",
         "tags": [
           "askaway",
@@ -853,6 +793,69 @@
           ],
           "additionalProperties": false
         }
+      },
+      {
+        "name": "aitalk",
+        "tags": [
+          "askaway",
+          "aitalk",
+          "orchestrator"
+        ],
+        "toolReferenceName": "aitalk",
+        "displayName": "Aitalk",
+        "modelDescription": "The aitalk tool posts status lines, questions and replies to AITalk and the execution feed for the reviewer. One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. Speak to the reviewer in plain first-person sentences, like updating a colleague. Use one or two short sentences, not emoji-led bold banners or headlines. Main agent only: about every couple of minutes, post a status line with action say, kind update: what you are doing, what is done, and where blocked or waiting. Workers and other members never post updates on AITalk (refused); they post only questions (kind heads-up) and report progress in their final worker report. At a decision or when reviewer input is needed, ask right away with action say, kind heads-up: a heads-up asks the exact question with options and your recommended default, never just \"something is unclear\"; leave waitSeconds at its default (45 seconds). Do not wait beyond that unless you truly cannot continue; carry on with the recommended default. Answers arrive in a later tool result under ADDITIONAL MESSAGES FROM THE USER. Keep it short; optional details go under Read more. Put questions still open at turn end in the single Response Handoff batch.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(comment-discussion)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "post",
+                "say",
+                "aitalk"
+              ],
+              "description": "post writes a feed line; say posts to AITalk; aitalk is a deprecated alias for say."
+            },
+            "details": {
+              "type": "string",
+              "maxLength": 8000
+            },
+            "replyTo": {
+              "type": "string"
+            },
+            "waitSeconds": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 120,
+              "description": "action say: seconds to wait for a reply to this question (default 45 for a heads-up, 0 otherwise)."
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "update",
+                "heads-up"
+              ]
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "description": "10-20 plain words: what is happening and why."
+            },
+            "turnId": {
+              "type": "string"
+            },
+            "workspacePath": {
+              "type": "string",
+              "description": "The workspace this line belongs to. Required over MCP; the VS Code tool defaults to its own window."
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false
+        }
       }
     ],
     "viewsContainers": {
@@ -1009,7 +1012,7 @@
         "askaway.webex.roomId": {
           "type": "string",
           "default": "",
-          "description": "Webex Room/Space ID where AskAway posts questions. Get this from the Webex API (GET /rooms)."
+          "description": "Internal override for the Webex space AskAway posts questions to. Normally leave this empty: run AskAway: Discover Webex Spaces and AskAway chooses the space for each workspace by name."
         },
         "askaway.webex.notifyOnTurnEnd": {
           "type": "boolean",
@@ -1227,7 +1230,7 @@
     ]
   },
   "scripts": {
-    "pretest:workers": "node test-worker-terminal-viewer.cjs && node test-aitalk-members-questions-only.cjs && node test-worker-identity-agy-claude.cjs && node test-trace-tab.cjs && node test-aitalk-ui.cjs && node test-aitalk-click-focus.cjs && node test-cloud-cost-estimate.cjs && node test-cloud-merge.cjs && node test-theme-light.cjs && node test-style-voice.cjs && node test-aitalk-delivery.cjs && node test-style-sample-vscode.cjs && node test-worker-ask-capture-refused.cjs && node test-attention-notify.cjs && node test-aitalk-extension.cjs && node test-webex-tools-suite.cjs && node test-trace-tab-unification.cjs && node test-validator-session-per-turn.cjs && node test-validator-digest-watch.cjs && node test-validator-live.cjs && node test-validator-triggers.cjs && node test-validator-context.cjs && node test-efficiency-score.cjs && node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs && node test-import-vscode-memories.cjs",
+    "pretest:workers": "node test-aitalk-tool-name.cjs && node test-worker-terminal-viewer.cjs && node test-aitalk-members-questions-only.cjs && node test-worker-identity-agy-claude.cjs && node test-trace-tab.cjs && node test-aitalk-ui.cjs && node test-aitalk-click-focus.cjs && node test-cloud-cost-estimate.cjs && node test-cloud-merge.cjs && node test-theme-light.cjs && node test-style-voice.cjs && node test-aitalk-delivery.cjs && node test-style-sample-vscode.cjs && node test-worker-ask-capture-refused.cjs && node test-attention-notify.cjs && node test-aitalk-extension.cjs && node test-webex-tools-suite.cjs && node test-assistant-provider-seam.cjs && node test-webex-name-resolver.cjs && node test-webex-macro-tools.cjs && node test-webex-approval-card.cjs && node test-webex-assistant-tools.cjs && node test-webex-no-ids.cjs && node test-trace-tab-unification.cjs && node test-validator-session-per-turn.cjs && node test-validator-digest-watch.cjs && node test-validator-live.cjs && node test-validator-triggers.cjs && node test-validator-context.cjs && node test-efficiency-score.cjs && node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs && node test-import-vscode-memories.cjs",
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.js",
     "compile": "tsc -p ./",

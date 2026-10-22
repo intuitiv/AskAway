@@ -17,10 +17,10 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
     const ws1 = path.join(base, 'workspace-1'), ws2 = path.join(base, 'workspace-2');
     fs.mkdirSync(ws1); fs.mkdirSync(ws2);
     const posts = [];
-    const tools = api => api.webexSuiteTools({ cacheDir: path.join(base, 'cache'), approve: async () => 'approved',
+    const tools = api => api.webexSuiteTools({ cacheDir: path.join(base, 'cache'),
         request: async (method, endpoint, body) => {
-            if (method === 'POST') { posts.push(body); return { ok: true, json: async () => ({ id: `msg-${posts.length}` }) }; }
-            return { ok: true, json: async () => endpoint.startsWith('/rooms/') ? { id: 'space', title: 'Build Team' } : { items: [] } };
+            if (method === 'POST') { posts.push(body); return { ok: true, status: 200, json: async () => ({ id: `msg-${posts.length}` }) }; }
+            return { ok: true, status: 200, json: async () => endpoint.startsWith('/rooms') ? { items: [{ id: 'space', title: 'Build Team', type: 'group', lastActivity: '2026-10-22T09:00:00.000Z' }] } : { items: [] } };
         } });
     // The MCP server as the owner window builds it: tools registered once, every call carries the worker's identity in the transport _meta.
     const mcp = new Map();
@@ -30,7 +30,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
     owner.roomFor(ws2).activate(); // window 2 activates its own room at startup; the files are shared
     owner.connectWebexDrafts(ownerRoom, () => owner.currentAITalkCaller()?.recipient);
     owner.registerToolDefinitions((name, config, handler) => mcp.set(name, handler), tools(owner));
-    const draft = async (meta, text) => JSON.parse((await mcp.get('webex_send')({ roomId: 'space', text }, meta ? { _meta: meta } : undefined)).content[0].text);
+    const draft = async (meta, text) => JSON.parse((await mcp.get('webex_send')({ to: 'Build Team', text }, meta ? { _meta: meta } : undefined)).content[0].text);
     const cardsIn = root => owner.roomFor(root).store.snapshot(true).messages.filter(message => message.webexDraft);
     const only = (root, other, id) => {
         assert.equal(cardsIn(root).filter(message => message.draftId === id).length, 1, `the card is in ${path.basename(root)}`);

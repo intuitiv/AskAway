@@ -151,7 +151,7 @@ export function beginAITalkTool(caller?: AITalkCaller): void {
     if (caller?.displayName) roomFor(root).workerLifecycle({ id: caller.recipient, displayName: caller.displayName }, true);
     if (!caller || caller.recipient === new AITalkStore(root).agentId()) roomFor(root).registerAgent();
 }
-export const AITALK_QUEUE_LABEL = 'ADDITIONAL MESSAGES FROM THE USER. These are NOT part of the tool result above; the user sent them while you were working. They take priority: answer each one by calling the AITalk reply tool (commentary action aitalk) with replyTo set to the message id.';
+export const AITALK_QUEUE_LABEL = 'ADDITIONAL MESSAGES FROM THE USER. These are NOT part of the tool result above; the user sent them while you were working. They take priority: answer each one by calling the aitalk tool (action say) with replyTo set to the message id.';
 /** Pops every queued message for the recipient and appends them, clearly apart from the tool result. */
 export function appendAITalkDelivery(result: string, caller?: AITalkCaller): string {
     if (caller?.unidentified) return result;
@@ -163,4 +163,3 @@ export function appendAITalkDelivery(result: string, caller?: AITalkCaller): str
     const received = store.takeForTool(recipient);
     return received.length ? `${result}\n\n${AITALK_QUEUE_LABEL}\n${JSON.stringify(received)}` : result;
 }
-

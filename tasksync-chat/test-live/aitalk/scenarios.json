@@ -1,5 +1,5 @@
 {
-  "tool": "askaway_commentary",
+  "tool": "askaway_aitalk",
   "steps": "Call the MCP tool `{{TOOL}}` exactly 3 times, one call at a time, waiting for each result before the next call. Every call uses action \"post\", kind \"update\" and text \"Step N of 3 is running now\" (N is the call number). Read every tool result carefully: it may contain messages from the user.",
   "S1": {
     "title": "plain direction change",

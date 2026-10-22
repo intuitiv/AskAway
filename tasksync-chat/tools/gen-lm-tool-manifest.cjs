@@ -34,19 +34,19 @@ function entryFor(definition) {
     const words = definition.name.split('_');
     return {
         name: definition.name,
-        tags: definition.name === 'commentary' ? ['askaway', 'commentary', 'orchestrator'] : ['askaway', 'workers', 'opencode', 'orchestrator'],
+        tags: definition.name === 'aitalk' ? ['askaway', 'aitalk', 'orchestrator'] : ['askaway', 'workers', 'opencode', 'orchestrator'],
         toolReferenceName: words[0] + words.slice(1).map((w) => w[0].toUpperCase() + w.slice(1)).join(''),
         displayName: words.map((w) => w[0].toUpperCase() + w.slice(1)).join(' '),
         modelDescription: definition.description,
         canBeReferencedInPrompt: true,
-        icon: definition.name === 'commentary' ? '$(comment-discussion)' : '$(server-process)',
+        icon: definition.name === 'aitalk' ? '$(comment-discussion)' : '$(server-process)',
         inputSchema: schema,
     };
 }
 
 // The eight per-operation tools became one `worker` tool; their old entries must not linger.
 // askaway_webex moved to the Webex worker's MCP suite (reviewer 2026-10-12).
-const retired = (tool) => /^worker_/.test(tool.name) || tool.name === 'askaway_webex' || tool.name === 'ask_user';
+const retired = (tool) => /^worker_/.test(tool.name) || tool.name === 'askaway_webex' || tool.name === 'ask_user' || tool.name === 'commentary';
 
 function merged(pkg, entries) {
     const byName = new Map(entries.map((entry) => [entry.name, entry]));

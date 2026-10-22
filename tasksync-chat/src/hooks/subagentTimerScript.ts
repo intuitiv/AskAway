@@ -27,7 +27,7 @@ try {
         let last = turn.startedAt;
         try { last = Math.max(last, JSON.parse(fs.readFileSync(path.join(cfg, 'commentary', key + '.progress.json'), 'utf8')).lastCommentaryAt || 0); } catch (e) {}
         const resultId = useId || tool + ':' + now;
-        if (now - Math.max(last, turn.lastReminderAt || 0) >= 120000 && turn.lastReminderResult !== resultId) { turn.lastReminderResult = resultId; turn.lastReminderAt = now; save(s); emit('Status update due (2+ min since your last AITalk post): call commentary (action aitalk) with one or two plain sentences: what you are doing now, what is done, and where you are blocked or what you are waiting for. This is a status line, not a report.'); }
+        if (now - Math.max(last, turn.lastReminderAt || 0) >= 120000 && turn.lastReminderResult !== resultId) { turn.lastReminderResult = resultId; turn.lastReminderAt = now; save(s); emit('Status update due (2+ min since your last AITalk post): call the aitalk tool (action say) with one or two plain sentences: what you are doing now, what is done, and where you are blocked or what you are waiting for. This is a status line, not a report.'); }
     }
     s.pending = s.pending.filter(e => now - e.startedAt < STALE_MS);
     const live = s.pending.map(e => e.startedAt);

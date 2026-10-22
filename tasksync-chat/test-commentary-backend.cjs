@@ -74,7 +74,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     const check = childProcess.spawnSync(process.execPath, [path.join(__dirname, 'tools', 'gen-lm-tool-manifest.cjs'), '--check'], { encoding: 'utf8' });
     assert.equal(check.status, 0, check.stderr);
     const declared = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).contributes.languageModelTools;
-    assert.equal(declared.find(tool => tool.name === 'commentary').modelDescription, commentary.description, 'VS Code and MCP expose identical commentary guidance');
+    assert.equal(declared.find(tool => tool.name === 'aitalk').modelDescription, commentary.description, 'VS Code and MCP expose identical aitalk guidance');
     assert.match(commentary.description, /plain first-person sentences/);
     assert.match(commentary.description, /one or two short sentences/);
     assert.match(commentary.description, /heads-up asks the exact question with options/);
@@ -86,7 +86,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     assert.match(fs.readFileSync(path.join(__dirname, 'src/agents/askawayBuildAgent.ts'), 'utf8'), /one or two short first-person sentences/);
     assert.equal((await call(commentary, { kind: 'heads-up', text: "Can you pick Workers or Trace? I'd put the scoreboard in Workers." })).status, 'POSTED');
     console.log('EV-COMMENTARY-SPEECH: PASS first-person guidance shared by VS Code, MCP, voice doc and Build; direct question accepted');
-    for (const name of [...Object.keys(workers), 'commentary']) {
+    for (const name of [...Object.keys(workers), 'aitalk']) {
         assert.ok(declared.some((tool) => tool.name === name && tool.toolReferenceName), `package.json declares ${name}`);
     }
     const toolsSource = fs.readFileSync(path.join(__dirname, 'src', 'tools.ts'), 'utf8');
@@ -100,7 +100,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     const { registerToolDefinitions } = require(path.join(buildDir, 'workers', 'workerTools.js'));
     const mcpTools = new Map();
     registerToolDefinitions((name, config, handler) => mcpTools.set(name, { config, handler }), commentaryToolDefinitions(() => store, ''));
-    const viaMcp = async (args) => JSON.parse((await mcpTools.get('commentary').handler(mcpTools.get('commentary').config.inputSchema.parse(args))).content[0].text);
+    const viaMcp = async (args) => JSON.parse((await mcpTools.get('aitalk').handler(mcpTools.get('aitalk').config.inputSchema.parse(args))).content[0].text);
     const otherWorkspace = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-commentary-other-')));
     const before = store.read(workspace).items.length;
     const unnamed = await viaMcp({ kind: 'update', text: '🏏 Posted over MCP without naming a workspace at all.' });
@@ -109,7 +109,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     assert.equal(store.read(workspace).items.length, before + 1, 'an MCP post lands in the named workspace feed');
     assert.equal(store.read(otherWorkspace).items.length, 0, 'and in no other workspace');
     assert.equal((await viaMcp({ kind: 'update', text: Array(21).fill('word').join(' '), workspacePath: workspace })).status, 'REJECTED', 'same limits as the VS Code tool');
-    assert.throws(() => mcpTools.get('commentary').config.inputSchema.parse({ kind: 'milestone', text: 'old kind' }), 'same kinds as the VS Code tool');
+    assert.throws(() => mcpTools.get('aitalk').config.inputSchema.parse({ kind: 'milestone', text: 'old kind' }), 'same kinds as the VS Code tool');
     assert.match(fs.readFileSync(path.join(__dirname, 'src', 'mcp', 'mcpServer.ts'), 'utf8'),
         /registerToolDefinitions\([^\n]*commentaryToolDefinitions\(sharedCommentaryStore, ''\)\)/, 'the MCP server registers it with no default workspace');
     fs.rmSync(otherWorkspace, { recursive: true, force: true });

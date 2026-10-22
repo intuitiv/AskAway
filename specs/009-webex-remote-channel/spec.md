@@ -179,6 +179,23 @@ Reviewer: "In webex spec, can you add some tasks to create command style tools t
 
 ---
 
+### User Story 8 - Cathy acts for me (Priority: P1)
+
+Reviewer, 2026-10-22: "After this finsih spec 009. And i need to have all possible tools for Cathy to chat and read and act on behalf of me. As we have aitalk, Cathy can take persmission from me to send any mesage and all. Room ID is internal so dont show it to me. Space name is what is i see. Instead of agent figuring out things by multiple webex calls, we need tools to optimise that. I will add outlook tool also in future so that Cathy can be my PR or something." Design: [contracts/assistant-tools.md](contracts/assistant-tools.md); decision: [ADR 0035](../../docs/adr/0035-cathy-assistant-tools-and-provider-seam.md); rows R-CATHY-01..08.
+
+**Why this priority**: The reviewer asked for it to follow the rest of 009, and it replaces the id-bearing tools of US7 with the surface he will actually use.
+
+**Independent Test**: Fake Webex API tests (`test-webex-name-resolver.cjs`, `test-webex-macro-tools.cjs`, `test-webex-approval-card.cjs`, `test-webex-assistant-tools.cjs`, `test-webex-no-ids.cjs`) plus `test-assistant-provider-seam.cjs`; live smoke only on explicit opt-in.
+
+**Acceptance Scenarios**:
+
+1. **Given** a space or person name, **When** Cathy reads, searches, waits or checks the inbox, **Then** one call returns names, times, authors, thread markers and attachment text, with a short opaque `ref` where a follow-up needs one, and an ambiguous name returns candidates instead of a guess.
+2. **Given** any tool result, AITalk card, Team or Settings text, status file or UI log line, **When** a Webex-shaped id is present in the fake API data, **Then** it appears nowhere the reviewer sees.
+3. **Given** a send, reply, edit, delete or upload, **When** Cathy calls the tool, **Then** an AITalk card shows the space or person name, thread context, full text and files; 👍 executes once, 👎 discards, an edit asks again, and no path sends without the approved card; the modal is used only as the explicit fallback when AITalk is unavailable.
+4. **Given** a future Outlook provider, **When** it registers through `src/services/assistant/provider.ts`, **Then** its tools list in the registry and its approvals use the same card with a human target label.
+
+---
+
 ### Edge Cases
 
 - Missing or ambiguous team `self` or General destination: report the unresolved destination, never guess another team/space.
@@ -235,6 +252,10 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 - **FR-038**: Sends MUST use the token for other people/spaces and webhook only for own-space alerts; AskAway Build and worker profiles MUST teach when to use the shared tool and its secret/policy boundary (R-TELE-38/41; US7; T033/T034).
 - **FR-040**: Reviewer 2026-10-12 supersedes FR-037's single LM tool: eight separate Webex worker MCP tools, no main-agent LM registration; pending AITalk drafts send once on approval, with modal fallback (R-TELE-43).
 - **FR-041**: Plain Node fetches up to 200 own messages across active spaces; weekly style card condenses tone, casing, openers, length, emoji habits and six verbatim examples into at most 40 lines (R-TELE-44).
+- **FR-042**: Cathy's tools MUST take and return space and person names; Webex ids MUST NOT appear in tool results, AITalk cards, Team or Settings text, status files or UI log lines. Follow-ups use short opaque refs resolved in the host; ambiguous names return candidates (R-CATHY-02/03; US8; S1/S3).
+- **FR-043**: Macro tools (inbox, find, read, search, wait, meetings, send, reply, edit message, delete message, edit draft, style card; at most 12) MUST replace the nine id-based tools and the LM `askaway_webex` surface; meetings are read-only and "unread" is AskAway's own seen watermark (R-CATHY-01/04; US8; S1/S3).
+- **FR-044**: Every outbound action MUST be an AITalk approval card showing the target name, thread context, full text and files; 👍 executes once; no code path sends without it; the R-TELE-43 modal is only the explicit AITalk-unavailable fallback (R-CATHY-05/06; US8; S2).
+- **FR-045**: Webex MUST be one provider behind `src/services/assistant/provider.ts` (provider, approval request without an id field, registry) so an Outlook provider can be added without changing the card (R-CATHY-07; US8).
 
 ### Key Entities *(include if feature involves data)*
 - **FR-039**: Availability is evaluated at each turn send: Here sends nothing; away-prefixed modes send the full flow; Offline sends only the silent reply-tracked final; entering Away mid-turn opens the thread. Reply polling remains available (2026-10-10; test-availability-updates.cjs).
@@ -245,6 +266,7 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 - **Remote turn**: Workspace, conversation/turn identity, active live/final message and reply-polling state.
 - **Message ledger**: Posted IDs and processed reply IDs scoped to workspace/space for self-post exclusion and reload-safe deduplication.
 - **Response document**: Whole final response converted to mobile-friendly PDF, with Markdown fallback.
+- **Assistant ref**: A short opaque handle (s3, m12, p4) for a space, message or person, valid for the workspace session and resolved only inside the host; the raw Webex id never leaves the service.
 
 ## Success Criteria *(mandatory)*
 

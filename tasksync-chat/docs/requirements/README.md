@@ -25,6 +25,7 @@ Why this exists: the reviewer asked to "capture what I told as requirements for 
 | [trace.md](trace.md) | Trace tab: main agent and Validator traces, monthly cost line, row expansion |
 | [efficiency-score.md](efficiency-score.md) | The per-turn efficiency score, where it is shown, and how the benchmark uses it |
 | [tools-and-evals.md](tools-and-evals.md) | Why AskAway's own tools exist, and evals for agent and worker prompts and tools |
+| [webex-assistant.md](webex-assistant.md) | Cathy acts for the reviewer: all tools, names not ids, macro tools, AITalk approval, provider seam for Outlook |
 
 The ultimate goals behind all rows are in the repo-level [GOALS.md](../../../GOALS.md); decisions are in [docs/adr/](../../../docs/adr/README.md).
 

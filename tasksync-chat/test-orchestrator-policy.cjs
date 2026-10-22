@@ -23,7 +23,7 @@ assert.deepEqual(tools.filter((t) => /^(execute|read)\//.test(t)).sort(), ['exec
 // Allowed and required: planning memory (the AskAway memory tool; reviewer 2026-10-08 removed vscode/memory), the one worker
 // tool (eight actions), commentary, budget, and the internet.
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).contributes.languageModelTools.map((t) => t.toolReferenceName);
-const required = ['intuitiv.askaway/memory2', 'web', 'intuitiv.askaway/commentary', 'intuitiv.askaway/turnBudget', 'intuitiv.askaway/worker'];
+const required = ['intuitiv.askaway/memory2', 'web', 'intuitiv.askaway/aitalk', 'intuitiv.askaway/turnBudget', 'intuitiv.askaway/worker'];
 for (const tool of required) { assert.ok(tools.includes(tool), `orchestrator has ${tool}`); }
 assert.ok(!tools.includes('vscode/memory'), 'orchestrator has no VS Code memory tool');
 assert.ok(!tools.some((t) => /^intuitiv\.askaway\/worker[A-Z]/.test(t)), 'no per-operation worker tools');

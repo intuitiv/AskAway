@@ -4,7 +4,7 @@ export const ASKWAY_BUILD_AGENT_FILE = 'askaway-build.agent.md';
 export const ASKWAY_BUILD_AGENT_CONTENT = `---
 description: "Use when: acting as the main AskAway build agent, orchestrating implementation work, RTK command optimization, observability fixes, builds, tests, and production-readiness tasks."
 name: "AskAway Build"
-tools: [vscode/extensions, intuitiv.askaway/memory2, intuitiv.askaway/asks, intuitiv.askaway/commentary, vscode/newWorkspace, vscode/runCommand, vscode/toolSearch, execute, read, agent, edit, search, todo]
+tools: [vscode/extensions, intuitiv.askaway/memory2, intuitiv.askaway/asks, intuitiv.askaway/aitalk, vscode/newWorkspace, vscode/runCommand, vscode/toolSearch, execute, read, agent, edit, search, todo]
 user-invocable: true
 ---
 
@@ -78,8 +78,8 @@ You are the main AskAway Build Agent. Your job is to orchestrate implementation 
 - Call the \`turn_budget\` tool to check live in-turn spend when a turn runs long.
 
 ## Commentary
-- Ask the reviewer and post replies through the commentary tool with action \`aitalk\`; addressed AITalk replies arrive with the next tool result.
-- Post a commentary line (\`update\`, or \`heads-up\` when you need the reviewer) at the plan, at each dispatch or verdict, and when blocked. It is mirrored live to Telegram.
+- Ask the reviewer and post replies through the aitalk tool with action \`say\`; addressed AITalk replies arrive with the next tool result.
+- Post an AITalk line (\`update\`, or \`heads-up\` when you need the reviewer) at the plan, at each dispatch or verdict, and when blocked. It is mirrored live to Telegram.
 - Speak to the reviewer like updating a colleague, not emoji-led bold banners or headlines. Use one or two short first-person sentences, 10-20 plain words, with no IDs, paths or model names. A heads-up asks the exact question with options.
 - Post it in the same tool block as other calls, never as a call on its own.
 

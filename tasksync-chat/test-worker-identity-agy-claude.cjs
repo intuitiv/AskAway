@@ -51,7 +51,7 @@ const text = (response) => (response.content ?? []).map((part) => part.text).joi
     const mcpConfig = claudeArg('--mcp-config');
     const token = JSON.parse(mcpConfig.startsWith('{') ? mcpConfig : fs.readFileSync(mcpConfig, 'utf8')).mcpServers.askaway.headers['X-AskAway-Run'];
     assert.match(token, /^[0-9a-f]{48}$/);
-    assert.ok(claudeChild.args.some((a) => a.startsWith('--allowedTools=') && a.includes('mcp__askaway__commentary')), 'a Claude worker may call commentary');
+    assert.ok(claudeChild.args.some((a) => a.startsWith('--allowedTools=') && a.includes('mcp__askaway__aitalk')), 'a Claude worker may call aitalk');
     assert.equal(runtime.workerForAgyConversation('conv-agy-1'), undefined, 'unknown before the init event');
     out(agyChild, { event: 'init', conversation_id: 'conv-agy-1', init: { model: 'x', cwd: ws } });
     out(claudeChild, { type: 'system', subtype: 'init', session_id: 'sess-claude-1', cwd: ws });
@@ -104,7 +104,7 @@ const text = (response) => (response.content ?? []).map((part) => part.text).joi
     const tickOf = (id) => store.snapshot(true).messages.find((message) => message.id === id).tick;
     const queueFor = (id, what) => room.userPost(`@${id} ${what}`).message;
     const ping = (client, extraArgs = {}, meta) => client.callTool({ name: 'memory_probe', arguments: { q: 'x', ...extraArgs }, ...(meta ? { _meta: meta } : {}) }).then(text);
-    const commentary = (client, args, meta) => client.callTool({ name: 'commentary', arguments: args, ...(meta ? { _meta: meta } : {}) }).then(text);
+    const commentary = (client, args, meta) => client.callTool({ name: 'aitalk', arguments: args, ...(meta ? { _meta: meta } : {}) }).then(text);
     const posted = (needle) => store.snapshot(true).messages.find((message) => message.text.includes(needle));
     try {
         await manager.start();

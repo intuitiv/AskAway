@@ -41,7 +41,8 @@ export function claudeToolRules(profile: Pick<WorkerProfile, 'edit' | 'bash' | '
     if (profile.webfetch === 'deny') { disallowed.push('WebFetch'); }
     for (const entry of profile.mcp ?? []) {
         if (!entry.startsWith('askaway_')) { continue; }
-        const tool = entry.slice('askaway_'.length);
+        // Deprecated alias in stale in-memory profiles grants only the renamed tool.
+        const tool = entry === 'askaway_commentary' ? 'aitalk' : entry.slice('askaway_'.length);
         // Like agy: the worker tool is granted only to a profile that lists it; the worker-tool guard bounds what it may start.
         const delegate = /^worker(?:_|$)/.test(tool);
         const rule = delegate ? `mcp__${MCP_SERVER}__worker` : !tool || tool === '*' ? `mcp__${MCP_SERVER}` : `mcp__${MCP_SERVER}__${tool}`;

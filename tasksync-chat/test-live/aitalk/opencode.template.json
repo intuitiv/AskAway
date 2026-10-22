@@ -7,7 +7,7 @@
   },
   "permission": {
     "*": "deny",
-    "askaway_commentary": "allow"
+    "askaway_aitalk": "allow"
   },
   "agent": {
     "live": {

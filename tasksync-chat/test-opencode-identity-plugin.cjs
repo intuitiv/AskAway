@@ -110,7 +110,7 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
     const queued = room.userPost(`@${started.workerId} use main`).message;
     const handlers = new Map();
     registerToolDefinitions((name, config, handler) => handlers.set(name, { config, handler }), commentaryToolDefinitions(() => new CommentaryStore({ dir: path.join(buildDir, 'commentary') }), ''));
-    const commentary = handlers.get('commentary');
+    const commentary = handlers.get('aitalk');
     assert.deepEqual(commentary.config.inputSchema.parse({ text: 'x', _meta: { openCodeSessionId: 's' } })._meta, { openCodeSessionId: 's' }, 'the host schema lets the identity through');
     // OpenCode's MCP client adds its own request _meta (e.g. a progress token); the identity in the args must survive it.
     const call = async (args) => (await commentary.handler({ ...args }, { _meta: { progressToken: 7 } })).content.map((part) => part.text).join('\n\n');
@@ -194,7 +194,7 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
         await manager.start();
         await client.connect(new StreamableHTTPClientTransport(new URL('http://127.0.0.1:' + manager.getPort() + '/sse')));
         const listed = (await client.listTools()).tools;
-        for (const expected of ['gradle', 'worker', 'commentary', 'memory_probe', 'webex_probe', 'bridge_probe']) assert.ok(listed.some((tool) => tool.name === expected), expected + ' is registered');
+        for (const expected of ['gradle', 'worker', 'aitalk', 'memory_probe', 'webex_probe', 'bridge_probe']) assert.ok(listed.some((tool) => tool.name === expected), expected + ' is registered');
         const fill = (schema) => {
             if (schema?.enum) return schema.enum[0];
             if (schema?.type === 'number' || schema?.type === 'integer') return 1;

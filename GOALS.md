@@ -80,6 +80,7 @@ Each area: the goal, the outcomes that define done, the decision record, the req
 - Webex OAuth confirmation (2026-10-08): the command opens fresh browser authorization with redirect `http://localhost:5000/callback`; the reviewer returns the full redirected URL through a local masked VS Code prompt, never chat. No local listener; stored access/refresh tokens are reused and refreshed when needed. See [proposed ADR 0020](docs/adr/0020-webex-browser-oauth-manual-callback.md) and spec 009 T024–T028; implementation/testing remain open.
 - Webex notifications (2026-10-08): the integration posts as the reviewer, so Webex never notifies him, and bots are disabled in his org. Messages that must notify go through the space's Incoming Webhooks URL. A workspace space without one gets a startup prompt naming the space: it opens the Incoming Webhooks app page and a masked VS Code box takes the URL. Automate it if an API allows. The setup is linked to `askaway.webex.enabled`.
 - Webex General (2026-10-09): the Incoming Webhooks page does not list team self's built-in General space, so AskAway creates and uses its own "AskAway General" space in team `self` for General traffic and share-with-me documents.
+- Cathy acts for the reviewer (2026-10-22): all tools to chat, read and act on his behalf, by space and person names never ids, macro tools instead of call chains, every outbound action approved by his thumbs-up on an AITalk card, and a provider seam so an Outlook tool can follow. See [ADR 0035](docs/adr/0035-cathy-assistant-tools-and-provider-seam.md), rows R-CATHY-01..08 in [webex-assistant.md](tasksync-chat/docs/requirements/webex-assistant.md) and spec 009 story US8.
 - Decision: [ADR 0007](docs/adr/0007-telegram-is-a-remote-control.md), [ADR 0018](docs/adr/0018-webex-replaces-telegram.md) · Requirements: [telegram.md](tasksync-chat/docs/requirements/telegram.md) · Spec: [009](specs/009-webex-remote-channel/spec.md)
 
 ### G8 Commentary shows what the agent is doing
@@ -878,3 +879,9 @@ Rows R-AITALK-42 to R-AITALK-44, R-ORCH-32, R-ORCH-33, R-TEAM-71 (ADR 0031).
 > We have few open specs 009, 010, 007 followed by 008 once 003 is complete.
 
 Accepted: ADRs 0027 to 0031. Rows R-AITALK-45 (members post only questions), R-TEAM-72 (agy members cost $0.00), and the Chat-tab retirement rows in `docs/requirements/live-tab.md`. Spec order after 003: 009, 010, 007, then 008 (`specs/BACKLOG.md`).
+
+### 2026-10-22 (afternoon)
+
+> After this finsih spec 009. And i need to have all possible tools for Cathy to chat and read and act on behalf of me. As we have aitalk, Cathy can take persmission from me to send any mesage and all. Room ID is internal so dont show it to me. Space name is what is i see. Instead of agent figuring out things by multiple webex calls, we need tools to optimise that. I will add outlook tool also in future so that Cathy can be my PR or something.
+
+Rows R-CATHY-01 to R-CATHY-08 ([webex-assistant.md](tasksync-chat/docs/requirements/webex-assistant.md)), [ADR 0035](docs/adr/0035-cathy-assistant-tools-and-provider-seam.md) (Proposed), spec 009 story US8 and tasks T043 to T047.
