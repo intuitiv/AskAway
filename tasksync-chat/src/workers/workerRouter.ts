@@ -23,6 +23,57 @@ function realDir(dir: string): string {
     try { return fs.realpathSync(dir); } catch { return dir; }
 }
 
+const WILD = /[*?]/;
+const cleanGlob = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+
+function segmentPattern(segment: string): RegExp {
+    return new RegExp(`^${segment.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]')}$`);
+}
+
+function globPattern(glob: string): RegExp {
+    const segments = glob.split('/');
+    const body = segments.map((segment, i) => {
+        const last = i === segments.length - 1;
+        if (segment === '**') { return last ? '.*' : '(?:[^/]+/)*'; }
+        return segmentPattern(segment).source.slice(1, -1) + (last ? '' : '/');
+    }).join('');
+    return new RegExp(`^${body}$`);
+}
+
+/** True when `file` is covered by one glob (`**` any depth, `*` inside a segment, `?`); a plain path also covers everything under it. */
+export function globCovers(glob: string, file: string): boolean {
+    const g = cleanGlob(glob);
+    const f = cleanGlob(file);
+    return globPattern(g).test(f) || (!WILD.test(g) && f.startsWith(`${g}/`));
+}
+
+/** Conservative: true unless two globs can be proven to name disjoint files. */
+export function globsOverlap(a: string, b: string): boolean {
+    const left = cleanGlob(a).split('/');
+    const right = cleanGlob(b).split('/');
+    for (let i = 0; i < Math.min(left.length, right.length); i++) {
+        const x = left[i];
+        const y = right[i];
+        if (x === '**' || y === '**') { return true; }
+        const xw = WILD.test(x);
+        const yw = WILD.test(y);
+        if (!xw && !yw) { if (x !== y) { return false; } continue; }
+        if (xw && !yw) { if (!segmentPattern(x).test(y)) { return false; } continue; }
+        if (yw && !xw) { if (!segmentPattern(y).test(x)) { return false; } continue; }
+        const tail = (s: string) => s.slice(s.search(/[^*?]*$/));
+        const xt = tail(x);
+        const yt = tail(y);
+        if (!xt.endsWith(yt) && !yt.endsWith(xt)) { return false; }
+    }
+    return true;
+}
+
+/** The first pair (one glob from each list) that may name the same file, or undefined when the scopes are disjoint. */
+export function scopesOverlap(a: string[], b: string[]): [string, string] | undefined {
+    for (const x of a) { for (const y of b) { if (globsOverlap(x, y)) { return [x, y]; } } }
+    return undefined;
+}
+
 /** agy conversations have no provider prompt cache and no timeout: they never expire from cache age or the idle cap (reviewer, 2026-10-16). */
 function isAgyWorker(worker: { model: string }): boolean {
     return worker.model.startsWith('agy/');

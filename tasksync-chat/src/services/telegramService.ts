@@ -6,6 +6,7 @@ import { availabilityPolicy } from './availabilityGate';
 import { CONFIG_NAMESPACE } from '../constants/branding';
 import type { AttachmentInfo } from '../webview/webviewProvider';
 import { isTelegramHandoffTaskId } from './telegramConversationReply';
+import { scanSpecs } from '../specs/specKitScanner';
 import type { RemoteChannel, RemoteDestination, RemoteMessageId, RemoteReply } from './remoteChannel';
 
 // ── Interfaces ─────────────────────────────────────────────────
@@ -2010,7 +2011,24 @@ export class TelegramService implements RemoteChannel {
             lines.push(`Last response: ${this._formatTime(this._lastToolCallReturned)}`);
         }
 
+        const readiness = this._readinessLines();
+        if (readiness.length > 0) {
+            lines.push('', ...readiness.map(line => this._escapeHtml(line)));
+        }
+
         return lines.join('\n');
+    }
+
+    /** Readiness text of the active spec: the Specs tab text (readinessLines), unchanged. */
+    private _readinessLines(): string[] {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) { return []; }
+        try {
+            const scan = scanSpecs(root);
+            return scan.specs.find(spec => spec.slug === scan.activeSlug)?.readiness ?? [];
+        } catch {
+            return [];
+        }
     }
 
     // ── Heartbeat: periodic "still working" notifications ─────

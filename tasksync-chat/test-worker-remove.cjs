@@ -49,7 +49,7 @@ const toolOf = (rt) => {
     registerWorkerTools((name, config, handler) => tools.set(name, { config, handler }), () => rt, workspace);
     return async (action, args) => JSON.parse((await tools.get('worker').handler(tools.get('worker').config.inputSchema.parse({ action, ...args }))).content[0].text);
 };
-const packet = (objective) => ({ profile: 'build', dispatchTurnId: 'turn-1', baseRevision: 'abc', objective, allowedFiles: ['f.txt'], acceptance: 'a', expected: 'e', command: 'true' });
+const packet = (objective) => ({ profile: 'build', dispatchTurnId: 'turn-1', baseRevision: 'abc', objective, allowedFiles: [`${objective.replace(/\W+/g, '-')}.txt`], acceptance: 'a', expected: 'e', command: 'true' });
 
 // The Workers card, rendered from the real webview.js blocks.
 const webview = fs.readFileSync(path.join(__dirname, 'media/webview.js'), 'utf8');

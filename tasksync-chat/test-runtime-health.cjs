@@ -66,7 +66,7 @@ function fakeHost() {
     return host;
 }
 
-const packet = { profile: 'build', dispatchTurnId: 't1', baseRevision: 'HEAD', objective: 'o', allowedFiles: [], acceptance: 'a', expected: 'e', command: 'npm test' };
+const packet = { profile: 'build', dispatchTurnId: 't1', baseRevision: 'HEAD', objective: 'o', allowedFiles: ['src/o.ts'], acceptance: 'a', expected: 'e', command: 'npm test' };
 function tool(host, workers = {}, runs = {}) {
     host.sourceCalls = 0;
     const live = { router: { worker: (id) => workers[id], profile: (name) => name === 'build' ? agyDefaultProfile : undefined }, now: () => host.clock,

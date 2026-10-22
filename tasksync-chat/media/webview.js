@@ -3919,6 +3919,13 @@
             '</div>';
     }
 
+    // Readiness text comes pre-built from readinessLines (scanner boundary); this only escapes and lays it out.
+    function renderSpecReadiness(spec) {
+        var lines = Array.isArray(spec.readiness) ? spec.readiness : [];
+        if (!lines.length) return '';
+        return '<div class="spec-readiness">' + lines.map(function(line) { return '<div class="spec-readiness-line">' + escapeHtml(line) + '</div>'; }).join('') + '</div>';
+    }
+
     // The active spec is never hidden: finishing its tasks does not mean the reviewer stopped working on it.
     // Other specs show only with "All" on (or when no spec is active); done ones additionally need "Completed".
     function visibleSpecs(all, showDone, showAll) {
@@ -3999,6 +4006,7 @@
             var body = expanded
                 ? '<div class="spec-body">' +
                   (facts.length ? '<div class="spec-meta">' + escapeHtml(facts.join(' · ')) + '</div>' : '') +
+                  renderSpecReadiness(spec) +
                                     renderSpecWork(spec) +
                   '</div>'
                 : '';

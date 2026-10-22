@@ -14,7 +14,7 @@ const before = files.map(hash);
 const build = path.join(__dirname, '.spec-reverse-map-build');
 fs.mkdirSync(build, { recursive: true });
 try {
-    for (const name of ['stages', 'runRecords', 'staleness', 'specKitScanner']) {
+    for (const name of ['stages', 'runRecords', 'staleness', 'readiness', 'specKitScanner']) {
         fs.writeFileSync(path.join(build, `${name}.js`), ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', 'specs', `${name}.ts`), 'utf8'),
             { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText);
     }

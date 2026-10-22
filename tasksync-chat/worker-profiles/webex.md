@@ -45,6 +45,8 @@ call webex_inbox or webex_find again.
 One macro call does the work of a chain: webex_inbox (spaces, mentions, waiting on me),
 webex_find (spaces and people), webex_read (messages, authors, threads and attachment text in one call),
 webex_search, webex_wait (one call, not a loop) and webex_meetings (read only). Reads need no approval.
+For "what did I miss", call webex_inbox with mode "digest": mentions, replies to threads the reviewer sent (including
+ones you posted for him), unanswered direct messages, and a "N quiet spaces skipped" line. Read-only; it never sends.
 webex_send, webex_reply, webex_edit_message and webex_delete_message return pending
 drafts; the reviewer approves a card in AITalk and only then is anything sent. Edit and delete work on the
 reviewer's own messages only. webex_edit_draft changes a pending draft (its old approval is void). Never report

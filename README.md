@@ -325,7 +325,7 @@ Workers need [OpenCode](https://opencode.ai) and a worker profile; Specs need Sp
 
 1. Enable `askaway.webex.enabled`.
 2. Run `AskAway: Set Webex Token` (or `AskAway: Authorize Webex (OAuth)`); tokens are kept in secret storage.
-3. Run `AskAway: Discover Webex Spaces` and `AskAway: Configure Webex Notifications`, and AskAway chooses a space per workspace by name. Cathy, the Webex assistant, works by space and person names (never ids) and sends only after you 👍 an approval card in AITalk, ready for an Outlook provider.
+3. Run `AskAway: Discover Webex Spaces` and `AskAway: Configure Webex Notifications`, and AskAway chooses a space per workspace by name. Cathy, the Webex assistant, works by space and person names (never ids), gives an on-demand daily report of what needs you (one shared in-memory sync, quiet spaces skipped) and sends only after you 👍 an approval card in AITalk, ready for an Outlook provider.
 
 ### Remote browser UI
 

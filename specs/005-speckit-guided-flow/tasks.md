@@ -115,6 +115,12 @@ description: "Task list for 005 Spec Kit Guided Flow"
 
 **Checkpoint**: US8 Independent Test and the three caller-view tests pass; every ask is accounted for with evidence or a waiting reason, and questions arrive in one batch.
 
+## Phase 9: Later stories pulled in 2026-10-22 (reviewer order: 005, then 007, then 008)
+
+- [x] T040 [US7] Readiness shared by every surface. Done 2026-10-22: `rtk node tasksync-chat/test-readiness-surfaces.cjs` PASS EV-READINESS-SURFACES (Specs tab card, Telegram status, /pr-daily facts show one `readinessLines` text; PASS without evidence is BLOCKED on all three); scanner `spec.readiness`, `renderSpecReadiness` in media/webview.js; scanner tests' module lists gained `readiness`. R-SKFLOW-13.
+- [x] T041 [US6] Router admission and scope check. Done 2026-10-22: `rtk node tasksync-chat/test-orchestrator-dispatch.cjs` PASS EV-ORCHESTRATOR-DISPATCH: the worker tool refuses a start, submit or fanout of an edit-allowed profile with empty `allowedFiles`, and overlapping globs with a live write run or a sibling packet; `scopeCheck` in `src/specs/scopeCheck.ts`. Still open: an "at most 2 build/code workers" cap is not enforced in code.
+- [ ] T042 [US5] Story checkpoint: `src/specs/checkpoint.ts` verify packet and record, active PR via `gh` (D-12, D-13) with a stubbed worker and `gh`: PASS is ready, FAIL or BLOCKED is not ready, a new story opens a new PR (R-SKFLOW-10). Waiting: reviewer approval of the PR lifecycle (see the question batch).
+
 ---
 
 ## Dependencies & Execution Order

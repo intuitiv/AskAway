@@ -12,6 +12,21 @@ const cwd = path.resolve(flag('--cwd', process.cwd()));
 const now = Number(flag('--now', String(Date.now())));
 const gh = process.env.PR_DAILY_GH || 'gh';
 
+// Readiness text of the active spec: the same readinessLines the Specs tab and Telegram show (loaded via the scanner).
+function activeReadiness(root) {
+    try {
+        const Module = require('node:module');
+        const ts = require(path.join(__dirname, '..', 'node_modules', 'typescript'));
+        Module._extensions['.ts'] = (module, filename) => module._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'),
+            { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }, fileName: filename }).outputText, filename);
+        const scan = require(path.join(__dirname, '..', 'src', 'specs', 'specKitScanner.ts')).scanSpecs(root);
+        const lines = scan.specs.find((spec) => spec.slug === scan.activeSlug)?.readiness;
+        return lines && lines.length ? lines : null;
+    } catch {
+        return null;
+    }
+}
+
 function run(cmd, cmdArgs, { raw = false } = {}) {
     try {
         const out = childProcess.execFileSync(cmd, cmdArgs, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 });
@@ -94,6 +109,7 @@ function main() {
             aheadOfUpstream: upstream.ok ? count('@{u}..HEAD') : null, behindDefault: count(`HEAD..origin/${defaultBranch}`),
             fetch: fetched === undefined ? 'skipped' : fetched.ok ? 'ok' : `failed: ${fetched.err}`,
         },
+        readiness: activeReadiness(root),
         pr, prError: prView.error && !/no pull requests found/i.test(prView.error) ? prView.error : undefined,
         reviewRequests: Array.isArray(reviewRequests) ? reviewRequests.map((p) => ({ number: p.number, title: p.title, url: p.url, author: p.author?.login })) : [],
         mergeWindow: weekday === 4 || weekday === 5,

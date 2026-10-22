@@ -58,6 +58,7 @@ const see = (label, value) => { surfaces.push(label); const text = typeof value 
     see('webex_read', read);
     see('webex_inbox', await tool('webex_inbox', {}));
     see('webex_find', await tool('webex_find', { query: 'Alice' }));
+    see('webex_inbox digest', await tool('webex_inbox', { mode: 'digest' }));
     see('webex_search', await tool('webex_search', { query: 'Deploy' }));
     see('webex_meetings', await tool('webex_meetings', {}));
     see('webex_wait', await tool('webex_wait', { space: 'Release plan', sinceRef: read.messages[1].ref, timeoutSeconds: 1 }));

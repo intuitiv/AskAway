@@ -9,7 +9,7 @@ const ts = require(path.join(__dirname, 'node_modules', 'typescript'));
 const { makeSampleRepo } = require('./test-fixtures/specs-sample.cjs');
 
 const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-stories-'));
-for (const name of ['stages', 'runRecords', 'staleness', 'specKitScanner']) {
+for (const name of ['stages', 'runRecords', 'staleness', 'readiness', 'specKitScanner']) {
     fs.writeFileSync(path.join(buildDir, `${name}.js`), ts.transpileModule(fs.readFileSync(path.join(__dirname, 'src', 'specs', `${name}.ts`), 'utf8'),
         { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText);
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MAX_WAIT_SECONDS, OpenCodeWorkerRuntime, WorkerPacket } from './openCodeRuntime';
+import { scopesOverlap } from './workerRouter';
 import { projectWorkersState } from './workersState';
 import { catalogWorkerProfiles, defaultModel, withSelection } from './workerProfiles';
 import { memberSelectionForProfile, teamRoster } from '../team/roster';
@@ -145,6 +146,33 @@ const TERMINAL_STATES = ['COMPLETED', 'FAILED', 'CANCELLED', 'REMOVED'];
 const refuse = (reason: string) => ({ status: 'REFUSED', reason });
 const guardKey = (workspace: string | undefined, worker: string) => `${workspace ?? ''}\0${worker}`;
 
+/** Write scopes of runs this tool started, by run: a write packet may not overlap a live one in the same run directory. */
+const writeScopes = new Map<string, { dir: string; allowedFiles: string[] }>();
+
+/** Spec 005 T041: a write profile must name allowedFiles, and two live write runs never share files; read-only profiles are exempt. */
+async function writeScopeRefusal(action: string, args: any, live: OpenCodeWorkerRuntime, dir: string): Promise<Record<string, unknown> | null> {
+    const packets: any[] = action === 'fanout' ? (Array.isArray(args.packets) ? args.packets : []) : [args];
+    const claimed: Array<{ profile: string; allowedFiles: string[] }> = [];
+    for (const packet of packets) {
+        if (live.router?.profile?.(String(packet?.profile))?.edit !== 'allow') { continue; }
+        const files: string[] = Array.isArray(packet.allowedFiles) ? packet.allowedFiles : [];
+        if (!files.length) { return refuse(`Profile "${packet.profile}" changes files, so the packet needs allowedFiles (globs it may change). Read-only profiles keep an empty list.`); }
+        claimed.push({ profile: packet.profile, allowedFiles: files });
+    }
+    const others = [...writeScopes.entries()].filter(([runId, scope]) => {
+        const state = (live.status(runId) as any)?.state;
+        if (!state || TERMINAL_STATES.includes(state)) { writeScopes.delete(runId); return false; }
+        return scope.dir === dir;
+    }).map(([, scope]) => scope.allowedFiles);
+    for (let i = 0; i < claimed.length; i++) {
+        for (const other of [...others, ...claimed.slice(0, i).map((c) => c.allowedFiles)]) {
+            const hit = scopesOverlap(claimed[i].allowedFiles, other);
+            if (hit) { return refuse(`allowedFiles overlap a live or sibling write packet (${hit[0]} vs ${hit[1]}); workers never change the same files at once. Wait for it or split the scopes.`); }
+        }
+    }
+    return null;
+}
+
 type WorkerCaller = { key: string; unidentified: boolean; workspace: string };
 /** The calling worker, or undefined for the main agent and for hosts that name no caller. */
 function callingWorker(): WorkerCaller | undefined {
@@ -236,6 +264,13 @@ export function workerTool(source: () => RuntimeSource, defaultWorkspace: string
                 const refusal = workerBudgetRefusal(action, await options.turnBudget());
                 if (refusal) { return refusal; }
             }
+            const dispatching = !!operation && (action === 'start' || action === 'submit' || action === 'fanout');
+            // Packets that fail their own schema fall through to INVALID_INPUT below.
+            const writeDir = String(args.workspacePath || defaultWorkspace);
+            if (dispatching && operation.inputSchema.safeParse(args).success) {
+                const refusal = await writeScopeRefusal(action, args, await Promise.resolve(runtimeInspect ? runtimeInspect() : source()), writeDir);
+                if (refusal) { return refusal; }
+            }
             if (operation && runtimeGate && (action === 'start' || action === 'submit' || action === 'fanout' || action === 'resume')) {
                 // Refuse before anything starts; the OpenCode server is started (and then probed) only when OpenCode is involved.
                 const runtimes = dispatchRuntimes(action, args, runtimeInspect ? runtimeInspect() : await Promise.resolve(source()));
@@ -249,6 +284,17 @@ export function workerTool(source: () => RuntimeSource, defaultWorkspace: string
             }
             if (!operation) { return { status: 'INVALID_INPUT', reason: `action: one of ${WORKER_ACTIONS.join(', ')}` }; }
             const result = JSON.parse(await invokeDefinition(operation, args, false));
+            if (dispatching) {
+                const live = await Promise.resolve(runtimeInspect ? runtimeInspect() : source());
+                const packets: any[] = action === 'fanout' ? (Array.isArray(args.packets) ? args.packets : []) : [args];
+                const runs = collectRuns(result);
+                runs.forEach((run, i) => {
+                    const packet = action === 'fanout' ? packets[i] : packets[0];
+                    if (packet && live.router?.profile?.(String(packet.profile))?.edit === 'allow' && Array.isArray(packet.allowedFiles) && packet.allowedFiles.length) {
+                        writeScopes.set(run.runId, { dir: writeDir, allowedFiles: packet.allowedFiles });
+                    }
+                });
+            }
             if (parent && (action === 'start' || action === 'submit' || action === 'fanout')) {
                 // Only runs this caller just started are its children.
                 const mine = childrenOf.get(parent.key) ?? { runs: new Set<string>(), workers: new Set<string>() };

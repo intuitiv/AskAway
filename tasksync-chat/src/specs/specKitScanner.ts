@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readRunRecords, SpecFacts, specFacts } from './runRecords';
 import { specsStaleness, StaleEntry } from './staleness';
+import { readinessLines } from './readiness';
 import { effectiveStage, impliedStage, nextStep, SpecArtifacts, SpecKitStage, stageButton, stageMismatch, StageMismatch } from './stages';
 
 /** Derived from which artifacts exist and how many tasks are ticked — Spec Kit stores no status field. */
@@ -101,6 +102,8 @@ export interface SpecSummary {
     stageButton: string;
     artifacts: SpecArtifacts;
     facts: SpecFacts;
+    /** Plain readiness text (readinessLines) shared by the Specs tab, Telegram status and /pr-daily; empty when no readiness is recorded. */
+    readiness: string[];
     /** Artifacts older (by git commit order) than an artifact they are generated from. */
     stale: StaleEntry[];
     /** User stories from spec.md with progress from tasks tagged `[USn]`. */
@@ -471,6 +474,7 @@ export function scanSpecs(workspaceRoot: string): SpecScanResult {
             stageButton: stageButton(specKitStage, artifacts),
             artifacts,
             facts,
+            readiness: facts.lastReadiness ? readinessLines(facts.lastReadiness) : [],
             stale: staleness.bySlug.get(entry.name) || [],
             stories: parseStories(specText, parsed.tasks)
         });

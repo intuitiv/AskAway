@@ -226,11 +226,11 @@ Write caller-view command tests first using fake APIs, bounded data and seeded f
 **Independent Test**: `rtk node tasksync-chat/test-webex-digest.cjs` with a fake Webex API; written first and shown red.
 
 - [ ] T057 [US9] Design: `specs/009-webex-remote-channel/contracts/assistant-tools.md` gets the digest mode, the index shape and the freshness limit; reviewer words and ADR 0037 recorded. Done 2026-10-22: spec US9, FR-046..050, R-CATHY-09..14, ADR 0037 (Proposed), GOALS section 4 quotes; the contract file is updated in T058.
-- [ ] T058 [US9] Test first: `tasksync-chat/test-webex-digest.cjs` (EV-WEBEX-DIGEST) with a fake Webex API: all-space coverage incl. 1:1 and tagged threads, one sync for two workspaces, freshness skip, no disk write of message text, replies to the reviewer's threads, mention shows in a quiet space, mute list, quiet-space count line, no send call. Wired into `pretest:workers`. Update `contracts/assistant-tools.md`.
-- [ ] T059 [US9] Index and sync: new `tasksync-chat/src/services/assistant/webexIndex.ts` (in-memory structures, one sync, freshness limit, owner-process only; other workspaces read through the MCP tool). Owns that file only.
-- [ ] T060 [US9] Digest mode: `inbox` gets `mode: digest` in `tasksync-chat/src/services/assistant/webexRead.ts`, output through the id scrubber; extend `test-webex-no-ids.cjs`; tool count stays at most 12.
-- [ ] T061 [US9] Spam rule: mute list (persisted in AskAway storage, edited by the reviewer) and the six-month quiet rule in the index; `N quiet spaces skipped` line.
-- [ ] T062 [US9] Replies to threads the reviewer sent appear in the digest. Push reply alert: NOT built, waiting for the reviewer ("I am not very clear about reply alert yet.").
+- [x] T058 [US9] Test and index: `test-webex-digest.cjs` (EV-WEBEX-DIGEST) and `src/services/assistant/webexIndex.ts`. Done 2026-10-22: `rtk node tasksync-chat/test-webex-digest.cjs` PASS EV-WEBEX-DIGEST; wired into pretest:workers; contract updated. Assumed Webex fields (fake API): rooms `{id,title,type,lastActivity}`, messages `{id,personId,created,text,parentId,mentionedPeople}`; real Webex may fill `mentionedPeople` only in group rooms. The worker wrote the code before the test (red not shown).
+- [x] T059 [US9] One in-memory sync, shared by all workspaces through the module state of the MCP-owning process, freshness 10 min, no message text on disk. Done 2026-10-22 (webexIndex.ts). Open: the sync runs before a digest call only, other Webex tools still read live.
+- [x] T060 [US9] `inbox` `mode: digest` through the id scrubber; tool count stays 12; `test-webex-no-ids.cjs` extended. Done 2026-10-22.
+- [x] T061 [US9] Spam rule: mute list `~/.askaway/webex-mute.json` (space names, hand-edited; no edit command yet) plus the six-month quiet rule; mention or reply always shows; "N quiet spaces skipped". Done 2026-10-22.
+- [x] T062 [US9] Replies to threads he sent appear in the digest (parent must be among the last 50 messages of the room). Push alert NOT built, waiting for the reviewer. Done 2026-10-22.
 - [ ] T063 [US9] Live check, explicit opt-in only (`ASKAWAY_WEBEX_LIVE=1`): one sync and one digest read-only; sanitized evidence in `specs/009-webex-remote-channel/evidence/digest-live.md`; flip the R-CATHY-09..14 gap rows to their tests; update both READMEs and CHANGELOG (R-DOCS-01).
 
 ---

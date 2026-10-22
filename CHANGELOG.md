@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## AskAway v2.3.4 (10-21-26)
 
+- **Webex daily report:** ask Cathy's `inbox` tool with `mode: digest` for what needs you across every space you are in, not just what AskAway sent: mentions, replies to threads you sent and unanswered direct messages. One Webex sync fills an in-memory index shared by all workspaces (nothing is written to disk); quiet spaces (nothing posted by you and no mention for six months) and spaces on your mute list `~/.askaway/webex-mute.json` are skipped and counted in one line, but a mention or a reply to you always shows. It is read-only; there is no push reply alert yet.
+- **Worker packets are scoped:** the `worker` tool refuses a file-changing profile with no `allowedFiles` and refuses packets whose files overlap a running write worker.
+- **One readiness text everywhere:** the Specs tab card, the Telegram status and the `/pr-daily` facts show the same readiness lines; a pass without evidence reads BLOCKED on all three.
+
 - **Cathy's Webex tools, by name:** twelve Webex tools (inbox, find, read, search, wait, meetings, send, reply, edit message, delete message, edit draft, style card) take space and person names, never ids; send, reply, edit and delete wait for your 👍 on one approval card in AITalk (provider, action, name, thread, full text, files), and the same card is ready for an Outlook provider. Room ids no longer appear in cards, the status file, logs or Settings text (R-CATHY-01 to R-CATHY-07).
 - Renamed the communication tool to `aitalk`: use `say` for room messages and `post` for feed lines; old action and worker policy entries remain compatible.
 - **agy and Claude workers behave like OpenCode workers:** they are identified by carriers the model cannot set (agy's MCP conversation id, a per-run `X-AskAway-Run` header for Claude, kept in a private temp file), so queued AITalk messages reach them on their next tool call and members' questions are attributed to them (R-AITALK-46, R-AITALK-47). Verified live with real agy and Claude runs.

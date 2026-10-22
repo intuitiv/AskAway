@@ -59,6 +59,7 @@ The **AITalk** tab is the workspace group chat. The Agent joins when a turn star
 - **Clear chat** in the header empties the conversation (after a confirmation) and keeps who is in the room.
 - Agent updates read like normal messages, so you can follow the agent's thinking, see where it is stuck, and steer it before it finishes.
 - Set your availability from your avatar (away for 30 minutes, a few hours, or until you are back).
+- Cathy's Webex daily report: `inbox` with `mode: digest` lists mentions, replies to threads you sent and unanswered direct messages across everything you are in, from one in-memory sync shared by every workspace. Quiet spaces and your mute list are skipped as spam (never for privacy), but a mention or a reply to you always shows.
 - Cathy, the Webex assistant, reads, searches, sends, replies, edits and deletes your messages with twelve tools that take space and person names, never ids. Every outbound action is one **Draft** card in AITalk (provider, action, name, thread, full text, files); nothing is sent until you 👍 it, and the same card is ready for an Outlook provider.
 
 ## Spec-Based Development

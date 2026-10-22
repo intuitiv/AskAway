@@ -54,7 +54,7 @@ All tools are strict zod objects, bounded (default 20 items, max 50, `hasMore`, 
 
 | Tool | Input | Output | Notes |
 |---|---|---|---|
-| `webex_inbox` | `unreadOnly?`, `mentionsOnly?`, `since?`, `limit?` | Spaces by name: `space`, `ref`, `lastMessage {author, time, text}`, `mentionsMe`, `waitingOnMe`, `unseen` | Webex has no unread API. `unseen` = messages newer than AskAway's per-space seen watermark (stored internally, advanced when `webex_read` returns them); `waitingOnMe` = last message is not from the reviewer. Both are labelled "AskAway's view, not Webex's". |
+| `webex_inbox` | `mode?` (`list` default, or `digest`), `unreadOnly?`, `mentionsOnly?`, `since?`, `limit?` | Spaces by name: `space`, `ref`, `lastMessage {author, time, text}`, `mentionsMe`, `waitingOnMe`, `unseen` | Webex has no unread API. `unseen` = messages newer than AskAway's per-space seen watermark (stored internally, advanced when `webex_read` returns them); `waitingOnMe` = last message is not from the reviewer. Both are labelled "AskAway's view, not Webex's". |
 | `webex_find` | `query`, `kind?` (`space`, `person`, default both) | `spaces[]` and `people[]`, each `{label, ref, detail}`; a person also has `{email, title?, presence?}` | Replaces `webex_find_space` and the separate person-profile tool (merged to keep the set at 12). Presence only if the token returns it; otherwise omitted, never invented. Names and emails only. |
 | `webex_read` | `space` or `person`, `thread?` (a `ref`), `since?`, `limit?`, `includeFiles?` | `messages[] {ref, author, time, text, threadOf?, files[] {name, text?}}` | One call: resolves the name internally, reads the thread, downloads and extracts attachment text (existing cache and `extract` rules). Creates nothing. Advances the seen watermark. |
 | `webex_search` | `query`, `space?`, `person?`, `since?` | `matches[] {space, author, time, text, ref}` | Bounded: scans recent messages per space and says so (`scope`). |
@@ -68,6 +68,14 @@ All tools are strict zod objects, bounded (default 20 items, max 50, `hasMore`, 
 | `webex_style_card` | none | style card text | Unchanged. |
 
 `draftId` is an internal AskAway draft id (a UUID the model must pass back), not a Webex id; it is shown nowhere to the reviewer. The set is exactly 12 tools: inbox, find, read, search, wait, meetings, send, reply, edit_message, delete_message, edit_draft, style_card. The reviewer's list had a separate `webex_person`; it is folded into `webex_find` so the cap of 12 holds. A new tool needs another to merge or retire.
+
+### `webex_inbox` `mode: digest` and the index (US9, FR-046..050, ADR 0037)
+
+- Output: `{mode: 'digest', mentions[], replies[], unansweredDirect[], skipped: 'N quiet spaces skipped', syncedAt, freshSync, note}`; each entry `{space, type, ref, author, time, text, yourMessage?}`; newest at the bottom; names and short refs only, through the id scrubber. Read-only; no send. `since` sets the report window (default 7 days).
+- Covers every space he is in (1:1 and group, threads Cathy posted for him included), not only AskAway-sent messages. A mention is dropped once he posted later in that space (his posts are the "seen" proxy; Webex has no read receipts). A reply counts when its parent is his post.
+- Index (`src/services/assistant/webexIndex.ts`, module-level, in memory): per room `{id, title, type, lastActivity, rows[] {id, parentId, personId, created, text (500 chars), mine, mentionsMe}}` plus `at`, `meId`. ONE sync (people/me, rooms max 100 by last activity, 50 messages per room, 5 in parallel; rooms idle past the quiet limit are not fetched) runs before a digest call only when older than the freshness limit (default 10 min); callers in the same process, every workspace, share it, concurrent calls share one run. Message text is never written to disk. Reply push alert: not built.
+- Spam rule: mute list `~/.askaway/webex-mute.json` (`{"spaces": ["Name"]}`, names only, read-only for AskAway); automatic quiet rule: nothing posted by him and no older mention for 6 months. A skipped space is counted in the one `N quiet spaces skipped` line. A mention or a reply to his message always shows; a direct message in the window shows in a quiet space but not in a muted one.
+- Test: `test-webex-digest.cjs` (EV-WEBEX-DIGEST).
 
 Out of scope: reactions (no API), mark-as-read (no API), creating rooms or meetings, bot provisioning, any inbound webhook.
 
