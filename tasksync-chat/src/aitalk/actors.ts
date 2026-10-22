@@ -194,16 +194,31 @@ export class Room {
         }
         return this.post(workerId, text, options);
     }
-    private releaseAnswered(): void {
-        const leaving = [...this.actors.values()].filter(actor => actor.leaveWhenAnswered);
-        if (!leaving.length) return;
+    /**
+     * Presence rule for guests (R-AITALK-51): a member other than the reviewer, the Validator and the main agent is in the room
+     * only while one of its questions or approval cards is open, and leaves as soon as none is. It reads the shared store, not this
+     * process's actors, so whichever process settles the last question or card also releases the member.
+     */
+    releaseAnswered(): void {
         const { messages, members } = this.store.snapshot(true);
-        for (const actor of leaving) {
-            const since = members.find(item => item.id === actor.id)?.joinedAt ?? 0;
-            const own = messages.filter(item => item.author === actor.id && item.kind !== 'system' && (item.ts ?? 0) >= since);
-            if (own.every(item => messages.some(other => other.replyTo === item.id && other.author !== actor.id))) this.unregister(actor.id);
+        for (const member of members) {
+            if (member.presence !== 'joined' || (member.kind !== 'worker' && member.presencePolicy !== 'leavesWhenAnswered')) continue;
+            const since = member.joinedAt ?? 0;
+            const own = messages.filter(item => item.author === member.id && item.kind !== 'system' && (item.ts ?? 0) >= since);
+            // Joined a moment ago, its first message not in the log yet: it is about to ask.
+            if (!own.length && Date.now() - since < 5000) continue;
+            if (!own.some(item => openItem(item, messages))) this.unregister(member.id);
         }
     }
+}
+/**
+ * A guest's message that still needs an answer. An approval card is open until its draft is settled (sent, failed, rejected or gone);
+ * a question is open until someone else replies or reacts to it. A reply to someone else's message is an answer, not a question.
+ */
+function openItem(message: any, messages: any[]): boolean {
+    if (message.webexDraft) return message.webexDraft.state === 'pending' && !!message.draftId;
+    if (message.replyTo) return false;
+    return !messages.some(other => other.replyTo === message.id && other.author !== message.author);
 }
 const identity = (item: any): Actor => ({ id: item.id, displayName: item.displayName, kind: item.kind, rank: item.rank, colour: item.colour });
 

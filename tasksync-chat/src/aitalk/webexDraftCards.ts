@@ -65,6 +65,8 @@ function attachRoom(room: Room, author: () => string | undefined, primary: boole
     for (const card of cards()) {
         if (card.webexDraft.state === 'pending' && card.draftId) restore(card);
     }
+    // A card that is gone or already settled no longer holds its worker in the room.
+    room.releaseAnswered();
     const settle = (event: WebexDraftEvent) => {
         const card = cards().find((message: any) => message.draftId === event.id);
         if (!card) return;

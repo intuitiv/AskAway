@@ -885,3 +885,7 @@ Accepted: ADRs 0027 to 0031. Rows R-AITALK-45 (members post only questions), R-T
 > After this finsih spec 009. And i need to have all possible tools for Cathy to chat and read and act on behalf of me. As we have aitalk, Cathy can take persmission from me to send any mesage and all. Room ID is internal so dont show it to me. Space name is what is i see. Instead of agent figuring out things by multiple webex calls, we need tools to optimise that. I will add outlook tool also in future so that Cathy can be my PR or something.
 
 Rows R-CATHY-01 to R-CATHY-08 ([webex-assistant.md](tasksync-chat/docs/requirements/webex-assistant.md)), [ADR 0035](docs/adr/0035-cathy-assistant-tools-and-provider-seam.md) (Proposed), spec 009 story US8 and tasks T043 to T047.
+
+> After asking for persmission about webex message Cathy joined, but Cathy didnt leave. I and Priya will be in the room always, Main agent will join in the turn beginnign and leaves after the turn ends. And individual members join the room when they ahve question, once all those questions were answered, they should leave the room. This is the behavior.
+
+Row R-AITALK-51 ([aitalk.md](tasksync-chat/docs/requirements/aitalk.md)), [ADR 0036](docs/adr/0036-aitalk-presence-rules.md) (Proposed). It supersedes the assignment-time presence idea of R-TEAM-09 (ADR 0023).

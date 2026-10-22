@@ -50,3 +50,4 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0033](0033-agy-and-claude-worker-identity.md) | agy and Claude workers are identified by transport carriers the model cannot set | G12 | Proposed |
 | [0034](0034-commentary-tool-renamed-aitalk.md) | The communication tool is named aitalk, matching the room | G8 | Proposed |
 | [0035](0035-cathy-assistant-tools-and-provider-seam.md) | Cathy's Webex tools use names not ids, macro calls and AITalk approval; provider seam for Outlook | G7, G5 | Proposed |
+| [0036](0036-aitalk-presence-rules.md) | AITalk presence: reviewer and Priya always, main agent per turn, other members only while a question or card is open | G12 | Proposed |
