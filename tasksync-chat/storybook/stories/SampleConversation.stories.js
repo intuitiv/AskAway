@@ -9,12 +9,10 @@ import talkCss from '../../media/aitalk/talk.css?raw';
 // Frames are recorded through the real runtime, worker tool and commentary store: node storybook/fixtures/build-sample-conversation.cjs
 const workersKit = buildWorkersKit({ webviewSrc, providerSrc });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const LAYOUT = `.aa-demo{display:flex;gap:12px;align-items:flex-start;font-family:var(--vscode-font-family);color:var(--vscode-foreground)}
 .aa-demo .aa-sidebar{min-height:620px}
 .aa-col-title{font-size:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.6;margin:0 0 6px}
-.aa-chat{width:300px;min-height:620px;padding:10px;box-sizing:border-box;background:#1f1f1f;border:1px solid #2b2b2b;font-size:13px}
 .aa-msg{margin:0 0 10px;padding:8px 10px;border-radius:6px;line-height:1.4}
 .aa-msg.user{background:#264f78;margin-left:24px}
 .aa-msg.assistant{background:#2b2b2b;margin-right:24px}
@@ -25,13 +23,11 @@ function mount(frameIndex) {
     root.innerHTML = `<style>${cssText}\n${talkCss}\n${VSCODE_DARK_THEME}\n${LAYOUT}</style>
 <div class="aa-caption" id="aa-caption"></div>
 <div class="aa-demo">
-  <div><div class="aa-col-title">Chat</div><div class="aa-chat" id="aa-chat"></div></div>
   <div><div class="aa-col-title">AITalk</div><div class="aa-sidebar talk-prototype" id="sample-talk"></div></div>
   <div><div class="aa-col-title">Workers tab</div><div class="aa-sidebar">${workersKit.panelHtml}</div></div>
 </div>`;
     const show = (frame, animate) => {
         root.querySelector('#aa-caption').textContent = `Step ${sample.frames.indexOf(frame) + 1}/${sample.frames.length} · ${frame.caption}`;
-        root.querySelector('#aa-chat').innerHTML = frame.chat.map((m) => `<div class="aa-msg ${m.role}">${esc(m.text)}</div>`).join('');
         root.querySelector('#sample-talk').innerHTML = threadHtml(frame.commentary.items.map(item => ({ ...item, author: item.kind === 'validator' ? 'Validator' : 'Agent', time: '10:00' })));
         root.querySelector('#workers-list').innerHTML = workersKit.renderWorkersHtml(frame.workers, '', {}, false, {}, {});
     };

@@ -1,6 +1,6 @@
 # ADR 0030: AITalk queues messages for the next tool call; OpenCode workers identify themselves through a plugin
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-22)
 - Date: 2026-10-21
 - Goal: the AITalk goal in [GOALS.md](../../GOALS.md)
 - Supersedes: nothing. It completes spec 003 task A3 and extends R-AITALK-14 (ticks) and R-AITALK-34 (reply wait).

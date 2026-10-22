@@ -156,6 +156,8 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
     assert.equal(row.cacheExpiresAt, 0, 'agy worker carries no prompt-cache TTL');
     assert.equal(row.lastPingAt, 0, 'agy worker carries no keep-warm ping timestamp');
     assert.equal(row.banner.dollars, null, 'the Workers card shows cost unreported, not $0');
+    assert.equal(projectWorkersState(runtime, workspace, Date.now, 1).workers.find((w) => w.workerId === started.workerId).turnActive, true, 'R-TEAM-72: an agy run that started this turn marks the worker active at $0.00');
+    assert.equal(projectWorkersState(runtime, workspace, Date.now, Date.now() + 60000).workers.find((w) => w.workerId === started.workerId).turnActive, false, 'a run older than the turn does not');
     let fetched = false;
     const trace = await loadWorkerTrace(runtime, workspace, started.workerId, async () => { fetched = true; return []; });
     assert.equal(fetched, false, 'an agy trace never asks the OpenCode server');

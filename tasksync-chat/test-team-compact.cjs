@@ -336,6 +336,9 @@ const prodState = (extra = {}) => ({ generatedAt: NOW, members: PROD_MEMBERS, wo
 		const groups = PROD_MEMBERS.map((m) => ({ member: kit.normalizeTeamMember(m), workers: [] }));
 		assert.deepEqual(kit.teamVisibleGroups(groups, true).map((g) => g.member.id), ['priya', 'bhaskar', 'tara', 'paolo', 'anika', 'diego', 'pavel']);
 		assert.deepEqual(kit.teamVisibleGroups(groups, false).map((g) => g.member.id), ['priya', 'bhaskar', 'tara', 'paolo', 'anika']);
+		// R-TEAM-72: an agy member that worked this turn is $0.00 but still shown, ranked with the members that spent.
+		const withAgy = PROD_MEMBERS.map((m) => ({ member: kit.normalizeTeamMember(m.id === 'pavel' ? { ...m, turnActive: true } : m), workers: [] }));
+		assert.deepEqual(kit.teamVisibleGroups(withAgy, false).map((g) => g.member.id), ['priya', 'bhaskar', 'tara', 'paolo', 'anika', 'pavel'], 'agy member active this turn shows at $0.00');
 		assert.ok(/teamVisibleGroups\(groups, Boolean\(state && state\.showAll\)\)/.test(webviewSrc) && /teamVisibleGroups\(groups, Boolean\(state\.showAll\)\)/.test(fs.readFileSync(path.join(ROOT, 'storybook', 'prototypes', 'team.js'), 'utf8')), 'both call the one ordering function');
 	}
 

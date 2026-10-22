@@ -1,6 +1,6 @@
 # ADR 0028: Team uses compact vibrant cards with a Show all toggle
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-22)
 - Date: 2026-10-21
 - Goal: G18 in [GOALS.md](../../GOALS.md)
 - Supersedes: R-TEAM-50 in part (one header toggle is allowed) and the status line in R-TEAM-48. ADR 0027 otherwise stands.

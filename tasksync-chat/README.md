@@ -7,7 +7,7 @@ You say what you need in plain words. AskAway runs it through Spec Kit, hands th
 > **Based on [TaskSync](https://github.com/4regab/TaskSync)** by [4regab](https://github.com/4regab), extended by [intuitiv](https://github.com/intuitiv).
 
 > [!WARNING]
-> **CONFLICT WARNING**: AskAway uses the tool name `ask_user`, the same as the `TaskSync` extension. **Disable one before using the other.**
+> **CONFLICT WARNING**: AskAway shares tool names with the `TaskSync` extension. **Disable one before using the other.** The Chat tab and the `ask_user` tool are retired.
 
 ---
 
@@ -133,7 +133,7 @@ If [`rtk`](https://github.com/rtk-ai/rtk) is installed, its token savings show n
 
 ## Classic Features
 
-Still included from TaskSync: Smart Queue, Normal and Autopilot modes, concurrent `ask_user` queuing, `#` file and folder references, image paste and drag-and-drop, reusable `/slash` prompts, tool-call history with timestamps, interactive approvals, and an MCP server.
+Still included from TaskSync: Smart Queue, `#` file and folder references, image paste and drag-and-drop, reusable `/slash` prompts, tool-call history with timestamps, interactive approvals, and an MCP server. The Chat tab, `ask_user` and Autopilot prompts are retired; AITalk replaces them.
 
 ## Installation
 

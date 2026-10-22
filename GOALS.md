@@ -864,3 +864,17 @@ Rows R-AITALK-36 to R-AITALK-41.
 > Team tab is replacing status message exactly at the same time for all members. Be random.
 
 Rows R-AITALK-42 to R-AITALK-44, R-ORCH-32, R-ORCH-33, R-TEAM-71 (ADR 0031).
+
+### 2026-10-22, ADRs accepted, retire Chat and ask_user, members post only questions, agy $0, spec order
+
+> Accepted ADRs
+> Yes retire Chat tab and ask_user.
+> Individual workers shouldnt post progress updates in aitalk. Only main agent should do, otherwise it'll just bloat aitalk. Only Main agent updates whats happening. Individual members post questions on aitalk by tagging main agent/validator or in general(like seeking persmission to send message on webex).
+> agy members are 0$.
+> Validators things looks good.
+> Why agy is not able to run MCPs.
+> I saw somewhere about claude identities or something. What do you mean?
+> Cant we use claude and agy just like open code agents? If not why what can we do?
+> We have few open specs 009, 010, 007 followed by 008 once 003 is complete.
+
+Accepted: ADRs 0027 to 0031. Rows R-AITALK-45 (members post only questions), R-TEAM-72 (agy members cost $0.00), and the Chat-tab retirement rows in `docs/requirements/live-tab.md`. Spec order after 003: 009, 010, 007, then 008 (`specs/BACKLOG.md`).

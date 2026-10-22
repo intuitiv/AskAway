@@ -50,6 +50,8 @@ export interface WorkerRow {
     usage: RunUsage;
     /** Spend since the current chat turn started: exactly the ledger checkpoints turn_budget (usageSince) counts. */
     turnCost: number;
+    /** A run started since the current chat turn started, or one is running now; true for agy workers whose cost is always $0. */
+    turnActive?: boolean;
     runs: WorkerRunTrace[];
 }
 
@@ -81,6 +83,8 @@ export interface TeamMemberState {
     taskIds: string[];
     turnCost: number;
     monthCost: number;
+    /** Worked this turn at no billed cost (agy), so the card shows at $0.00 instead of hiding. */
+    turnActive?: boolean;
 }
 
 export interface WorkersState {
@@ -281,6 +285,7 @@ export function projectTeamMembers(workers: WorkerRow[], roster: TeamRosterEntry
             taskIds: memberWorkers.map((w) => w.workerId),
             turnCost,
             monthCost,
+            turnActive: memberWorkers.some((w) => w.turnActive),
         };
     });
 }
@@ -335,7 +340,8 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
             track: [...runs].reverse().find((run) => run.track)?.track ?? '',
             banner: { requests: current.usage.steps, dollars: agy ? null : current.usage.cost, lastIn: current.lastPromptTokens, lastCached: current.lastCachedTokens,
                 turnOut: current.usage.output, lastActivityAt: Math.max(current.updatedAt, lastPingAt) },
-            usage: sumUsage(traces), turnCost: turnSpend.get(workerId) ?? 0, runs: traces,
+            usage: sumUsage(traces), turnCost: turnSpend.get(workerId) ?? 0,
+            turnActive: agy && (Boolean(active) || (turnStartedAt > 0 && runs.some((run) => run.startedAt >= turnStartedAt))), runs: traces,
         });
     }
     workers.sort((a, b) => Number(b.track === 'validator' || b.profile === 'validator') - Number(a.track === 'validator' || a.profile === 'validator') || b.lastUpdateAt - a.lastUpdateAt);

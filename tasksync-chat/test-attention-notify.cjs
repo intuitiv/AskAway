@@ -39,6 +39,7 @@ async function main() {
     registration.dispose(); await notifyAttention({ id: 'disposed', kind: 'heads-up', text: 'Need review' }); assert.equal(shown.length, before + 1);
     const extension = fs.readFileSync(path.join(__dirname, 'src/extension.ts'), 'utf8');
     assert.match(extension, /registerAttentionNotify\(\{ availability[:,]/); assert.match(extension, /notifyAttention\(item\)/); assert.doesNotMatch(extension, /provider\.waitForUserResponse/);
+    assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8'), /waitForUserResponse/, 'AITalk attention works without the retired request queue');
     console.log('PASS EV-ATTENTION-NOTIFY');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

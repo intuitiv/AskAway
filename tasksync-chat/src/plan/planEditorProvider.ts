@@ -97,7 +97,7 @@ export class PlanEditorProvider implements vscode.Disposable {
     }
 
     /**
-     * Classify whether Copilot's ask_user call represents task completion
+     * Classify whether Copilot's progress report represents task completion
      * or a mid-task clarification question. Uses AI to analyze the question
      * content against the task context.
      * Returns 'completed' if the task appears done, 'in-progress' if it's
@@ -144,7 +144,7 @@ Reply with exactly one word: COMPLETED or QUESTION`;
     }
 
     /**
-     * Handle Copilot reporting task status via ask_user.
+     * Handle Copilot reporting task status.
      * Returns auto-response (next task prompt) or null to fall through.
      */
     public async handleTaskUpdate(
@@ -195,7 +195,7 @@ Reply with exactly one word: COMPLETED or QUESTION`;
             return null;
         }
 
-        // Blocked / in-progress / need-review → fall through to normal ask_user
+        // Blocked / in-progress / need-review → wait for more input
         return null;
     }
 

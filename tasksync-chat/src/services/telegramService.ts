@@ -70,7 +70,7 @@ export class TelegramService implements RemoteChannel {
     private _copilotIdleThresholdMs: number = 0;
 
     // ── Conversation state tracking ──
-    private _lastToolCallStarted: number = 0;   // When ask_user was called (waiting for user)
+    private _lastToolCallStarted: number = 0;   // When a remote question started (waiting for user)
     private _lastToolCallReturned: number = 0;  // When user responded (Copilot processing)
     private _conversationActive: boolean = false;
 
@@ -986,7 +986,7 @@ export class TelegramService implements RemoteChannel {
 
     /**
      * Called by the webview provider whenever a task is resolved through any
-     * channel (VS Code UI, remote web UI, autopilot, timeout).
+     * channel (local or remote reply).
      * Removes the task so polling stops for it and the footer stops updating.
      */
     public resolveTask(taskId: string): void {
@@ -997,7 +997,7 @@ export class TelegramService implements RemoteChannel {
             this._markResolvedExternal(task);
         }
 
-        // Clear ALL active tasks — only one ask_user is pending at a time,
+        // Clear ALL active tasks — only one remote question is pending at a time,
         // so any remaining entries are stale from previous conversations.
         const staleCount = this._activeTasks.size;
         if (staleCount > 0) {
@@ -1950,13 +1950,13 @@ export class TelegramService implements RemoteChannel {
         this._stopHeartbeat();
     }
 
-    /** Called when ask_user is invoked (Copilot is now waiting for input) */
+    /** Called when a remote question starts (Copilot is now waiting for input) */
     public notifyToolCallStarted() {
         this._lastToolCallStarted = Date.now();
         this._conversationActive = true;
     }
 
-    /** Called when ask_user returns (user responded, Copilot processing) */
+    /** Called when a remote question returns (user responded, Copilot processing) */
     public notifyToolCallReturned() {
         this._lastToolCallReturned = Date.now();
         this._conversationActive = true;
@@ -2004,7 +2004,7 @@ export class TelegramService implements RemoteChannel {
             lines.push(`\nLast file change: ${this._formatTime(this._lastCopilotActivity)}`);
         }
         if (this._lastToolCallStarted > 0) {
-            lines.push(`Last ask_user: ${this._formatTime(this._lastToolCallStarted)}`);
+            lines.push(`Last question: ${this._formatTime(this._lastToolCallStarted)}`);
         }
         if (this._lastToolCallReturned > 0) {
             lines.push(`Last response: ${this._formatTime(this._lastToolCallReturned)}`);
@@ -2197,15 +2197,15 @@ export class TelegramService implements RemoteChannel {
         }
     }
 
-    /** Start the heartbeat timer if not already running and no active ask_user */
+    /** Start the heartbeat timer if not already running and no active question */
     private _ensureHeartbeat(): void {
         if (this._heartbeatTimer) { return; }
         if (this._liveTurns()) { return; }
-        if (this._activeTasks.size > 0) { return; }   // ask_user is pending, no heartbeat needed
+        if (this._activeTasks.size > 0) { return; }   // A question is pending, no heartbeat needed
         if (!this.isConfigured()) { return; }
 
         this._heartbeatTimer = setInterval(async () => {
-            // Only send heartbeat when Copilot is active AND no ask_user is pending
+            // Only send heartbeat when Copilot is active AND no question is pending
             if (this._activeTasks.size > 0) {
                 this._stopHeartbeat();
                 return;

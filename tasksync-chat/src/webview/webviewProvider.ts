@@ -440,17 +440,9 @@ type ToWebviewMessage =
         interactiveApprovalEnabled: boolean;
         webexEnabled: boolean;
         telegramEnabled: boolean;
-        autopilotEnabled: boolean;
-        autopilotText: string;
         reusablePrompts: ReusablePrompt[];
-        autopilotPrompts?: string[];
-        responseTimeout?: number;
         sessionWarningHours?: number;
-        maxConsecutiveAutoResponses?: number;
         turnBudgetAiu?: number;
-        humanLikeDelayEnabled?: boolean;
-        humanLikeDelayMin?: number;
-        humanLikeDelayMax?: number;
         sendWithCtrlEnter?: boolean;
         webexStatus?: unknown;
         telegramStatus?: unknown;
@@ -519,8 +511,6 @@ type FromWebviewMessage =
     | { type: 'updateInteractiveApprovalSetting'; enabled: boolean }
     | { type: 'updateWebexSetting'; enabled: boolean }
     | { type: 'updateTelegramSetting'; enabled: boolean }
-    | { type: 'updateAutopilotSetting'; enabled: boolean }
-    | { type: 'updateAutopilotText'; text: string }
     | { type: 'addReusablePrompt'; name: string; prompt: string }
     | { type: 'editReusablePrompt'; id: string; name: string; prompt: string }
     | { type: 'removeReusablePrompt'; id: string }
@@ -555,37 +545,20 @@ type FromWebviewMessage =
     | { type: 'updateWorkersKeepWarm'; enabled: boolean }
     | { type: 'pingCache' }
     | { type: 'updateCavemanSetting'; enabled: boolean }
-    | { type: 'updateResponseTimeout'; value: number }
     | { type: 'updateSessionWarningHours'; value: number }
-    | { type: 'updateMaxConsecutiveAutoResponses'; value: number }
     | { type: 'updateTurnBudgetAiu'; value: number }
-    | { type: 'updateHumanDelaySetting'; enabled: boolean }
-    | { type: 'updateHumanDelayMin'; value: number }
-    | { type: 'updateHumanDelayMax'; value: number }
-    | { type: 'addAutopilotPrompt'; prompt: string }
-    | { type: 'editAutopilotPrompt'; index: number; prompt: string }
-    | { type: 'removeAutopilotPrompt'; index: number }
-    | { type: 'reorderAutopilotPrompts'; fromIndex: number; toIndex: number }
 
 
 export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
     public static readonly viewType = VIEW_TYPE;
 
     private _view?: vscode.WebviewView;
-    private _pendingRequests: Map<string, (result: UserResponseResult) => void> = new Map();
-
-    // ── Concurrent ask_user queue (prevents one conversation from cancelling another) ──
-    /** Callbacks waiting to become the active pending request when the current one resolves */
-    private _waitingRequests: Array<() => void> = [];
-    /** Number of ask_user calls currently waiting behind the active one (for UI indicator) */
-    private _concurrentWaitingCount: number = 0;
 
     // Prompt queue state
     private _promptQueue: QueuedPrompt[] = [];
     private _queueEnabled: boolean = true; // Default to queue mode
 
     // Current session tool calls (memory only - not persisted during session)
-    private _currentToolCallId: string | null = null;
 
     // Webview ready state - prevents race condition on first message
     private _webviewReady: boolean = false;
@@ -714,49 +687,20 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _webexService: any = null;
     private _telegramService: any = null;
 
-    private readonly _AUTOPILOT_DEFAULT_TEXT = 'You are temporarily in autonomous mode and must now make your own decision. If another question arises, be sure to ask it, as autonomous mode is temporary.';
 
-    // Autopilot enabled (loaded from VS Code settings)
-    private _autopilotEnabled: boolean = false;
-
-    // Autopilot text (loaded from VS Code settings)
-    private _autopilotText: string = '';
-
-    // Autopilot prompts array (cycles through in order)
-    private _autopilotPrompts: string[] = [];
-
-    // Current index in autopilot prompts cycle (resets on new session)
-    private _autopilotIndex: number = 0;
-
-    // Human-like delay settings: adds random jitter before auto-responses
-    private _humanLikeDelayEnabled: boolean = true;
-    private _humanLikeDelayMin: number = 2;  // seconds
-    private _humanLikeDelayMax: number = 6;  // seconds
 
     // Session warning threshold (hours). 0 disables the warning.
     private _sessionWarningHours: number = 2;
 
-    // Allowed timeout values (minutes)
-    private readonly _RESPONSE_TIMEOUT_ALLOWED_MINUTES = new Set<number>([
-        0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 210, 240
-    ]);
-    private readonly _RESPONSE_TIMEOUT_DEFAULT_MINUTES = 60;
 
     // Send behavior: false => Enter, true => Ctrl/Cmd+Enter
     private _sendWithCtrlEnter: boolean = false;
 
-    // Session termination text
-    private readonly _SESSION_TERMINATION_TEXT = 'Session terminated. Do not use askUser tool again.';
-
-    // Response timeout tracking
-    private _responseTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
-    private _consecutiveAutoResponses: number = 0;
 
     // Session timer
     private _sessionStartTime: number | null = null;
     private _sessionFrozenElapsed: number | null = null;
     private _sessionTimerInterval: ReturnType<typeof setInterval> | null = null;
-    private _sessionTerminated: boolean = false;
     private _sessionWarningShown: boolean = false;
 
     // Flag to prevent config reload during our own updates (avoids race condition)
@@ -801,19 +745,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 }
                 if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.notificationSound`) ||
                     e.affectsConfiguration(`${CONFIG_NAMESPACE}.interactiveApproval`) ||
-                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.autopilot`) ||
-                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.autopilotText`) ||
-                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.autopilotPrompts`) ||
-                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.autoAnswer`) ||
-                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.autoAnswerText`) ||
                     e.affectsConfiguration(`${CONFIG_NAMESPACE}.reusablePrompts`) ||
-                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.humanLikeDelay`) ||
-                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.humanLikeDelayMin`) ||
-                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.humanLikeDelayMax`) ||
                     e.affectsConfiguration(`${CONFIG_NAMESPACE}.sendWithCtrlEnter`) ||
-                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.responseTimeout`) ||
-                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.sessionWarningHours`) ||
-                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.maxConsecutiveAutoResponses`)) {
+                    e.affectsConfiguration(`${CONFIG_NAMESPACE}.sessionWarningHours`)) {
                     this._loadSettings();
                     this._updateSettingsUI();
                 }
@@ -824,12 +758,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     public setWebexService(service: any): void {
         this._webexService = service;
         this._updateSettingsUI();
-        // Wire up response callback so Webex replies resolve pending requests
-        if (service && typeof service.setResponseCallback === 'function') {
-            service.setResponseCallback((taskId: string, response: string, user: string, attachments?: AttachmentInfo[]) => {
-                this._handleMessagingResponse(taskId, response, user, attachments);
-            });
-        }
+    }
+
+    public postRemoteQuestion(toolCallId: string, question: string, choices?: string[]): Promise<void> {
+        return postRemoteQuestion(this._webexService, this._telegramService, toolCallId, question, choices);
     }
 
     public getWebexService(): any {
@@ -839,14 +771,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     public setTelegramService(service: any): void {
         this._telegramService = service;
         this._startCloudDigest();
-        // Wire up response callback so Telegram replies resolve pending requests
+        // Wire up replies to handed-off conversations.
         if (service && typeof service.setResponseCallback === 'function') {
             service.setResponseCallback(async (taskId: string, response: string, user: string, attachments?: AttachmentInfo[]) => {
                 if (isTelegramHandoffTaskId(taskId)) {
                     await this._handleTelegramConversationReply(response, user, attachments);
                     return;
                 }
-                this._handleMessagingResponse(taskId, response, user, attachments);
             });
         }
     }
@@ -863,22 +794,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._planEditor = editor;
         // Wire the enqueue callback so the plan editor can push tasks into the prompt queue
         editor.setEnqueueCallback((prompt: string) => {
-            // If there's a pending ask_user request, resolve it immediately with the task
-            if (this._pendingRequests.size > 0 && this._currentToolCallId) {
-                const toolCallId = this._currentToolCallId;
-                const resolver = this._pendingRequests.get(toolCallId);
-                if (resolver) {
-                    this._pendingRequests.delete(toolCallId);
-                    this._currentToolCallId = null;
-                    this._signalNextWaiter();
-
-
-                    resolver({ value: prompt, queue: true, attachments: [] });
-                    this._userMessageDelivered(toolCallId, prompt);
-                    return;
-                }
-            }
-            // No pending request — push to queue for next ask_user call
+            // Keep plan tasks in the prompt queue.
             this._promptQueue.push({ id: Date.now().toString(), prompt });
             this._queueEnabled = true;
             this._updateQueueUI();
@@ -1319,22 +1235,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         }
     }
 
-    private _handleMessagingResponse(taskId: string, response: string, user: string, attachments?: AttachmentInfo[]): void {
-        // The taskId from messaging services is the toolCallId
-        if (!this._currentToolCallId || taskId !== this._currentToolCallId) { return; }
-
-        const resolve = this._pendingRequests.get(this._currentToolCallId);
-        if (!resolve) { return; }
-
-        this._resetTurnMetrics();
-        const resolvedMsgId = this._currentToolCallId;
-        resolve({ value: response, queue: this._queueEnabled, attachments: attachments || [] });
-        this._pendingRequests.delete(this._currentToolCallId);
-        this._currentToolCallId = null;
-        this._signalNextWaiter();
-        // Also tell whichever service did NOT deliver this reply to stop polling
-        this._userMessageDelivered(resolvedMsgId, response);
-    }
 
     private _validatorTurnStart: ((text: string, id: string) => void) | undefined;
     public setValidatorTurnStart(callback: (text: string, id: string) => void): void { this._validatorTurnStart = callback; }
@@ -1554,14 +1454,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         // Reset session state
         this._sessionStartTime = null;
         this._sessionFrozenElapsed = null;
-        this._sessionTerminated = false;
         this._sessionWarningShown = false;
-        this._consecutiveAutoResponses = 0;
-        this._autopilotIndex = 0;
-        if (this._responseTimeoutTimer) {
-            clearTimeout(this._responseTimeoutTimer);
-            this._responseTimeoutTimer = null;
-        }
         this._stopSessionTimerInterval();
 
         // Show welcome section again
@@ -1569,7 +1462,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
-     * Play notification sound (called when ask_user tool is triggered)
+     * Play notification sound when attention is needed
      * Works even when webview is not visible by using system sound
      */
     public playNotificationSound(): void {
@@ -1609,66 +1502,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     /**
      * Load settings from VS Code configuration
      */
-    private _getAutopilotDefaultText(config?: vscode.WorkspaceConfiguration): string {
-        const settings = config ?? vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-        const inspected = settings.inspect<string>('autopilotText');
-        const defaultValue = typeof inspected?.defaultValue === 'string' ? inspected.defaultValue : '';
-        return defaultValue.trim().length > 0 ? defaultValue : this._AUTOPILOT_DEFAULT_TEXT;
-    }
-
-    private _normalizeAutopilotText(text: string, config?: vscode.WorkspaceConfiguration): string {
-        const defaultAutopilotText = this._getAutopilotDefaultText(config);
-        return text.trim().length > 0 ? text : defaultAutopilotText;
-    }
-
     private _loadSettings(): void {
         const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         this._soundEnabled = config.get<boolean>('notificationSound', true);
         this._interactiveApprovalEnabled = config.get<boolean>('interactiveApproval', true);
-
-        // Backward-compatible migration: read old 'autoAnswer'/'autoAnswerText' keys
-        // if the new 'autopilot'/'autopilotText' keys have not been explicitly set by the user.
-        const inspectedAutopilot = config.inspect<boolean>('autopilot');
-        const hasNewAutopilotKey = inspectedAutopilot?.globalValue !== undefined
-            || inspectedAutopilot?.workspaceValue !== undefined
-            || inspectedAutopilot?.workspaceFolderValue !== undefined;
-
-        if (!hasNewAutopilotKey) {
-            const oldVal = config.inspect<boolean>('autoAnswer');
-            const hasOldKey = oldVal?.globalValue !== undefined
-                || oldVal?.workspaceValue !== undefined
-                || oldVal?.workspaceFolderValue !== undefined;
-            if (hasOldKey) {
-                this._autopilotEnabled = config.get<boolean>('autoAnswer', false);
-            } else {
-                this._autopilotEnabled = false;
-            }
-        } else {
-            this._autopilotEnabled = config.get<boolean>('autopilot', false);
-        }
-
-        const defaultAutopilotText = this._getAutopilotDefaultText(config);
-
-        const inspectedAutopilotText = config.inspect<string>('autopilotText');
-        const hasNewAutopilotTextKey = inspectedAutopilotText?.globalValue !== undefined
-            || inspectedAutopilotText?.workspaceValue !== undefined
-            || inspectedAutopilotText?.workspaceFolderValue !== undefined;
-
-        if (!hasNewAutopilotTextKey) {
-            const oldTextVal = config.inspect<string>('autoAnswerText');
-            const hasOldTextKey = oldTextVal?.globalValue !== undefined
-                || oldTextVal?.workspaceValue !== undefined
-                || oldTextVal?.workspaceFolderValue !== undefined;
-            if (hasOldTextKey) {
-                const oldText = config.get<string>('autoAnswerText', defaultAutopilotText);
-                this._autopilotText = this._normalizeAutopilotText(oldText, config);
-            } else {
-                this._autopilotText = defaultAutopilotText;
-            }
-        } else {
-            const configuredAutopilotText = config.get<string>('autopilotText', defaultAutopilotText);
-            this._autopilotText = this._normalizeAutopilotText(configuredAutopilotText, config);
-        }
 
         // Load reusable prompts from settings
         const savedPrompts = config.get<Array<{ name: string; prompt: string }>>('reusablePrompts', []);
@@ -1678,29 +1515,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             prompt: p.prompt
         }));
 
-        // Load autopilot prompts array (with fallback to autopilotText for migration)
-        const savedAutopilotPrompts = config.get<string[]>('autopilotPrompts', []);
-        if (savedAutopilotPrompts.length > 0) {
-            this._autopilotPrompts = savedAutopilotPrompts.filter(p => p.trim().length > 0);
-        } else if (this._autopilotText && this._autopilotText !== defaultAutopilotText) {
-            this._autopilotPrompts = [this._autopilotText];
-        } else {
-            this._autopilotPrompts = [];
-        }
-
-        // Load human-like delay settings
-        this._humanLikeDelayEnabled = config.get<boolean>('humanLikeDelay', true);
-        this._humanLikeDelayMin = config.get<number>('humanLikeDelayMin', 2);
-        this._humanLikeDelayMax = config.get<number>('humanLikeDelayMax', 6);
         const configuredWarningHours = config.get<number>('sessionWarningHours', 2);
         this._sessionWarningHours = Number.isFinite(configuredWarningHours)
             ? Math.min(8, Math.max(0, Math.floor(configuredWarningHours)))
             : 2;
         this._sendWithCtrlEnter = config.get<boolean>('sendWithCtrlEnter', false);
-        // Ensure min <= max
-        if (this._humanLikeDelayMin > this._humanLikeDelayMax) {
-            this._humanLikeDelayMin = this._humanLikeDelayMax;
-        }
     }
 
     /**
@@ -1717,125 +1536,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             await config.update('reusablePrompts', promptsToSave, vscode.ConfigurationTarget.Global);
         } finally {
             this._isUpdatingConfig = false;
-        }
-    }
-
-    // ── Human-like delay & response timeout helpers (ported from upstream) ──
-
-    /**
-     * Generate a random delay (jitter) between min and max seconds.
-     * Random delays simulate natural human pacing.
-     */
-    private _getHumanLikeDelayMs(): number {
-        if (!this._humanLikeDelayEnabled) { return 0; }
-        const minMs = this._humanLikeDelayMin * 1000;
-        const maxMs = this._humanLikeDelayMax * 1000;
-        return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
-    }
-
-    /**
-     * Wait a random duration before sending an automated response.
-     */
-    private async _applyHumanLikeDelay(label?: string): Promise<void> {
-        const delayMs = this._getHumanLikeDelayMs();
-        if (delayMs > 0) {
-            const delaySec = (delayMs / 1000).toFixed(1);
-            if (label) {
-                vscode.window.setStatusBarMessage(`AskAway: ${label} responding in ${delaySec}s...`, delayMs);
-            }
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-        }
-    }
-
-    private _normalizeResponseTimeout(value: unknown): number {
-        let parsedValue: number;
-        if (typeof value === 'number') { parsedValue = value; }
-        else if (typeof value === 'string') {
-            const normalized = value.trim();
-            if (normalized.length === 0) { return this._RESPONSE_TIMEOUT_DEFAULT_MINUTES; }
-            parsedValue = Number(normalized);
-        } else {
-            return this._RESPONSE_TIMEOUT_DEFAULT_MINUTES;
-        }
-        if (!Number.isFinite(parsedValue) || !Number.isInteger(parsedValue)) {
-            return this._RESPONSE_TIMEOUT_DEFAULT_MINUTES;
-        }
-        if (!this._RESPONSE_TIMEOUT_ALLOWED_MINUTES.has(parsedValue)) {
-            return this._RESPONSE_TIMEOUT_DEFAULT_MINUTES;
-        }
-        return parsedValue;
-    }
-
-    private _readResponseTimeoutMinutes(config?: vscode.WorkspaceConfiguration): number {
-        const settings = config ?? vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-        const configuredTimeout = settings.get<string>('responseTimeout', String(this._RESPONSE_TIMEOUT_DEFAULT_MINUTES));
-        return this._normalizeResponseTimeout(configuredTimeout);
-    }
-
-    /**
-     * Start a timer that auto-responds if user doesn't respond within the configured timeout.
-     */
-    private _startResponseTimeoutTimer(toolCallId: string): void {
-        if (this._responseTimeoutTimer) {
-            clearTimeout(this._responseTimeoutTimer);
-            this._responseTimeoutTimer = null;
-        }
-        const timeoutMinutes = this._readResponseTimeoutMinutes();
-        if (timeoutMinutes <= 0) { return; }
-        const timeoutMs = timeoutMinutes * 60 * 1000;
-        this._responseTimeoutTimer = setTimeout(() => {
-            this._handleResponseTimeout(toolCallId);
-        }, timeoutMs);
-    }
-
-    /**
-     * Handle response timeout — auto-respond after user idle.
-     */
-    private async _handleResponseTimeout(toolCallId: string): Promise<void> {
-        this._responseTimeoutTimer = null;
-        if (this._currentToolCallId !== toolCallId || !this._pendingRequests.has(toolCallId)) { return; }
-
-        await this._applyHumanLikeDelay('Timeout');
-        if (this._currentToolCallId !== toolCallId || !this._pendingRequests.has(toolCallId)) { return; }
-
-        const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-        const timeoutMinutes = this._readResponseTimeoutMinutes(config);
-        const maxConsecutive = config.get<number>('maxConsecutiveAutoResponses', 5);
-
-        this._consecutiveAutoResponses++;
-        let responseText: string;
-        let isTermination = false;
-
-        if (this._consecutiveAutoResponses > maxConsecutive) {
-            responseText = this._SESSION_TERMINATION_TEXT;
-            isTermination = true;
-            vscode.window.showWarningMessage(`AskAway: Auto-response limit (${maxConsecutive}) reached. Session terminated after ${timeoutMinutes} min idle.`);
-        } else if (this._autopilotEnabled) {
-            responseText = this._normalizeAutopilotText(this._autopilotText);
-            vscode.window.showInformationMessage(`AskAway: Auto-responded after ${timeoutMinutes} min idle. (${this._consecutiveAutoResponses}/${maxConsecutive})`);
-        } else {
-            responseText = this._SESSION_TERMINATION_TEXT;
-            isTermination = true;
-            vscode.window.showInformationMessage(`AskAway: Session terminated after ${timeoutMinutes} min idle.`);
-        }
-
-        const resolve = this._pendingRequests.get(toolCallId);
-        if (resolve) {
-            this._resetTurnMetrics();
-            resolve({ value: responseText, queue: this._queueEnabled && this._promptQueue.length > 0, attachments: [] });
-            this._pendingRequests.delete(toolCallId);
-            this._currentToolCallId = null;
-            this._signalNextWaiter();
-            this._telegramService?.resolveTask?.(toolCallId);
-            this._webexService?.resolveTask?.(toolCallId);
-
-            if (isTermination) {
-                this._sessionTerminated = true;
-                if (this._sessionStartTime !== null) {
-                    this._sessionFrozenElapsed = Date.now() - this._sessionStartTime;
-                    this._stopSessionTimerInterval();
-                }
-            }
         }
     }
 
@@ -1886,8 +1586,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             : this._webexService?.getTokenStatus?.() ?? null;
         const telegramStatus = this._telegramService?.getTokenStatus?.() ?? null;
         const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-        const responseTimeout = this._readResponseTimeoutMinutes(config);
-        const maxConsecutiveAutoResponses = config.get<number>('maxConsecutiveAutoResponses', 5);
         const turnBudgetAiu = config.get<number>('turnBudgetAiu', 0);
         const debugLoggingEnabled = vscode.workspace.getConfiguration('github.copilot.chat')
             .get<boolean>('agentDebugLog.fileLogging.enabled', false);
@@ -1911,17 +1609,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             interactiveApprovalEnabled: this._interactiveApprovalEnabled,
             webexEnabled: this._getWebexEnabled(),
             telegramEnabled: this._getTelegramEnabled(),
-            autopilotEnabled: this._autopilotEnabled,
-            autopilotText: this._autopilotText,
-            autopilotPrompts: this._autopilotPrompts,
             reusablePrompts: this._reusablePrompts,
-            responseTimeout,
             sessionWarningHours: this._sessionWarningHours,
-            maxConsecutiveAutoResponses,
             turnBudgetAiu,
-            humanLikeDelayEnabled: this._humanLikeDelayEnabled,
-            humanLikeDelayMin: this._humanLikeDelayMin,
-            humanLikeDelayMax: this._humanLikeDelayMax,
             sendWithCtrlEnter: this._sendWithCtrlEnter,
             debugLoggingEnabled,
             rtkCompressionEnabled,
@@ -3825,20 +3515,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             this._queueSaveTimer = null;
         }
 
-        // Clear response timeout timer
-        if (this._responseTimeoutTimer) {
-            clearTimeout(this._responseTimeoutTimer);
-            this._responseTimeoutTimer = null;
-        }
-
         // Clear session timer interval
         this._stopSessionTimerInterval();
         this._stopObservabilityPolling();
 
 
 
-        // Clear pending requests (reject any waiting promises)
-        this._pendingRequests.clear();
 
 
         // Dispose all registered disposables
@@ -3891,197 +3573,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         // Don't send initial state here - wait for webviewReady message
         // This prevents race condition where messages are sent before JS is initialized
-    }
-
-    /**
-     * Wait for user response
-     */
-    private _cancelSupersededPendingRequest(): void {
-        if (!this._currentToolCallId || !this._pendingRequests.has(this._currentToolCallId)) {
-            return;
-        }
-
-        const oldToolCallId = this._currentToolCallId;
-        const oldResolve = this._pendingRequests.get(oldToolCallId);
-        if (oldResolve) {
-            // Resolve the orphaned promise with a cancellation indicator
-            oldResolve({
-                value: '[CANCELLED: New request superseded this one]',
-                queue: this._queueEnabled && this._promptQueue.length > 0,
-                attachments: [],
-                cancelled: true
-            });
-            this._pendingRequests.delete(oldToolCallId);
-
-            // Notify messaging services so the superseded task stops polling
-            this._telegramService?.resolveTask?.(oldToolCallId);
-            this._webexService?.resolveTask?.(oldToolCallId);
-            console.warn(`[TaskSync] Previous request ${oldToolCallId} was superseded by new request`);
-        }
-    }
-
-    /**
-     * Signal the next queued waitForUserResponse call that it can proceed.
-     * Called every time the active request resolves (any path).
-     */
-    private _signalNextWaiter(): void {
-        const next = this._waitingRequests.shift();
-        if (next) { next(); }
-    }
-
-    public async waitForUserResponse(question: string): Promise<UserResponseResult> {
-        // Auto-start new session if previous session was terminated
-        if (this._sessionTerminated) {
-            this.startNewSession();
-        }
-
-        // Start session timer on first tool call
-        if (this._sessionStartTime === null) {
-            this._sessionStartTime = Date.now();
-            this._sessionFrozenElapsed = null;
-            this._startSessionTimerInterval();
-        }
-
-        if (this._autopilotEnabled && !(this._queueEnabled && this._promptQueue.length > 0)) {
-            // Race condition prevention: If there's already a pending request, cancel it
-            this._cancelSupersededPendingRequest();
-
-            // Increment consecutive auto-response counter
-            this._consecutiveAutoResponses++;
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            const maxConsecutive = config.get<number>('maxConsecutiveAutoResponses', 5);
-
-            // Check if limit reached BEFORE auto-responding
-            if (this._consecutiveAutoResponses > maxConsecutive) {
-                this._autopilotEnabled = false;
-                await config.update('autopilot', false, vscode.ConfigurationTarget.Workspace);
-                this._updateSettingsUI();
-                vscode.window.showWarningMessage(`AskAway: Auto-response limit (${maxConsecutive}) reached. Waiting for response or timeout.`);
-                // Fall through to pending request flow with timeout timer
-            } else {
-                const toolCallId = `tc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-                this._currentToolCallId = toolCallId;
-
-                // Random delay simulates human reading/response time
-                await this._applyHumanLikeDelay('Autopilot');
-
-                // Re-check after delay: user may have disabled autopilot or responded manually
-                if (!this._autopilotEnabled || this._currentToolCallId !== toolCallId) {
-                    // State changed during delay — fall through to normal pending request flow
-                } else {
-                    // Get the next prompt from cycling array (or fallback to default)
-                    let effectiveText: string;
-                    if (this._autopilotPrompts.length > 0) {
-                        effectiveText = this._autopilotPrompts[this._autopilotIndex];
-                        this._autopilotIndex = (this._autopilotIndex + 1) % this._autopilotPrompts.length;
-                    } else {
-                        effectiveText = this._normalizeAutopilotText(this._autopilotText);
-                    }
-
-                    vscode.window.showInformationMessage(`AskAway: Autopilot auto-responded. (${this._consecutiveAutoResponses}/${maxConsecutive})`);
-
-                    this._currentToolCallId = null;
-                    this._signalNextWaiter();
-                    this._resetTurnMetrics();
-                    return {
-                        value: effectiveText,
-                        queue: this._queueEnabled && this._promptQueue.length > 0,
-                        attachments: []
-                    };
-                }
-            }
-        }
-
-        // If view is not available, open the sidebar first
-        if (!this._view) {
-            // Open the TaskSync sidebar view
-            await vscode.commands.executeCommand(VIEW_FOCUS_COMMAND);
-
-            // Wait for view to be resolved (up to configured timeout)
-            let waited = 0;
-            while (!this._view && waited < this._VIEW_OPEN_TIMEOUT_MS) {
-                await new Promise(resolve => setTimeout(resolve, this._VIEW_OPEN_POLL_INTERVAL_MS));
-                waited += this._VIEW_OPEN_POLL_INTERVAL_MS;
-            }
-
-            if (!this._view) {
-                console.error(`[TaskSync] Failed to open sidebar view after waiting ${this._VIEW_OPEN_TIMEOUT_MS}ms`);
-                throw new Error(`Failed to open TaskSync sidebar after ${this._VIEW_OPEN_TIMEOUT_MS}ms. The webview may not be properly initialized.`);
-            }
-        }
-
-        // Concurrent ask_user: if another request is already active, queue this one
-        // and wait for it to complete — instead of cancelling the first conversation.
-        if (this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId)) {
-            this._concurrentWaitingCount++;
-            await new Promise<void>(resolve => this._waitingRequests.push(resolve));
-            this._concurrentWaitingCount--;
-        }
-
-        const toolCallId = `tc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-        this._currentToolCallId = toolCallId;
-        const displayQuestion = question;
-
-        // Check if queue is enabled and has prompts - auto-respond
-        if (this._queueEnabled && this._promptQueue.length > 0) {
-            const queuedPrompt = this._promptQueue.shift();
-            if (queuedPrompt) {
-                this._saveQueueToDisk();
-                this._updateQueueUI();
-
-                // Random delay simulates human reading/response time
-                await this._applyHumanLikeDelay('Queue');
-
-                // Re-check after delay: user may have disabled queue or responded manually
-                if (!this._queueEnabled || this._currentToolCallId !== toolCallId) {
-                    // State changed during delay — restore prompt to queue
-                    this._promptQueue.unshift(queuedPrompt);
-                    this._saveQueueToDisk();
-                    this._updateQueueUI();
-                } else {
-                    this._currentToolCallId = null;
-                    this._signalNextWaiter();
-                    this._resetTurnMetrics();
-                    this._userMessageDelivered(toolCallId, queuedPrompt.prompt);
-                    return {
-                        value: queuedPrompt.prompt,
-                        queue: this._queueEnabled && this._promptQueue.length > 0,
-                        attachments: queuedPrompt.attachments || []  // Return stored attachments
-                    };
-                }
-            }
-        }
-
-        this._view.show(true);
-
-
-        // Parse choices from question and determine if it's an approval question
-        const choices = this._parseChoices(question);
-        const isApproval = choices.length === 0 && this._isApprovalQuestion(question);
-
-        // Wait for webview to be ready (JS initialized) before sending message
-        if (!this._webviewReady) {
-            // Wait for webview JS to initialize (up to 3 seconds)
-            const maxWaitMs = 3000;
-            const pollIntervalMs = 50;
-            let waited = 0;
-            while (!this._webviewReady && waited < maxWaitMs) {
-                await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-                waited += pollIntervalMs;
-            }
-        }
-
-
-        void postRemoteQuestion(this._webexService, this._telegramService, toolCallId, question, choices.length > 0 ? choices.map(choice => choice.label) : undefined)
-            .catch(() => console.error('[AskAway] Remote question delivery failed'));
-
-
-        // Start response-timeout auto-respond timer (if configured)
-        this._startResponseTimeoutTimer(toolCallId);
-
-        return new Promise<UserResponseResult>((resolve) => {
-            this._pendingRequests.set(toolCallId, resolve);
-        });
     }
 
     /**
@@ -4243,7 +3734,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
             // Fall back to text — don't reject, just return the error message
             // so Copilot can ask again via text
-            pending.resolve(`[Voice error: ${error}. Please ask again via text using ask_user tool.]`);
+            pending.resolve(`[Voice error: ${error}. Please ask again via text.]`);
         }
     }
 
@@ -4479,12 +3970,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'updateTelegramSetting':
                 this._handleUpdateTelegramSetting(message.enabled);
                 break;
-            case 'updateAutopilotSetting':
-                this._handleUpdateAutopilotSetting(message.enabled);
-                break;
-            case 'updateAutopilotText':
-                this._handleUpdateAutopilotText(message.text);
-                break;
             case 'updateSendWithCtrlEnterSetting':
                 this._handleUpdateSendWithCtrlEnterSetting(message.enabled);
                 break;
@@ -4515,38 +4000,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'pingCache':
                 this._handlePingCache();
                 break;
-            case 'updateResponseTimeout':
-                this._handleUpdateResponseTimeout(message.value);
-                break;
             case 'updateSessionWarningHours':
                 this._handleUpdateSessionWarningHours(message.value);
                 break;
-            case 'updateMaxConsecutiveAutoResponses':
-                this._handleUpdateMaxConsecutiveAutoResponses(message.value);
-                break;
             case 'updateTurnBudgetAiu':
                 this._handleUpdateTurnBudgetAiu(message.value);
-                break;
-            case 'updateHumanDelaySetting':
-                this._handleUpdateHumanDelaySetting(message.enabled);
-                break;
-            case 'updateHumanDelayMin':
-                this._handleUpdateHumanDelayMin(message.value);
-                break;
-            case 'updateHumanDelayMax':
-                this._handleUpdateHumanDelayMax(message.value);
-                break;
-            case 'addAutopilotPrompt':
-                this._handleAddAutopilotPrompt(message.prompt);
-                break;
-            case 'editAutopilotPrompt':
-                this._handleEditAutopilotPrompt(message.index, message.prompt);
-                break;
-            case 'removeAutopilotPrompt':
-                this._handleRemoveAutopilotPrompt(message.index);
-                break;
-            case 'reorderAutopilotPrompts':
-                this._handleReorderAutopilotPrompts(message.fromIndex, message.toIndex);
                 break;
             case 'addReusablePrompt':
                 this._handleAddReusablePrompt(message.name, message.prompt);
@@ -4899,24 +4357,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
-     * Handle updating autopilot setting
-     */
-    private async _handleUpdateAutopilotSetting(enabled: boolean): Promise<void> {
-        this._autopilotEnabled = enabled;
-        this._isUpdatingConfig = true;
-        try {
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            await config.update('autopilot', enabled, vscode.ConfigurationTarget.Global);
-            // Reload settings after update to ensure consistency
-            this._loadSettings();
-            // Update UI to reflect the saved state
-            this._updateSettingsUI();
-        } finally {
-            this._isUpdatingConfig = false;
-        }
-    }
-
-    /**
      * Handle updating telegram enabled setting
      */
     private async _handleUpdateTelegramSetting(enabled: boolean): Promise<void> {
@@ -4925,25 +4365,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             const config = vscode.workspace.getConfiguration('askaway.telegram');
             await config.update('enabled', enabled, vscode.ConfigurationTarget.Global);
             // The config watcher in extension.ts will call telegramService.reloadConfig()
-            this._updateSettingsUI();
-        } finally {
-            this._isUpdatingConfig = false;
-        }
-    }
-
-    /**
-     * Handle updating autopilot text
-     */
-    private async _handleUpdateAutopilotText(text: string): Promise<void> {
-        this._isUpdatingConfig = true;
-        try {
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            const normalizedText = this._normalizeAutopilotText(text, config);
-            this._autopilotText = normalizedText;
-            await config.update('autopilotText', normalizedText, vscode.ConfigurationTarget.Global);
-            // Reload settings after update to ensure consistency
-            this._loadSettings();
-            // Update UI to reflect the saved state
             this._updateSettingsUI();
         } finally {
             this._isUpdatingConfig = false;
@@ -5053,17 +4474,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         }
     }
 
-    private async _handleUpdateResponseTimeout(value: number): Promise<void> {
-        this._isUpdatingConfig = true;
-        try {
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            await config.update('responseTimeout', String(value), vscode.ConfigurationTarget.Global);
-            this._loadSettings();
-        } finally {
-            this._isUpdatingConfig = false;
-        }
-    }
-
     private async _handleUpdateWorkersKeepWarm(enabled: boolean): Promise<void> {
         this._isUpdatingConfig = true;
         try {
@@ -5085,17 +4495,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         }
     }
 
-    private async _handleUpdateMaxConsecutiveAutoResponses(value: number): Promise<void> {
-        this._isUpdatingConfig = true;
-        try {
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            await config.update('maxConsecutiveAutoResponses', value, vscode.ConfigurationTarget.Global);
-            this._loadSettings();
-        } finally {
-            this._isUpdatingConfig = false;
-        }
-    }
-
     private async _handleUpdateTurnBudgetAiu(value: number): Promise<void> {
         this._isUpdatingConfig = true;
         try {
@@ -5108,99 +4507,6 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 await fs.promises.mkdir(cfgDir, { recursive: true });
                 await fs.promises.writeFile(path.join(cfgDir, 'turn-budget-aiu'), `${clamped}\n`, 'utf8');
             } catch { /* non-fatal */ }
-            this._updateSettingsUI();
-        } finally {
-            this._isUpdatingConfig = false;
-        }
-    }
-
-    private async _handleUpdateHumanDelaySetting(enabled: boolean): Promise<void> {
-        this._isUpdatingConfig = true;
-        try {
-            this._humanLikeDelayEnabled = enabled;
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            await config.update('humanLikeDelay', enabled, vscode.ConfigurationTarget.Global);
-        } finally {
-            this._isUpdatingConfig = false;
-        }
-    }
-
-    private async _handleUpdateHumanDelayMin(value: number): Promise<void> {
-        this._isUpdatingConfig = true;
-        try {
-            this._humanLikeDelayMin = value;
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            await config.update('humanLikeDelayMin', value, vscode.ConfigurationTarget.Global);
-        } finally {
-            this._isUpdatingConfig = false;
-        }
-    }
-
-    private async _handleUpdateHumanDelayMax(value: number): Promise<void> {
-        this._isUpdatingConfig = true;
-        try {
-            this._humanLikeDelayMax = value;
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            await config.update('humanLikeDelayMax', value, vscode.ConfigurationTarget.Global);
-        } finally {
-            this._isUpdatingConfig = false;
-        }
-    }
-
-    private async _handleAddAutopilotPrompt(prompt: string): Promise<void> {
-        this._isUpdatingConfig = true;
-        try {
-            const trimmed = prompt.trim();
-            if (!trimmed) return;
-            this._autopilotPrompts.push(trimmed);
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            await config.update('autopilotPrompts', this._autopilotPrompts, vscode.ConfigurationTarget.Global);
-            this._updateSettingsUI();
-        } finally {
-            this._isUpdatingConfig = false;
-        }
-    }
-
-    private async _handleEditAutopilotPrompt(index: number, prompt: string): Promise<void> {
-        this._isUpdatingConfig = true;
-        try {
-            const trimmed = prompt.trim();
-            if (!trimmed || index < 0 || index >= this._autopilotPrompts.length) return;
-            this._autopilotPrompts[index] = trimmed;
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            await config.update('autopilotPrompts', this._autopilotPrompts, vscode.ConfigurationTarget.Global);
-            this._updateSettingsUI();
-        } finally {
-            this._isUpdatingConfig = false;
-        }
-    }
-
-    private async _handleRemoveAutopilotPrompt(index: number): Promise<void> {
-        this._isUpdatingConfig = true;
-        try {
-            if (index < 0 || index >= this._autopilotPrompts.length) return;
-            this._autopilotPrompts.splice(index, 1);
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            await config.update('autopilotPrompts', this._autopilotPrompts, vscode.ConfigurationTarget.Global);
-            // Reset cycling index if needed
-            if (this._autopilotIndex >= this._autopilotPrompts.length) {
-                this._autopilotIndex = 0;
-            }
-            this._updateSettingsUI();
-        } finally {
-            this._isUpdatingConfig = false;
-        }
-    }
-
-    private async _handleReorderAutopilotPrompts(fromIndex: number, toIndex: number): Promise<void> {
-        this._isUpdatingConfig = true;
-        try {
-            if (fromIndex < 0 || fromIndex >= this._autopilotPrompts.length) return;
-            if (toIndex < 0 || toIndex >= this._autopilotPrompts.length) return;
-            const [moved] = this._autopilotPrompts.splice(fromIndex, 1);
-            this._autopilotPrompts.splice(toIndex, 0, moved);
-            const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-            await config.update('autopilotPrompts', this._autopilotPrompts, vscode.ConfigurationTarget.Global);
             this._updateSettingsUI();
         } finally {
             this._isUpdatingConfig = false;
@@ -5617,10 +4923,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      */
 
     /**
-     * Handle plan task status update from Copilot via ask_user tool.
+     * Handle plan task status update from Copilot.
      * Called when Copilot includes taskId + taskStatus in the tool call.
      * Delegates to PlanEditorProvider if available (editor tab board).
-     * Returns auto-response (next task prompt) or null to fall through to normal ask_user flow.
+     * Returns the next task prompt or null when more input is needed.
      */
     public async handlePlanTaskUpdate(
         taskId: string,
@@ -5704,7 +5010,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         }
 
         if (taskStatus === 'in-progress') {
-            // Interim update — let it through as normal ask_user
+            // Interim update — wait for more input
             return null;
         }
 
@@ -5716,7 +5022,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         let prompt = `📋 **Plan Task [${task.id}]**\n\n`;
         prompt += `**Task:** ${task.title}\n\n`;
         prompt += `**Instructions:**\n${task.description}\n\n`;
-        prompt += `**Important:** When you call \`ask_user\`, include \`taskId: "${task.id}"\` and your assessment of \`taskStatus\` (completed, in-progress, blocked, or need-review). `;
+        prompt += `**Important:** When reporting progress, include \`taskId: "${task.id}"\` and your assessment of \`taskStatus\` (completed, in-progress, blocked, or need-review). `;
         prompt += `This allows the orchestrator to track your progress and auto-advance to the next task.`;
 
         if (task.subtasks.length > 0) {
@@ -5953,7 +5259,7 @@ Example: [{"title": "Create data model", "description": "Define TypeScript inter
         // Resolve pending review promise with feedback
         const pending = this._planPendingReview.get(taskId);
         if (pending) {
-            pending.resolve(`Task "${task?.title}" needs revision.\n\n**Feedback:** ${feedback}\n\nPlease address the feedback and try again. Remember to include taskId: "${taskId}" and taskStatus in your ask_user call.`);
+            pending.resolve(`Task "${task?.title}" needs revision.\n\n**Feedback:** ${feedback}\n\nPlease address the feedback and try again. Remember to include taskId: "${taskId}" and taskStatus when reporting progress.`);
             this._planPendingReview.delete(taskId);
         }
 

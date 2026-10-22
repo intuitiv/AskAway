@@ -1,6 +1,6 @@
 # ADR 0027: Team shows members by Turn spend; model and thinking are one shared choice
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-22)
 - Date: 2026-10-21
 - Goal: G18, G5 in [GOALS.md](../../GOALS.md)
 - Supersedes: R-TEAM-37 (header row), R-TEAM-45 (every member always visible), R-WORKERS-07/08 (Show completed) and R-WTOOL-09 (archive prune). Other ADR 0024 and 0025 rules stand.

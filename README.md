@@ -277,7 +277,7 @@ If `rtk` is not installed, AskAway gracefully disables the RTK toggle and contin
 
 ## Classic Features
 
-Still included from TaskSync: `ask_user`, Smart Queue, Normal and Autopilot modes, concurrent `ask_user` queuing, `#` file references, image paste, reusable `/slash` prompts, tool-call history, the remote web/mobile UI, and an MCP server for external clients.
+Still included from TaskSync: Smart Queue, `#` file references, image paste, reusable `/slash` prompts, tool-call history, the remote web/mobile UI, and an MCP server for external clients. The Chat tab, `ask_user` and Autopilot prompts are retired; AITalk replaces them.
 
 ## Installation
 
@@ -349,7 +349,7 @@ AskAway uses Copilot's local debug-log usage fields where available. Current-tur
 
 ### Can I use TaskSync and AskAway together?
 
-Usually no. Both can register the same `ask_user` tool, so only one should be active at a time. AskAway includes the TaskSync-style workflow plus the newer metrics and optimization features.
+Usually no. Both can register the same tool names, so only one should be active at a time. AskAway includes the TaskSync-style workflow plus the newer metrics and optimization features.
 
 ---
 

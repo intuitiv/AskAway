@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 
 ## AskAway v2.3.4 (10-21-26)
+- **Chat and Autopilot are gone for good:** the Chat tab and `ask_user` were already retired; the leftover Autopilot prompts, response-timeout and human-like-delay settings and the pending-request queue are removed too. Remote Webex and Telegram questions, the plan editor and worker Autopilot stay (R-LIVE-27).
+- **Members post only questions in AITalk:** only the main agent posts progress updates; a worker or member posts a question, tagged to the main agent, the Validator or the room, and reports progress in its final report (R-AITALK-45).
+- **agy members:** still $0.00, and now shown on Team while they work this turn even without Show all (R-TEAM-72).
 - **Compact Team cards:** the Team tab shows one compact card per member, with no layout switch: an accent colour, runtime-coloured model chip and thinking chip, a share bar of the turn, a pulsing dot while working, and a status line that rotates every 8 seconds. Order is Priya, the main agent, then members by Turn descending (R-TEAM-58 to R-TEAM-61).
 - **One Edit button per card:** a pencil opens one inline panel with name, role, picture, Model, Thinking, Agent file and Reset model to default; no chevron and no menu (R-TEAM-66).
 - **Month under Turn:** every card shows Turn with a muted Month line beneath; agy members show $0.00 for both (R-TEAM-65).

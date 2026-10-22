@@ -1,6 +1,6 @@
 # ADR 0031: Decisions are asked in AITalk as they arise; a two-minute status nudge
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-22)
 - Date: 2026-10-21
 - Goal: G4 and G8 in [GOALS.md](../../GOALS.md)
 - Supersedes: ADR 0003 in part (questions no longer wait for the end of the turn) and R-ORCH-26 (four minutes becomes two).
@@ -20,3 +20,5 @@ With AITalk delivering messages on the next tool call, the agent no longer has t
 ## Consequences
 
 The reviewer may get several small questions during a turn instead of one batch; the recommended default keeps the agent moving, and the Validator can answer when he is away.
+
+**Amended 2026-10-22:** the status nudge and the "about every couple of minutes" update guidance apply to the main agent turn only. Workers and other members post only questions (kind heads-up) on AITalk; a worker update is refused and their progress goes in the final worker report (R-AITALK-45). The nudge hook fires from the main agent's native turn, never from OpenCode workers.

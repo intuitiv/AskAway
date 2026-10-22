@@ -3,7 +3,7 @@
  * 
  * The planning board sits between the user (architect) and Copilot (executor):
  * - User drafts tasks and queues them
- * - Copilot picks tasks one-by-one, reports status via ask_user tool
+ * - Copilot picks tasks one-by-one and reports task status
  * - Orchestrator auto-advances or pauses for user review based on task config
  */
 
@@ -80,7 +80,7 @@ export interface Plan {
 
 // ── Tool call extensions for plan mode ──
 
-/** Extended input for ask_user when used in plan mode */
+/** Task progress input when used in plan mode */
 export interface PlanAwareInput {
     question: string;
     taskId?: string;

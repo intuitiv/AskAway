@@ -38,7 +38,6 @@
     "notification",
     "productivity",
     "queue",
-    "ask_user",
     "tasksync",
     "webex",
     "vibe coding",
@@ -570,7 +569,7 @@
         ],
         "toolReferenceName": "commentary",
         "displayName": "Commentary",
-        "modelDescription": "Live commentary: the trace of your execution for the reviewer, so they know what is happening, can guide you in time, and are prepared for questions coming their way. One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. Speak to the reviewer in plain first-person sentences, like updating a colleague. Use one or two short sentences, not emoji-led bold banners or headlines. About every couple of minutes, post a status line with action aitalk, kind update: what you are doing, what is done, and where blocked or waiting. At a decision or when reviewer input is needed, ask right away with action aitalk, kind heads-up: a heads-up asks the exact question with options and your recommended default, never just \"something is unclear\"; leave waitSeconds at its default (45 seconds). Do not wait beyond that unless you truly cannot continue; carry on with the recommended default. Answers arrive in a later tool result under ADDITIONAL MESSAGES FROM THE USER. Keep it short; optional details go under Read more. Put questions still open at turn end in the single Response Handoff batch.",
+        "modelDescription": "Live commentary: the trace of your execution for the reviewer, so they know what is happening, can guide you in time, and are prepared for questions coming their way. One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. Speak to the reviewer in plain first-person sentences, like updating a colleague. Use one or two short sentences, not emoji-led bold banners or headlines. Main agent only: about every couple of minutes, post a status line with action aitalk, kind update: what you are doing, what is done, and where blocked or waiting. Workers and other members never post updates on AITalk (refused); they post only questions (kind heads-up) and report progress in their final worker report. At a decision or when reviewer input is needed, ask right away with action aitalk, kind heads-up: a heads-up asks the exact question with options and your recommended default, never just \"something is unclear\"; leave waitSeconds at its default (45 seconds). Do not wait beyond that unless you truly cannot continue; carry on with the recommended default. Answers arrive in a later tool result under ADDITIONAL MESSAGES FROM THE USER. Keep it short; optional details go under Read more. Put questions still open at turn end in the single Response Handoff batch.",
         "canBeReferencedInPrompt": true,
         "icon": "$(comment-discussion)",
         "inputSchema": {
@@ -965,72 +964,6 @@
           "default": true,
           "description": "Automatically register MCP server with Kiro and other supported clients."
         },
-        "askaway.autopilot": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable Autopilot to automatically respond to ask_user prompts without waiting for your input, using a customizable prompt you can configure in Settings. Queued prompts always take priority over Autopilot responses."
-        },
-        "askaway.autopilotText": {
-          "type": "string",
-          "default": "You are temporarily in autonomous mode and must now make your own decision. If another question arises, be sure to ask it, as autonomous mode is temporary.",
-          "scope": "window",
-          "description": "Text returned when Autopilot is enabled. The agent receives this as an automatic response."
-        },
-        "askaway.autopilotPrompts": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "scope": "window",
-          "description": "Array of prompts that cycle in order during Autopilot (1→2→3→1...). Each prompt is sent sequentially with human-like delay. When empty, falls back to autopilotText."
-        },
-        "askaway.responseTimeout": {
-          "type": "string",
-          "default": "60",
-          "scope": "window",
-          "enum": [
-            "0",
-            "5",
-            "10",
-            "20",
-            "30",
-            "40",
-            "50",
-            "60",
-            "70",
-            "80",
-            "90",
-            "100",
-            "110",
-            "120",
-            "150",
-            "180",
-            "210",
-            "240"
-          ],
-          "enumDescriptions": [
-            "Disabled (no auto-response)",
-            "5 minutes",
-            "10 minutes",
-            "20 minutes",
-            "30 minutes",
-            "40 minutes",
-            "50 minutes",
-            "60 minutes",
-            "70 minutes",
-            "80 minutes",
-            "90 minutes (1.5 hours)",
-            "100 minutes",
-            "110 minutes",
-            "120 minutes (2 hours)",
-            "150 minutes (2.5 hours)",
-            "180 minutes (3 hours)",
-            "210 minutes (3.5 hours)",
-            "240 minutes (4 hours)"
-          ],
-          "description": "Auto-respond to pending tool calls if user doesn't respond within this time. When Autopilot is enabled, the Autopilot text is sent. When disabled, a session termination message is sent."
-        },
         "askaway.sessionWarningHours": {
           "type": "number",
           "default": 2,
@@ -1038,14 +971,6 @@
           "maximum": 8,
           "scope": "window",
           "description": "Show a one-time warning after this many hours (0..8) in the same session. Set to 0 to disable session warning."
-        },
-        "askaway.maxConsecutiveAutoResponses": {
-          "type": "number",
-          "default": 5,
-          "minimum": 1,
-          "maximum": 50,
-          "scope": "window",
-          "description": "Maximum consecutive auto-responses (from timeout) before terminating session. Prevents infinite loops."
         },
         "askaway.turnBudgetAiu": {
           "type": "number",
@@ -1059,28 +984,6 @@
           "default": "",
           "scope": "application",
           "markdownDescription": "Experimental. When set, a PreToolUse hook rewrites the `model` argument of Copilot's built-in `runSubagent` tool so sub-agents run on this (cheaper) model — e.g. `Claude Haiku 4.5 (copilot)`. Must be an exact model string your plan supports and that can run agentic sub-agents, else sub-agents may fail. Leave empty to disable. Requires a window reload to install the hook."
-        },
-        "askaway.humanLikeDelay": {
-          "type": "boolean",
-          "default": true,
-          "scope": "window",
-          "description": "Add random human-like delays before auto-responses (Autopilot, Queue, Timeout). Simulates natural reading and typing time."
-        },
-        "askaway.humanLikeDelayMin": {
-          "type": "number",
-          "default": 2,
-          "minimum": 1,
-          "maximum": 30,
-          "scope": "window",
-          "description": "Minimum delay in seconds before auto-responses when human-like delay is enabled."
-        },
-        "askaway.humanLikeDelayMax": {
-          "type": "number",
-          "default": 6,
-          "minimum": 2,
-          "maximum": 60,
-          "scope": "window",
-          "description": "Maximum delay in seconds before auto-responses when human-like delay is enabled."
         },
         "askaway.interactiveApproval": {
           "type": "boolean",
@@ -1324,7 +1227,7 @@
     ]
   },
   "scripts": {
-    "pretest:workers": "node test-trace-tab.cjs && node test-aitalk-ui.cjs && node test-aitalk-click-focus.cjs && node test-cloud-cost-estimate.cjs && node test-cloud-merge.cjs && node test-theme-light.cjs && node test-style-voice.cjs && node test-aitalk-delivery.cjs && node test-style-sample-vscode.cjs && node test-worker-ask-capture-refused.cjs && node test-attention-notify.cjs && node test-aitalk-extension.cjs && node test-webex-tools-suite.cjs && node test-trace-tab-unification.cjs && node test-validator-session-per-turn.cjs && node test-validator-digest-watch.cjs && node test-validator-live.cjs && node test-validator-triggers.cjs && node test-validator-context.cjs && node test-efficiency-score.cjs && node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs && node test-import-vscode-memories.cjs",
+    "pretest:workers": "node test-aitalk-members-questions-only.cjs && node test-trace-tab.cjs && node test-aitalk-ui.cjs && node test-aitalk-click-focus.cjs && node test-cloud-cost-estimate.cjs && node test-cloud-merge.cjs && node test-theme-light.cjs && node test-style-voice.cjs && node test-aitalk-delivery.cjs && node test-style-sample-vscode.cjs && node test-worker-ask-capture-refused.cjs && node test-attention-notify.cjs && node test-aitalk-extension.cjs && node test-webex-tools-suite.cjs && node test-trace-tab-unification.cjs && node test-validator-session-per-turn.cjs && node test-validator-digest-watch.cjs && node test-validator-live.cjs && node test-validator-triggers.cjs && node test-validator-context.cjs && node test-efficiency-score.cjs && node test-turn-totals-reconcile.cjs && node test-turn-budget-hook-workers.cjs && node test-memory-seed-and-mcp.cjs && node test-import-vscode-memories.cjs",
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.js",
     "compile": "tsc -p ./",

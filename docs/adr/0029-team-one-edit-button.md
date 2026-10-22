@@ -1,6 +1,6 @@
 # ADR 0029: Team cards have one Edit button and Month under Turn
 
-- Status: Proposed
+- Status: Accepted (reviewer, 2026-10-22)
 - Date: 2026-10-21
 - Goal: G18 in [GOALS.md](../../GOALS.md)
 - Supersedes: R-TEAM-60 and R-TEAM-63 of ADR 0028. ADR 0028 otherwise stands.

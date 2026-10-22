@@ -15,12 +15,7 @@
     let telegramEnabled = false;
     let remotePollingStatuses = {};
     let remotePollingTimer = null;
-    let autopilotEnabled = false;
-    let autopilotText = '';
-    let autopilotPrompts = [];
-    let responseTimeout = 60;
     let sessionWarningHours = 2;
-    let maxConsecutiveAutoResponses = 5;
     let turnBudgetAiu = 0;
     let debugLoggingEnabled = true;
     let rtkCompressionEnabled = false;
@@ -56,18 +51,6 @@
         source: 'unavailable',
         updatedAt: 0
     };
-    // Keep timeout options aligned with select values to avoid invalid UI state.
-    var RESPONSE_TIMEOUT_ALLOWED_VALUES = new Set([0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 210, 240]);
-    var RESPONSE_TIMEOUT_DEFAULT = 60;
-    // Human-like delay: random jitter simulates natural reading/typing time
-    let humanLikeDelayEnabled = true;
-    let humanLikeDelayMin = 2;  // minimum seconds
-    let humanLikeDelayMax = 6;  // maximum seconds
-    let autopilotTextDebounceTimer = null;
-
-    // Tracks local edits to prevent stale settings overwriting user input mid-typing.
-    let autopilotTextEditVersion = 0;
-    let autopilotTextLastSentVersion = 0;
     let reusablePrompts = [];
     let audioUnlocked = false; // Track if audio playback has been unlocked by user gesture
 
@@ -84,14 +67,12 @@
 
     // Settings modal elements
     let settingsModal, settingsModalOverlay, settingsModalClose;
-    let soundToggle, interactiveApprovalToggle, sendShortcutToggle, webexToggle, telegramToggle, autopilotEditBtn, autopilotToggle, autopilotTextInput, promptsList, addPromptBtn, addPromptForm;
+    let soundToggle, interactiveApprovalToggle, sendShortcutToggle, webexToggle, telegramToggle, promptsList, addPromptBtn, addPromptForm;
     let debugLoggingToggle, rtkCompressionToggle, autoCompactionToggle;
     let extendedCacheTtlToggle, cacheKeepWarmToggle, cacheKeepWarmProbesInput;
     let extendedCacheTtlMessagesToggle;
-    let autopilotPromptsList, autopilotAddBtn, addAutopilotPromptForm, autopilotPromptInput, saveAutopilotPromptBtn, cancelAutopilotPromptBtn;
-    let responseTimeoutSelect, sessionWarningHoursSelect, maxAutoResponsesInput;
+    let sessionWarningHoursSelect;
     let turnBudgetInput;
-    let humanDelayToggle, humanDelayRangeContainer, humanDelayMinInput, humanDelayMaxInput;
     let observabilityRtkLine;
     let obsLastReqs, obsLastCredits, obsLastInput, obsLastOutput, obsLastCached;
     let obsWsReqs, obsWsCredits, obsWsInput, obsWsOutput, obsWsCached;
@@ -305,61 +286,6 @@
             '</div>';
         modalContent.appendChild(turnBudgetSection);
 
-        // Autopilot section with cycling prompts list
-        var autopilotSection = document.createElement('div');
-        autopilotSection.className = 'settings-section';
-        autopilotSection.innerHTML = '<div class="settings-section-header">' +
-            '<div class="settings-section-title">' +
-            '<span class="codicon codicon-rocket"></span> Autopilot Prompts' +
-            '<span class="settings-info-icon" title="Prompts cycle in order (1→2→3→1...) with human-like delay.\n\nHow it works:\n• The agent calls ask_user → Autopilot sends the next prompt in sequence\n• Add multiple prompts to alternate between different instructions\n• Drag to reorder, edit or delete individual prompts\n\nQueue Priority:\n• Queued prompts ALWAYS take priority over Autopilot\n• Autopilot only activates when the queue is empty">' +
-            '<span class="codicon codicon-info"></span></span>' +
-            '</div>' +
-            '<button class="add-prompt-btn-inline" id="autopilot-add-btn" title="Add Autopilot prompt" aria-label="Add Autopilot prompt"><span class="codicon codicon-add"></span></button>' +
-            '</div>' +
-            '<div class="autopilot-prompts-list" id="autopilot-prompts-list"></div>' +
-            '<div class="add-autopilot-prompt-form hidden" id="add-autopilot-prompt-form">' +
-            '<div class="form-row">' +
-            '<textarea class="form-input form-textarea" id="autopilot-prompt-input" placeholder="Enter Autopilot prompt text..." maxlength="2000"></textarea>' +
-            '</div>' +
-            '<div class="form-actions">' +
-            '<button class="form-btn form-btn-cancel" id="cancel-autopilot-prompt-btn">Cancel</button>' +
-            '<button class="form-btn form-btn-save" id="save-autopilot-prompt-btn">Save</button>' +
-            '</div>' +
-            '</div>';
-
-        // Response Timeout section - dropdown for timeout minutes
-        var timeoutSection = document.createElement('div');
-        timeoutSection.className = 'settings-section';
-        timeoutSection.innerHTML = '<div class="settings-section-header">' +
-            '<div class="settings-section-title">' +
-            '<span class="codicon codicon-clock"></span> Response Timeout' +
-            '<span class="settings-info-icon" title="If no response is received within this time, it will automatically send the session termination message.">' +
-            '<span class="codicon codicon-info"></span></span>' +
-            '</div>' +
-            '</div>' +
-            '<div class="form-row">' +
-            '<select class="form-input form-select" id="response-timeout-select">' +
-            '<option value="0">Disabled</option>' +
-            '<option value="5">5 minutes</option>' +
-            '<option value="10">10 minutes</option>' +
-            '<option value="20">20 minutes</option>' +
-            '<option value="30">30 minutes</option>' +
-            '<option value="40">40 minutes</option>' +
-            '<option value="50">50 minutes</option>' +
-            '<option value="60">60 minutes (default)</option>' +
-            '<option value="70">70 minutes</option>' +
-            '<option value="80">80 minutes</option>' +
-            '<option value="90">90 minutes</option>' +
-            '<option value="100">100 minutes</option>' +
-            '<option value="110">110 minutes</option>' +
-            '<option value="120">120 minutes (2h)</option>' +
-            '<option value="150">150 minutes (2.5h)</option>' +
-            '<option value="180">180 minutes (3h)</option>' +
-            '<option value="210">210 minutes (3.5h)</option>' +
-            '<option value="240">240 minutes (4h)</option>' +
-            '</select>' +
-            '</div>';
-
         // Session Warning section - warning threshold in hours
         var sessionWarningSection = document.createElement('div');
         sessionWarningSection.className = 'settings-section';
@@ -382,38 +308,6 @@
             '<option value="7">7 hours</option>' +
             '<option value="8">8 hours</option>' +
             '</select>' +
-            '</div>';
-
-        // Max Consecutive Auto-Responses section - number input
-        var maxAutoSection = document.createElement('div');
-        maxAutoSection.className = 'settings-section';
-        maxAutoSection.innerHTML = '<div class="settings-section-header">' +
-            '<div class="settings-section-title">' +
-            '<span class="codicon codicon-stop-circle"></span> Max Auto-Responses' +
-            '<span class="settings-info-icon" title="Maximum consecutive auto-responses using Autopilot before pausing and requiring manual input. Prevents infinite loops.">' +
-            '<span class="codicon codicon-info"></span></span>' +
-            '</div>' +
-            '</div>' +
-            '<div class="form-row">' +
-            '<input type="number" class="form-input" id="max-auto-responses-input" min="1" max="50" value="5" />' +
-            '</div>';
-
-        // Human-Like Delay section - toggle + min/max inputs
-        var humanDelaySection = document.createElement('div');
-        humanDelaySection.className = 'settings-section';
-        humanDelaySection.innerHTML = '<div class="settings-section-header">' +
-            '<div class="settings-section-title">' +
-            '<span class="codicon codicon-pulse"></span> Human-Like Delay' +
-            '<span class="settings-info-icon" title="Add random delays (2-6s by default) before auto-responses. Simulates natural pacing for automated responses.">' +
-            '<span class="codicon codicon-info"></span></span>' +
-            '</div>' +
-            '<div class="toggle-switch active" id="human-delay-toggle" role="switch" aria-checked="true" aria-label="Toggle Human-Like Delay" tabindex="0"></div>' +
-            '</div>' +
-            '<div class="form-row human-delay-range" id="human-delay-range">' +
-            '<label class="form-label-inline">Min (s):</label>' +
-            '<input type="number" class="form-input form-input-small" id="human-delay-min-input" min="1" max="30" value="2" />' +
-            '<label class="form-label-inline">Max (s):</label>' +
-            '<input type="number" class="form-input form-input-small" id="human-delay-max-input" min="2" max="60" value="6" />' +
             '</div>';
 
         // Integrations header
@@ -480,20 +374,8 @@
         sendShortcutToggle = document.getElementById('send-shortcut-toggle');
         webexToggle = document.getElementById('webex-toggle');
         telegramToggle = document.getElementById('telegram-toggle');
-        autopilotPromptsList = document.getElementById('autopilot-prompts-list');
-        autopilotAddBtn = document.getElementById('autopilot-add-btn');
-        addAutopilotPromptForm = document.getElementById('add-autopilot-prompt-form');
-        autopilotPromptInput = document.getElementById('autopilot-prompt-input');
-        saveAutopilotPromptBtn = document.getElementById('save-autopilot-prompt-btn');
-        cancelAutopilotPromptBtn = document.getElementById('cancel-autopilot-prompt-btn');
-        responseTimeoutSelect = document.getElementById('response-timeout-select');
         sessionWarningHoursSelect = document.getElementById('session-warning-hours-select');
-        maxAutoResponsesInput = document.getElementById('max-auto-responses-input');
         turnBudgetInput = document.getElementById('turn-budget-input');
-        humanDelayToggle = document.getElementById('human-delay-toggle');
-        humanDelayRangeContainer = document.getElementById('human-delay-range');
-        humanDelayMinInput = document.getElementById('human-delay-min-input');
-        humanDelayMaxInput = document.getElementById('human-delay-max-input');
         promptsList = document.getElementById('prompts-list');
         addPromptBtn = document.getElementById('add-prompt-btn');
         addPromptForm = document.getElementById('add-prompt-form');
@@ -656,63 +538,12 @@
                 }
             });
         }
-        if (autopilotToggle) {
-            autopilotToggle.addEventListener('click', toggleAutopilotSetting);
-            autopilotToggle.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    toggleAutopilotSetting();
-                }
-            });
-        }
-        // Autopilot prompts list event listeners
-        if (autopilotAddBtn) {
-            autopilotAddBtn.addEventListener('click', showAddAutopilotPromptForm);
-        }
-        if (saveAutopilotPromptBtn) {
-            saveAutopilotPromptBtn.addEventListener('click', saveAutopilotPrompt);
-        }
-        if (cancelAutopilotPromptBtn) {
-            cancelAutopilotPromptBtn.addEventListener('click', hideAddAutopilotPromptForm);
-        }
-        if (autopilotPromptsList) {
-            autopilotPromptsList.addEventListener('click', handleAutopilotPromptsListClick);
-            // Drag and drop for reordering
-            autopilotPromptsList.addEventListener('dragstart', handleAutopilotDragStart);
-            autopilotPromptsList.addEventListener('dragover', handleAutopilotDragOver);
-            autopilotPromptsList.addEventListener('dragend', handleAutopilotDragEnd);
-            autopilotPromptsList.addEventListener('drop', handleAutopilotDrop);
-        }
-        if (responseTimeoutSelect) {
-            responseTimeoutSelect.addEventListener('change', handleResponseTimeoutChange);
-        }
         if (sessionWarningHoursSelect) {
             sessionWarningHoursSelect.addEventListener('change', handleSessionWarningHoursChange);
-        }
-        if (maxAutoResponsesInput) {
-            maxAutoResponsesInput.addEventListener('change', handleMaxAutoResponsesChange);
-            maxAutoResponsesInput.addEventListener('blur', handleMaxAutoResponsesChange);
         }
         if (turnBudgetInput) {
             turnBudgetInput.addEventListener('change', handleTurnBudgetChange);
             turnBudgetInput.addEventListener('blur', handleTurnBudgetChange);
-        }
-        if (humanDelayToggle) {
-            humanDelayToggle.addEventListener('click', toggleHumanDelaySetting);
-            humanDelayToggle.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    toggleHumanDelaySetting();
-                }
-            });
-        }
-        if (humanDelayMinInput) {
-            humanDelayMinInput.addEventListener('change', handleHumanDelayMinChange);
-            humanDelayMinInput.addEventListener('blur', handleHumanDelayMinChange);
-        }
-        if (humanDelayMaxInput) {
-            humanDelayMaxInput.addEventListener('change', handleHumanDelayMaxChange);
-            humanDelayMaxInput.addEventListener('blur', handleHumanDelayMaxChange);
         }
         if (addPromptBtn) addPromptBtn.addEventListener('click', showAddPromptForm);
         // Add prompt form events (deferred - bind after modal created)
@@ -769,17 +600,9 @@
                 sendWithCtrlEnter = message.sendWithCtrlEnter === true;
                 webexEnabled = message.webexEnabled === true;
                 telegramEnabled = message.telegramEnabled === true;
-                autopilotEnabled = message.autopilotEnabled === true;
-                autopilotText = typeof message.autopilotText === 'string' ? message.autopilotText : '';
-                autopilotPrompts = Array.isArray(message.autopilotPrompts) ? message.autopilotPrompts : [];
                 reusablePrompts = message.reusablePrompts || [];
-                responseTimeout = normalizeResponseTimeout(message.responseTimeout);
                 sessionWarningHours = typeof message.sessionWarningHours === 'number' ? message.sessionWarningHours : 2;
-                maxConsecutiveAutoResponses = typeof message.maxConsecutiveAutoResponses === 'number' ? message.maxConsecutiveAutoResponses : 5;
                 turnBudgetAiu = typeof message.turnBudgetAiu === 'number' ? message.turnBudgetAiu : 0;
-                humanLikeDelayEnabled = message.humanLikeDelayEnabled !== false;
-                humanLikeDelayMin = typeof message.humanLikeDelayMin === 'number' ? message.humanLikeDelayMin : 2;
-                humanLikeDelayMax = typeof message.humanLikeDelayMax === 'number' ? message.humanLikeDelayMax : 6;
                 debugLoggingEnabled = message.debugLoggingEnabled !== false;
                 rtkCompressionEnabled = message.rtkCompressionEnabled === true;
                 rtkInstalled = message.rtkInstalled !== false;
@@ -815,13 +638,8 @@
                 updateWebexStatusUI(message.webexStatus);
                 updateTelegramToggleUI();
                 updateTelegramStatusUI(message.telegramStatus);
-                updateAutopilotToggleUI();
-                renderAutopilotPromptsList();
-                updateResponseTimeoutUI();
                 updateSessionWarningHoursUI();
-                updateMaxAutoResponsesUI();
                 updateTurnBudgetUI();
-                updateHumanDelayUI();
                 renderPromptsList();
                 updateObservabilityUI();
                 break;
@@ -1081,7 +899,6 @@
 
     function closeSettingsModal() {
         hideAddPromptForm();
-        hideAddAutopilotPromptForm();
     }
 
     function toggleSoundSetting() {
@@ -1183,19 +1000,6 @@
             el.title = status.hint || '';
             el.className = 'settings-status settings-status-' + status.status;
         });
-    }
-
-    function toggleAutopilotSetting() {
-        autopilotEnabled = !autopilotEnabled;
-        updateAutopilotToggleUI();
-        vscode.postMessage({ type: 'updateAutopilotSetting', enabled: autopilotEnabled });
-    }
-
-    function updateAutopilotToggleUI() {
-        if (autopilotToggle) {
-            autopilotToggle.classList.toggle('active', autopilotEnabled);
-            autopilotToggle.setAttribute('aria-checked', autopilotEnabled ? 'true' : 'false');
-        }
     }
 
     function toggleSendWithCtrlEnterSetting() {
@@ -1964,31 +1768,6 @@
         return rounded + '%';
     }
 
-    function normalizeResponseTimeout(value) {
-        if (!Number.isFinite(value)) {
-            return RESPONSE_TIMEOUT_DEFAULT;
-        }
-        if (!RESPONSE_TIMEOUT_ALLOWED_VALUES.has(value)) {
-            return RESPONSE_TIMEOUT_DEFAULT;
-        }
-        return value;
-    }
-
-    function handleResponseTimeoutChange() {
-        if (!responseTimeoutSelect) return;
-        var value = parseInt(responseTimeoutSelect.value, 10);
-        console.log('[AskAway] Response timeout changed to:', value);
-        if (!isNaN(value)) {
-            responseTimeout = value;
-            vscode.postMessage({ type: 'updateResponseTimeout', value: value });
-        }
-    }
-
-    function updateResponseTimeoutUI() {
-        if (!responseTimeoutSelect) return;
-        responseTimeoutSelect.value = String(responseTimeout);
-    }
-
     function handleSessionWarningHoursChange() {
         if (!sessionWarningHoursSelect) return;
         var value = parseInt(sessionWarningHoursSelect.value, 10);
@@ -2004,23 +1783,6 @@
         sessionWarningHoursSelect.value = String(sessionWarningHours);
     }
 
-    function handleMaxAutoResponsesChange() {
-        if (!maxAutoResponsesInput) return;
-        var value = parseInt(maxAutoResponsesInput.value, 10);
-        if (!isNaN(value) && value >= 1 && value <= 50) {
-            maxConsecutiveAutoResponses = value;
-            vscode.postMessage({ type: 'updateMaxConsecutiveAutoResponses', value: value });
-        } else {
-            // Reset to valid value
-            maxAutoResponsesInput.value = maxConsecutiveAutoResponses;
-        }
-    }
-
-    function updateMaxAutoResponsesUI() {
-        if (!maxAutoResponsesInput) return;
-        maxAutoResponsesInput.value = maxConsecutiveAutoResponses;
-    }
-
     function handleTurnBudgetChange() {
         if (!turnBudgetInput) return;
         var value = parseInt(turnBudgetInput.value, 10);
@@ -2034,215 +1796,6 @@
         if (!turnBudgetInput) return;
         turnBudgetInput.value = turnBudgetAiu;
     }
-
-    function toggleHumanDelaySetting() {
-        humanLikeDelayEnabled = !humanLikeDelayEnabled;
-        vscode.postMessage({ type: 'updateHumanDelaySetting', enabled: humanLikeDelayEnabled });
-        updateHumanDelayUI();
-    }
-
-    function handleHumanDelayMinChange() {
-        if (!humanDelayMinInput) return;
-        var value = parseInt(humanDelayMinInput.value, 10);
-        if (!isNaN(value) && value >= 1 && value <= 30) {
-            if (value > humanLikeDelayMax) {
-                value = humanLikeDelayMax;
-            }
-            humanLikeDelayMin = value;
-            vscode.postMessage({ type: 'updateHumanDelayMin', value: value });
-        }
-        humanDelayMinInput.value = humanLikeDelayMin;
-    }
-
-    function handleHumanDelayMaxChange() {
-        if (!humanDelayMaxInput) return;
-        var value = parseInt(humanDelayMaxInput.value, 10);
-        if (!isNaN(value) && value >= 2 && value <= 60) {
-            if (value < humanLikeDelayMin) {
-                value = humanLikeDelayMin;
-            }
-            humanLikeDelayMax = value;
-            vscode.postMessage({ type: 'updateHumanDelayMax', value: value });
-        }
-        humanDelayMaxInput.value = humanLikeDelayMax;
-    }
-
-    function updateHumanDelayUI() {
-        if (humanDelayToggle) {
-            humanDelayToggle.classList.toggle('active', humanLikeDelayEnabled);
-            humanDelayToggle.setAttribute('aria-checked', humanLikeDelayEnabled ? 'true' : 'false');
-        }
-        if (humanDelayRangeContainer) {
-            humanDelayRangeContainer.style.display = humanLikeDelayEnabled ? 'flex' : 'none';
-        }
-        if (humanDelayMinInput) {
-            humanDelayMinInput.value = humanLikeDelayMin;
-        }
-        if (humanDelayMaxInput) {
-            humanDelayMaxInput.value = humanLikeDelayMax;
-        }
-    }
-
-    // ========== Autopilot Prompts Array Functions ==========
-
-    // Track which autopilot prompt is being edited (-1 = adding new, >= 0 = editing index)
-    var editingAutopilotPromptIndex = -1;
-    // Track drag state
-    var draggedAutopilotIndex = -1;
-
-    function renderAutopilotPromptsList() {
-        if (!autopilotPromptsList) return;
-
-        if (autopilotPrompts.length === 0) {
-            autopilotPromptsList.innerHTML = '<div class="empty-prompts-hint">No prompts added. Add prompts to cycle through during Autopilot.</div>';
-            return;
-        }
-
-        autopilotPromptsList.innerHTML = autopilotPrompts.map(function (prompt, index) {
-            var truncated = prompt.length > 80 ? prompt.substring(0, 80) + '...' : prompt;
-            var tooltipText = prompt.length > 300 ? prompt.substring(0, 300) + '...' : prompt;
-            tooltipText = tooltipText.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            return '<div class="autopilot-prompt-item" draggable="true" data-index="' + index + '" title="' + tooltipText + '">' +
-                '<span class="autopilot-prompt-drag-handle codicon codicon-grabber"></span>' +
-                '<span class="autopilot-prompt-number">' + (index + 1) + '.</span>' +
-                '<span class="autopilot-prompt-text">' + escapeHtml(truncated) + '</span>' +
-                '<div class="autopilot-prompt-actions">' +
-                '<button class="prompt-item-btn edit" data-index="' + index + '" title="Edit"><span class="codicon codicon-edit"></span></button>' +
-                '<button class="prompt-item-btn delete" data-index="' + index + '" title="Delete"><span class="codicon codicon-trash"></span></button>' +
-                '</div></div>';
-        }).join('');
-    }
-
-    function showAddAutopilotPromptForm() {
-        if (!addAutopilotPromptForm || !autopilotPromptInput) return;
-        editingAutopilotPromptIndex = -1;
-        autopilotPromptInput.value = '';
-        addAutopilotPromptForm.classList.remove('hidden');
-        addAutopilotPromptForm.removeAttribute('data-editing-index');
-        autopilotPromptInput.focus();
-    }
-
-    function hideAddAutopilotPromptForm() {
-        if (!addAutopilotPromptForm || !autopilotPromptInput) return;
-        addAutopilotPromptForm.classList.add('hidden');
-        autopilotPromptInput.value = '';
-        editingAutopilotPromptIndex = -1;
-        addAutopilotPromptForm.removeAttribute('data-editing-index');
-    }
-
-    function saveAutopilotPrompt() {
-        if (!autopilotPromptInput) return;
-        var prompt = autopilotPromptInput.value.trim();
-        if (!prompt) return;
-
-        var editingIndex = addAutopilotPromptForm.getAttribute('data-editing-index');
-        if (editingIndex !== null) {
-            vscode.postMessage({ type: 'editAutopilotPrompt', index: parseInt(editingIndex, 10), prompt: prompt });
-        } else {
-            vscode.postMessage({ type: 'addAutopilotPrompt', prompt: prompt });
-        }
-        hideAddAutopilotPromptForm();
-    }
-
-    function handleAutopilotPromptsListClick(e) {
-        var target = e.target.closest('.prompt-item-btn');
-        if (!target) return;
-
-        var index = parseInt(target.getAttribute('data-index'), 10);
-        if (isNaN(index)) return;
-
-        if (target.classList.contains('edit')) {
-            editAutopilotPrompt(index);
-        } else if (target.classList.contains('delete')) {
-            deleteAutopilotPrompt(index);
-        }
-    }
-
-    function editAutopilotPrompt(index) {
-        if (index < 0 || index >= autopilotPrompts.length) return;
-        if (!addAutopilotPromptForm || !autopilotPromptInput) return;
-
-        var prompt = autopilotPrompts[index];
-        editingAutopilotPromptIndex = index;
-        autopilotPromptInput.value = prompt;
-        addAutopilotPromptForm.setAttribute('data-editing-index', index);
-        addAutopilotPromptForm.classList.remove('hidden');
-        autopilotPromptInput.focus();
-    }
-
-    function deleteAutopilotPrompt(index) {
-        if (index < 0 || index >= autopilotPrompts.length) return;
-        vscode.postMessage({ type: 'removeAutopilotPrompt', index: index });
-    }
-
-    function handleAutopilotDragStart(e) {
-        var item = e.target.closest('.autopilot-prompt-item');
-        if (!item) return;
-        draggedAutopilotIndex = parseInt(item.getAttribute('data-index'), 10);
-        item.classList.add('dragging');
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', draggedAutopilotIndex);
-    }
-
-    function handleAutopilotDragOver(e) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        var item = e.target.closest('.autopilot-prompt-item');
-        if (!item || !autopilotPromptsList) return;
-
-        autopilotPromptsList.querySelectorAll('.autopilot-prompt-item').forEach(function (el) {
-            el.classList.remove('drag-over-top', 'drag-over-bottom');
-        });
-
-        var rect = item.getBoundingClientRect();
-        var midY = rect.top + rect.height / 2;
-        if (e.clientY < midY) {
-            item.classList.add('drag-over-top');
-        } else {
-            item.classList.add('drag-over-bottom');
-        }
-    }
-
-    function handleAutopilotDragEnd(e) {
-        draggedAutopilotIndex = -1;
-        if (!autopilotPromptsList) return;
-        autopilotPromptsList.querySelectorAll('.autopilot-prompt-item').forEach(function (el) {
-            el.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom');
-        });
-    }
-
-    function handleAutopilotDrop(e) {
-        e.preventDefault();
-        var item = e.target.closest('.autopilot-prompt-item');
-        if (!item || draggedAutopilotIndex < 0) return;
-
-        var toIndex = parseInt(item.getAttribute('data-index'), 10);
-        if (isNaN(toIndex) || draggedAutopilotIndex === toIndex) {
-            handleAutopilotDragEnd(e);
-            return;
-        }
-
-        var rect = item.getBoundingClientRect();
-        var midY = rect.top + rect.height / 2;
-        var insertBelow = e.clientY >= midY;
-
-        var targetIndex = toIndex;
-        if (insertBelow && toIndex < autopilotPrompts.length - 1) {
-            targetIndex = toIndex + 1;
-        }
-
-        if (draggedAutopilotIndex < targetIndex) {
-            targetIndex--;
-        }
-
-        if (draggedAutopilotIndex !== targetIndex) {
-            vscode.postMessage({ type: 'reorderAutopilotPrompts', fromIndex: draggedAutopilotIndex, toIndex: targetIndex });
-        }
-
-        handleAutopilotDragEnd(e);
-    }
-
-    // ========== End Autopilot Prompts Functions ==========
 
     function showAddPromptForm() {
         if (!addPromptForm || !addPromptBtn) return;
@@ -2943,7 +2496,7 @@
     // ── Worker Tabs (Commands + Sub-Agents) ──
     // ══════════════════════════════════════════════════════════
 
-    // Per-panel autopilot state (independent from global autopilotEnabled)
+    // Per-panel worker autopilot state
     var workerAutopilotEnabled = { command: false, subagent: false };
     // Per-panel selected model id — set when user picks via native model picker or on models load
     var workerSelectedModelId = { command: '', subagent: '' };
@@ -3208,6 +2761,7 @@
             statusIdle: Array.isArray(m && m.statusIdle) ? m.statusIdle.slice() : [],
             turnCost: Number(m && m.turnCost) || 0,
             monthCost: Number(m && m.monthCost) || 0,
+            turnActive: !!(m && m.turnActive),
             taskIds: rawIds.slice(),
             workerIds: rawIds.slice()
         };
@@ -3336,7 +2890,7 @@
     function teamVisibleGroups(groups, showAll) {
         var items = groups.map(function (g, index) { return { g: g, index: index, turn: memberCostAmounts(g.member, g.workers).turn }; })
             .filter(function (x) { return showAll || teamMemberShown(x.g.member, x.g.workers); });
-        var rank = function (x) { return x.g.member.pinned ? 0 : x.g.member.kind === 'main' ? 1 : x.turn > 0 ? 2 : 3; };
+        var rank = function (x) { return x.g.member.pinned ? 0 : x.g.member.kind === 'main' ? 1 : (x.turn > 0 || x.g.member.turnActive) ? 2 : 3; };
         items.sort(function (a, b) {
             return (rank(a) - rank(b)) || (rank(a) === 2 ? b.turn - a.turn : 0) || (a.index - b.index);
         });
@@ -3610,7 +3164,7 @@
     }
     // Shown with Turn spend above zero, or always with "Show all members" (compact opt-in); Priya (the Validator) and the main agent always show.
     function teamMemberShown(member, memberWorkers, showAll) {
-        return !!showAll || !!member.pinned || member.kind === 'main' || memberCostAmounts(member, memberWorkers).turn > 0;
+        return !!showAll || !!member.pinned || member.kind === 'main' || !!member.turnActive || memberCostAmounts(member, memberWorkers).turn > 0;
     }
     function groupWorkersByMember(state, shown, filter) {
         var explicitMembers = state && Array.isArray(state.members) && state.members.length > 0;

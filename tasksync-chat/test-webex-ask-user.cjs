@@ -62,9 +62,9 @@ async function main() {
         messages.push({ id: 'reply-local', parentId: turnRoot, text: 'Late', created: new Date(Date.now() + 3).toISOString() });
         await service._poll(); assert.equal(answers.length, 1);
         const provider = fs.readFileSync(path.join(__dirname, 'src/webview/webviewProvider.ts'), 'utf8');
-        assert.ok(provider.includes('postRemoteQuestion(this._webexService, this._telegramService, toolCallId, question'));
-        assert.ok(provider.includes('taskId !== this._currentToolCallId'));
-        console.log('PASS EV-WEBEX-ASK-USER local resolution cancels polling; production provider uses shared question contract and exact task identity');
+        assert.ok(provider.includes('return postRemoteQuestion(this._webexService, this._telegramService, toolCallId, question, choices)'));
+        assert.ok(!provider.includes('waitForUserResponse') && !provider.includes('_pendingRequests'), 'the retired ask_user queue is gone (R-LIVE-27)');
+        console.log('PASS EV-WEBEX-ASK-USER local resolution cancels polling; production provider uses the shared question contract');
     } finally { service.dispose(); await new Promise(resolve => server.close(resolve)); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

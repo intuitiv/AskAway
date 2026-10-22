@@ -1413,13 +1413,6 @@ button#mic-btn .codicon {
     font-size: 13px;
 }
 
-.autopilot-label {
-    font-size: 11px;
-    color: var(--vscode-descriptionForeground);
-    font-weight: 500;
-    user-select: none;
-}
-
 .hidden {
     display: none !important;
 }
@@ -1724,105 +1717,6 @@ button#mic-btn .codicon {
     display: none;
 }
 
-/* ========== Autopilot Prompts List ========== */
-.autopilot-prompts-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-top: 6px;
-    min-height: 24px;
-}
-
-.empty-prompts-hint {
-    font-size: 11px;
-    color: var(--vscode-descriptionForeground);
-    padding: 8px;
-    text-align: center;
-    font-style: italic;
-}
-
-.autopilot-prompt-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    background-color: var(--vscode-input-background);
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 4px;
-    transition: border-color 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
-    cursor: grab;
-}
-
-.autopilot-prompt-item:hover {
-    border-color: var(--vscode-focusBorder);
-}
-
-.autopilot-prompt-item.dragging {
-    opacity: 0.5;
-    cursor: grabbing;
-}
-
-.autopilot-prompt-item.drag-over-top {
-    border-top: 2px solid var(--vscode-focusBorder);
-}
-
-.autopilot-prompt-item.drag-over-bottom {
-    border-bottom: 2px solid var(--vscode-focusBorder);
-}
-
-.autopilot-prompt-drag-handle {
-    color: var(--vscode-descriptionForeground);
-    cursor: grab;
-    flex-shrink: 0;
-}
-
-.autopilot-prompt-number {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--vscode-descriptionForeground);
-    flex-shrink: 0;
-    margin-right: -2px;
-}
-
-.autopilot-prompt-text {
-    font-size: 12px;
-    color: var(--vscode-foreground);
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.autopilot-prompt-actions {
-    display: flex;
-    gap: 4px;
-    flex-shrink: 0;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-}
-
-.autopilot-prompt-item:hover .autopilot-prompt-actions {
-    opacity: 1;
-}
-
-/* Add Autopilot Prompt Form */
-.add-autopilot-prompt-form {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 8px;
-    padding: 10px;
-    background-color: var(--vscode-input-background);
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 4px;
-}
-
-.add-autopilot-prompt-form.hidden {
-    display: none;
-}
-
-/* ========== End Autopilot Prompts List ========== */
-
 /* Add Prompt Form */
 .add-prompt-form {
     display: flex;
@@ -1897,15 +1791,6 @@ button#mic-btn .codicon {
 /* Number input styling */
 .form-input[type="number"] {
     width: 100%;
-}
-
-/* Small inline inputs for human-like delay settings */
-.human-delay-range {
-    display: flex;
-    flex-direction: row !important;
-    align-items: center;
-    gap: 4px;
-    margin-bottom: 0;
 }
 
 .form-label-inline {

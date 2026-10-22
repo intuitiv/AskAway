@@ -213,7 +213,8 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
         description: 'Live commentary: the trace of your execution for the reviewer, so they know what is happening, can guide you in time, and are prepared for questions coming their way. '
             + 'One line per significant stage (not per tool), in plain words a non-engineer follows; no run IDs, worker IDs, model names, or file paths unless the reviewer must act on them. '
             + 'Speak to the reviewer in plain first-person sentences, like updating a colleague. Use one or two short sentences, not emoji-led bold banners or headlines. '
-            + 'About every couple of minutes, post a status line with action aitalk, kind update: what you are doing, what is done, and where blocked or waiting. '
+            + 'Main agent only: about every couple of minutes, post a status line with action aitalk, kind update: what you are doing, what is done, and where blocked or waiting. '
+            + 'Workers and other members never post updates on AITalk (refused); they post only questions (kind heads-up) and report progress in their final worker report. '
             + 'At a decision or when reviewer input is needed, ask right away with action aitalk, kind heads-up: a heads-up asks the exact question with options and your recommended default, never just "something is unclear"; leave waitSeconds at its default (45 seconds). '
             + 'Do not wait beyond that unless you truly cannot continue; carry on with the recommended default. Answers arrive in a later tool result under ADDITIONAL MESSAGES FROM THE USER. '
             + 'Keep it short; optional details go under Read more. Put questions still open at turn end in the single Response Handoff batch.',

@@ -2,6 +2,10 @@
 
 Items gathered from unchecked task lines, unresolved analysis findings, open reviewer-brief questions, and qualifying reviewer messages. `READY` means actionable now; `NEEDS-DECISION` requires reviewer input; `BLOCKED` depends on another item or an external prerequisite.
 
+## Spec order — reviewer, 2026-10-22
+
+"We have few open specs 009, 010, 007 followed by 008 once 003 is complete." Order: finish 003, then 009 (Webex remote channel), 010 (Team), 007 (Validator agent), then 008 (harness benchmark). 004, 005 and 006 are not in this order.
+
 ## Local tooling bugs — 2026-10-08
 
 | ID | What | State | Evidence / next check | Source |

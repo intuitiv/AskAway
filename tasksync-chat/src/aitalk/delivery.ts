@@ -15,6 +15,8 @@ export function configureAITalkDelivery(root: string): void {
         const kind = input.authorKind ?? 'agent';
         // A worker posts as itself over MCP; it joins AITalk with its first message.
         if (kind === 'agent' && caller && !state.members.some(member => member.id === caller.recipient && member.kind !== 'worker')) {
+            // Reviewer 2026-10-22 (R-AITALK-45): members post only questions; the main agent posts progress.
+            if (input.kind !== 'heads-up' && !(input.replyTo && input.kind !== 'update')) return { status: 'REJECTED', reason: 'Workers post only questions on AITalk (or a direct reply to one), not progress updates. Post a question with kind heads-up (tag the main agent, the Validator, or ask in general), and report progress in your final worker report.' };
             return room.workerPost(caller.recipient, input.text, { replyTo: input.replyTo, details: input.details, kind: input.kind }).message;
         }
         const author = state.members.find(member => member.kind === kind);

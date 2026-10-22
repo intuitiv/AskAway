@@ -1005,7 +1005,7 @@ async function hasExternalMcpClientsAsync(): Promise<boolean> {
 }
 
 /**
- * Detect installed extensions that are likely to conflict with AskAway's ask_user tool.
+ * Detect installed extensions that are likely to conflict with AskAway's tools.
  * Primary known conflict is upstream TaskSync shipping the same tool name.
  */
 function findConflictingTaskSyncExtension(): vscode.Extension<any> | undefined {
@@ -1095,7 +1095,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     const conflictingTaskSync = findConflictingTaskSyncExtension();
     if (conflictingTaskSync) {
-        const conflictMessage = `AskAway detected a potential tool conflict with installed extension "${conflictingTaskSync.id}". Disable TaskSync (or AskAway) to avoid ask_user routing issues.`;
+        const conflictMessage = `AskAway detected a potential tool conflict with installed extension "${conflictingTaskSync.id}". Disable TaskSync (or AskAway) to avoid tool routing issues.`;
         outputChannel.appendLine(`[${new Date().toISOString()}] AskAway: ${conflictMessage}`);
         vscode.window.showWarningMessage(
             conflictMessage,
