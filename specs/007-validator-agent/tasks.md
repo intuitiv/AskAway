@@ -5,6 +5,10 @@ description: "Task list for 007 Validator Agent"
 
 # Tasks: Validator Agent
 
+> **PARKED 2026-10-22 (reviewer):** "I dont want to design 007 and the rest in a hurry. LEt me design in slowly... I'll continue later. Not now." Open:
+> - T010: the manual beta review of the 60/70/80/10% targets (needs the reviewer). The quickstart run is recorded in T010; steps 5–7 (store a correction, recall it in a fresh agent, stop agentmemory) were not run live.
+> - Observation to check later: a `memory2` search under agent id `validator` returned no stored memories, only default guidance. Not yet known whether Priya learns from his replies or her store is empty.
+> - Design changes wait for the reviewer; nothing is scheduled.
 **Input**: Design documents from `/specs/007-validator-agent/`
 
 **Prerequisites**: plan.md (approved by the reviewer 2026-10-02), spec.md, research.md, data-model.md, contracts/, quickstart.md, checklists/

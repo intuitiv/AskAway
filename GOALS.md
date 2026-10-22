@@ -901,3 +901,17 @@ Rows R-CATHY-09 to R-CATHY-14 ([webex-assistant.md](tasksync-chat/docs/requireme
 > i'll create a branch and spec is on some branch. If needed i'll switch or create a branch and as per that PR will be managed. Nothign new.
 
 Row R-SKFLOW-27 ([speckit-flow.md](tasksync-chat/docs/requirements/speckit-flow.md)); R-SKFLOW-10 (one active PR per spec) is struck. Spec 005 T042 (story checkpoint and PR lifecycle) is dropped: no AskAway-managed branches or PRs.
+
+### 2026-10-22 (late evening)
+
+> I dont want to design 007 and the rest in a hurry. LEt me design in slowly. Update all open things about 007, 005, 010 and 009. I'll continue later. Not now.
+
+Specs 005, 007, 009 and 010 are parked; each `tasks.md` opens with a PARKED note listing what is open. Nothing is scheduled.
+
+> We can use last update time so that we can query all messages after tha time so that we can sync easily. You can maintain a list of spaces, where i am not conversed in the past 6 months and may be you can mute them in your report.
+
+Design input only: spec 009 task T064 (R-CATHY-12 already holds the six-month quiet rule).
+
+> I replied to a message in webex but it didnt trigger anything in vscode. But vscode settings tab says it is polling not sure what it is polling. I replied to a bot message. Should i reply to handoff messge? Correct me. Or add in that message saying reply to this message for reply.. something like that.
+
+Row R-TELE-45 ([telegram.md](tasksync-chat/docs/requirements/telegram.md)): a reply to the handoff reaches the conversation however long after the turn; the finish alert says "Reply to this message to continue."

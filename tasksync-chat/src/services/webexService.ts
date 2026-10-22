@@ -302,7 +302,7 @@ export class WebexService implements RemoteChannel {
         const { id } = await response.json() as { id: string }; this._recordPost(id);
         if (!this.turnPolicy().endAlert) { this.trackHandoff(taskId, id, markdown); return true; }
         const next = /(?:^|\n)(?:\*\*)?Next(?:\*\*)?\s*:\s*(.*)/i.exec(markdown)?.[1] || 'Reply to continue';
-        const alert = `✅ ${this.turnWorkspace || path.basename(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || 'workspace')}: finished - ${next}`;
+        const alert = `✅ ${this.turnWorkspace || path.basename(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || 'workspace')}: finished - ${next}\n\nReply to this message to continue.`;
         const alertId = await this.sendText(alert, alert, undefined, { notify: true });
         if (!alertId) { return false; }
         this.trackHandoff(taskId, String(alertId), alert);
@@ -811,7 +811,8 @@ export class WebexService implements RemoteChannel {
         this.lastPollAt = Date.now();
 
         // Check if Copilot conversation appears stale (idle > threshold)
-        if (this._lastCopilotActivity > 0) {
+        // The idle rule is for questions asked mid-turn. A handoff exists to be answered after the turn ended, so it lives until its 36 h expiry.
+        if (this._lastCopilotActivity > 0 && ![...this._activeTasks.values()].some(task => task.handoff)) {
             const idleMs = Date.now() - this._lastCopilotActivity;
             if (idleMs > this._copilotIdleThresholdMs) {
                 console.log(`AskAway/Webex: Copilot idle for ${Math.round(idleMs / 1000)}s — stopping poll (conversation likely ended).`);

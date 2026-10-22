@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## AskAway v2.3.4 (10-21-26)
 
+- **Webex replies after the turn:** a reply to the turn-end handoff was ignored once the turn had been idle for about five minutes; it now reaches the conversation until the handoff expires (36 hours) or a new turn starts. The finish alert says "Reply to this message to continue."
 - **Webex daily report:** ask Cathy's `inbox` tool with `mode: digest` for what needs you across every space you are in, not just what AskAway sent: mentions, replies to threads you sent and unanswered direct messages. One Webex sync fills an in-memory index shared by all workspaces (nothing is written to disk); quiet spaces (nothing posted by you and no mention for six months) and spaces on your mute list `~/.askaway/webex-mute.json` are skipped and counted in one line, but a mention or a reply to you always shows. It is read-only; there is no push reply alert yet.
 - **Worker packets are scoped:** the `worker` tool refuses a file-changing profile with no `allowedFiles` and refuses packets whose files overlap a running write worker.
 - **One readiness text everywhere:** the Specs tab card, the Telegram status and the `/pr-daily` facts show the same readiness lines; a pass without evidence reads BLOCKED on all three.

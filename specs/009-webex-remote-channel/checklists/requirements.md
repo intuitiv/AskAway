@@ -49,5 +49,6 @@ Artifact map only, not a claim that all listed guards were rerun. Reviewer wordi
 | R-TELE-42 | FR-011 | US2 | test-webex-ask-user.cjs |
 | R-TELE-43 | FR-040 | US7 | test-webex-tools-suite.cjs |
 | R-TELE-44 | FR-041 | US7 | test-webex-tools-suite.cjs |
+| R-TELE-45 | FR-051 | US6 | test-webex-reply-after-idle.cjs |
 
 Superseded row variants share their original ID and are governed by the latest cited availability/combined-final rules. No live notification or full-parity closure.

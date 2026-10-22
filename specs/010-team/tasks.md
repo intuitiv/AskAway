@@ -1,5 +1,6 @@
 # Tasks: Team
 
+> **PARKED 2026-10-22 (reviewer):** "I'll continue later. Not now." Open: T042 live agy proof (needs a real window reload), T043 and T046 reviewer sign-offs (Storybook/production look; his own photo after reload), T045 reviewer-facing gap rows. Spec.md and plan.md were reconciled the same day (plan.md ledger "Built outside the original plan").
 **Input**: [spec.md](spec.md), [plan.md](plan.md); GOALS.md 2026-10-15 quotes, ADR 0023, R-TEAM-01–72.
 **Organization**: Standard task IDs by story; mandatory caller-view tests before each behavior change. Reconciled 2026-10-22: closed tasks carry their evidence; five slices (T042–T046) remain open. Full table: [evidence/reconciliation-2026-10-22.md](evidence/reconciliation-2026-10-22.md).
 

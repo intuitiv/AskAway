@@ -4,6 +4,12 @@ description: "Task list for 005 Spec Kit Guided Flow"
 
 # Tasks: Spec Kit Guided Flow
 
+> **PARKED 2026-10-22 (reviewer):** "I dont want to design 007 and the rest in a hurry. LEt me design in slowly... I'll continue later. Not now." Nothing here is started or scheduled. Open, in the reviewer's order 005, 007, 008:
+> - Plain-text routing to the `/sk.*` stages (R-SKFLOW-06, 19, 20, 22; `gap`, no test).
+> - The what / how / done approval gates as enforced transitions (R-SKFLOW-21; `gap`).
+> - T015 (Telegram status worker spend) still awaits a live look.
+> - T037–T039 belong to spec 008 and another repo; not worked here.
+> - Done this session: T040 shared readiness text, T041 worker admission and scope check; T042 dropped (reviewer owns branches and PRs, R-SKFLOW-27).
 **Input**: `specs/005-speckit-guided-flow/` — spec.md, plan.md (Decision Register D-1…D-21; later stories under `## Later`), data-model.md, contracts/, research.md
 
 **Branch provenance**: generated on `main` at `1fc06d1`; implementation lands on one active PR per story (plan D-12).

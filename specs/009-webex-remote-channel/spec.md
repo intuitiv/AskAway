@@ -280,6 +280,7 @@ Each existing requirement row maps explicitly below; its behavior is preserved t
 - **FR-048**: `inbox` MUST gain `mode: digest`, built from memory on demand; the tool set stays at most 12 (R-CATHY-11; US9).
 - **FR-049**: Excluded spaces (mute list or the six-month quiet rule) MUST be skipped as spam, never for privacy; a mention or a reply to the reviewer MUST still show, and the skipped count is shown in one line (R-CATHY-12; US9).
 - **FR-050**: Replies to threads the reviewer sent MUST appear in the digest; a push alert MUST NOT be built until the reviewer clarifies (R-CATHY-13; US9).
+- **FR-051**: A reply to the turn-end handoff MUST reach the conversation however long after the turn it arrives, until the handoff's 36 h expiry or a new turn; the idle-poll stop applies only to mid-turn questions; the finish alert says "Reply to this message to continue." (R-TELE-45; US6).
 
 ### Key Entities *(include if feature involves data)*
 - **FR-039**: Availability is evaluated at each turn send: Here sends nothing; away-prefixed modes send the full flow; Offline sends only the silent reply-tracked final; entering Away mid-turn opens the thread. Reply polling remains available (2026-10-10; test-availability-updates.cjs).

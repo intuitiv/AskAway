@@ -5,6 +5,12 @@ description: "Task list for 009 Webex Remote Channel"
 
 # Tasks: Webex Remote Channel
 
+> **PARKED 2026-10-22 (reviewer):** "I'll continue later. Not now." Open:
+> - T057 (contract file) and T063 (live digest check, explicit opt-in only) in story US9.
+> - Reviewer FYI for the digest design (US9, T064): sync by last-update time, and keep a standing list of spaces he has not talked in for six months and mute them in the report. Webex's message list has no "after this time" filter, so the plan is: list spaces by last activity, fetch only spaces active since the last sync, read newest-first until a message older than that time.
+> - Push reply alert: waiting for his words ("I am not very clear about reply alert yet.").
+> - Fixed 2026-10-22: a Webex reply to the turn-end handoff did nothing after about 5 idle minutes (R-TELE-45, `test-webex-reply-after-idle.cjs`); the finish alert now says "Reply to this message to continue." Not yet confirmed live.
+> - Still unverified live: edit, delete and upload through Cathy's tools, and the `webex_read` 503s.
 **Input**: Design documents from `/specs/009-webex-remote-channel/`
 
 **Prerequisites**: plan.md (required before further implementation; not authored by this docs packet), spec.md, research.md, data-model.md, contracts/. T001 and T002 are already being built in separate packets; their status remains unchecked here.
@@ -232,6 +238,7 @@ Write caller-view command tests first using fake APIs, bounded data and seeded f
 - [x] T061 [US9] Spam rule: mute list `~/.askaway/webex-mute.json` (space names, hand-edited; no edit command yet) plus the six-month quiet rule; mention or reply always shows; "N quiet spaces skipped". Done 2026-10-22.
 - [x] T062 [US9] Replies to threads he sent appear in the digest (parent must be among the last 50 messages of the room). Push alert NOT built, waiting for the reviewer. Done 2026-10-22.
 - [ ] T063 [US9] Live check, explicit opt-in only (`ASKAWAY_WEBEX_LIVE=1`): one sync and one digest read-only; sanitized evidence in `specs/009-webex-remote-channel/evidence/digest-live.md`; flip the R-CATHY-09..14 gap rows to their tests; update both READMEs and CHANGELOG (R-DOCS-01).
+- [ ] T064 [US9] Parked design input (reviewer FYI 2026-10-22: "We can use last update time so that we can query all messages after that time so that we can sync easily. You can maintain a list of spaces, where i am not conversed in the past 6 months and may be you can mute them in your report."): incremental sync by last-sync time (Webex has no "after" filter on messages: fetch only spaces whose last activity is newer than the last sync, read newest-first until a message older than that time) and a standing quiet-space list kept by the index, muted in the report. Not scheduled; the reviewer will design it later.
 
 ---
 
