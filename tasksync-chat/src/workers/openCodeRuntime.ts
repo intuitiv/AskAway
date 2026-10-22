@@ -1,4 +1,5 @@
 import * as childProcess from 'child_process';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -11,6 +12,7 @@ export const AGY_PREFIX = 'agy/';
 export function isAgyModel(model: string): boolean {
     return model.startsWith(AGY_PREFIX);
 }
+export const AGY_FORK_REFUSAL = 'agy conversations cannot be forked: the agy CLI has no fork flag (it only has --conversation and --continue)';
 /** Claude Code is an alternate runtime (see claudeRuntime.ts) namespaced `claude/` like agy; unlike agy it reports cost and has a prompt cache. */
 export const CLAUDE_PREFIX = 'claude/';
 export function isClaudeModel(model: string): boolean {
@@ -185,6 +187,8 @@ interface RunRecord extends RunView {
     capacityRetries?: number;
     /** Clears the pending capacity-retry backoff timer; set only while a retry waits. */
     cancelCapacityRetry?: () => void;
+    /** Claude: the random token of the run's current launch (memory only; sent as the X-AskAway-Run header, dropped when the process ends). */
+    runToken?: string;
     /** agy: each allowed file's `mtime:size` (or `missing`) before the run's first launch, for the no-edits check. */
     filesAtStart?: Record<string, string>;
     /** agy: newest allowed-file mtime seen, and when the stall detector last looked. */
@@ -352,6 +356,9 @@ export class OpenCodeWorkerRuntime {
     readonly router: WorkerRouter;
     private readonly runs = new Map<string, RunRecord>();
     private readonly sessionsByWorker = new Map<string, string>();
+    /** A forked Claude worker's parent session, until its own first result names the new session. */
+    private readonly claudeForkParents = new Map<string, string>();
+    private readonly runTokens = new Map<string, RunRecord>();
     /** Keep-warm pings sent since each worker's last real run, and the pings in flight. */
     private readonly unusedPings = new Map<string, number>();
     private readonly pinging = new Set<string>();
@@ -407,6 +414,25 @@ export class OpenCodeWorkerRuntime {
             return workspace ? { workerId, workspace } : undefined;
         }
         return undefined;
+    }
+
+    /** The agy worker whose conversation this is (agy sends it as MCP `_meta` on every tool call); undefined for any other id. */
+    workerForAgyConversation(conversationId: string): { workerId: string; workspace: string } | undefined {
+        const worker = this.workerForSession(conversationId);
+        return worker && isAgyModel(this.router.worker(worker.workerId)?.model ?? '') ? worker : undefined;
+    }
+
+    /** The Claude worker whose live run holds this token (sent as the X-AskAway-Run header); undefined once the run's process ended. */
+    workerForRunToken(token: string): { workerId: string; workspace: string } | undefined {
+        const run = token ? this.runTokens.get(token) : undefined;
+        return run ? { workerId: run.workerId, workspace: run.workspace } : undefined;
+    }
+
+    private dropRunToken(run: RunRecord): void {
+        if (run.runToken) {
+            (require('./claudeRuntime') as typeof import('./claudeRuntime')).removeMcpConfig(run.runToken);
+            this.runTokens.delete(run.runToken); run.runToken = undefined;
+        }
     }
 
     private capRefusal(adding: number): { status: 'PARALLEL_CAP'; running: number; max: number; reason: string } | undefined {
@@ -485,8 +511,8 @@ export class OpenCodeWorkerRuntime {
         let forkedSession = '';
         let skipped = '';
         if (!parentSession) { skipped = 'the busy worker has no OpenCode session yet'; }
-        else if (isAgyModel(this.router.worker(workerId)?.model ?? '')) { skipped = 'agy conversations cannot be forked'; }
-        else if (isClaudeModel(this.router.worker(workerId)?.model ?? '')) { skipped = 'claude conversations cannot be forked'; }
+        else if (isAgyModel(this.router.worker(workerId)?.model ?? '')) { skipped = AGY_FORK_REFUSAL; }
+        else if (isClaudeModel(this.router.worker(workerId)?.model ?? '')) { skipped = 'a claude conversation is forked only from an idle worker (claude --resume --fork-session); this one is busy'; }
         else if (!fork) { skipped = 'no shared OpenCode server attached'; }
         else {
             try { forkedSession = (await fork(parentSession)).sessionId; } catch (error) { skipped = `fork failed: ${(error as Error).message}`; }
@@ -531,12 +557,13 @@ export class OpenCodeWorkerRuntime {
         if (capped) { return capped; }
         const parentSession = this.sessionsByWorker.get(workerId);
         const fork = this.forkSession ?? (this.attachUrl ? ((id: string) => forkSessionViaServer(this.attachUrl as string, id)) : undefined);
+        if (isAgyModel(parent.model)) { return refuse('INELIGIBLE', AGY_FORK_REFUSAL); }
         if (!parentSession) { return refuse('INELIGIBLE', 'the warm worker has no OpenCode session yet'); }
-        if (isAgyModel(parent.model)) { return refuse('INELIGIBLE', 'agy conversations cannot be forked'); }
-        if (isClaudeModel(parent.model)) { return refuse('INELIGIBLE', 'claude conversations cannot be forked'); }
-        if (!fork) { return refuse('INELIGIBLE', 'no shared OpenCode server attached'); }
+        // Claude forks at launch (`--resume <parent> --fork-session`); no server call and no session id exist until the first result.
+        const claudeFork = isClaudeModel(parent.model);
+        if (!claudeFork && !fork) { return refuse('INELIGIBLE', 'no shared OpenCode server attached'); }
         let sessions: string[];
-        try { sessions = (await Promise.all(packets.map(() => fork(parentSession)))).map((forked) => forked.sessionId); }
+        try { sessions = claudeFork ? packets.map(() => '') : (await Promise.all(packets.map(() => (fork as ForkSession)(parentSession)))).map((forked) => forked.sessionId); }
         catch (error) { return refuse('INELIGIBLE', `fork failed: ${(error as Error).message}`); }
         // The forks awaited above may have let other dispatches in: re-check so the cap holds.
         const recapped = this.capRefusal(packets.length);
@@ -546,7 +573,7 @@ export class OpenCodeWorkerRuntime {
         for (const [index, packet] of packets.entries()) {
             const routed = this.router.startFork(workerId, packet.objective.slice(0, 40), packet.estimatedSeconds ?? 60);
             if (!routed || !('runId' in routed)) { continue; }
-            this.sessionsByWorker.set(routed.workerId, sessions[index]);
+            if (claudeFork) { this.claudeForkParents.set(routed.workerId, parentSession); } else { this.sessionsByWorker.set(routed.workerId, sessions[index]); }
             const view = this.admit(routed, canonical(packet.workspacePath), packet, parentKnowledge);
             this.record(this.runs.get(view.runId) as RunRecord, { type: 'fork', reason: `fanned out from ${workerId} (session ${parentSession})` });
             runs.push({ ...this.view(this.runs.get(view.runId) as RunRecord), forkedFrom: workerId });
@@ -1013,6 +1040,8 @@ export class OpenCodeWorkerRuntime {
         this.unusedPings.delete(run.workerId);
         run.startedAt = this.now();
         let sessionId = this.sessionsByWorker.get(run.workerId) || run.sessionId;
+        const forkParent = isClaudeModel(run.model) && !sessionId ? this.claudeForkParents.get(run.workerId) : undefined;
+        if (forkParent) { sessionId = forkParent; }
         const agy = isAgyModel(run.model);
         // A conversation created before --add-dir was passed has no workspace; resuming it can never read or edit files.
         if (agy && sessionId && this.agyAddDir.get(run.workerId) !== true) {
@@ -1030,9 +1059,12 @@ export class OpenCodeWorkerRuntime {
         const claude = isClaudeModel(run.model);
         const profile = agy || claude ? this.router.profile(run.profile) : undefined;
         // --print-logs is required: without it `opencode run` is SIGKILLed after ~14s.
+        this.dropRunToken(run);
+        if (claude) { run.runToken = crypto.randomBytes(24).toString('hex'); this.runTokens.set(run.runToken, run); }
+        const launchToken = run.runToken;
         const args = claude ? (require('./claudeRuntime') as typeof import('./claudeRuntime')).claudeArgs({ model: run.model, thinking: run.thinking,
-            sessionId, addDir: run.cwd, message, profile, instructions: profile ? workerInstructions(profile) : undefined,
-            mcpUrl: profile?.mcp.length ? this.claudeMcpUrl() : '' })
+            sessionId, forkSession: !!forkParent, addDir: run.cwd, message, profile, instructions: profile ? workerInstructions(profile) : undefined,
+            mcpUrl: profile?.mcp.length ? this.claudeMcpUrl() : '', runToken: run.runToken })
             : agyArgs ? agyArgs({ model: run.model, thinking: run.thinking, conversationId: sessionId, addDir: run.cwd, skipPermissions: run.agyPermissions === 'skip',
             edit: profile?.edit, message: !sessionId && profile ? `${workerInstructions(profile)}\n\n${message}` : message })
             : ['run', '--print-logs', '--log-level', 'ERROR', '--format', 'json', '--agent', `aa-${run.profile}`,
@@ -1046,6 +1078,7 @@ export class OpenCodeWorkerRuntime {
             child = openCode ? this.spawner(args)
                 : this.spawner(args, { command: claude ? this.claudeCommand : this.agyCommand, cwd: run.cwd, title: `${run.workerId}/${run.runId}` });
         } catch (error) {
+            this.dropRunToken(run);
             if (!this.terminal(run.state)) {
                 run.reason = (error as Error).message;
                 this.finalizeRun(run, 'FAILED', -1);
@@ -1099,6 +1132,7 @@ export class OpenCodeWorkerRuntime {
                 if (event?.sessionID && !run.sessionId) {
                     run.sessionId = event.sessionID;
                     this.sessionsByWorker.set(run.workerId, event.sessionID);
+                    this.claudeForkParents.delete(run.workerId);
                     // agy and claude name their conversation before any other fact: the ledger must hold it, so a reload can resume it.
                     if (agy || claude) { this.record(run, { type: 'message_update' }); }
                 }
@@ -1149,6 +1183,7 @@ export class OpenCodeWorkerRuntime {
         });
         child.on('exit', (code, signal) => {
             cancelStall();
+            if (run.runToken === launchToken) { this.dropRunToken(run); }
             run.evidence = lastText.trim().split('\n').slice(-MAX_EVIDENCE_LINES);
             const knowledge = [...run.evidence].reverse().find((line) => /^\W*Knowledge:/i.test(line));
             if (knowledge) { run.knowledge = knowledge.replace(/^\W*Knowledge:\s*/i, '').slice(0, 200); }

@@ -2921,7 +2921,7 @@
             (w.knowledge ? '<div class="worker-knowledge" title="What this ' + label.one + ' says it knows; the orchestrator uses it to pick a ' + label.one + ' to reuse">' + workersEsc(w.knowledge) + '</div>' : '') +
             (w.blocker ? '<div class="worker-blocker">' + workersEsc(w.blocker) + '</div>' : '') +
             '<div class="worker-actions">' +
-            (w.sessionId && (w.adapter === 'agy' || w.adapter === 'claude') ? '<span class="worker-open-note" title="' + workersEsc(w.adapter) + ' owns its conversation; AskAway shows it through Trace">' + workersEsc(w.adapter) + ' conversation: no viewer</span>' : '') +
+            (w.sessionId && (w.adapter === 'agy' || w.adapter === 'claude') && w.state !== 'RUNNING' && w.state !== 'STARTING' ? '<button class="worker-open-btn" data-worker-action="open" data-worker-id="' + workersEsc(w.workerId) + '" title="Resume in terminal only after the headless run stops; concurrent resume may conflict">Open in terminal</button>' : '') +
             (w.sessionId && w.adapter !== 'agy' && w.adapter !== 'claude' ? '<button class="worker-open-btn" data-worker-action="open" data-session-id="' + workersEsc(w.sessionId) + '" title="' + workersEsc(w.sessionOpenAction) + '">Open in VS Code</button>' +
                 '<button class="worker-open-ext-btn" data-worker-action="open-external" data-session-id="' + workersEsc(w.sessionId) + '" title="Open in your default terminal app">Terminal app</button>' : '') +
             '<button class="worker-trace-btn" data-worker-action="trace" data-worker-id="' + workersEsc(w.workerId) + '">' + (open ? 'Hide' : 'Trace') + ' (' + (w.runs || []).length + ')</button>' +
@@ -3723,7 +3723,11 @@
             if (!btn) return;
             var action = btn.getAttribute('data-worker-action');
             if (action === 'open' || action === 'open-external') {
-                vscode.postMessage({ type: 'openWorkerSession', sessionId: btn.getAttribute('data-session-id'), external: action === 'open-external' });
+                if (btn.getAttribute('data-worker-id')) {
+                    vscode.postMessage({ type: 'openWorkerTerminal', workerId: btn.getAttribute('data-worker-id') });
+                } else {
+                    vscode.postMessage({ type: 'openWorkerSession', sessionId: btn.getAttribute('data-session-id'), external: action === 'open-external' });
+                }
             } else if (action === 'cancel-run') {
                 vscode.postMessage({ type: 'cancelQueuedWorkerRun', runId: btn.getAttribute('data-run-id') });
             } else if (action === 'remove' || action === 'remove-cancel' || action === 'remove-confirm') {

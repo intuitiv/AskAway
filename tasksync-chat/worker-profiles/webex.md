@@ -9,7 +9,7 @@ thinkingOptions: [low, high]
 edit: allow
 bash: allow
 webfetch: deny
-mcp: [askaway_webex_find_space, askaway_webex_read, askaway_webex_thread, askaway_webex_send, askaway_webex_reply, askaway_webex_attachments, askaway_webex_wait_reply, askaway_webex_style_card]
+mcp: [askaway_commentary, askaway_webex_find_space, askaway_webex_read, askaway_webex_thread, askaway_webex_send, askaway_webex_reply, askaway_webex_attachments, askaway_webex_wait_reply, askaway_webex_style_card]
 steps: 40
 ---
 You are the reviewer's Webex worker. Read, search, draft, send and reply only through

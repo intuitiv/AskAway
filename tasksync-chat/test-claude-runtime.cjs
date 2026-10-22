@@ -46,7 +46,10 @@ const fakeClaude = path.join(tmp, 'claude');
 fs.writeFileSync(fakeClaude, `#!/usr/bin/env node
 const fs = require('fs');
 const args = process.argv.slice(2);
-fs.appendFileSync(${JSON.stringify(callsFile)}, JSON.stringify({ args, cwd: process.cwd(), pid: process.pid }) + '\\n');
+const cfgArg = (args.find((a) => a.startsWith('--mcp-config=')) || '').slice(13);
+let cfg = ''; let cfgMode = 0;
+try { cfg = fs.readFileSync(cfgArg, 'utf8'); cfgMode = fs.statSync(cfgArg).mode & 0o777; } catch (e) {}
+fs.appendFileSync(${JSON.stringify(callsFile)}, JSON.stringify({ args, cwd: process.cwd(), pid: process.pid, cfg, cfgMode, cfgArg }) + '\\n');
 const prompt = args[args.indexOf('--') + 1] || '';
 const resumed = (args.find((a) => a.startsWith('--resume=')) || '').slice(9);
 const session_id = resumed || (/ERRORRESULT/.test(prompt) ? 'err-session-1' : /SLEEP/.test(prompt) ? 'sleep-session-1' : ${JSON.stringify(SESSION)});
@@ -74,7 +77,7 @@ out({ type: 'result', subtype: 'success', is_error: false, duration_ms: 1651, nu
 `);
 fs.chmodSync(fakeClaude, 0o755);
 
-const profile = parseWorkerProfile('---\nname: build\ndescription: "b"\ntier: mid\nmodel: github-copilot/gpt-5.6-luna\nthinking: medium\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [medium]\nedit: allow\nbash: allow\nmcp: [askaway_askaway_memory, askaway_worker]\n---\nBUILD-PROFILE-BODY.\n');
+const profile = parseWorkerProfile('---\nname: build\ndescription: "b"\ntier: mid\nmodel: github-copilot/gpt-5.6-luna\nthinking: medium\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [medium]\nedit: allow\nbash: allow\nmcp: [askaway_askaway_memory, askaway_commentary, askaway_worker]\n---\nBUILD-PROFILE-BODY.\n');
 const readOnly = parseWorkerProfile('---\nname: explore\ndescription: "e"\ntier: light\nmodel: github-copilot/gpt-5.6-luna\nthinking: medium\nmodels: [github-copilot/gpt-5.6-luna]\nthinkingOptions: [medium]\nedit: deny\nbash: deny\n---\nExplore.\n');
 const MCP_URL = 'http://localhost:4567/sse';
 const runtime = new OpenCodeWorkerRuntime([profile, readOnly], { ledgerDir: path.join(tmp, 'ledger'), claudeCommand: fakeClaude, claudeMcpUrl: () => MCP_URL });
@@ -104,10 +107,22 @@ const close = (a, b) => Math.abs(a - b) < 1e-9;
     assert.equal(arg(first, '--effort'), 'medium');
     assert.equal(arg(first, '--add-dir'), workspace);
     assert.equal(arg(first, '--permission-mode'), 'acceptEdits');
-    assert.deepEqual(arg(first, '--allowedTools').split(','), ['Bash(rtk:*)', 'mcp__askaway__askaway_memory'], 'rtk shell + named MCP tools; worker tools never');
+    assert.deepEqual(arg(first, '--allowedTools').split(','), ['Bash(rtk:*)', 'mcp__askaway__askaway_memory', 'mcp__askaway__commentary', 'mcp__askaway__worker'], 'rtk shell + named MCP tools (commentary for AITalk questions; the worker tool because this profile lists it, bounded by the worker-tool guard)');
     assert.ok(arg(first, '--disallowedTools').split(',').includes('Task'), 'workers never spawn subagents');
-    assert.ok(['mcp__askaway__worker', 'mcp__askaway__commentary'].every((rule) => arg(first, '--disallowedTools').split(',').includes(rule)), 'worker and commentary tools are always denied');
-    assert.deepEqual(JSON.parse(arg(first, '--mcp-config')), { mcpServers: { askaway: { type: 'http', url: MCP_URL } } });
+    assert.ok(!arg(first, '--disallowedTools').split(',').includes('mcp__askaway__worker'), 'a profile that lists the worker tool may call it');
+    assert.ok(!arg(first, '--disallowedTools').split(',').includes('mcp__askaway__commentary'), 'a profile that lists commentary may call it');
+    // The identity token is a credential: it is in a private 0600 file read at launch, never in argv, and the file is removed when the run ends.
+    const mcpConfig = JSON.parse(first.cfg);
+    const token = mcpConfig.mcpServers.askaway.headers['X-AskAway-Run'];
+    assert.deepEqual({ ...mcpConfig.mcpServers.askaway, headers: undefined }, { type: 'http', url: MCP_URL, headers: undefined });
+    assert.match(token, /^[0-9a-f]{48}$/, 'a random per-run identity token rides in a header');
+    assert.ok(!JSON.stringify(first.args).includes(token), 'the token never appears in the spawned argv');
+    assert.ok(path.isAbsolute(first.cfgArg) && first.cfgArg.startsWith(os.tmpdir()), 'the config is a file path under the OS temp dir');
+    assert.equal(first.cfgMode, 0o600, 'the config file is private to the user');
+    assert.equal(fs.existsSync(first.cfgArg), false, 'the config file is deleted when the run ends');
+    assert.equal(fs.existsSync(path.dirname(first.cfgArg)), false, 'and so is its private directory');
+    assert.ok(first.args.includes('--strict-mcp-config'), 'only the per-run config: no other askaway entry can shadow the identity header');
+    assert.equal(runtime.workerForRunToken(token), undefined, 'the token is dropped when the run ends');
     assert.match(arg(first, '--append-system-prompt'), /BUILD-PROFILE-BODY/);
     assert.equal(first.args.includes('--resume') || !!arg(first, '--resume'), false, 'a fresh worker starts a new session');
     assert.match(first.args[first.args.indexOf('--') + 1], /^Objective: Write the fixture/);
@@ -163,7 +178,7 @@ const close = (a, b) => Math.abs(a - b) < 1e-9;
     assert.match(failedDone.reason, /^claude error_max_turns/);
     const errCall = calls().at(-1);
     assert.equal(arg(errCall, '--permission-mode'), 'dontAsk');
-    assert.deepEqual(arg(errCall, '--disallowedTools').split(',').sort(), ['Agent', 'Bash', 'Edit', 'MultiEdit', 'NotebookEdit', 'Task', 'WebFetch', 'Write', 'mcp__askaway__commentary', 'mcp__askaway__worker']);
+    assert.deepEqual(arg(errCall, '--disallowedTools').split(',').sort(), ['Agent', 'Bash', 'Edit', 'MultiEdit', 'NotebookEdit', 'Task', 'WebFetch', 'Write', 'mcp__askaway__worker']);
     assert.equal(arg(errCall, '--mcp-config'), '', 'no MCP config for a profile without MCP tools');
     assert.equal(calls().filter((c) => /ERRORRESULT/.test(c.args.at(-1))).length, 1, 'an error result is not auto-resumed');
     console.log('EV-WORKER-CLAUDE error result -> FAILED with reason: PASS');

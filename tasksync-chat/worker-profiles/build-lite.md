@@ -10,7 +10,7 @@ edit: allow
 bash: ask
 webfetch: allow
 steps: 120
-mcp: ["askaway_copilot_memory", "askaway_copilot_getErrors", "askaway_sonarqube_*", "askaway_yourkit_*", "grafana_*"]
+mcp: ["askaway_copilot_memory", "askaway_commentary", "askaway_copilot_getErrors", "askaway_sonarqube_*", "askaway_yourkit_*", "grafana_*"]
 ---
 # Build worker (lite)
 

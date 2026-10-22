@@ -104,6 +104,14 @@ export interface WorkersState {
 const TERMINAL: RunState[] = ['COMPLETED', 'FAILED', 'CANCELLED'];
 const SESSION_ID = /^[A-Za-z0-9_-]+$/;
 
+export function terminalResumeCommand(adapter: string, sessionId: string): string | undefined {
+    // The id starts alphanumeric and rides in `--flag=<id>`, so it can never be read as a flag.
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{7,79}$/.test(sessionId)) { return undefined; }
+    if (adapter === 'claude') { return `claude --resume=${sessionId}`; }
+    if (adapter === 'agy') { return `agy --conversation=${sessionId}`; }
+    return undefined;
+}
+
 /** The open command for a session that belongs to a projected worker; undefined for anything else. */
 export function sessionOpenCommand(state: WorkersState, sessionId: string): string | undefined {
     if (!SESSION_ID.test(sessionId || '')) { return undefined; }

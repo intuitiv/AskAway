@@ -18,7 +18,7 @@ import { registerToolDefinitions, registerWorkerTools, ToolDefinition } from '..
 import { commentaryToolDefinitions } from '../commentary/commentary';
 import { registerVsCodeToolBridge, registerWindow } from '../workers/vscodeToolBridge';
 import { loadEvalScoreboard } from '../workers/evalScoreboard';
-import { callMeta, setAITalkSessionResolver, withAITalkMcpDelivery } from '../aitalk/delivery';
+import { callMeta, setAITalkAgyResolver, setAITalkRunTokenResolver, setAITalkSessionResolver, withAITalkMcpDelivery } from '../aitalk/delivery';
 import { registerWebexToolsHost } from '../services/webexToolsHost';
 export { createWorkerOperationFacade, type WorkerOperationFacade } from './workerOperationFacade';
 
@@ -184,6 +184,9 @@ export class McpServerManager {
 
             // OpenCode workers carry their session id (AskAway plugin); the runtime knows which worker runs in it.
             setAITalkSessionResolver(sessionId => this.getWorkerRuntime().workerForSession(sessionId));
+            // agy workers carry their conversation id in the MCP `_meta`, Claude workers a per-run token in a header; neither is model-controlled.
+            setAITalkAgyResolver(conversationId => this.getWorkerRuntime().workerForAgyConversation(conversationId));
+            setAITalkRunTokenResolver(token => this.getWorkerRuntime().workerForRunToken(token));
             const createMcpServer = (): McpServer => {
                 const mcpServer = new McpServer({
                     name: "AskAway Sidebar Chat",
@@ -194,7 +197,7 @@ export class McpServerManager {
                 (mcpServer as any).registerTool = (name: string, config: any, handler: any) => register(name,
                     typeof config?.inputSchema?.passthrough === 'function' ? { ...config, inputSchema: config.inputSchema.passthrough() } : config,
                     (args: any, extra: any) => {
-                        // Identity comes from the transport `_meta`; the arguments may add only the OpenCode session id. `_meta` never reaches the tool.
+                        // Identity comes from the transport (`_meta`, request headers); the arguments may add only the OpenCode session id. `_meta` never reaches the tool.
                         const hasMeta = args && typeof args === 'object' && '_meta' in args;
                         const { _meta: _argsMeta, ...rest } = hasMeta ? args : { _meta: undefined };
                         return withAITalkMcpDelivery(handler, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd())(

@@ -66,7 +66,8 @@ async function buildServer() {
         '../workers/evalScoreboard': 'exports.loadEvalScoreboard = () => ({});',
     };
     const entry = `export { McpServerManager } from './src/mcp/mcpServer';
-export { configureAITalkDelivery, setAITalkSessionResolver } from './src/aitalk/delivery';
+export { configureAITalkDelivery, setAITalkSessionResolver, setAITalkAgyResolver, setAITalkRunTokenResolver } from './src/aitalk/delivery';
+export { claudeArgs } from './src/workers/claudeRuntime';
 export { syncOpenCodeIdentityPlugin } from './src/workers/openCodeIdentityPlugin';
 export { roomFor, WorkerActor } from './src/aitalk/actors';
 export { AITalkStore } from './src/aitalk/store';
@@ -116,7 +117,7 @@ async function startProxy() {
                 for (const message of calls) {
                     const parts = parseResult(payload);
                     const { _meta: identity, ...args } = message.params.arguments ?? {};
-                    const call = { index: ctx.calls.length + 1, name: message.params.name, args, identity, parts, text: parts.join('\n\n'),
+                    const call = { index: ctx.calls.length + 1, name: message.params.name, args, identity, transportIdentity: message.params._meta, runIdentityMatches: req.headers['x-askaway-run'] === ctx.runToken, parts, text: parts.join('\n\n'),
                         at: Date.now(), ticksBefore: ctx.requestTicks.get(message.id) ?? {}, ticksAfter: ctx.tickNow() };
                     ctx.calls.push(call);
                     ctx.log(`call ${call.index} ${call.name} returned`);
@@ -344,6 +345,79 @@ async function validatorScenario(ctx) {
 }
 bodies.S5 = validatorScenario;
 
+// Identity cases use real CLIs and the production delivery boundary, not injected metadata.
+scenarios.S6 = { title: 'real agy worker identity and queued reply' };
+scenarios.S7 = { title: 'real Claude worker identity and queued reply' };
+async function identityScenario(ctx) {
+    let queued;
+    const progress = 'IDENTITY_PROGRESS';
+    const question = 'Should I use green or blue?';
+    ctx.onResult = call => { if (call.index === 1) queued = userMessage(ctx, 'What is 2+3? Reply using action aitalk and replyTo this message id.'); };
+    const tool = ctx.runtime === 'agy' ? 'commentary on the askaway-live-identity plugin server live' : 'mcp__askaway__commentary';
+    const prompt = `Use only ${tool}. Make these calls sequentially, waiting for every result. First action aitalk, kind update, text ${progress}, waitSeconds 0. This is an intentional refusal test; continue after rejection. Second action aitalk, kind heads-up, text "${question}", waitSeconds 0. Read ADDITIONAL MESSAGES FROM THE USER in every result. Answer its arithmetic question by calling action aitalk with replyTo equal to its id, text "5", no kind, waitSeconds 0. Then finish with done. Do not put identity metadata or workspacePath in arguments.`;
+    let run;
+    if (ctx.runtime === 'agy') {
+        lib.setAITalkAgyResolver(id => id === ctx.conversation ? { workerId: ctx.recipient, workspace: ctx.ws } : undefined);
+        run = await runProcess(ctx, 'agy', ['--print', prompt, '--model', 'gemini-3.8-flash-low', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--print-timeout', '90s'], {}, line => {
+            let event; try { event = JSON.parse(line); } catch { return; }
+            if (event.event === 'init') ctx.conversation = event.conversation_id || event.session_id;
+            if (event.event === 'result') ctx.final = event.result?.response || '';
+            const usage = event.step_update?.usage;
+            if (usage) { ctx.cost.steps++; ctx.cost.tokens += Number(usage.input_tokens || 0) + Number(usage.output_tokens || 0); }
+        });
+        ctx.check('init conversation identity reaches every tool call', !!ctx.conversation && ctx.calls.length > 0 && ctx.calls.every(call => call.transportIdentity?.['antigravity.google/conversation_id'] === ctx.conversation));
+    } else {
+        ctx.runToken = crypto.randomBytes(24).toString('hex');
+        lib.setAITalkRunTokenResolver(token => token === ctx.runToken ? { workerId: ctx.recipient, workspace: ctx.ws } : undefined);
+        const args = lib.claudeArgs({ model: 'haiku', thinking: 'low', message: prompt, mcpUrl: `http://127.0.0.1:${proxyPort}/sse`, runToken: ctx.runToken,
+            profile: { edit: 'deny', bash: 'deny', webfetch: 'deny', mcp: ['askaway_commentary'] } });
+        args.splice(args.indexOf('--'), 0, '--max-budget-usd', '0.10', '--setting-sources', '', '--tools', '');
+        run = await runProcess(ctx, 'claude', args, { env: { ...process.env, ENABLE_TOOL_SEARCH: 'false' } }, line => {
+            let event; try { event = JSON.parse(line); } catch { return; }
+            if (event.type === 'result') { ctx.final = event.result || ''; ctx.costKnown = Number.isFinite(event.total_cost_usd); ctx.cost.usd = event.total_cost_usd; ctx.cost.steps = event.num_turns || 0; ctx.cost.tokens = (event.usage?.input_tokens || 0) + (event.usage?.output_tokens || 0); }
+        });
+        ctx.check('production run header reaches every tool call', ctx.calls.length > 0 && ctx.calls.every(call => call.runIdentityMatches));
+        ctx.check('reported Claude spend is below $0.20', ctx.costKnown && ctx.cost.usd < 0.20);
+        lib.setAITalkRunTokenResolver(undefined);
+        ctx.runToken = undefined;
+    }
+    ctx.check('real CLI exited successfully', run.exit === 0 && !run.timedOut, `exit=${run.exit} timeout=${run.timedOut}`);
+    const first = ctx.calls[0];
+    ctx.check('progress update is refused', first?.args.kind === 'update' && /REJECTED/.test(first.text));
+    ctx.check('refused progress is absent from room', !messages(ctx).some(message => message.text.includes(progress)));
+    const next = ctx.calls[1];
+    ctx.check('queued message arrives on exactly the next call with the user label', !!queued && NEW_LABEL.test(next?.text || '') && deliveredEntries(next).some(entry => entry.id === queued.id));
+    ctx.check('queued message arrives only once', !!queued && ctx.calls.filter(call => deliveredEntries(call).some(entry => entry.id === queued.id)).length === 1);
+    ctx.check('heads-up question is attributed to this member', messages(ctx).some(message => message.author === ctx.recipient && message.text === question));
+    ctx.check('agent answers through commentary aitalk replyTo', !!queued && ctx.calls.some(call => call.args.action === 'aitalk' && call.args.replyTo === queued.id) && messages(ctx).some(message => message.author === ctx.recipient && message.replyTo === queued.id && /\b5\b/.test(message.text)));
+    ctx.tracked = queued ? [queued.id] : [];
+}
+bodies.S6 = identityScenario;
+bodies.S7 = identityScenario;
+
+async function withAgyIdentity(test) {
+    const settingsPath = path.join(require('node:os').homedir(), '.gemini/antigravity-cli/settings.json');
+    const original = fs.readFileSync(settingsPath);
+    const plugin = path.join(runDir, 'identity-plugin');
+    fs.mkdirSync(path.join(plugin, '.antigravity-plugin'), { recursive: true });
+    fs.writeFileSync(path.join(plugin, '.antigravity-plugin/plugin.json'), JSON.stringify({ name: 'askaway-live-identity', version: '1.0.0', description: 'Temporary live identity test' }));
+    fs.writeFileSync(path.join(plugin, 'mcp_config.json'), JSON.stringify({ mcpServers: { live: { command: process.execPath, args: [path.join(FIXTURES, 'agy-mcp-bridge.cjs'), `http://127.0.0.1:${proxyPort}/sse`] } } }));
+    const cli = args => { const result = spawnSync('agy', args, { encoding: 'utf8', timeout: 30_000 }); if (result.status !== 0) throw new Error(`agy ${args[0]} ${args[1]} failed (exit ${result.status})`); };
+    let installed = false;
+    try {
+        const settings = JSON.parse(original); settings.permissions ||= {}; settings.permissions.allow ||= [];
+        settings.permissions.allow.push('mcp(askaway-live-identity_live/commentary)');
+        fs.writeFileSync(settingsPath, JSON.stringify(settings));
+        installed = true; cli(['plugin', 'install', plugin]);
+        await test();
+    } finally {
+        try { if (installed) cli(['plugin', 'uninstall', 'askaway-live-identity']); }
+        finally { fs.writeFileSync(settingsPath, original); }
+        if (!fs.readFileSync(settingsPath).equals(original)) throw new Error('agy settings restore differs');
+        console.log('PASS agy cleanup: plugin uninstalled; settings.json restored byte for byte');
+    }
+}
+
 // ---- run -------------------------------------------------------------------------------------------------------------------
 function report(ctx, started) {
     const failed = ctx.asserts.filter(item => !item.ok);
@@ -382,7 +456,8 @@ function agySignedIn() {
 }
 (async () => {
     console.log(`AITalk live test: model ${MODEL} (opencode), ${AGY_MODEL} (agy); scenarios ${(ONLY.length ? ONLY : ['S1', 'S2', 'S3', 'S4', 'S5']).join(',')}`);
-    const names = (ONLY.length ? ONLY : ['S1', 'S2', 'S3', 'S4', 'S5']).filter(key => bodies[key]);
+    const selected = ONLY.length ? ONLY : ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7'];
+    const names = selected.filter(key => /^S[1-5]$/.test(key));
     await buildServer(); await startProxy();
     console.log(`real MCP server on :${mcp.getPort()}, proxy on :${proxyPort}, workspace ${path.relative(process.cwd(), runDir)}`);
     let agyRegistered = false;
@@ -397,6 +472,8 @@ function agySignedIn() {
                 else for (const key of names) await runOne(key, 'agy');
             }
         }
+        if (selected.includes('S6')) await withAgyIdentity(() => runOne('S6', 'agy'));
+        if (selected.includes('S7')) await runOne('S7', 'claude');
     } finally {
         if (agyRegistered) spawnSync('agy', ['mcp', 'remove', agyName], { encoding: 'utf8', timeout: 30_000 });
         proxy.close(); mcp.server?.close(); killAll();
@@ -406,6 +483,7 @@ function agySignedIn() {
     for (const item of results) console.log(`${item.status.padEnd(26)} ${item.key} [${item.runtime}]${item.a3.length ? `  expected-until-A3: ${item.a3.join('; ')}` : ''}${item.unexpected.length ? `  UNEXPECTED: ${item.unexpected.join('; ')}` : ''}`);
     const total = costs.reduce((sum, item) => ({ usd: sum.usd + item.usd, tokens: sum.tokens + item.tokens, steps: sum.steps + item.steps }), { usd: 0, tokens: 0, steps: 0 });
     console.log(`model cost: ${total.steps} steps, ${total.tokens} tokens, $${total.usd.toFixed(4)} (opencode-reported; agy reports no cost)`);
-    const bad = results.some(item => item.unexpected.length || (STRICT && item.a3.length));
+    console.log(`Result: ${results.some(item => item.status !== 'PASS') ? 'FAIL' : 'PASS'} matched=${results.length}`);
+    const bad = results.some(item => item.unexpected.length || ((STRICT || item.key === 'S6' || item.key === 'S7') && item.a3.length));
     process.exit(bad || !results.length ? 1 : 0);
 })().catch(error => { console.error(error); killAll(); try { fs.rmSync(runDir, { recursive: true, force: true }); } catch { /* ignore */ } process.exit(1); });

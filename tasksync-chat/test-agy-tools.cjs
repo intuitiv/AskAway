@@ -66,7 +66,7 @@ thinkingOptions: [low, medium, high]
 edit: deny
 bash: deny
 webfetch: deny
-mcp: [askaway_copilot_memory, askaway_vscode_listCodeUsages, askaway_worker_start, askaway_commentary_post]
+mcp: [askaway_copilot_memory, askaway_vscode_listCodeUsages, askaway_commentary]
 skills: []
 steps: 25
 ---
@@ -74,24 +74,27 @@ You are Explore. Read-only evidence only.
 `, 'explore.md');
 
 // (a) toAgyPermissions maps askaway_<tool> to AGY_MCP_RULE_FORMAT, adds command(rtk) only when bash !== 'deny',
-// and excludes worker and commentary tools.
+// and emits worker and commentary rules only when the profile lists them (reviewer 2026-10-22).
 assert.equal(AGY_MCP_RULE_FORMAT, 'mcp(askaway/<tool>)');
 const implRules = toAgyPermissions(implProfile);
 assert.deepEqual(implRules, [
     'mcp(askaway/copilot_memory)',
     'mcp(askaway/code_nav)',
     'mcp(askaway/gradle)',
+    'mcp(askaway/worker)',
+    'mcp(askaway/commentary)',
     'command(rtk)',
 ]);
-assert.ok(!implRules.some((r) => /worker|commentary/.test(r)), 'worker/commentary tools must never be emitted');
 
 const exploreRules = toAgyPermissions(exploreProfile);
 assert.deepEqual(exploreRules, [
     'mcp(askaway/copilot_memory)',
     'mcp(askaway/vscode_listCodeUsages)',
+    'mcp(askaway/commentary)',
 ]);
 assert.ok(!exploreRules.includes('command(rtk)'), 'bash: deny must not emit command(rtk)');
-assert.ok(!exploreRules.some((r) => /worker|commentary/.test(r)), 'worker/commentary tools must never be emitted');
+assert.ok(!exploreRules.some((r) => /worker/.test(r)), 'a profile that does not list worker gets no worker rule');
+assert.deepEqual(toAgyPermissions({ mcp: ['askaway_copilot_memory'], bash: 'deny' }), ['mcp(askaway/copilot_memory)'], 'a profile without commentary or worker gets neither rule');
 
 // (b) syncAgyPermissions preserves existing keys, merges union of rules into permissions.allow, does not write mcpServers, is idempotent, writes no tokens.
 const settingsPath = path.join(tmp, 'settings.json');
@@ -120,6 +123,8 @@ assert.deepEqual(synced.permissions.allow, [
     'mcp(askaway/copilot_memory)',
     'mcp(askaway/code_nav)',
     'mcp(askaway/gradle)',
+    'mcp(askaway/worker)',
+    'mcp(askaway/commentary)',
     'command(rtk)',
     'mcp(askaway/vscode_listCodeUsages)',
 ]);
@@ -136,7 +141,7 @@ fs.mkdirSync(existingFolder, { recursive: true });
 const freshSettingsPath = path.join(existingFolder, 'settings.json');
 assert.equal(syncAgyPermissions([exploreProfile], freshSettingsPath), true);
 const freshSynced = JSON.parse(fs.readFileSync(freshSettingsPath, 'utf8'));
-assert.deepEqual(freshSynced.permissions.allow, ['mcp(askaway/copilot_memory)', 'mcp(askaway/vscode_listCodeUsages)']);
+assert.deepEqual(freshSynced.permissions.allow, ['mcp(askaway/copilot_memory)', 'mcp(askaway/vscode_listCodeUsages)', 'mcp(askaway/commentary)']);
 assert.equal(freshSynced.mcpServers, undefined);
 
 // Missing agy settings folder -> do nothing and never create the folder.
@@ -353,7 +358,7 @@ out({ event: 'result', conversation_id: conv, result: { conversation_id: conv, r
     assert.equal(ocDone.status, 'COMPLETED', `OpenCode error event followed by Result: PASS must still complete: ${JSON.stringify(ocDone)}`);
 
     fs.rmSync(tmp, { recursive: true, force: true });
-    console.log('PASS EV-AGY-TOOLS toAgyPermissions=mcp+rtk-worker-commentary syncAgyPermissions=merge+idempotent+noTokens instructions=firstPrompt outOfPolicyMcp=FAILED');
+    console.log('PASS EV-AGY-TOOLS toAgyPermissions=mcp+rtk+worker-commentary-when-listed syncAgyPermissions=merge+idempotent+noTokens instructions=firstPrompt outOfPolicyMcp=FAILED');
 })().catch((err) => {
     fs.rmSync(tmp, { recursive: true, force: true });
     console.error(err);

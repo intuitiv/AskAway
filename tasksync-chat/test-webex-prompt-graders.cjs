@@ -37,7 +37,7 @@ const loaded = { exports: {} };
 new Function('require', 'module', 'exports', ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(require, loaded, loaded.exports);
 const profile = loaded.exports.parseWorkerProfile(fs.readFileSync(path.join(__dirname, 'worker-profiles/webex.md'), 'utf8'));
 assert.equal(profile.model, 'agy/gemini-4-argon-high'); assert.equal(profile.thinking, 'high');
-assert.deepEqual(profile.mcp, ['askaway_webex_find_space', 'askaway_webex_read', 'askaway_webex_thread', 'askaway_webex_send', 'askaway_webex_reply', 'askaway_webex_attachments', 'askaway_webex_wait_reply', 'askaway_webex_style_card']);
+assert.deepEqual(profile.mcp, ['askaway_commentary', 'askaway_webex_find_space', 'askaway_webex_read', 'askaway_webex_thread', 'askaway_webex_send', 'askaway_webex_reply', 'askaway_webex_attachments', 'askaway_webex_wait_reply', 'askaway_webex_style_card']);
 assert.deepEqual([profile.edit, profile.bash, profile.webfetch], ['allow', 'allow', 'deny']);
 for (const rule of ['style-card.md', 'Once a week', '30 words', 'Never invent facts', 'draft', 'approval']) assert.ok(profile.prompt.includes(rule), rule);
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-webex-profile-'));

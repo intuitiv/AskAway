@@ -13,6 +13,8 @@ export const CLAUDE_PREFIX = 'claude/';
 export const CLAUDE_MODELS = ['claude/sonnet', 'claude/opus', 'claude/haiku'];
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const MCP_SERVER = 'askaway';
+/** The HTTP header that carries a Claude run's identity token to the AskAway MCP server. */
+export const RUN_HEADER = 'X-AskAway-Run';
 
 /** The AskAway MCP URL the extension registers for other clients (`~/.kiro/settings/mcp.json`), else ''. */
 export function askawayMcpUrl(home = os.homedir()): string {
@@ -27,41 +29,66 @@ export function askawayMcpUrl(home = os.homedir()): string {
 
 /**
  * The profile's edit/bash/webfetch/MCP policy as Claude tool rules, in the toAgyPermissions style: a shell that is not
- * denied may run only `rtk` commands, AskAway MCP tools are allowed by name (never worker/commentary), and workers never
- * spawn Claude subagents (delegation belongs to the orchestrator).
+ * denied may run only `rtk` commands, AskAway MCP tools are allowed by name (the worker tool only when the profile lists it; commentary only when the profile lists it, for AITalk
+ * questions), and workers never spawn Claude subagents (delegation belongs to the orchestrator).
  */
 export function claudeToolRules(profile: Pick<WorkerProfile, 'edit' | 'bash' | 'webfetch' | 'mcp'>): { mode: string; allowed: string[]; disallowed: string[] } {
     const allowed: string[] = [];
-    // The AskAway server also serves the worker and commentary tools; a Claude worker never delegates or narrates (an `askaway_*` entry allows the whole server).
-    const disallowed: string[] = ['Task', 'Agent', `mcp__${MCP_SERVER}__worker`, `mcp__${MCP_SERVER}__commentary`];
+    // The AskAway server also serves the worker tool; a Claude worker never delegates (an `askaway_*` entry allows the whole server).
+    const disallowed: string[] = ['Task', 'Agent', `mcp__${MCP_SERVER}__worker`];
     if (profile.edit === 'deny') { disallowed.push('Edit', 'Write', 'MultiEdit', 'NotebookEdit'); }
     if (profile.bash === 'deny') { disallowed.push('Bash'); } else { allowed.push('Bash(rtk:*)'); }
     if (profile.webfetch === 'deny') { disallowed.push('WebFetch'); }
     for (const entry of profile.mcp ?? []) {
         if (!entry.startsWith('askaway_')) { continue; }
         const tool = entry.slice('askaway_'.length);
-        if (/^(worker|commentary)(?:_|$)/.test(tool)) { continue; }
-        const rule = !tool || tool === '*' ? `mcp__${MCP_SERVER}` : `mcp__${MCP_SERVER}__${tool}`;
+        // Like agy: the worker tool is granted only to a profile that lists it; the worker-tool guard bounds what it may start.
+        const delegate = /^worker(?:_|$)/.test(tool);
+        const rule = delegate ? `mcp__${MCP_SERVER}__worker` : !tool || tool === '*' ? `mcp__${MCP_SERVER}` : `mcp__${MCP_SERVER}__${tool}`;
+        if (delegate) { const at = disallowed.indexOf(rule); if (at >= 0) { disallowed.splice(at, 1); } }
         if (!allowed.includes(rule)) { allowed.push(rule); }
     }
     // Headless: acceptEdits lets an editing profile write files; dontAsk denies anything not pre-approved instead of asking.
     return { mode: profile.edit === 'allow' ? 'acceptEdits' : 'dontAsk', allowed, disallowed };
 }
 
+const mcpConfigDirs = new Map<string, string>();
+/** Writes a run's MCP config to a 0600 file in its own 0700 directory under the OS temp dir; removeMcpConfig deletes both. */
+function writeMcpConfig(runToken: string, json: string): string {
+    removeMcpConfig(runToken);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'askaway-claude-'));
+    fs.chmodSync(dir, 0o700);
+    const file = path.join(dir, 'mcp.json');
+    fs.writeFileSync(file, json, { mode: 0o600 });
+    mcpConfigDirs.set(runToken, dir);
+    return file;
+}
+/** Deletes the run's MCP config file and directory; a no-op for an unknown token. */
+export function removeMcpConfig(runToken: string): void {
+    const dir = mcpConfigDirs.get(runToken);
+    if (!dir) { return; }
+    mcpConfigDirs.delete(runToken);
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* a temp dir that is already gone is the goal */ }
+}
+
 /** Print-mode arguments. `--flag=value` and the `--` before the message keep a message from ever being read as a flag. */
-export function claudeArgs(options: { model: string; thinking: string; sessionId?: string; addDir?: string; message: string;
-    profile?: Pick<WorkerProfile, 'edit' | 'bash' | 'webfetch' | 'mcp'>; instructions?: string; mcpUrl?: string }): string[] {
+export function claudeArgs(options: { model: string; thinking: string; sessionId?: string; forkSession?: boolean; addDir?: string; message: string;
+    profile?: Pick<WorkerProfile, 'edit' | 'bash' | 'webfetch' | 'mcp'>; instructions?: string; mcpUrl?: string; runToken?: string }): string[] {
     const model = options.model.startsWith(CLAUDE_PREFIX) ? options.model.slice(CLAUDE_PREFIX.length) : options.model;
     const args = ['-p', '--output-format=stream-json', '--verbose', `--model=${model}`];
     if (EFFORTS.includes(options.thinking)) { args.push(`--effort=${options.thinking}`); }
-    if (options.sessionId) { args.push(`--resume=${options.sessionId}`); }
+    if (options.sessionId) { args.push(`--resume=${options.sessionId}`); if (options.forkSession) { args.push('--fork-session'); } }
     if (options.addDir) { args.push(`--add-dir=${options.addDir}`); }
     const rules = claudeToolRules(options.profile ?? { edit: 'deny', bash: 'deny', webfetch: 'deny', mcp: [] });
     args.push(`--permission-mode=${rules.mode}`);
     if (rules.allowed.length) { args.push(`--allowedTools=${rules.allowed.join(',')}`); }
     args.push(`--disallowedTools=${rules.disallowed.join(',')}`);
     if (options.mcpUrl && options.profile?.mcp.length) {
-        args.push(`--mcp-config=${JSON.stringify({ mcpServers: { [MCP_SERVER]: { type: 'http', url: options.mcpUrl } } })}`);
+        // The per-run token is the worker's identity on every tool call (the model cannot set an HTTP header); the server maps it to the run.
+        const server = { type: 'http', url: options.mcpUrl, ...(options.runToken ? { headers: { [RUN_HEADER]: options.runToken } } : {}) };
+        const config = JSON.stringify({ mcpServers: { [MCP_SERVER]: server } });
+        // The token is a credential: it goes in a private 0600 file, never in argv (visible to every local user through `ps`).
+        args.push(`--mcp-config=${options.runToken ? writeMcpConfig(options.runToken, config) : config}`, '--strict-mcp-config');
     }
     if (options.instructions) { args.push(`--append-system-prompt=${options.instructions}`); }
     args.push('--', options.message);

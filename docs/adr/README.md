@@ -47,3 +47,4 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0031](0031-decisions-asked-in-aitalk-status-nudge.md) | Decisions asked in AITalk as they arise; two-minute status nudge | G4 | Accepted |
 | [0032](0032-chat-tab-and-ask-user-retired.md) | Chat tab and ask_user retired | G4 | Proposed |
 | [0026](0026-hooks-and-sk-commands-in-copilot-harness.md) | Hooks fail open and get sandbox grants; /sk.* ship as prompt files (Local), sk-* skills (Copilot) and Claude commands | G15 | Proposed |
+| [0033](0033-agy-and-claude-worker-identity.md) | agy and Claude workers are identified by transport carriers the model cannot set | G12 | Proposed |

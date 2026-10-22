@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 
 ## AskAway v2.3.4 (10-21-26)
+- **agy and Claude workers behave like OpenCode workers:** they are identified by carriers the model cannot set (agy's MCP conversation id, a per-run `X-AskAway-Run` header for Claude, kept in a private temp file), so queued AITalk messages reach them on their next tool call and members' questions are attributed to them (R-AITALK-46, R-AITALK-47). Verified live with real agy and Claude runs.
+- **Workers can ask questions:** `commentary` is granted to member profiles (and to agy and Claude when a profile lists it); the `worker` tool is granted only when a profile lists it and a worker may start only read-only children, at most 2, one level deep, its own only (R-WTOOL-45, R-WTOOL-46).
+- **Claude fork and terminal viewers:** a warm Claude worker can be forked for fan-out (`--resume --fork-session`, R-WTOOL-48); agy and Claude cards get an Open in terminal button (R-WTOOL-47). agy still cannot fork (no CLI flag) and reports no cost.
 - **Chat and Autopilot are gone for good:** the Chat tab and `ask_user` were already retired; the leftover Autopilot prompts, response-timeout and human-like-delay settings and the pending-request queue are removed too. Remote Webex and Telegram questions, the plan editor and worker Autopilot stay (R-LIVE-27).
 - **Members post only questions in AITalk:** only the main agent posts progress updates; a worker or member posts a question, tagged to the main agent, the Validator or the room, and reports progress in its final report (R-AITALK-45).
 - **agy members:** still $0.00, and now shown on Team while they work this turn even without Show all (R-TEAM-72).

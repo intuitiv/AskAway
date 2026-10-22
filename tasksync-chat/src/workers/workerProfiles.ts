@@ -307,7 +307,7 @@ export function toAgyPermissions(profile: Pick<WorkerProfile, 'mcp' | 'bash'>): 
     for (const entry of profile.mcp ?? []) {
         if (!entry.startsWith('askaway_')) { continue; }
         const tool = entry.slice('askaway_'.length);
-        if (!tool || /^(worker|commentary)(?:_|$)/.test(tool)) { continue; }
+        if (!tool) { continue; }
         const rule = AGY_MCP_RULE_FORMAT.replace('<tool>', tool);
         if (!rules.includes(rule)) { rules.push(rule); }
     }

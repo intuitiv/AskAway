@@ -16,7 +16,7 @@ import { scanSpecs, SpecScanResult } from '../specs/specKitScanner';
 import { CloudSpecsController, shouldPollCloud } from '../cloud/cloudSpecs';
 import { defaultIO } from '../cloud/cloudQueue';
 import { PacketTask } from '../cloud/packet';
-import { projectWorkersState, sessionOpenCommand, TeamMemberState, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
+import { projectWorkersState, sessionOpenCommand, terminalResumeCommand, TeamMemberState, TraceEvent, WorkersState, WorkerTrace } from '../workers/workersState';
 import { getRuntimeHealth, getRuntimeModelIds, handleRuntimeHealthMessage, onDidChangeRuntimeHealth, recheckRuntimeHealth, refreshIntegration, RUNTIME_NAMES, RuntimeHealth, RuntimeHealthMessage } from '../workers/runtimeHealth';
 import { applyMemberOverride, AVATARS_DIR, initialsOf, memberSelections, readMemberOverrides, saveMemberProfile, saveMemberSelection } from '../team/roster';
 import { AITalkStore } from '../aitalk/store'; import { roomFor } from '../aitalk/actors';
@@ -503,6 +503,7 @@ type FromWebviewMessage =
     | { type: 'restartOpenCodeServer' }
     | RuntimeHealthMessage
     | { type: 'openWorkerSession'; sessionId: string; external?: boolean }
+    | { type: 'openWorkerTerminal'; workerId: string }
     | { type: 'requestCommentary' }
     | { type: 'setAvailability'; mode: string; until: string; note: string }
     | { type: 'webviewReady'; uiVersion?: string }
@@ -1428,6 +1429,23 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         if (!command) { return; }
         if (external) { openInTerminalApp(command, root); return; }
         const terminal = vscode.window.createTerminal({ name: `OpenCode ${sessionId}`, cwd: root });
+        terminal.show();
+        terminal.sendText(command);
+    }
+
+    private _openWorkerTerminal(workerId: string): void {
+        const source = this._workersStateSource;
+        if (!source) { return; }
+        // The worker belongs to one workspace folder (multi-root): its terminal opens there, not in the first folder.
+        const owned = (vscode.workspace.workspaceFolders ?? []).map(folder => source(folder.uri.fsPath, this._lastSubmitTs))
+            .map(state => ({ state, worker: state.workers.find(row => row.workerId === workerId) })).find(item => item.worker);
+        if (!owned?.worker) { return; }
+        const { state, worker } = owned;
+        if (worker.state === 'RUNNING' || worker.state === 'STARTING') { return; }
+        const command = terminalResumeCommand(worker.adapter, worker.sessionId);
+        if (!command) { return; }
+        const member = state.members.find(row => row.taskIds.includes(workerId));
+        const terminal = vscode.window.createTerminal({ name: member?.name ?? worker.workerId, cwd: state.workspacePath });
         terminal.show();
         terminal.sendText(command);
     }
@@ -3905,6 +3923,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'saveMemberProfile':
                 this._saveMemberProfile(message);
+                break;
+            case 'openWorkerTerminal':
+                this._openWorkerTerminal(message.workerId);
                 break;
             case 'openWorkerSession':
                 this._openWorkerSession(message.sessionId, message.external === true);

@@ -4,7 +4,7 @@ Items gathered from unchecked task lines, unresolved analysis findings, open rev
 
 ## Spec order — reviewer, 2026-10-22
 
-"We have few open specs 009, 010, 007 followed by 008 once 003 is complete." Order: finish 003, then 009 (Webex remote channel), 010 (Team), 007 (Validator agent), then 008 (harness benchmark). 004, 005 and 006 are not in this order.
+"We have few open specs 009, 010, 007 followed by 008 once 003 is complete." (2026-10-22, morning) Then, later the same day: "Finsih these gaps in agy and claude and then wrap up 003, switch to 009, 010, 007, 005, in that order." Current order: finish the agy and Claude gaps, wrap up 003, then 009 (Webex remote channel), 010 (Team), 007 (Validator agent), 005 (Spec Kit guided flow). 008 (harness benchmark) was in the morning order and is not in the later one: it stays after 005 until he says otherwise. 004 and 006 are not in this order.
 
 ## Local tooling bugs — 2026-10-08
 

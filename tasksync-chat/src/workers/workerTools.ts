@@ -145,6 +145,69 @@ export function registerWorkerTools(register: Register, runtime: () => RuntimeSo
     registerToolDefinitions(register, [workerTool(runtime, defaultWorkspace)]);
 }
 
+/** Profiles a worker may start: they change nothing (R-WTOOL-46). */
+export const WORKER_CHILD_PROFILES = ['explore', 'research', 'verify', 'quality'];
+export const WORKER_MAX_LIVE_CHILDREN = 2;
+/** Children per calling worker, keyed `${workspace}\0${caller}` so the same worker id in another workspace shares nothing. In memory only. */
+const childrenOf = new Map<string, { runs: Set<string>; workers: Set<string> }>();
+const childWorkers = new Set<string>();
+const TERMINAL_STATES = ['COMPLETED', 'FAILED', 'CANCELLED', 'REMOVED'];
+const refuse = (reason: string) => ({ status: 'REFUSED', reason });
+const guardKey = (workspace: string | undefined, worker: string) => `${workspace ?? ''}\0${worker}`;
+
+type WorkerCaller = { key: string; unidentified: boolean; workspace: string };
+/** The calling worker, or undefined for the main agent and for hosts that name no caller. */
+function callingWorker(): WorkerCaller | undefined {
+    let delivery: typeof import('../aitalk/delivery');
+    try { delivery = require('../aitalk/delivery'); }
+    catch (error: any) { if (error?.code === 'MODULE_NOT_FOUND') { return undefined; } throw error; } // a per-file build without the AITalk modules names no caller
+    const caller = delivery.currentAITalkCaller();
+    if (!caller) { return undefined; }
+    const workspace = caller.workspace ?? '';
+    // A carrier no worker owns is nobody: never the main agent, and it gets nothing from the worker tool.
+    if (caller.unidentified) { return { key: guardKey(workspace, caller.recipient), unidentified: true, workspace }; }
+    const { roomFor } = require('../aitalk/actors') as typeof import('../aitalk/actors');
+    try {
+        const members = roomFor(workspace).store.snapshot(true).members;
+        if (members.some((member: any) => member.id === caller.recipient && member.kind !== 'worker')) { return undefined; }
+    } catch { /* an unreadable room names no main agent: the caller stays a worker */ }
+    return { key: guardKey(workspace, caller.recipient), unidentified: false, workspace };
+}
+
+function collectRuns(value: unknown, into: Array<{ runId: string; workerId: string }> = []): Array<{ runId: string; workerId: string }> {
+    if (Array.isArray(value)) { value.forEach((item) => collectRuns(item, into)); }
+    else if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        if (typeof record.runId === 'string' && typeof record.workerId === 'string') { into.push({ runId: record.runId, workerId: record.workerId }); }
+        else { Object.values(record).forEach((item) => collectRuns(item, into)); }
+    }
+    return into;
+}
+
+/** What a worker may do with the worker tool: read-only children, at most two live, one level deep; the main agent is unrestricted. */
+async function workerCallerRefusal(parent: WorkerCaller, action: string, args: any, runtime: () => RuntimeSource): Promise<Record<string, unknown> | null> {
+    if (parent.unidentified) { return refuse('This call could not be tied to a known worker, so it cannot use the worker tool. Report what you need in your final report.'); }
+    const mine = childrenOf.get(parent.key) ?? { runs: new Set<string>(), workers: new Set<string>() };
+    if (action === 'start' || action === 'submit' || action === 'fanout') {
+        if (childWorkers.has(parent.key)) { return refuse('A worker started by a worker cannot start workers (nesting depth is 1). Report what you need in your final report.'); }
+        // submit and fanout reuse an existing worker: a worker may reuse only its own children, never itself or anyone else's worker.
+        if ((action === 'submit' || action === 'fanout') && !mine.workers.has(String(args.workerId))) {
+            return refuse('A worker may submit or fan out only on child workers it started itself, not on itself or on another worker.');
+        }
+        const packets: any[] = action === 'fanout' ? (Array.isArray(args.packets) ? args.packets : []) : [args];
+        const bad = packets.find((packet) => !WORKER_CHILD_PROFILES.includes(String(packet?.profile)));
+        if (bad) { return refuse(`A worker may start only read-only profiles (${WORKER_CHILD_PROFILES.join(', ')}); "${bad.profile}" is not allowed.`); }
+        const live = await Promise.resolve(runtime());
+        const running = [...mine.runs].filter((runId) => { const state = (live.status(runId) as any)?.state; return state && !TERMINAL_STATES.includes(state); }).length;
+        if (running + packets.length > WORKER_MAX_LIVE_CHILDREN) { return refuse(`A worker may have at most ${WORKER_MAX_LIVE_CHILDREN} child runs live; ${running} are running. Wait for one or cancel it first.`); }
+        return null;
+    }
+    if (['status', 'wait', 'cancel', 'resume', 'logs'].includes(action) && !mine.runs.has(String(args.runId))) {
+        return refuse('A worker may only use the worker tool on the child runs it started itself.');
+    }
+    return null;
+}
+
 /** `waitBudgetMs` caps a wait by the caller's prompt-cache clock; hosts whose callers keep their own cache omit it. */
 export interface WorkerToolOptions {
     waitBudgetMs?: (requestedMs: number) => number;
@@ -174,6 +237,11 @@ export function workerTool(source: () => RuntimeSource, defaultWorkspace: string
         inputSchema: z.object({ action: z.enum(WORKER_ACTIONS).describe('Which operation to run.'), ...shape }),
         run: async ({ action, ...args }) => {
             const operation = operations.get(action);
+            const parent = operation ? callingWorker() : undefined;
+            if (parent) {
+                const refusal = await workerCallerRefusal(parent, action, args, source);
+                if (refusal) { return refusal; }
+            }
             if (operation && options.turnBudget && (action === 'start' || action === 'submit' || action === 'fanout')) {
                 const refusal = workerBudgetRefusal(action, await options.turnBudget());
                 if (refusal) { return refusal; }
@@ -189,7 +257,18 @@ export function workerTool(source: () => RuntimeSource, defaultWorkspace: string
                     if (ready) { return ready; }
                 }
             }
-            return operation ? JSON.parse(await invokeDefinition(operation, args, false)) : { status: 'INVALID_INPUT', reason: `action: one of ${WORKER_ACTIONS.join(', ')}` };
+            if (!operation) { return { status: 'INVALID_INPUT', reason: `action: one of ${WORKER_ACTIONS.join(', ')}` }; }
+            const result = JSON.parse(await invokeDefinition(operation, args, false));
+            if (parent && (action === 'start' || action === 'submit' || action === 'fanout')) {
+                // Only runs this caller just started are its children.
+                const mine = childrenOf.get(parent.key) ?? { runs: new Set<string>(), workers: new Set<string>() };
+                for (const run of collectRuns(result)) {
+                    mine.runs.add(run.runId); mine.workers.add(run.workerId);
+                    childWorkers.add(guardKey(parent.workspace, run.workerId));
+                }
+                childrenOf.set(parent.key, mine);
+            }
+            return result;
         },
     };
 }
