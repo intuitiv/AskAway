@@ -895,3 +895,9 @@ Row R-AITALK-51 ([aitalk.md](tasksync-chat/docs/requirements/aitalk.md)), [ADR 0
 > I dont care where it will be. Sure we can exclude some spaces. But not becaue of privacy but because they will become spam. I think we should consider everything not just what we sent thru askaway. See the spaces which are recurring and i havent read them or i havent posted anything in them in the past 5-6 months. Our webex thing can be a 1 sync call may be recurring if not before any tool call, and store stuff in memory and everything should be served from in memory data structures, so we can reuse across workspaces. From in memry we can do daily report on the fly(when asked, like a tool. call). I am not very clear about reply alert yet. Sure go ahead and update 010 spec and plan accordingly. Yeah 005 then 007, and then 008.
 
 Rows R-CATHY-09 to R-CATHY-14 ([webex-assistant.md](tasksync-chat/docs/requirements/webex-assistant.md)), [ADR 0037](docs/adr/0037-webex-digest-in-memory-index.md) (Proposed), spec 009 story US9 (T057 to T063). Spec order from now: 005, then 007, then 008 (`specs/BACKLOG.md`); US9 does not block 005.
+
+### 2026-10-22 (night)
+
+> i'll create a branch and spec is on some branch. If needed i'll switch or create a branch and as per that PR will be managed. Nothign new.
+
+Row R-SKFLOW-27 ([speckit-flow.md](tasksync-chat/docs/requirements/speckit-flow.md)); R-SKFLOW-10 (one active PR per spec) is struck. Spec 005 T042 (story checkpoint and PR lifecycle) is dropped: no AskAway-managed branches or PRs.
