@@ -959,3 +959,9 @@ Rows R-AITALK-62 to 64, R-PLAN-39 and R-PLAN-42, R-SCORE-09 and the new R-SCORE-
 > Reply injextion, when Priya is not in charge, her message will be with, `My guess...`, `I think...` `My take..` and so on. But when she is in charge, she reply to agent message, as in reply to it, so indicating the difference. Stack size, we can keep cap, but generally i dont go beyond 20, but it is better to keep higher limit. Frankly if we use the same conversation, as we do for Priya, old messages are already in that conversation, so we need not even repeat, i guess. Finshed work is measured by your testbed. You give a workspace and ask team to solve it. And at the end you run some tests and see if that is fixed or not. And you also take amount of code and neatness and so on and give some rank/score..
 
 Rows R-AITALK-65, R-PLAN-44 and R-SCORE-14; specs 007 and 008 updated. Nothing is started.
+
+### 2026-10-22 (answers 4)
+
+> Yes, Sonar, code coverage and so on could be static metrics for the verdict. This benchmark should also compare other harnesses people use. Vikrant boasts about his harness saying his is always cheaper and so on. So, keep difficult and medium and easy problems. So we can give score uniformly to all harnesses. Do not cheat based on questions. Adjusting prompts to solve this is not a honest implementation.
+
+Rows R-SCORE-15 to R-SCORE-17; spec 008 updated. R-SCORE-17 narrows R-SCORE-12 ("tune our agents"): tuning stays general and held-out problems decide. Nothing is started.
