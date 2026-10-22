@@ -52,3 +52,5 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0035](0035-cathy-assistant-tools-and-provider-seam.md) | Cathy's Webex tools use names not ids, macro calls and AITalk approval; provider seam for Outlook | G7, G5 | Proposed |
 | [0036](0036-aitalk-presence-rules.md) | AITalk presence: reviewer and Priya always, main agent per turn, other members only while a question or card is open | G12 | Proposed |
 | [0037](0037-webex-digest-in-memory-index.md) | Webex digest: one sync into a shared in-memory index, report on demand through inbox, spam excluded not privacy | G7 | Proposed |
+| [0038](0038-validator-learn-predict-conversation-stack.md) | The Validator answers and learns from a growing stack of reviewer messages and final agent responses; learn step runs on every reviewer message | G10 | Proposed |
+| [0039](0039-response-handoff-in-aitalk.md) | The Response Handoff is an AITalk message the Validator replies to; main-agent replies can reach the real conversation; tagged members are pulled in | G12 | Proposed |

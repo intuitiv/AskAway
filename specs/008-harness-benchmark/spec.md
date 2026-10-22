@@ -42,6 +42,14 @@
 - Reviewer score principles: "if main agent has more context or wokers are not being used efficiently, score shoudl be less; if there are many cache misses, score should be less; if cost to token ratio is score is less, as cost is more for less tokens."
 - Reviewer sequencing: "finsih 005, 006 and 007 before starting this." The formula is revised against these principles when 008 starts; until then the live banner keeps the current Score.
 
+### Reviewer input 2026-10-22 — score, comparing harnesses, the closing loop (proposed, formula open)
+
+- Reviewer: the harness has a main agent that can do work and delegate, and AA.Orchestrator, which splits tasks well and delegates to other members; "We do all this thing but we dont know what worked and what not. So, thats why we have this concept of score." Compute it from cost, number of requests, cache misses and the main agent's tokens. Better with: more requests (direction unconfirmed, see Open), less cost, fewer cache misses ("anything below 90% is a miss"), time, fewer input tokens in the main agent's last turn. Rows R-SCORE-09 to R-SCORE-12 in `tasksync-chat/docs/requirements/efficiency-score.md`.
+- Spend alone must not decide: a $20 harness may have worked far more than a $10 one, and doing more work than needed for the same problem is not better either, so a score is read with completion of the same problem.
+- Closing loop: realistic problem statements in different technologies and tools, several tasks each; run every harness; read the score at completion; tune the agents to raise it and debug what goes wrong. When the score settles at a decent baseline (he names 25, 30 or 50 as examples) he monitors his own runs against it to see whether they go well or deviate.
+- This builds on the 2026-10-10 live banner Score (round(100 × CacheHit × ContextFactor × PriceFactor), R-SCORE-08). Nothing is changed until he designs the formula; spec 008 stays third in the order 005, 007, 008.
+- **Open (reviewer's question batch):** (1) "more requests": better or worse? (2) Does the new formula replace the banner Score or add a second, benchmark-only score? (3) How is work done measured so a bigger harness run is not penalised: accepted hidden checks, tasks completed, or both? (4) Is time wall-clock of the run or AI time? (5) Does the baseline (25, 30, 50) become an alert level in the banner when a live run drops below it? (6) Which technologies come first for the problem statements?
+
 ## User Scenarios & Testing *(mandatory)*
 
 Each story is an independently testable slice, delivered in priority order. Comparisons use one fixed simulated workspace and task set, not different problems for different agents.

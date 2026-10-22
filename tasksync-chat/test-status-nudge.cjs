@@ -24,8 +24,8 @@ const reminder = 'Status update due (2+ min since your last AITalk post): call t
 fire('UserPromptSubmit', 1000);
 assert.equal(fire('PostToolUse', 120000), '', 'no reminder at 119 seconds');
 assert.equal(fire('PostToolUse', 122000), reminder, 'status reminder at 121 seconds');
-assert.equal(fire('PostToolUse', 122001), '', 'next tool call does not repeat it');
-assert.equal(fire('PostToolUse', 242000, 'main', '122000'), '', 'same tool result remains deduplicated after two minutes');
+assert.equal(fire('PostToolUse', 122001), reminder, 'an unanswered reminder repeats on the next tool result');
+assert.equal(fire('PostToolUse', 242000, 'main', '122001'), '', 'the same tool result is never reminded twice');
 assert.equal(fire('PostToolUse', 242001), reminder, 'reminder again after another two minutes');
 // Exercise the real commentary tool's progress-file write, not a fabricated reset.
 const commentary = {};

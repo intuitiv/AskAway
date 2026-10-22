@@ -26,7 +26,7 @@ const esbuild = require('esbuild');
     assert.equal(api.validatorContextLine(undefined, 'observation'), 'Observation:');
     assert.match(api.validatorContextLine({ authorName: 'Ann', text: 'x'.repeat(200) + '?' }, 'message'), /^Re: Ann's question: "x{1,60}…?"$/);
 
-    assert.equal(api.validatorContextLine({ authorName: 'Ann' }, 'turnEndNoGuess'), "Nothing in your goals, ADRs or notes tells me your reply to Ann's turn summary.");
+    assert.equal(api.validatorContextLine({ authorName: 'Ann' }, 'turnEndNoGuess'), "Honestly, I've got nothing solid on this one.");
 
     // 1. a direct question from the reviewer
     const asked = room.userPost('@Validator which colour?').message;
@@ -48,7 +48,7 @@ const esbuild = require('esbuild');
     // 3. the end-of-turn pass over the agent's final response
     await triggers.turnEnd('Final response: all done.', 'final-1');
     post = lastValidatorPost();
-    assert.equal(post.text.split('\n')[0], `My guess at your reply to ${agent.displayName}'s turn summary:`);
+    assert.equal(post.text.split('\n')[0], "My take would be:");
     assert.equal(post.text.split('\n')[1], 'Use green');
     console.log('PASS EV-VALIDATOR-CONTEXT turn end');
 

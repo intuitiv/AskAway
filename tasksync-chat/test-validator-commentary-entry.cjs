@@ -53,7 +53,7 @@ const { CommentaryStore, buildOpener, ValidatorObserver, ValidatorRecords, AITal
     assert.ok(update, 'agent update is visible in AITalk');
     assert.ok(answer, 'Validator answer is visible in AITalk');
     assert.ok(html.indexOf('id="talk-' + update.id + '"') < html.indexOf('id="talk-' + answer.id + '"'), 'validator follows update');
-    assert.match(html, /No stored decision of yours covers this/);
+    assert.match(html, /Hmm, you have not told me anything on this one/);
     assert.match(html, /validator server unavailable/);
     console.log('PASS EV-VALIDATOR-COMMENTARY-ENTRY: AITalk update-before-validator order, visible no-source/error, shared Trace Validator evidence');
 })().catch(error => { console.error(error); process.exitCode = 1; });

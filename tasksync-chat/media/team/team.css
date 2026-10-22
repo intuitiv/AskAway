@@ -722,6 +722,11 @@ body.vscode-light #panel-team,
 	opacity: 0.55;
 }
 
+.team-compact-status.team-status-resting .team-status-dot {
+	opacity: 0.35;
+	animation: none;
+}
+
 .team-compact-status.team-status-working .team-status-dot {
 	opacity: 1;
 	animation: team-dot-pulse 1.8s ease-in-out infinite;

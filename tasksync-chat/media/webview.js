@@ -2849,6 +2849,7 @@
         var offset = (Math.imul(h, 2654435761) >>> 0) % period;
         return { period: period, offset: offset };
     }
+    var TEAM_RESTING_STATUS = 'Offline';
     function teamStatusPhrases(member, working) {
         var list = (working ? member.statusWorking : member.statusIdle) || [];
         list = list.filter(function (p) { return typeof p === 'string' && p; });
@@ -3096,11 +3097,13 @@
         var id = workersEsc(member.id);
         var open = Boolean(expanded && expanded['edit:' + member.id] === true);
         var passive = !member.pinned && !main && costs.turn <= 0;
-        var working = status.dotState === 'running' && !passive;
+        // No turn (state.turnActive === false): every member rests, one fixed label and a static dot (reviewer, 2026-10-22).
+        var resting = Boolean(state && state.turnActive === false);
+        var working = !resting && status.dotState === 'running' && !passive;
         var sel = teamModelControls(member, memberWorkers, state);
         var modelText = teamModelLabel(splitModelId(sel.selectedFull).base).replace(/ \((agy|claude)\)$/, '');
-        var phrases = teamStatusPhrases(member, working);
-        var statusText = teamStatusPick(phrases, state && state.generatedAt, member.id);
+        var phrases = resting ? [TEAM_RESTING_STATUS] : teamStatusPhrases(member, working);
+        var statusText = resting ? TEAM_RESTING_STATUS : teamStatusPick(phrases, state && state.generatedAt, member.id);
         var total = Number(state && state.turnTotal) || 0;
         var sharePct = total > 0 ? Math.min(100, costs.turn / total * 100) : 0;
         var slot = teamAccentSlot(member.id);
@@ -3120,7 +3123,7 @@
             (main ? '' : teamTasksPillHtml(member, info)) +
             teamEditButtonHtml(member, open) +
             '</div>' +
-            '<div class="team-member-status team-compact-status team-status-' + (working ? 'working' : 'idle') + '" data-status-state="' + (working ? 'working' : 'idle') + '" data-status-phrases="' + workersEsc(JSON.stringify(phrases)) + '" data-status-member="' + id + '" title="' + workersEsc(statusText) + '"><span class="team-status-dot" aria-hidden="true"></span><span class="team-status-text">' + workersEsc(statusText) + '</span></div>' +
+            '<div class="team-member-status team-compact-status team-status-' + (working ? 'working' : resting ? 'resting' : 'idle') + '" data-status-state="' + (working ? 'working' : resting ? 'resting' : 'idle') + '" data-status-phrases="' + workersEsc(JSON.stringify(phrases)) + '" data-status-member="' + id + '" title="' + workersEsc(statusText) + '"><span class="team-status-dot" aria-hidden="true"></span><span class="team-status-text">' + workersEsc(statusText) + '</span></div>' +
             '</div></div>' +
             '<div class="team-share" role="img" data-share="' + Math.round(sharePct) + '" aria-label="' + workersEsc(member.name) + ' spent ' + Math.round(sharePct) + '% of this turn"><span class="team-share-fill" style="width:' + sharePct.toFixed(2) + '%"></span></div>' +
             (main ? '' : teamMemberTrayHtml(member, memberWorkers, state, expanded, openIds, traces, info)) +
@@ -3563,6 +3566,7 @@
         var list = document.getElementById('workers-list');
         if (!list || !workersState || typeof list.querySelector !== 'function') return;
         var now = Date.now() - workersClockSkew;
+        if (workersTurnActive() !== workersPaintedTurnActive) { paintWorkers(); return; }
         tickTeamStatus(list, now);
         var all = (workersState.workers || []).concat(workersState.cloudWorkers || []);
         all.forEach(function (w) {
@@ -3578,11 +3582,18 @@
         });
     }
 
+    // The one existing turn signal (the Metrics turn timer): a turn is active until its prompt cache went cold.
+    var workersPaintedTurnActive = null;
+    function workersTurnActive() {
+        var m = observabilityMetrics || {};
+        return turnTimerActive(m.turnStartedAt, m.lastRequestTs, Date.now());
+    }
     function paintWorkers() {
         var list = document.getElementById('workers-list');
         if (!list || !workersState) return;
         // Age ticks locally between polls; the skew keeps it on the extension host's clock.
-        var ticking = Object.assign({}, workersState, { generatedAt: Date.now() - workersClockSkew, showAll: workersShowAll });
+        var ticking = Object.assign({}, workersState, { generatedAt: Date.now() - workersClockSkew, showAll: workersShowAll, turnActive: workersTurnActive() });
+        workersPaintedTurnActive = ticking.turnActive;
         // Re-rendering between pointerdown and click drops the click, so the row never toggles.
         if (workersPointerDown) return;
         patchTeam(list, ticking, '', workersExpanded, traceOpenIds(list), workersTraces);

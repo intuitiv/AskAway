@@ -24,7 +24,7 @@ const esbuild = require('esbuild');
     const guess = 'Ship it on Friday after the smoke test passes, and keep the release notes short because the reviewer prefers plain sentences. '.repeat(3);
     commentary.postValidator(root, { text: 'Validator: x', detail: { turnEnd: true, answer: guess, sources: ['GOALS.md'], observations: 'Rule applies.', summary: 'Covered.' } });
     let collapsed = html(last());
-    assert.match(collapsed, /My guess at your reply to .*turn summary:/);
+    assert.match(collapsed, /My take would be:/);
     assert.match(collapsed, /Ship it on Friday/);
     assert.doesNotMatch(collapsed, /No source answers/i);
     assert.match(collapsed, /Show more/);
@@ -33,17 +33,17 @@ const esbuild = require('esbuild');
     // 2. turn end with no source: an honest lead-in plus the Validator's own summary
     commentary.postValidator(root, { text: 'Validator: no source answers this question.', detail: { turnEnd: true, answer: null, sources: [], summary: 'Migration done, two tests skipped.', observations: 'Skipped tests need a decision.' } });
     collapsed = html(last());
-    assert.match(collapsed, /Nothing in your goals, ADRs or notes tells me your reply to .*turn summary\./);
+    assert.match(collapsed, /got nothing solid on this one/);
     assert.match(collapsed, /Migration done/);
     assert.doesNotMatch(collapsed, /No source answers/i);
-    assert.doesNotMatch(collapsed, /My guess at/);
+    assert.doesNotMatch(collapsed, /My take would be/);
     console.log('PASS EV-AITALK-VALIDATOR-GUESS no guess');
 
     // 3. a message reply with no source
     const asked = room.userPost('@Validator which colour?').message;
     commentary.postValidator(root, { text: 'Validator: no source answers this question.', detail: { observedId: asked.id, answer: null, sources: [] } });
     collapsed = html(last());
-    assert.match(collapsed, /No stored decision of yours covers this\./);
+    assert.match(collapsed, /Hmm, you have not told me anything on this one\./);
     assert.doesNotMatch(collapsed, /No source answers/i);
     console.log('PASS EV-AITALK-VALIDATOR-GUESS reply without source');
 

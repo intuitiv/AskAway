@@ -164,7 +164,19 @@ export class CommentaryStore {
         this.write(state);
         // The AITalk mirror is best effort: a room that refuses the line never fails the commentary post itself.
         try { talkPost?.(workspacePath, { text, kind: input.kind }); } catch { /* the feed already holds the line */ }
+        this.markMainPost(workspacePath);
         return { status: 'POSTED', id: item.id };
+    }
+
+    /**
+     * The one per-workspace "since your last AITalk post" clock read by the PostToolUse status reminder: it advances only when a
+     * main-agent AITalk post (action say or post) succeeded, never when the reminder is merely shown (reviewer, 2026-10-22).
+     */
+    markMainPost(workspacePath: string): void {
+        try {
+            fs.mkdirSync(this.dir, { recursive: true });
+            fs.writeFileSync(this.file(workspacePath).replace(/\.json$/, '.progress.json'), JSON.stringify({ lastCommentaryAt: this.now() }));
+        } catch { /* the clock is advisory; a failed write never fails the post */ }
     }
 
     /**
@@ -234,7 +246,8 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
             if (!workspace) return { status: 'REJECTED', reason: 'workspacePath is required: say which workspace this line belongs to' };
             if (args.action === 'say' || args.action === 'aitalk') {
                 if (!talkPost) return { status: 'REJECTED', reason: 'AITalk is not configured' };
-                const posted = talkPost(workspace, args) as { id?: string } | undefined;
+                const posted = talkPost(workspace, args) as { id?: string; status?: string } | undefined;
+                if (posted && typeof posted.id === 'string' && posted.status !== 'REJECTED') { try { store().markMainPost(workspace); } catch { /* No local store (tests, headless): the clock stays as it was. */ } }
                 const seconds = args.waitSeconds ?? (args.kind === 'heads-up' && !args.replyTo ? AITALK_QUESTION_WAIT_SECONDS : 0);
                 return talkWait && posted?.id && seconds > 0 ? talkWait(workspace, { id: posted.id }, seconds).then(waited => ({ ...posted, ...(waited as object) })) : posted;
             }

@@ -32,7 +32,7 @@ export function configureAITalkDelivery(root: string): void {
         const noAnswer = !detail.error && 'answer' in detail && !(typeof detail.answer === 'string' && detail.answer.trim());
         const plain = (value: unknown) => typeof value === 'string' && value.trim() ? value : '';
         // No cited source answers: never present that as a guess. A turn-end post carries the Validator's own summary; a reply says so honestly.
-        const crisp = noAnswer ? (detail.turnEnd === true ? plain(detail.summary) || plain(detail.observations) : 'No stored decision of yours covers this.')
+        const crisp = noAnswer ? (detail.turnEnd === true ? plain(detail.summary) || plain(detail.observations) : 'Hmm, you have not told me anything on this one.')
             : detail.error ? `Could not check this: ${String(detail.error).slice(0, 240)}`
             : typeof detail.answer === 'string' && detail.answer.trim() ? detail.answer
                 : typeof detail.summary === 'string' && detail.summary.trim() ? detail.summary : input.text;

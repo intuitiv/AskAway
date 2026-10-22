@@ -145,8 +145,11 @@ export function splitBody(message) {
 }
 
 // Details and long bodies use the same safe markdown renderer as every message.
+// A Validator's `Sources: …` / `Observations: …` / `Impact: …` lines become a bold-labelled list.
+const LABELLED = /^(Sources|Observations|Impact): *(.*)$/;
 export function detailsHtml(details, members = defaultMembers) {
-    return markdownHtml(details, mentionsOf(members));
+    const formatted = String(details).split('\n').map(line => line.replace(LABELLED, '- **$1:** $2')).join('\n');
+    return markdownHtml(formatted, mentionsOf(members));
 }
 
 const textBlockHtml = (text, members) => hasBlockMarkdown(text)
@@ -158,7 +161,7 @@ export function bodyHtml(message, members = defaultMembers) {
     const { short, full, details, collapsible } = splitBody(message);
     const id = escapeHtml(message.id || '');
     const open = !!message.expanded;
-    const text = textBlockHtml(open && !details ? full : short, members);
+    const text = textBlockHtml(open ? full : short, members);
     if (!collapsible) return text;
     const body = open && details ? `<div class="talk-details" id="talk-details-${id}">${detailsHtml(details, members)}</div>` : '';
     return `${text}${body}<button type="button" class="talk-more" data-more="${id}" aria-expanded="${open}"${open && details ? ` aria-controls="talk-details-${id}"` : ''}>${open ? 'Show less' : 'Show more'}</button>`;

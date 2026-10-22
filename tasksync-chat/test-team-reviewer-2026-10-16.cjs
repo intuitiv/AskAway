@@ -59,7 +59,7 @@ function createHarness() {
     const traceCase = between(webviewSrc, "            case 'workerTrace':", '                break;');
     const api = new Function('document', 'window', 'vscode', 'setInterval', `
         var currentTab = 'chat';
-        var observabilityMetrics = {};
+        var observabilityMetrics = { turnStartedAt: Date.now(), lastRequestTs: Date.now() };
         function escapeHtml(v) { return String(v == null ? '' : v); }
         function switchTab(tab) { currentTab = tab; }
         ${between(webviewSrc, '// ── Usage banner', '// ── end Usage banner ──')}

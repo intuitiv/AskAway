@@ -15,8 +15,8 @@ function quote(text: string | undefined): string {
  * `message`: it answers the replied-to message by `parent`. `observation`: nothing to answer.
  */
 export function validatorContextLine(parent: ValidatorContextParent | undefined, kind: ValidatorContextKind): string {
-    if (kind === 'turnEnd') return `My guess at your reply to ${parent?.authorName || 'the agent'}'s turn summary:`;
-    if (kind === 'turnEndNoGuess') return `Nothing in your goals, ADRs or notes tells me your reply to ${parent?.authorName || 'the agent'}'s turn summary.`;
+    if (kind === 'turnEnd') return 'My take would be:';
+    if (kind === 'turnEndNoGuess') return "Honestly, I've got nothing solid on this one.";
     if (kind === 'observation' || !parent) return 'Observation:';
     const name = parent.authorName || 'someone';
     const fromAgent = parent.authorKind === 'agent' || parent.authorKind === 'worker';

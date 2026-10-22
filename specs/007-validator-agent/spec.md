@@ -253,6 +253,28 @@ The numeric targets below (60%, 70%, 80%, 10%) remain provisional. Reviewer 2026
 - Linking the validator's answers and prompt additions to the agent is out of scope for the first release (beta, Commentary-only); it is a later release, added with cautions once the reviewer has confidence.
 - Per-spec cost and token fields recorded by earlier specs (005) are reused for the validator's cost.
 
+## Learn and predict loops (reviewer design, 2026-10-22, proposed; slow design in progress)
+
+Reviewer: "I dont want to design 007 and the rest in a hurry. LEt me design in slowly." This section records his design input and the audit facts; [ADR 0038](../../docs/adr/0038-validator-learn-predict-conversation-stack.md) holds the decision (Proposed). Rows R-PLAN-38 to R-PLAN-43 in `tasksync-chat/docs/requirements/availability-and-validator.md`.
+
+**Audit facts (2026-10-22):** the turn-end input is the previous final plus the reviewer's reply, the AITalk messages of the turn and the whole current final, not a durable stack (`src/validator/validatorTriggers.ts:27-55`). `ValidatorObserver.closeLoop` (compare the earlier prediction with the reviewer's reply, store rules, record `matched`) exists and is tested (`test-validator-close-loop.cjs`) but has no caller in `src` (`src/validator/observer.ts:152`), so Priya does not learn from his replies today. No conversation stack is persisted for spec 004.
+
+**Sequence** (U = reviewer message, m = intermediate messages, tool calls and thinking, A = final agent response, V = Validator output): `U1, m1, m2 m3..., A1, V1, U2, m10, m11..., A2, V2, U3...`. Only U and A are captured, for the whole conversation, continuously.
+
+| Step | Input | Output |
+|---|---|---|
+| Respond to A1 | U1 | V1 (answer when in charge, prediction when not) |
+| Learn | U1, A1, prediction V1, U2 | match or miss recorded, extracted knowledge stored |
+| Respond to A2 | U1, A1, U2 | V2 |
+| Learn | U1, A1, U2, A2, V2, U3 | match or miss, knowledge |
+| Respond to A3, learn again | the stack so far | and so on |
+
+**Extract from the reviewer's messages:** how he answers questions, priorities and guidance, what is important and what is not, what he repeats. A prediction that matches his reply adds points. The same stack feeds spec 004.
+
+**Tests:** end to end with a cheap model (Luna, or agy Argon 4), scripted conversation, asserting the stack, the predictions, the match records and that a later answer uses something learned earlier.
+
+**Open (reviewer's question batch):** stack size cap and whether it survives a conversation switch; how points are counted and where they show; whether learning runs only when the Validator is in charge or always; whether "respond to A_n" at Here (not in charge) stays a silent prediction; which model the live test may spend on and its budget.
+
 ## Beta limits
 
 Reviewer D19: "accept". The open items of the reviewer checklists (beta-privacy, knowledge-store, cost-evals) are accepted as beta limits, not blockers; analyze A20/N6 is resolved. Known limits:

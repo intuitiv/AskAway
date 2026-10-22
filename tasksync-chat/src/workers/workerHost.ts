@@ -156,12 +156,6 @@ export function sharedServerStatus(): ServerStatus | undefined {
 export function sharedCommentaryStore(): CommentaryStore {
     if (!commentary) {
         commentary = new CommentaryStore();
-        commentary.onChange(state => {
-            const last = state.items.at(-1)?.ts;
-            if (!last) return;
-            const file = commentary!.file(state.workspacePath).replace(/\.json$/, '.progress.json');
-            fs.writeFileSync(file, JSON.stringify({ lastCommentaryAt: last }));
-        });
     }
     return commentary;
 }

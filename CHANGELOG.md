@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## AskAway v2.3.4 (10-21-26)
 
+- **Team members rest between turns:** with no turn running, every member shows one fixed "Offline" status with a still dot; while a turn runs the glowing dot returns for working members. No more status flicker when nothing is happening.
+- **Priya reads like a person:** her turn-end bubble opens with "My take would be:", Show more reveals the whole message with formatted Sources, Observations and Impact, and when she has nothing she says so lightly.
+- **Update reminders keep coming:** the "status update due" reminder repeats until the agent actually posts, every AITalk post resets the same clock, and the AskAway Build agent is told to post about every two minutes.
 - **Webex replies after the turn:** a reply to the turn-end handoff was ignored once the turn had been idle for about five minutes; it now reaches the conversation until the handoff expires (36 hours) or a new turn starts. The finish alert says "Reply to this message to continue."
 - **Webex daily report:** ask Cathy's `inbox` tool with `mode: digest` for what needs you across every space you are in, not just what AskAway sent: mentions, replies to threads you sent and unanswered direct messages. One Webex sync fills an in-memory index shared by all workspaces (nothing is written to disk); quiet spaces (nothing posted by you and no mention for six months) and spaces on your mute list `~/.askaway/webex-mute.json` are skipped and counted in one line, but a mention or a reply to you always shows. It is read-only; there is no push reply alert yet.
 - **Worker packets are scoped:** the `worker` tool refuses a file-changing profile with no `allowedFiles` and refuses packets whose files overlap a running write worker.
