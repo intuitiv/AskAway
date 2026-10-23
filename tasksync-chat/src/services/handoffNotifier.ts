@@ -7,6 +7,7 @@ import { CONFIG_NAMESPACE } from '../constants/branding';
 import { createTelegramHandoffTaskId } from './telegramConversationReply';
 import { renderResponseFile, type ResponseFile } from './responsePdf';
 import type { RemoteChannel } from './remoteChannel';
+import { nextHandoffMessage } from '../talk/nextLine';
 
 /**
  * Posts the agent's `Response Handoff` section to Webex and/or Telegram when a turn ends.
@@ -26,6 +27,7 @@ const SETTLE_MS = 1500;
 const GATE_BLOCK_WINDOW_MS = 5000;
 const TAIL_BYTES = 4 * 1024 * 1024; // agent_response lines are large; the last one is at the end
 const TURN_LOOKBACK_MS = 10 * 60 * 1000;
+const NEXT_POST_TIMEOUT_MS = 5000;
 const WATCH_INTERVAL_MS = 2000;
 
 /** The mandatory handoff, plus everything that came before it in the same message. */
@@ -86,6 +88,8 @@ export class HandoffNotifier implements vscode.Disposable {
     private _onAgentFinal: ((input: { sessionId: string; text: string; turnId: string }) => void | Promise<void>) | undefined;
     /** (sessionId, promptId) or, with no prompt id, (sessionId, text hash) of the finals already handed over, with the time handed over. */
     private readonly _finalsSeen = new Map<string, number>();
+    private _onNext: ((text: string) => void | Promise<void>) | undefined;
+    private _nextPending: Promise<void> | undefined;
 
     constructor(
         private readonly _targets: HandoffTarget[],
@@ -99,6 +103,11 @@ export class HandoffNotifier implements vscode.Disposable {
     /** ADR 0038: receives each real turn's final agent response (once per distinct text per session). While set, it replaces the old `_validateFinal` path for stamps that name a session. */
     public setAgentFinal(callback: ((input: { sessionId: string; text: string; turnId: string }) => void | Promise<void>) | undefined): void {
         this._onAgentFinal = callback;
+    }
+
+    /** R-AITALK-60: receives the one short `Next:` + turn cost message per turn for the AITalk room. Telegram and Webex keep the full handoff. */
+    public setNextHandoff(callback: ((text: string) => void | Promise<void>) | undefined): void {
+        this._onNext = callback;
     }
 
     public start(): void {
@@ -165,12 +174,13 @@ ${text}`, `AskAway: ${text}`);
             return;
         }
 
-        // The turn ended whether or not its final text carries a handoff, so the agent leaves the room now.
+        const captured = this._captureFinal(ts);
+        // The turn ended whether or not its final text carries a handoff, so the agent leaves the room now (after its Next message).
         if (ts > this._lastEndedTs) {
             this._lastEndedTs = ts;
+            await this._nextPending;
             try { this._turnEnded?.(); } catch (err) { this._log('Handoff notifier: turn-end callback failed', err instanceof Error ? err.message : String(err)); }
         }
-        const captured = this._captureFinal(ts);
         const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         const enabled = this._targets.filter(t => cfg.get<boolean>(t.setting, false));
         if (!enabled.length && (captured || !this._validateFinal)) { this._lastPostedTs = ts; return; }
@@ -249,9 +259,23 @@ ${text}`, `AskAway: ${text}`);
             const key = `${sessionId}:${promptId ? `prompt:${promptId}` : `text:${createHash('sha256').update(text).digest('hex')}`}`;
             if (this._finalsSeen.has(key)) { return true; }
             this._finalsSeen.set(key, now);
+            this._nextPending = this._postNext(text);
             Promise.resolve(this._onAgentFinal({ sessionId, text, turnId: String(ts) })).catch(err => this._log('Handoff notifier: final-response callback failed', err instanceof Error ? err.message : String(err)));
         } catch (err) { this._log('Handoff notifier: final-response capture failed', err instanceof Error ? err.message : String(err)); }
         return true;
+    }
+
+    private async _postNext(finalText: string): Promise<void> {
+        if (!this._onNext) { return; }
+        let timer: NodeJS.Timeout | undefined;
+        // A hung metrics read or room post must never hold back the agent leaving or the remote handoff.
+        const timeout = new Promise<void>(resolve => { timer = setTimeout(() => { this._log('Handoff notifier: next-line post timed out'); resolve(); }, NEXT_POST_TIMEOUT_MS); });
+        const work = (async () => {
+            const turnMetrics = await this._getTurnMetrics?.();
+            const message = nextHandoffMessage(finalText, turnMetrics?.turnNanoAiu);
+            if (message) { await this._onNext!(message); }
+        })().catch(err => this._log('Handoff notifier: next-line post failed', err instanceof Error ? err.message : String(err)));
+        try { await Promise.race([work, timeout]); } finally { if (timer) { clearTimeout(timer); } }
     }
 
     private async _sendResponseDocument(send: (file: string, caption: string) => Promise<boolean>, parts: HandoffParts): Promise<void> {

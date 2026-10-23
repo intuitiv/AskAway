@@ -8,7 +8,7 @@ function save(s) { try { fs.mkdirSync(cfg, { recursive: true }); } catch (e) {} 
 function fmt(ms) { const sec = Math.round(ms / 1000); return Math.floor(sec / 60) + 'm' + String(sec % 60).padStart(2, '0') + 's'; }
 let context = [];
 function emit(text) { context.push(text); }
-process.on('exit', () => { if (context.length) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: context.join('\\n') } })); });
+process.on('exit', () => { if (context.length) { const text = context.join('\\n'); process.stdout.write(JSON.stringify({ additionalContext: text, hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } })); } });
 // The parent's cache clock started when its last model request STARTED, earlier than this hook by the whole response.
 function parentClock(sid, now) { try { const t = JSON.parse(fs.readFileSync(path.join(cfg, 'cache-clock.json'), 'utf8')).sessions[sid]; return t && t <= now && now - t < HARD_MS ? t : now; } catch (e) { return now; } }
 try {
@@ -27,7 +27,7 @@ try {
         let last = turn.startedAt;
         try { last = Math.max(last, JSON.parse(fs.readFileSync(path.join(cfg, 'commentary', key + '.progress.json'), 'utf8')).lastCommentaryAt || 0); } catch (e) {}
         const resultId = useId || tool + ':' + now;
-        if (now - last >= 120000 && turn.lastReminderResult !== resultId) { turn.lastReminderResult = resultId; save(s); emit('Status update due (2+ min since your last AITalk post): call the aitalk tool (action say) with one or two plain sentences: what you are doing now, what is done, and where you are blocked or what you are waiting for. This is a status line, not a report.'); }
+        if (now - last >= 120000 && turn.lastReminderResult !== resultId) { turn.lastReminderResult = resultId; save(s); emit('Status update due (2+ min since your last AITalk post): call the aitalk tool (action say) with one or two plain sentences: what you are doing now, what is done so far, any decision you took and why, and where you are blocked or what you are waiting for. If the aitalk tool is not loaded, load it first. This is a status line, not a report.'); }
     }
     s.pending = s.pending.filter(e => now - e.startedAt < STALE_MS);
     const live = s.pending.map(e => e.startedAt);

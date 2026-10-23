@@ -4724,15 +4724,25 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     <link href="${teamStyleUri}" rel="stylesheet">
     <title>AskAway</title>
     <style>
-        #aa-loader { position: fixed; inset: 0; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); color: var(--vscode-descriptionForeground); font: 12px var(--vscode-font-family, sans-serif); transition: opacity .25s ease; }
+        #aa-loader { position: fixed; inset: 0; z-index: 99999; display: flex; flex-direction: column; gap: 12px; padding: 10px 12px; overflow: hidden; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); color: var(--vscode-descriptionForeground); font: 12px var(--vscode-font-family, sans-serif); transition: opacity .25s ease; }
         #aa-loader.aa-loader-out { opacity: 0; pointer-events: none; }
-        #aa-loader .aa-bubble { position: relative; display: flex; gap: 6px; padding: 14px 18px; border-radius: 18px; background: var(--vscode-button-secondaryBackground, rgba(128,128,128,.25)); }
-        #aa-loader .aa-bubble::after { content: ""; position: absolute; left: 14px; bottom: -6px; width: 14px; height: 14px; background: inherit; transform: rotate(45deg); border-radius: 2px; }
-        #aa-loader .aa-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--vscode-progressBar-background, var(--vscode-focusBorder)); animation: aa-bounce 1.1s ease-in-out infinite; }
-        #aa-loader .aa-dot:nth-child(2) { animation-delay: .15s; }
-        #aa-loader .aa-dot:nth-child(3) { animation-delay: .3s; }
-        @keyframes aa-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-7px); opacity: 1; } }
-        @media (prefers-reduced-motion: reduce) { #aa-loader .aa-dot { animation: none; opacity: .8; } }
+        #aa-loader .aa-sk { display: block; position: relative; overflow: hidden; border-radius: 6px; background: rgba(128,128,128,.18); animation: aa-paint .5s ease-out var(--d, 0s) both; }
+        #aa-loader .aa-sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(128,128,128,.22), transparent); transform: translateX(-100%); animation: aa-shimmer 1.6s ease-in-out calc(var(--d, 0s) + .5s) infinite; }
+        #aa-loader .aa-tabs { display: flex; gap: 8px; }
+        #aa-loader .aa-tabs .aa-sk { height: 22px; flex: 1; max-width: 70px; border-radius: 11px; }
+        #aa-loader .aa-msg { display: flex; gap: 8px; align-items: flex-start; }
+        #aa-loader .aa-msg.aa-me { flex-direction: row-reverse; }
+        #aa-loader .aa-av { width: 28px; height: 28px; flex: none; border-radius: 50%; }
+        #aa-loader .aa-lines { display: flex; flex-direction: column; gap: 6px; flex: 1; max-width: 78%; }
+        #aa-loader .aa-lines .aa-sk { height: 10px; }
+        #aa-loader .aa-msg.aa-me .aa-lines { align-items: flex-end; }
+        #aa-loader .aa-grow { flex: 1; }
+        #aa-loader .aa-composer { height: 56px; border-radius: 10px; }
+        #aa-loader .aa-cap { position: absolute; left: 0; right: 0; bottom: 78px; text-align: center; animation: aa-pulse 1.4s ease-in-out infinite; }
+        @keyframes aa-paint { from { clip-path: inset(0 100% 0 0); opacity: 0; } to { clip-path: inset(0 0 0 0); opacity: 1; } }
+        @keyframes aa-shimmer { to { transform: translateX(100%); } }
+        @keyframes aa-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+        @media (prefers-reduced-motion: reduce) { #aa-loader .aa-sk, #aa-loader .aa-sk::after, #aa-loader .aa-cap { animation: none; } }
     </style>
     <script nonce="${nonce}">
         (function () {
@@ -4764,7 +4774,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     <audio id="notification-sound" preload="auto" src="${notificationSoundUri}"></audio>
 </head>
 <body>
-    <div id="aa-loader" role="status" aria-live="polite"><div class="aa-bubble"><span class="aa-dot"></span><span class="aa-dot"></span><span class="aa-dot"></span></div><div>Starting AskAway…</div></div>
+    <div id="aa-loader" role="status" aria-live="polite"><div class="aa-tabs"><i class="aa-sk" style="--d:0s"></i><i class="aa-sk" style="--d:.06s"></i><i class="aa-sk" style="--d:.12s"></i><i class="aa-sk" style="--d:.18s"></i><i class="aa-sk" style="--d:.24s"></i></div><div class="aa-msg" style="margin-top:6px"><i class="aa-sk aa-av" style="--d:.3s"></i><div class="aa-lines"><i class="aa-sk" style="--d:.4s;width:90%"></i><i class="aa-sk" style="--d:.5s;width:60%"></i></div></div><div class="aa-msg aa-me"><i class="aa-sk aa-av" style="--d:.7s"></i><div class="aa-lines"><i class="aa-sk" style="--d:.8s;width:70%"></i></div></div><div class="aa-msg"><i class="aa-sk aa-av" style="--d:1s"></i><div class="aa-lines"><i class="aa-sk" style="--d:1.1s;width:95%"></i><i class="aa-sk" style="--d:1.2s;width:80%"></i><i class="aa-sk" style="--d:1.3s;width:45%"></i></div></div><div class="aa-grow"></div><i class="aa-sk aa-composer" style="--d:1.5s"></i><div class="aa-cap">Starting AskAway…</div></div>
     <div class="main-container">
         <!-- Tab Bar -->
         <div class="widget-tabs" id="widget-tabs">

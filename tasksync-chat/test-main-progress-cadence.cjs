@@ -62,6 +62,9 @@ assert.equal(say('heads-up').id, 'm3');
 assert.equal(due(589999), false, 'any successful say kind advances the clock');
 
 const pkg = fs.readFileSync(path.join(__dirname, 'src', 'agents', 'askawayBuildAgent.ts'), 'utf8');
-assert.ok(/about every two minutes \(at most four\)/.test(pkg) && /its own aitalk call/.test(pkg), 'the Build agent instructions state the cadence');
+assert.ok(/about every two minutes for as long as the turn runs, with no cap/.test(pkg) && /its own aitalk call/.test(pkg) && /any decision you took/.test(pkg), 'the Build agent instructions state the cadence, with decisions and no cap');
+const timerSrc = fs.readFileSync(path.join(__dirname, 'src', 'hooks', 'subagentTimerScript.ts'), 'utf8');
+assert.ok(/any decision you took/.test(timerSrc), 'the reminder asks for decisions as well');
+assert.ok(/additionalContext: text, hookSpecificOutput/.test(timerSrc), 'the reminder is emitted in both hook output shapes (VS Code chat and the Copilot harness)');
 assert.ok(/10-20 plain words/.test(pkg), 'the word rule is unchanged');
 console.log('PASS EV-MAIN-PROGRESS-CADENCE');

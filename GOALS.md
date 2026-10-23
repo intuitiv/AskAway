@@ -975,3 +975,13 @@ Accepts the training and held-out split for R-SCORE-17 (2026-10-22). Nothing is 
 > when askaway tab is rendered, it shows some crappy looking raw buttons and after a sec or 2 it'll correct itself. Can we add some loader or something. Custom loader would be great. If you can give me some prompt i can generate a gif or something for you.
 
 Row R-AITALK-66 (loader while the view starts). Nothing else changed.
+
+### 2026-10-23 (answers 1)
+
+> i still dont get frequent updates from main agent. Are we sending prompt to agent saying that it should update whats its doing so far and any blockers or any decisions it took and all?
+
+Row R-ORCH-34 reworded (no cap; decisions and blockers). Cause found: the Copilot harness agent file was never refreshed and the hook reminder was not delivered in that shape.
+
+> i am thinking the gif could be more like some agentic thing simple but unique. Even this where we show some templated screen like we are painting it and all is good.
+
+Design input for the loader (R-AITALK-66): a skeleton screen that paints in, not a spinner. Nothing built yet.

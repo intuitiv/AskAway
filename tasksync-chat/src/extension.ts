@@ -1404,7 +1404,7 @@ export function activate(context: vscode.ExtensionContext) {
                     () => roomFor(memoryProject).unregisterAgent()
                 );
                 notifier.setAgentFinal(input => triggers.onAgentFinal({ conversationKey: stackKey(memoryProject, input.sessionId), text: input.text, turnId: input.turnId }));
-                notifier.start();
+                notifier.setNextHandoff(text => { const room = roomFor(memoryProject); const id = room.store.agentId(); if (id && room.isRegistered(id)) { room.post(id, text, { kind: 'update' }); } }); notifier.start();
                 context.subscriptions.push(notifier);
                 logRuntime('Handoff notifier watching turn-complete stamp', { debugLogsDir });
             }
