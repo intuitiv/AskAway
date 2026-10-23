@@ -87,3 +87,18 @@ export class ValidatorRecords {
 
     index(): IndexEntry[] { return this.read<IndexEntry>('index'); }
 }
+
+/** Matched of compared predictions summed over every spec folder of the workspace (R-SCORE-18 starting rule). */
+export function workspaceMatchTotals(workspaceRoot: string): { matched: number; compared: number } {
+    let matched = 0;
+    let compared = 0;
+    let slugs: string[] = [];
+    try { slugs = fs.readdirSync(path.join(workspaceRoot, '.askaway', 'specs')); } catch { return { matched, compared }; }
+    for (const slug of slugs) {
+        if (slug !== NO_SPEC && !SLUG.test(slug)) { continue; }
+        for (const p of new ValidatorRecords(workspaceRoot, slug === NO_SPEC ? null : slug).predictions()) {
+            if (typeof p.matched === 'boolean') { compared++; if (p.matched) { matched++; } }
+        }
+    }
+    return { matched, compared };
+}

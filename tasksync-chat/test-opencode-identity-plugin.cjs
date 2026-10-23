@@ -11,7 +11,7 @@ const { transpileSrc } = require('./tools/transpile-src.cjs');
 const buildDir = path.join(__dirname, '.opencode-identity-test-build');
 fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(buildDir);
-transpileSrc(buildDir, ['workers', 'team', 'aitalk', 'commentary']);
+transpileSrc(buildDir, ['workers', 'team', 'aitalk', 'commentary', 'hooks', 'validator']);
 const load = (...parts) => require(path.join(buildDir, ...parts));
 const { syncOpenCodeIdentityPlugin, identityPluginSource, IDENTITY_PLUGIN_FILE } = load('workers', 'openCodeIdentityPlugin.js');
 const { parseWorkerProfile } = load('workers', 'workerProfiles.js');

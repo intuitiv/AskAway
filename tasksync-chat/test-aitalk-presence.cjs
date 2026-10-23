@@ -111,7 +111,7 @@ const vm = require('node:vm');
     assert.equal(snapshot.messages.find(item => item.id === asked.id).tick, 'read');
     assert.ok(snapshot.messages.some(item => item.author === member('validator').id && item.replyTo === asked.id && /^Re: .*\n/.test(item.text) && item.text.endsWith('\nUse green')));
     assert.equal(api.roomFor(root).typingText(), '');
-    routing.dispose(); assert.equal(member('validator').presence, 'left');
+    routing.dispose(); assert.equal(member('validator').presence, 'joined', 'Priya is always present (R-AITALK-51), even when her receiver is disposed');
     const nativeBlock = provider.slice(provider.indexOf('                    if (!isChildLog && line.indexOf(\'"type":"user_message"\')'), provider.indexOf('// ── Sub-agent linkage:'));
     const native = require('typescript').transpileModule(`function submit(line) { const isChildLog = false, lineIndex = 0, logFile = 'main.jsonl'; for (const entry of [line]) { ${nativeBlock} } }`, { compilerOptions: { target: 9 } }).outputText;
     const submit = vm.runInNewContext(native + ';submit');

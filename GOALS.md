@@ -985,3 +985,27 @@ Row R-ORCH-34 reworded (no cap; decisions and blockers). Cause found: the Copilo
 > i am thinking the gif could be more like some agentic thing simple but unique. Even this where we show some templated screen like we are painting it and all is good.
 
 Design input for the loader (R-AITALK-66): a skeleton screen that paints in, not a spinner. Nothing built yet.
+
+### 2026-10-23 (answers 2)
+
+> Update agent files, so that we dont get drift. All the agent files we ship are owned by us. When we enable feature to add their own members, they are owned by them.
+
+> Can we add a setting to reminder time. Currently it reminds at 4:45. Make it configurable.
+
+> I dont want to bloat aitalk with messages after every 2 min. May be after 5 messages or so, it can increase the time to 4 min and so on??
+
+> Width of message is different based on message. Can be keep fixed width(the bigger one in the screenshot)
+
+> Can you show cost in the time row(only for last message in the turn), I only get to see when i do show more.
+
+> I can have multiple conversations in one vscode, when another conversation starts, old one goes away. Is it possible to support multiple conversations? If yes, I'll add more details, Like store everythign per conversation and when i change active tab to something other conversation, show stuff about that coversation.
+
+> Occassionally, when i send message to Bhaskar, somehow, my messages are not being sent, there are multiple tool calls, i still see single tick. It should have been blue tick. [...] are we not intercepting them?
+
+> Does agent know his name is Bhaskar? Otherwise it will confuse the agent?
+
+> I see Main agent responding to my message. Thats great to see and i liked the tone as a response. Even a simple thumbs up also woudl have been sufficient.
+
+> I liked skeleton screen as tab pills, but instead of some random pills, if that is closer to main widget with AITalk tab active, where there are some messages and all. That woudl have been better.
+
+Backlog rows M23-01 to M23-19 in specs/BACKLOG.md. Nothing else changed.

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 ## AskAway v2.3.4 (10-21-26)
 
 - **Priya learns from your replies:** AskAway keeps one stack per Copilot conversation of your messages and the agent's final responses. On every reply of yours Priya compares it with her earlier prediction, records a match or miss, and stores what you said as knowledge she cites later. Conversations never share a stack, and nothing is captured for a chat without a session id. Verified live with a cheap model (Luna).
+- **Your messages reach the agent on any tool call:** queued AITalk messages are now delivered through the PostToolUse hook, not only through AskAway tool results, so the blue tick no longer waits for a gradle or aitalk call; the agent is told its AITalk name (Bhaskar) and a reminder escalates from every 2 minutes to 4, 6 and 8 as a turn goes on, so the room is not flooded.
+- **Priya stays in the room:** she is always present, whatever reload or second window happens, and Bhaskar no longer joins from an unidentified tool call when no turn is running.
+- **Priya's match score lives in her profile:** the Team card shows "Match 6/10" (or "learning" under 10 compared) and the score-only chat Observation is gone; the reply-learning step no longer posts "you have not told me anything" bubbles.
+- **AITalk polish:** fixed-width message bubbles, the turn cost in the time row of the turn's last message, a composer that grows with the text, the caret after a picked @mention, an unread count in the tab title ("AITalk(3)"), and a skeleton loader shaped like the AITalk view.
+- **Shipped agent files are ours:** the extension replaces `askaway-build` and `AA.Orchestrator` agent files on every release (one backup of the previous file); agent files you name yourself are never touched.
+- **Cache alert time is a setting:** `askaway.cacheWarnSeconds` (default 285 = 4:45).
 - **The room gets the Next line:** at turn end the main agent's AITalk message is only the `Next:` question of its Response Handoff plus the turn's total cost; Telegram and Webex keep the full handoff.
 - **Updates every two minutes, for real:** the "Status update due" reminder now asks for decisions as well as progress and blockers, has no cap, and is delivered to the Copilot harness as well as VS Code chat.
 - **Loader while AskAway starts:** a skeleton screen (tabs, messages and composer painting in with a soft shimmer) covers the view until AITalk has rendered, so unstyled buttons are never seen.

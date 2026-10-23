@@ -1,9 +1,26 @@
 import { AsyncLocalStorage } from 'async_hooks';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { AITalkStore } from './store';
 import { roomFor } from './actors';
 import { validatorContextLine, withValidatorContext } from './validatorContext';
+import { AITALK_QUEUE_LABEL, aitalkDeliveryBlock } from '../hooks/aitalkDeliveryText';
+import { aitalkSpoolBusy, dropPendingSpool, inflightSpoolIds, reconcileAITalkSpool, syncAITalkSpool } from '../hooks/aitalkSpool';
 import { setCommentaryAITalkMirror, setCommentaryAITalkWait } from '../commentary/commentary';
 let workspace: string | undefined;
+/** Is a main-agent turn running in this workspace? Default: the UserPromptSubmit hook's `mainTurns` (deleted on Stop). */
+export type MainTurnProbe = (root: string) => boolean;
+const real = (value: string) => { try { return fs.realpathSync(value); } catch { return value; } };
+const hookTurnActive: MainTurnProbe = root => {
+    let turns: any;
+    // No readable hook state means the hooks are not installed or not running: the old rule applies (an unidentified caller is the main agent).
+    try { turns = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.askaway', 'subagent-inflight.json'), 'utf8')).mainTurns ?? {}; } catch { return true; }
+    return Object.values<any>(turns).some(turn => Date.now() - (turn?.startedAt ?? 0) < 2 * 3600000 && (!turn?.workspace || real(turn.workspace) === real(root)));
+};
+let mainTurnProbe: MainTurnProbe = hookTurnActive;
+export function setMainTurnProbe(probe?: MainTurnProbe): void { mainTurnProbe = probe ?? hookTurnActive; }
+export function mainTurnActive(root: string): boolean { return mainTurnProbe(root); }
 const mcpCaller = new AsyncLocalStorage<AITalkCaller>();
 export function configureAITalkDelivery(root: string): void {
     workspace = root;
@@ -24,7 +41,12 @@ export function configureAITalkDelivery(root: string): void {
         const author = state.members.find(member => member.kind === kind);
         if (!author) throw new Error('AITalk participant is not registered');
         // The main agent's commentary call is a tool call of its running turn: it registers like beginAITalkTool.
-        if (kind === 'agent' && (!caller || caller.recipient === author.id)) room.registerAgent();
+        if (kind === 'agent' && ((!caller && mainTurnActive(target)) || caller?.recipient === author.id)) room.registerAgent();
+        if (input.react) {
+            if (!room.isRegistered(author.id)) return { status: 'REJECTED', reason: `${author.displayName} is not registered in AITalk` };
+            try { room.store.react(String(input.replyTo), input.text.trim(), author.id); } catch (err) { return { status: 'REJECTED', reason: err instanceof Error ? err.message : String(err) }; }
+            return { status: 'REACTED' };
+        }
         // An unregistered actor cannot post; the commentary feed itself carries on.
         if (!room.isRegistered(author.id)) return { status: 'REJECTED', reason: `${author.displayName} is not registered in AITalk` };
         if (kind !== 'validator') return room.post(author.id, input.text, { replyTo: input.replyTo, details: input.details, kind: input.kind }).message;
@@ -153,9 +175,10 @@ export function beginAITalkTool(caller?: AITalkCaller): void {
     const root = caller?.workspace ?? workspace;
     if (!root) return;
     if (caller?.displayName) roomFor(root).workerLifecycle({ id: caller.recipient, displayName: caller.displayName }, true);
-    if (!caller || caller.recipient === new AITalkStore(root).agentId()) roomFor(root).registerAgent();
+    // An unidentified call is the main agent only while its turn runs; a late call after Stop or an unresolved worker never registers it.
+    if (caller ? caller.recipient === new AITalkStore(root).agentId() : mainTurnActive(root)) roomFor(root).registerAgent();
 }
-export const AITALK_QUEUE_LABEL = 'ADDITIONAL MESSAGES FROM THE USER. These are NOT part of the tool result above; the user sent them while you were working. They take priority: answer each one by calling the aitalk tool (action say) with replyTo set to the message id.';
+export { AITALK_QUEUE_LABEL };
 /** Pops every queued message for the recipient and appends them, clearly apart from the tool result. */
 export function appendAITalkDelivery(result: string, caller?: AITalkCaller): string {
     if (caller?.unidentified) return result;
@@ -164,6 +187,25 @@ export function appendAITalkDelivery(result: string, caller?: AITalkCaller): str
     const store = new AITalkStore(root);
     const recipient = caller?.recipient ?? store.agentId();
     if (!recipient) return result;
-    const received = store.takeForTool(recipient);
-    return received.length ? `${result}\n\n${AITALK_QUEUE_LABEL}\n${JSON.stringify(received)}` : result;
+    const isMain = recipient === store.agentId();
+    // Messages the PostToolUse hook already handed over count as delivered before the queue is read.
+    if (isMain) reconcileAITalkSpool(root, store, recipient);
+    let received = store.peekForTool(recipient);
+    if (isMain && received.length) {
+        // Take the spooled copy first: if the hook already claimed it, those ids are its to hand over, not ours.
+        dropPendingSpool(root);
+        const handed = inflightSpoolIds(root);
+        received = received.filter((item: any) => !handed.has(item.id));
+    }
+    store.track('delivered', recipient, received.map((item: any) => item.id));
+    if (!received.length) return result;
+    return `${result}\n\n${aitalkDeliveryBlock(received, isMain ? store.nameOf(store.snapshot(true).members, recipient) : undefined)}`;
+}
+/** Keeps the hook spool in step with the room: reviewer messages for the main agent reach it on any tool call, not only AskAway tools. */
+export function startAITalkSpool(root: string): () => void {
+    // Nothing to do without a running turn or a batch/receipt in the spool: no room snapshot is read; a turn start wakes the next tick.
+    const tick = () => { try { if (mainTurnActive(root) || aitalkSpoolBusy(root)) syncAITalkSpool(root, new AITalkStore(root)); } catch { /* the tool-result path still delivers */ } };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
 }

@@ -8,7 +8,9 @@ function save(s) { try { fs.mkdirSync(cfg, { recursive: true }); } catch (e) {} 
 function fmt(ms) { const sec = Math.round(ms / 1000); return Math.floor(sec / 60) + 'm' + String(sec % 60).padStart(2, '0') + 's'; }
 let context = [];
 function emit(text) { context.push(text); }
-process.on('exit', () => { if (context.length) { const text = context.join('\\n'); process.stdout.write(JSON.stringify({ additionalContext: text, hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } })); } });
+let claiming = '';
+// Two-phase claim: pending -> claiming-*, print synchronously, then claiming-* -> claimed-*; a crash before the print leaves a claiming-* the extension puts back.
+process.on('exit', () => { try { if (context.length) { const text = context.join('\\n'); fs.writeSync(1, JSON.stringify({ additionalContext: text, hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } })); } if (claiming) { fs.renameSync(claiming, path.join(path.dirname(claiming), path.basename(claiming).replace('claiming-', 'claimed-'))); } } catch (e) {} });
 // The parent's cache clock started when its last model request STARTED, earlier than this hook by the whole response.
 function parentClock(sid, now) { try { const t = JSON.parse(fs.readFileSync(path.join(cfg, 'cache-clock.json'), 'utf8')).sessions[sid]; return t && t <= now && now - t < HARD_MS ? t : now; } catch (e) { return now; } }
 try {
@@ -17,17 +19,22 @@ try {
     const useId = p.tool_use_id || p.toolUseId || '', sid = p.session_id || p.sessionId || '', now = Date.now();
     const s = load();
     s.mainTurns = s.mainTurns || {};
-    if (event === 'UserPromptSubmit' && sid && !s.bySession[sid] && !s.pending.some(e => e.parentSid === sid)) { s.mainTurns[sid] = { startedAt: now, workspace: p.cwd || '' }; save(s); process.exit(0); }
+    for (const k of Object.keys(s.mainTurns)) { if (now - (s.mainTurns[k].startedAt || 0) > 7200000) { delete s.mainTurns[k]; } }
+    if (event === 'UserPromptSubmit' && sid && !s.bySession[sid] && !s.pending.some(e => e.parentSid === sid)) { s.mainTurns[sid] = { startedAt: now, workspace: p.cwd || process.cwd() }; save(s); process.exit(0); }
     if (event === 'Stop') { delete s.mainTurns[sid]; save(s); process.exit(0); }
     const turn = s.mainTurns[sid];
     if (event === 'PostToolUse' && turn && !s.bySession[sid]) {
         let workspace = turn.workspace;
         try { workspace = fs.realpathSync(workspace); } catch (e) {}
         const key = workspace.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
-        let last = turn.startedAt;
-        try { last = Math.max(last, JSON.parse(fs.readFileSync(path.join(cfg, 'commentary', key + '.progress.json'), 'utf8')).lastCommentaryAt || 0); } catch (e) {}
+        // Reviewer messages for the main agent ride on any tool result: claim the spool by rename; the extension marks them delivered.
+        try { const dir = path.join(cfg, 'aitalk-spool', key), mine = path.join(dir, 'claiming-' + process.pid + '-' + Date.now() + '.json'); fs.renameSync(path.join(dir, 'pending.json'), mine); claiming = mine; const batch = JSON.parse(fs.readFileSync(mine, 'utf8')); if (batch && typeof batch.text === 'string') { emit(batch.text); } } catch (e) {}
+        let last = turn.startedAt, posts = 0;
+        try { const prog = JSON.parse(fs.readFileSync(path.join(cfg, 'commentary', key + '.progress.json'), 'utf8')); last = Math.max(last, prog.lastCommentaryAt || 0); posts = (Array.isArray(prog.postAts) ? prog.postAts : []).filter(t => t >= turn.startedAt).length; } catch (e) {}
+        // Status updates thin out as the turn goes on: every 2 min for the first 5, then 4, then 6, never more than 8.
+        const mins = Math.min(8, 2 + 2 * Math.floor(posts / 5));
         const resultId = useId || tool + ':' + now;
-        if (now - last >= 120000 && turn.lastReminderResult !== resultId) { turn.lastReminderResult = resultId; save(s); emit('Status update due (2+ min since your last AITalk post): call the aitalk tool (action say) with one or two plain sentences: what you are doing now, what is done so far, any decision you took and why, and where you are blocked or what you are waiting for. If the aitalk tool is not loaded, load it first. This is a status line, not a report.'); }
+        if (now - last >= mins * 60000 && turn.lastReminderResult !== resultId) { turn.lastReminderResult = resultId; save(s); emit('Status update due (' + mins + '+ min since your last AITalk post): call the aitalk tool (action say) with one or two plain sentences: what you are doing now, what is done so far, any decision you took and why, and where you are blocked or what you are waiting for. If the aitalk tool is not loaded, load it first. This is a status line, not a report.'); }
     }
     s.pending = s.pending.filter(e => now - e.startedAt < STALE_MS);
     const live = s.pending.map(e => e.startedAt);

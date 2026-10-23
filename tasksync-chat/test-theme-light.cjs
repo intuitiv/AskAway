@@ -28,6 +28,7 @@ const esbuild = require('esbuild');
     const mod = { exports: {} }; new Function('require', 'module', 'exports', output.outputFiles[0].text)(require, mod, mod.exports);
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'theme-light-'));
     mod.exports.configureAITalkDelivery(root);
+    mod.exports.setMainTurnProbe(() => true);
     const store = new mod.exports.CommentaryStore({ dir: path.join(root, 'commentary') });
     for (const kind of ['update', 'heads-up']) assert.equal(store.post(root, { kind, text: `${kind} needs three plain words` }).status, 'POSTED');
     const messages = fs.readFileSync(path.join(root, '.askaway/aitalk/messages.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);

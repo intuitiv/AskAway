@@ -1,6 +1,12 @@
 import { LifecycleRecord, OpenCodeWorkerRuntime, RunState, RunUsage } from './openCodeRuntime';
 import type { ScoreRow } from './evalScoreboard';
 import { initialsOf, teamRoster, type TeamRosterEntry } from '../team/roster';
+import type { MatchScore } from '../team/validatorMatch';
+
+/** Priya's match score; loaded lazily so a projection never fails because the validator records are unavailable. */
+function priyaMatch(workspacePath: string): MatchScore | undefined {
+    try { return (require('../team/validatorMatch') as typeof import('../team/validatorMatch')).matchScore(workspacePath); } catch { return undefined; }
+}
 
 export type ProjectedWorkerState = RunState | 'RETIRED' | 'ORPHANED';
 
@@ -85,6 +91,8 @@ export interface TeamMemberState {
     monthCost: number;
     /** Worked this turn at no billed cost (agy), so the card shows at $0.00 instead of hiding. */
     turnActive?: boolean;
+    /** Priya only: matched of compared predictions over the workspace (R-PLAN-45). */
+    match?: MatchScore;
 }
 
 export interface WorkersState {
@@ -255,7 +263,7 @@ function matchRosterEntry(worker: WorkerRow, allEntries: TeamRosterEntry[]): Tea
 
 /** Every roster member (Priya first, then roster order, then the user's own profile members), idle ones included,
  *  each with the worker tasks it owns. The main agent row is added by the provider. */
-export function projectTeamMembers(workers: WorkerRow[], roster: TeamRosterEntry[] = teamRoster()): TeamMemberState[] {
+export function projectTeamMembers(workers: WorkerRow[], roster: TeamRosterEntry[] = teamRoster(), workspacePath?: string): TeamMemberState[] {
     const entries = roster.filter((m) => m.kind !== 'main');
     const ordered = [...entries.filter((m) => m.id === 'priya'), ...entries.filter((m) => m.id !== 'priya')];
     const groups = ordered.map((entry) => ({ entry, workers: [] as WorkerRow[] }));
@@ -294,6 +302,7 @@ export function projectTeamMembers(workers: WorkerRow[], roster: TeamRosterEntry
             turnCost,
             monthCost,
             turnActive: memberWorkers.some((w) => w.turnActive),
+            ...(workspacePath && entry.kind === 'validator' ? { match: priyaMatch(workspacePath) } : {}),
         };
     });
 }
@@ -354,5 +363,5 @@ export function projectWorkersState(runtime: OpenCodeWorkerRuntime, workspacePat
     }
     workers.sort((a, b) => Number(b.track === 'validator' || b.profile === 'validator') - Number(a.track === 'validator' || a.profile === 'validator') || b.lastUpdateAt - a.lastUpdateAt);
     const endpoint = runtime.serverEndpoint;
-    return { workspacePath, generatedAt: now(), server: { state: endpoint ? 'ATTACHED' : 'NOT_ATTACHED', endpoint }, workers, members: projectTeamMembers(workers) };
+    return { workspacePath, generatedAt: now(), server: { state: endpoint ? 'ATTACHED' : 'NOT_ATTACHED', endpoint }, workers, members: projectTeamMembers(workers, undefined, workspacePath) };
 }

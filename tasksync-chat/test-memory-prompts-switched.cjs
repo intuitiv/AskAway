@@ -45,7 +45,7 @@ function checkSources(dir) {
 checkSources(src);
 assert.ok(checked > 0, 'source scan matched shipped files');
 const extension = fs.readFileSync(path.join(src, 'extension.ts'), 'utf8');
-assert.match(extension, /import \{ ASKWAY_BUILD_AGENT_FILE, ASKWAY_BUILD_AGENT_CONTENT \} from '\.\/agents\/askawayBuildAgent'/);
-assert.match(extension, /writeFile\(agentPath, ASKWAY_BUILD_AGENT_CONTENT, 'utf8'\)/, 'installer consumes the tested template');
+assert.match(extension, /import \{ installShippedAgentFiles, shippedAgents \} from '\.\/agents\/installAgentFiles'/);
+assert.match(fs.readFileSync(path.join(src, 'agents', 'installAgentFiles.ts'), 'utf8'), /content: ASKWAY_BUILD_AGENT_CONTENT/, 'installer consumes the tested template');
 assert.ok(pkg.scripts['test:workers'].includes('node test-memory-prompts-switched.cjs'));
 console.log(`PASS EV-MEMORY-PROMPTS-SWITCHED files=${checked} tool=${memoryRef}`);

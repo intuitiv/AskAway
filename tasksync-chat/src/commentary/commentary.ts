@@ -9,7 +9,7 @@ export type CommentaryKind = typeof COMMENTARY_KINDS[number];
 export const MAX_COMMENTARY_WORDS = 20;
 export const MIN_COMMENTARY_WORDS = 3;
 const OPENER_ITEMS = 30;
-type TalkPost = (workspace: string, input: { text: string; replyTo?: string; details?: string; kind?: string; authorKind?: string; detail?: Record<string, unknown> }) => unknown;
+type TalkPost = (workspace: string, input: { text: string; replyTo?: string; details?: string; kind?: string; authorKind?: string; detail?: Record<string, unknown>; react?: boolean }) => unknown;
 let talkPost: TalkPost | undefined;
 export function setCommentaryAITalkMirror(callback: TalkPost): void { talkPost = callback; }
 /** Waits for a reply to a posted AITalk question; resolves with the post plus the reply, or flagged pending when none came in time. */
@@ -175,7 +175,11 @@ export class CommentaryStore {
     markMainPost(workspacePath: string): void {
         try {
             fs.mkdirSync(this.dir, { recursive: true });
-            fs.writeFileSync(this.file(workspacePath).replace(/\.json$/, '.progress.json'), JSON.stringify({ lastCommentaryAt: this.now() }));
+            const progress = this.file(workspacePath).replace(/\.json$/, '.progress.json');
+            let earlier: number[] = [];
+            try { const read = JSON.parse(fs.readFileSync(progress, 'utf8')).postAts; if (Array.isArray(read)) earlier = read.filter((at: unknown) => typeof at === 'number'); } catch { /* first post */ }
+            // The per-post timestamps let the status reminder count this turn's posts; 40 is far past its last step.
+            fs.writeFileSync(progress, JSON.stringify({ lastCommentaryAt: this.now(), postAts: [...earlier, this.now()].slice(-40) }));
         } catch { /* the clock is advisory; a failed write never fails the post */ }
     }
 
@@ -231,7 +235,7 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
             + 'Do not wait beyond that unless you truly cannot continue; carry on with the recommended default. Answers arrive in a later tool result under ADDITIONAL MESSAGES FROM THE USER. '
             + 'Keep it short; optional details go under Read more. Put questions still open at turn end in the single Response Handoff batch.',
         inputSchema: z.object({
-            action: z.enum(['post', 'say', 'aitalk']).optional().describe('post writes a feed line; say posts to AITalk; aitalk is a deprecated alias for say.'),
+            action: z.enum(['post', 'say', 'aitalk', 'react']).optional().describe('post writes a feed line; say posts to AITalk; react puts an emoji reaction (text = the emoji, replyTo = the message id) instead of a reply; aitalk is a deprecated alias for say.'),
             details: z.string().max(8000).optional(),
             replyTo: z.string().optional(),
             waitSeconds: z.number().min(0).max(120).optional().describe('action say: seconds to wait for a reply to this question (default 45 for a heads-up, 0 otherwise).'),
@@ -244,6 +248,11 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
         run: (args) => {
             const workspace = args.workspacePath || defaultWorkspace;
             if (!workspace) return { status: 'REJECTED', reason: 'workspacePath is required: say which workspace this line belongs to' };
+            if (args.action === 'react') {
+                if (!talkPost) return { status: 'REJECTED', reason: 'AITalk is not configured' };
+                if (!args.replyTo) return { status: 'INVALID_INPUT', reason: 'replyTo (the message id) is required to react' };
+                return talkPost(workspace, { text: args.text, replyTo: args.replyTo, react: true });
+            }
             if (args.action === 'say' || args.action === 'aitalk') {
                 if (!talkPost) return { status: 'REJECTED', reason: 'AITalk is not configured' };
                 const posted = talkPost(workspace, args) as { id?: string; status?: string } | undefined;

@@ -88,7 +88,7 @@ export class HandoffNotifier implements vscode.Disposable {
     private _onAgentFinal: ((input: { sessionId: string; text: string; turnId: string }) => void | Promise<void>) | undefined;
     /** (sessionId, promptId) or, with no prompt id, (sessionId, text hash) of the finals already handed over, with the time handed over. */
     private readonly _finalsSeen = new Map<string, number>();
-    private _onNext: ((text: string) => void | Promise<void>) | undefined;
+    private _onNext: ((text: string, meta?: { cost: string }) => void | Promise<void>) | undefined;
     private _nextPending: Promise<void> | undefined;
 
     constructor(
@@ -106,7 +106,7 @@ export class HandoffNotifier implements vscode.Disposable {
     }
 
     /** R-AITALK-60: receives the one short `Next:` + turn cost message per turn for the AITalk room. Telegram and Webex keep the full handoff. */
-    public setNextHandoff(callback: ((text: string) => void | Promise<void>) | undefined): void {
+    public setNextHandoff(callback: ((text: string, meta?: { cost: string }) => void | Promise<void>) | undefined): void {
         this._onNext = callback;
     }
 
@@ -273,7 +273,7 @@ ${text}`, `AskAway: ${text}`);
         const work = (async () => {
             const turnMetrics = await this._getTurnMetrics?.();
             const message = nextHandoffMessage(finalText, turnMetrics?.turnNanoAiu);
-            if (message) { await this._onNext!(message); }
+            if (message) { await this._onNext!(message.text, message.meta); }
         })().catch(err => this._log('Handoff notifier: next-line post failed', err instanceof Error ? err.message : String(err)));
         try { await Promise.race([work, timeout]); } finally { if (timer) { clearTimeout(timer); } }
     }

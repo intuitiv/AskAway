@@ -8,6 +8,8 @@ let last = 0;
 /** Monotonic timestamp shared by messages and registration events, so their order merges exactly. */
 const stamp = () => (last = Math.max(Date.now(), last + 0.001));
 const lines = (file: string) => { try { return fs.readFileSync(file, 'utf8').split('\n'); } catch { return []; } };
+/** The reviewer and Priya (the Validator) are in the room whenever it exists (R-AITALK-51): no receiver's lifetime, window or log can remove them. */
+const ALWAYS_PRESENT = ['user', 'validator'];
 export const REACTIONS = ['👍', '👎', '❤️', '😂', '🙏', '🎉', '👀', '✅', '🤔'];
 /** Append-only AITalk logs: messages with tracker (delivered/read) events, and actor registration (joined/left) events. */
 export class AITalkStore {
@@ -20,7 +22,7 @@ export class AITalkStore {
         this.typingFile = path.join(workspace, '.askaway', 'aitalk', 'typing.jsonl');
     }
     snapshot(full = false): { messages: any[]; members: any[] } {
-        let members = this.registry.map((member: any) => ({ ...member, presence: member.kind === 'user' ? 'joined' : 'left', joinedAt: null, leftAt: null }));
+        let members = this.registry.map((member: any) => ({ ...member, presence: ALWAYS_PRESENT.includes(member.kind) ? 'joined' : 'left', joinedAt: null, leftAt: null }));
         let messages: any[] = [];
         const parse = (line: string) => { try { const event = JSON.parse(line); return event && typeof event === 'object' ? event : undefined; } catch { return undefined; } };
         const registrations = lines(this.presenceFile).map(parse).filter(Boolean);
@@ -34,6 +36,7 @@ export class AITalkStore {
             try {
                 if (!event || typeof event !== 'object') continue;
                 if (event.presenceEvent) {
+                    if (event.presenceEvent === 'left' && ALWAYS_PRESENT.includes(event.member?.kind)) continue;
                     const previous = members.find((member: any) => member.id === event.member.id);
                     const member = { ...previous, ...event.member, presence: event.presenceEvent,
                         joinedAt: event.presenceEvent === 'joined' ? event.ts : previous?.joinedAt ?? null,
@@ -72,6 +75,7 @@ export class AITalkStore {
         return { messages: full ? messages : messages.slice(-500), members: members.map((member: any) => rosterIdentity(member)).sort((a: any, b: any) => b.rank - a.rank) };
     }
     setPresence(member: any, present: boolean, announce = true): void {
+        if (!present && ALWAYS_PRESENT.includes(member.kind)) return;
         const previous = this.snapshot().members.find(item => item.id === member.id);
         const presenceEvent = present ? 'joined' : 'left';
         if (previous?.presence === presenceEvent && (!present || previous.joinedAt) && previous.memberId === member.memberId && previous.displayName === member.displayName) return;
@@ -118,16 +122,21 @@ export class AITalkStore {
     markRead(recipient: string): void {
         this.track('read', recipient, this.snapshot(true).messages.filter((message: any) => message.receivedBy?.includes(recipient) && message.delivery === 'delivered').map((message: any) => message.id));
     }
-    takeForTool(recipient: string): any[] {
+    /** The messages waiting for the recipient, in delivery order and delivery shape, without recording delivery. */
+    peekForTool(recipient: string): any[] {
         const state = this.snapshot(true);
         // A running worker that has not joined (it joins only to ask) is addressed by its stable id and still receives its messages.
-        const received = state.messages.filter((message: any) => message.recipients?.includes(recipient) && !message.receivedBy?.includes(recipient))
-            .sort((a: any, b: any) => (rules.participant(state.members, b.author)?.rank ?? 0) - (rules.participant(state.members, a.author)?.rank ?? 0));
-        this.track('delivered', recipient, received.map((message: any) => message.id));
-        return received.map((message: any) => {
-            const original = this.inReplyTo(state, message.replyTo);
-            return { id: message.id, from: this.nameOf(state.members, message.author), text: message.text, ...(message.attachments ? { attachments: message.attachments } : {}), ...(message.details ? { details: message.details } : {}), ...(message.replyTo ? { replyTo: message.replyTo } : {}), ...(original ? { inReplyTo: original } : {}) };
-        });
+        return state.messages.filter((message: any) => message.recipients?.includes(recipient) && !message.receivedBy?.includes(recipient))
+            .sort((a: any, b: any) => (rules.participant(state.members, b.author)?.rank ?? 0) - (rules.participant(state.members, a.author)?.rank ?? 0))
+            .map((message: any) => {
+                const original = this.inReplyTo(state, message.replyTo);
+                return { id: message.id, from: this.nameOf(state.members, message.author), text: message.text, ...(message.attachments ? { attachments: message.attachments } : {}), ...(message.details ? { details: message.details } : {}), ...(message.replyTo ? { replyTo: message.replyTo } : {}), ...(original ? { inReplyTo: original } : {}) };
+            });
+    }
+    takeForTool(recipient: string): any[] {
+        const items = this.peekForTool(recipient);
+        this.track('delivered', recipient, items.map((item: any) => item.id));
+        return items;
     }
     /** The earlier message a delivered answer replies to, so the receiving agent knows the question it answers. */
     inReplyTo(state: { messages: any[]; members: any[] }, replyTo?: string): { id: string; from: string; text: string } | undefined {

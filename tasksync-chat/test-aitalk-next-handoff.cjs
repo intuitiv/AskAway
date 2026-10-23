@@ -40,7 +40,7 @@ fs.mkdirSync(cfg, { recursive: true });
     const metrics = { latestInputTokens: 1000, turnOutputTokens: 500, turnNanoAiu: 150_000_000_000 };
     const notifier = new api.HandoffNotifier([target], debugLogs, () => undefined, () => metrics, async () => undefined, () => room.unregisterAgent());
     notifier.setAgentFinal(() => undefined);
-    notifier.setNextHandoff(text => { const id = room.store.agentId(); if (id && room.isRegistered(id)) { room.post(id, text, { kind: 'update' }); } });
+    notifier.setNextHandoff((text, meta) => { const id = room.store.agentId(); if (id && room.isRegistered(id)) { room.post(id, text, { kind: 'update', ...(meta ? { fields: { meta } } : {}) }); } });
     const nextRows = () => room.snapshot().messages.filter(message => /^Next:/.test(message.text));
     const poll = async () => { await sleep(1700); await notifier._onTurnEnd(); await sleep(50); };
 
@@ -48,7 +48,8 @@ fs.mkdirSync(cfg, { recursive: true });
     const first = 'Long details here.\n\n## Response Handoff\n\nImpact: shipped the fix.\nNext: Deploy it now?';
     room.registerAgent(); writeFinal(first); stamp('p1'); await poll();
     assert.equal(nextRows().length, 1, 'one room post at turn end');
-    assert.equal(nextRows()[0].text, 'Next: Deploy it now? · turn cost $1.50');
+    assert.equal(nextRows()[0].text, 'Next: Deploy it now?');
+    assert.equal(nextRows()[0].meta.cost, '$1.50', 'the turn cost is a message field for the time row, not part of the text');
     assert.ok(!/Impact|shipped/.test(nextRows()[0].text), 'only the Next line, not the whole handoff');
     assert.equal(telegram.length, 1);
     assert.equal(telegram[0], api.telegramHandoffUpdate({ handoff: 'Impact: shipped the fix.\nNext: Deploy it now?', details: 'Long details here.' }, metrics), 'Telegram text is the unchanged full handoff');
@@ -69,7 +70,8 @@ fs.mkdirSync(cfg, { recursive: true });
     // Next turn posts again.
     room.registerAgent(); writeFinal('## Response Handoff\n\nImpact: y.\nNext: Merge?'); stamp('p4'); await poll();
     assert.equal(nextRows().length, 2);
-    assert.equal(nextRows()[1].text, 'Next: Merge? · turn cost $1.50');
+    assert.equal(nextRows()[1].text, 'Next: Merge?');
+    assert.equal(nextRows()[1].meta.cost, '$1.50');
 
     // A Next line in a section after the handoff is not the handoff's Next.
     room.registerAgent(); writeFinal('## Response Handoff\n\nImpact: z.\n\n## Appendix\n\nNext: unrelated'); stamp('p5'); await poll();

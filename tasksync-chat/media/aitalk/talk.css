@@ -164,6 +164,8 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
 .talk-row { display: flex; align-items: flex-end; gap: 6px; margin-top: 2px; }
 .talk-row.first { margin-top: 8px; }
 .talk-row.out { justify-content: flex-end; }
+.talk-row.out:not(:has(.talk-avatar, .talk-avatar-gap)) { padding-left: 34px; }
+.talk-bubble.talk-typing { flex: none; }
 .talk-avatar, .talk-avatar-gap { flex: none; width: 28px; height: 28px; }
 .talk-avatar {
     display: grid;
@@ -188,8 +190,10 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
 
 .talk-bubble {
     position: relative;
-    min-width: 64px;
-    max-width: 78%;
+    /* One fixed width for every message and author: the whole lane next to the avatar column. */
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
     padding: 6px 8px 6px 9px;
     border-radius: 8px;
     box-shadow: var(--tk-shadow);
@@ -357,7 +361,9 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
 .talk-input-wrap textarea {
     flex: 1;
     min-height: 32px;
-    max-height: 96px;
+    max-height: 176px;
+    overflow-y: auto;
+    field-sizing: content;
     padding: 7px 0;
     border: 0;
     outline: 0;

@@ -54,6 +54,8 @@ export interface ObserverPorts {
     onEvent?: (event: ValidatorEvent) => void;
     costFile?: string;
     timeoutMs?: number;
+    /** A reply-learning comparison: records only, never published as a room/commentary item (reviewer, 2026-10-23). */
+    quiet?: boolean;
     now?: () => number;
     newId?: () => string;
 }
@@ -159,7 +161,7 @@ export class ValidatorObserver {
                 const prediction = records.predictions().find(p => p.responseId === prev.id);
                 let parsed: Record<string, unknown> | null = null;
                 let lastInput: Parameters<typeof this.ports.run>[0] | undefined;
-                const observer = new ValidatorObserver({ ...this.ports, run: async input => {
+                const observer = new ValidatorObserver({ ...this.ports, quiet: true, run: async input => {
                     lastInput = input;
                     const result = await this.ports.run({ ...input, prompt: input.prompt + '\nCompare prediction with reviewer reply. Extract only knowledge stated by the reviewer and related to the previous response. Bare acknowledgements and unrelated replies yield no facts. Return JSON with answer:null, sources:[], observations, summary, impact, related:boolean, matched:boolean|null, diff:string, facts:[{kind:rule|instruction|goal|fact,text:string,example?:string}].' });
                     parsed = replyObject(result.text);
@@ -180,11 +182,6 @@ export class ValidatorObserver {
                 if (prediction) {
                     records.appendPrediction({ ...prediction, matched: related && typeof comparison.matched === 'boolean' ? comparison.matched : null,
                         diff: String(comparison.diff ?? '') });
-                    const compared = records.predictions().filter(p => typeof p.matched === 'boolean');
-                    this.ports.commentary.postValidator(this.ports.workspaceRoot, {
-                        text: `Validator prediction ${related ? comparison.matched === true ? 'matched' : 'mismatched' : 'not compared'}; match measure ${compared.filter(p => p.matched).length}/${compared.length}`,
-                        detail: { prediction: prediction.decision, reply: reply.text, diff: String(comparison.diff ?? ''), matched: related ? comparison.matched : null },
-                    });
                 }
                 if (!related || /^(ok|okay|yes|thanks|thank you)[.!\s]*$/i.test(reply.text.trim())) { return; }
                 if (!this.ports.knowledgeStore || !this.ports.knowledgeScope) { throw new Error('Knowledge store unavailable'); }
@@ -322,7 +319,7 @@ export class ValidatorObserver {
         const headline = response.error ? `Validator could not check this: ${response.error}`
             : response.answer ? `Validator: ${response.answer} (source: ${response.sources.join(', ')})`
                 : 'Validator: no source answers this question.';
-        try {
+        if (!this.ports.quiet || response.error) try {
             this.ports.commentary.postValidator(this.ports.workspaceRoot, {
                 text: headline,
                 detail: { ...(turnEnd ? { turnEnd } : {}), observedId: response.observedId, source: response.source, answer: response.answer, sources: response.sources,

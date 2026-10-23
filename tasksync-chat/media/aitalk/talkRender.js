@@ -210,7 +210,7 @@ export function bubbleHtml(message, { messages = [], members = defaultMembers, f
         : '';
     const trace = (message.attachments ?? []).map(file => `<span class="talk-attachment">${escapeHtml(file.name)}</span>`).join('') + (message.trace ? `<a class="talk-trace-link" href="#trace" data-tab="Trace">View trace ↗</a>` : '');
     const msgId = escapeHtml(message.id || '');
-    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'} aitalk-msg" id="talk-${msgId}" data-id="${msgId}" data-actor="${escapeHtml(memberId)}" data-member-id="${escapeHtml(memberId)}">${avatar}<div class="talk-bubble ${first ? 'tail' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${msgId}" aria-label="${escapeHtml(message.author)}: message. Right-click, long-press or press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${message.webexDraft ? draftCardHtml(message) : bodyHtml(message, members)}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}</time>${mine ? ticksHtml(message) : ''}</span>${reactions}</div></div>`;
+    return `<div class="talk-row ${mine ? 'out' : 'in'} ${first ? 'first' : 'follow'} aitalk-msg" id="talk-${msgId}" data-id="${msgId}" data-actor="${escapeHtml(memberId)}" data-member-id="${escapeHtml(memberId)}">${avatar}<div class="talk-bubble ${first ? 'tail' : ''} ${normalizeReactions(message.reactions).length ? 'has-reaction' : ''}"${mine ? '' : ` tabindex="0" data-msg="${msgId}" aria-label="${escapeHtml(message.author)}: message. Right-click, long-press or press Enter to react."`}>${mine ? '' : reactBarHtml(message)}${name}${quote ? quoteHtml(quote, members) : ''}${message.webexDraft ? draftCardHtml(message) : bodyHtml(message, members)}${trace}<span class="talk-meta"><time>${escapeHtml(message.time || '')}${message.meta?.cost ? ` · <span class="talk-cost">${escapeHtml(message.meta.cost)}</span>` : ''}</time>${mine ? ticksHtml(message) : ''}</span>${reactions}</div></div>`;
 }
 
 export function systemHtml(item, members = defaultMembers, options = {}) {
@@ -261,6 +261,12 @@ export function mentionsHtml(members = defaultMembers, { draft = '', activeIndex
 }
 
 export const mentioning = draft => /(?:^|\s)@[^\s@]*$/.test(draft);
+
+// Unread count for the AITalk tab label: messages from anyone but the user that the viewer has not seen yet.
+export const unreadCount = (messages = [], seen = new Set(), members = defaultMembers) => messages.filter(message =>
+    message.id && !seen.has(message.id) && !['system', 'day', 'memory'].includes(message.kind) && participant(members, message.author)?.kind !== 'user').length;
+// 'AITalk(3)' in the tab: the label span only holds the parenthesised count, empty when nothing is unread.
+export const tabCountLabel = count => count > 0 ? `(${count})` : '';
 
 // Who answers for the user, driven by availability only; Here needs no label because the user is in charge.
 export const inChargeLabels = { here: '', away: 'You answer from your phone', awayValidator: 'Validator in charge', offline: 'Nobody answers; questions wait for you' };

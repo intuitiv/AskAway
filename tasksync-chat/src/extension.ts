@@ -8,13 +8,12 @@ import { wireWebex } from './services/webexWiring';
 import { AITalkStore } from './aitalk/store';
 import { roomFor } from './aitalk/actors';
 import { connectWebexDrafts } from './aitalk/webexDraftCards';
-import { currentAITalkCaller } from './aitalk/delivery';
+import { currentAITalkCaller, startAITalkSpool } from './aitalk/delivery';
 import { registerAITalkValidator, askValidator } from './aitalk/validatorDelivery';
 import { notifyAttention, registerAttentionNotify } from './services/attentionNotify';
 import { createWebexSuiteHost } from './services/webexToolsHost';
 import { registerTools } from './tools';
-import { ASKWAY_BUILD_AGENT_FILE, ASKWAY_BUILD_AGENT_CONTENT } from './agents/askawayBuildAgent';
-import { addMissingAskAwayTools } from './agents/askawayBuildAgent';
+import { installShippedAgentFiles, shippedAgents } from './agents/installAgentFiles';
 import { memoryTool } from './validator/memoryTool';
 import { validatorTool } from './validator/validatorTool';
 import { asksTool } from './specs/askTool';
@@ -662,29 +661,15 @@ async function ensureBudgetHookInstalled(): Promise<void> {
 
 
 async function ensureAskAwayBuildAgentInstalled(context: vscode.ExtensionContext): Promise<void> {
-    const userDir = path.dirname(path.dirname(context.globalStorageUri.fsPath));
-    const promptsDir = path.join(userDir, 'prompts');
-    const agentPath = path.join(promptsDir, ASKWAY_BUILD_AGENT_FILE);
-
+    // Every agent file AskAway ships is owned by AskAway (2026-10-23) and rewritten when its content differs; other agent files are never touched.
     try {
-        await fs.promises.mkdir(promptsDir, { recursive: true });
-        const existing = await fs.promises.readFile(agentPath, 'utf8').catch((err: NodeJS.ErrnoException) => {
-            if (err.code === 'ENOENT') {
-                return undefined;
-            }
-            throw err;
-        });
-
-        if (existing === undefined) {
-            await fs.promises.writeFile(agentPath, ASKWAY_BUILD_AGENT_CONTENT, 'utf8');
-            logRuntime('Installed AskAway Build user agent', { agentPath });
-        } else if (existing === ASKWAY_BUILD_AGENT_CONTENT) {
-            logRuntime('AskAway Build user agent already installed', { agentPath });
-        } else {
-            logRuntime('AskAway Build user agent exists; preserving user copy', { agentPath });
-        }
+        const userDir = path.dirname(path.dirname(context.globalStorageUri.fsPath));
+        const orchestrator = await fs.promises.readFile(context.asAbsolutePath(path.join('agents', 'AA.Orchestrator.agent.md')), 'utf8').catch(() => undefined);
+        const tools: Array<{ toolReferenceName?: string }> = context.extension.packageJSON?.contributes?.languageModelTools ?? [];
+        const result = await installShippedAgentFiles({ agents: shippedAgents(orchestrator), copilotAgentsDir: path.join(os.homedir(), '.copilot', 'agents'), promptsDir: path.join(userDir, 'prompts'), toolReferenceNames: tools.map(t => t.toolReferenceName).filter((n): n is string => !!n), log: logRuntime });
+        logRuntime('AskAway agent files', { written: result.written.length, unchanged: result.unchanged.length });
     } catch (err) {
-        logRuntime('Warning: Could not install AskAway Build user agent', formatError(err));
+        logRuntime('Warning: Could not install AskAway agent files', formatError(err));
     }
 }
 
@@ -741,17 +726,6 @@ async function ensureSpecKitCommandsInstalled(context: vscode.ExtensionContext):
         const removed = await removeLegacySpecKitCopies({ promptsDir: path.join(userDir, 'prompts'), copilotHome });
         const claude = await installClaudeSpecKitCommands(path.join(os.homedir(), '.claude'));
         logRuntime('AskAway Spec Kit commands', { removedLegacyCopies: removed, ...claude });
-
-        const agentPath = path.join(copilotHome, 'agents', ASKWAY_BUILD_AGENT_FILE);
-        const agentText = await fs.promises.readFile(agentPath, 'utf8').catch(() => undefined);
-        const tools: Array<{ toolReferenceName?: string }> = context.extension.packageJSON?.contributes?.languageModelTools ?? [];
-        if (agentText !== undefined) {
-            const updated = addMissingAskAwayTools(agentText, tools.map(t => t.toolReferenceName).filter((n): n is string => !!n));
-            if (updated !== agentText) {
-                await fs.promises.writeFile(agentPath, updated, 'utf8');
-                logRuntime('Added missing AskAway tools to the Copilot harness agent', { agentPath });
-            }
-        }
     } catch (err) {
         logRuntime('Warning: Could not install AskAway Spec Kit commands', formatError(err));
     }
@@ -1243,8 +1217,8 @@ export function activate(context: vscode.ExtensionContext) {
             }
         });
         checkLive();
-        const livePoll = setInterval(checkLive, 1000);
-        context.subscriptions.push({ dispose: () => { liveDisposed = true; clearInterval(livePoll); } });
+        const livePoll = setInterval(checkLive, 1000); const stopAITalkSpool = startAITalkSpool(memoryProject);
+        context.subscriptions.push({ dispose: () => { liveDisposed = true; clearInterval(livePoll); stopAITalkSpool(); } });
 
         // Initialize Plan Board editor (lightweight, no I/O at init)
         logRuntime('Creating PlanEditorProvider', { type: typeof PlanEditorProvider });
@@ -1404,7 +1378,7 @@ export function activate(context: vscode.ExtensionContext) {
                     () => roomFor(memoryProject).unregisterAgent()
                 );
                 notifier.setAgentFinal(input => triggers.onAgentFinal({ conversationKey: stackKey(memoryProject, input.sessionId), text: input.text, turnId: input.turnId }));
-                notifier.setNextHandoff(text => { const room = roomFor(memoryProject); const id = room.store.agentId(); if (id && room.isRegistered(id)) { room.post(id, text, { kind: 'update' }); } }); notifier.start();
+                notifier.setNextHandoff((text, meta) => { const room = roomFor(memoryProject); const id = room.store.agentId(); if (id && room.isRegistered(id)) { room.post(id, text, { kind: 'update', ...(meta ? { fields: { meta } } : {}) }); } }); notifier.start();
                 context.subscriptions.push(notifier);
                 logRuntime('Handoff notifier watching turn-complete stamp', { debugLogsDir });
             }

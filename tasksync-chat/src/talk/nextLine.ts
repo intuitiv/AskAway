@@ -17,9 +17,11 @@ export function turnCostDollars(turnNanoAiu: number): string {
 }
 
 /** R-AITALK-60: the one short AITalk message at turn end; undefined (post nothing) without a Next line or when it holds a credential. */
-export function nextHandoffMessage(finalResponse: string, turnNanoAiu?: number): string | undefined {
+export function nextHandoffMessage(finalResponse: string, turnNanoAiu?: number): { text: string; meta?: { cost: string } } | undefined {
     const question = extractNextLine(finalResponse);
     if (!question) { return undefined; }
-    const text = `Next: ${question}${turnNanoAiu === undefined ? '' : ` · turn cost ${turnCostDollars(turnNanoAiu)}`}`;
-    return redactOrDrop(text) ?? undefined;
+    const text = redactOrDrop(`Next: ${question}`);
+    if (!text) { return undefined; }
+    // The turn cost is a message field shown in the time row, never part of the text.
+    return { text, ...(turnNanoAiu === undefined ? {} : { meta: { cost: turnCostDollars(turnNanoAiu) } }) };
 }

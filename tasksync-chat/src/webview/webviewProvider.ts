@@ -437,6 +437,7 @@ type ToWebviewMessage =
     | {
         type: 'updateSettings';
         soundEnabled: boolean;
+        cacheWarnSeconds: number;
         interactiveApprovalEnabled: boolean;
         webexEnabled: boolean;
         telegramEnabled: boolean;
@@ -680,6 +681,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     // Notification sound enabled (loaded from VS Code settings)
     private _soundEnabled: boolean = true;
+    private _cacheWarnSeconds: number = 285;
 
     // Interactive approval buttons enabled (loaded from VS Code settings)
     private _interactiveApprovalEnabled: boolean = true;
@@ -745,6 +747,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     return;
                 }
                 if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.notificationSound`) ||
+                e.affectsConfiguration(`${CONFIG_NAMESPACE}.cacheWarnSeconds`) ||
                     e.affectsConfiguration(`${CONFIG_NAMESPACE}.interactiveApproval`) ||
                     e.affectsConfiguration(`${CONFIG_NAMESPACE}.reusablePrompts`) ||
                     e.affectsConfiguration(`${CONFIG_NAMESPACE}.sendWithCtrlEnter`) ||
@@ -1523,6 +1526,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _loadSettings(): void {
         const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
         this._soundEnabled = config.get<boolean>('notificationSound', true);
+        this._cacheWarnSeconds = Math.min(299, Math.max(30, Math.round(config.get<number>('cacheWarnSeconds', 285) || 285)));
         this._interactiveApprovalEnabled = config.get<boolean>('interactiveApproval', true);
 
         // Load reusable prompts from settings
@@ -1624,6 +1628,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._broadcast({
             type: 'updateSettings',
             soundEnabled: this._soundEnabled,
+            cacheWarnSeconds: this._cacheWarnSeconds,
             interactiveApprovalEnabled: this._interactiveApprovalEnabled,
             webexEnabled: this._getWebexEnabled(),
             telegramEnabled: this._getTelegramEnabled(),
@@ -4728,8 +4733,18 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         #aa-loader.aa-loader-out { opacity: 0; pointer-events: none; }
         #aa-loader .aa-sk { display: block; position: relative; overflow: hidden; border-radius: 6px; background: rgba(128,128,128,.18); animation: aa-paint .5s ease-out var(--d, 0s) both; }
         #aa-loader .aa-sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(128,128,128,.22), transparent); transform: translateX(-100%); animation: aa-shimmer 1.6s ease-in-out calc(var(--d, 0s) + .5s) infinite; }
-        #aa-loader .aa-tabs { display: flex; gap: 8px; }
-        #aa-loader .aa-tabs .aa-sk { height: 22px; flex: 1; max-width: 70px; border-radius: 11px; }
+        #aa-loader .aa-tabs { display: flex; gap: 14px; padding: 0 2px; border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3)); }
+        #aa-loader .aa-tabs .aa-tab { position: relative; height: 24px; padding-bottom: 7px; box-sizing: content-box; }
+        #aa-loader .aa-tabs .aa-tab .aa-sk { height: 10px; margin-top: 7px; border-radius: 3px; }
+        #aa-loader .aa-tabs .aa-tab.aa-on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--vscode-focusBorder, var(--vscode-textLink-foreground, #3794ff)); }
+        #aa-loader .aa-tabs .aa-tab.aa-on .aa-sk { background: rgba(128,128,128,.4); }
+        #aa-loader .aa-health { height: 14px; border-radius: 7px; }
+        #aa-loader .aa-head { display: flex; align-items: center; gap: 10px; }
+        #aa-loader .aa-head .aa-lines { max-width: none; }
+        #aa-loader .aa-head .aa-av { width: 36px; height: 36px; }
+        #aa-loader .aa-head .aa-brand { background: var(--vscode-button-background, #0e639c); opacity: .75; }
+        #aa-loader .aa-bubble { height: auto; padding: 8px 10px; flex: 1; border-radius: 8px; display: flex; flex-direction: column; gap: 6px; }
+        #aa-loader .aa-bubble > .aa-sk { height: 9px; }
         #aa-loader .aa-msg { display: flex; gap: 8px; align-items: flex-start; }
         #aa-loader .aa-msg.aa-me { flex-direction: row-reverse; }
         #aa-loader .aa-av { width: 28px; height: 28px; flex: none; border-radius: 50%; }
@@ -4774,11 +4789,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     <audio id="notification-sound" preload="auto" src="${notificationSoundUri}"></audio>
 </head>
 <body>
-    <div id="aa-loader" role="status" aria-live="polite"><div class="aa-tabs"><i class="aa-sk" style="--d:0s"></i><i class="aa-sk" style="--d:.06s"></i><i class="aa-sk" style="--d:.12s"></i><i class="aa-sk" style="--d:.18s"></i><i class="aa-sk" style="--d:.24s"></i></div><div class="aa-msg" style="margin-top:6px"><i class="aa-sk aa-av" style="--d:.3s"></i><div class="aa-lines"><i class="aa-sk" style="--d:.4s;width:90%"></i><i class="aa-sk" style="--d:.5s;width:60%"></i></div></div><div class="aa-msg aa-me"><i class="aa-sk aa-av" style="--d:.7s"></i><div class="aa-lines"><i class="aa-sk" style="--d:.8s;width:70%"></i></div></div><div class="aa-msg"><i class="aa-sk aa-av" style="--d:1s"></i><div class="aa-lines"><i class="aa-sk" style="--d:1.1s;width:95%"></i><i class="aa-sk" style="--d:1.2s;width:80%"></i><i class="aa-sk" style="--d:1.3s;width:45%"></i></div></div><div class="aa-grow"></div><i class="aa-sk aa-composer" style="--d:1.5s"></i><div class="aa-cap">Starting AskAway…</div></div>
+    <div id="aa-loader" role="status" aria-live="polite"><div class="aa-tabs"><span class="aa-tab aa-on"><i class="aa-sk" style="--d:0s;width:42px"></i></span><span class="aa-tab"><i class="aa-sk" style="--d:.05s;width:34px"></i></span><span class="aa-tab"><i class="aa-sk" style="--d:.1s;width:30px"></i></span><span class="aa-tab"><i class="aa-sk" style="--d:.15s;width:34px"></i></span><span class="aa-tab"><i class="aa-sk" style="--d:.2s;width:48px"></i></span></div><i class="aa-sk aa-health" style="--d:.25s"></i><div class="aa-head"><i class="aa-sk aa-av aa-brand" style="--d:.3s"></i><div class="aa-lines"><i class="aa-sk" style="--d:.35s;width:34%"></i><i class="aa-sk" style="--d:.4s;width:62%"></i></div><i class="aa-sk aa-av" style="--d:.45s"></i></div><div class="aa-msg"><i class="aa-sk aa-av" style="--d:.5s"></i><div class="aa-sk aa-bubble" style="--d:.55s"><i class="aa-sk" style="--d:.6s;width:90%"></i><i class="aa-sk" style="--d:.65s;width:60%"></i></div></div><div class="aa-msg aa-me"><div class="aa-sk aa-bubble" style="--d:.8s"><i class="aa-sk" style="--d:.85s;width:70%"></i></div></div><div class="aa-msg"><i class="aa-sk aa-av" style="--d:1s"></i><div class="aa-sk aa-bubble" style="--d:1.05s"><i class="aa-sk" style="--d:1.1s;width:95%"></i><i class="aa-sk" style="--d:1.15s;width:80%"></i><i class="aa-sk" style="--d:1.2s;width:45%"></i></div></div><div class="aa-grow"></div><i class="aa-sk aa-composer" style="--d:1.5s"></i><div class="aa-cap">Starting AskAway…</div></div>
     <div class="main-container">
         <!-- Tab Bar -->
         <div class="widget-tabs" id="widget-tabs">
-            <button class="widget-tab active" data-tab="aitalk" title="Workspace group chat">AITalk</button>
+            <button class="widget-tab active" data-tab="aitalk" title="Workspace group chat">AITalk<span class="tab-count" id="tab-count-aitalk"></span></button>
             <button class="widget-tab hidden" data-tab="specs" id="tab-specs" title="Spec Kit features: progress, next task, active feature">Specs</button>
             <button class="widget-tab" data-tab="observability" title="Main agent">Trace</button>
             <button class="widget-tab" data-tab="team" title="Team members in this workspace: state, cost, session links">Team <span class="tab-badge hidden" id="tab-badge-team"></span></button>

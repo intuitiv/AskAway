@@ -9,6 +9,7 @@
 
     // Settings state
     let soundEnabled = true;
+    let cacheWarnSecs = 285;
     let interactiveApprovalEnabled = true;
     let sendWithCtrlEnter = false;
     let webexEnabled = false;
@@ -596,6 +597,7 @@
                 break;
             case 'updateSettings':
                 soundEnabled = message.soundEnabled !== false;
+                cacheWarnSecs = Number(message.cacheWarnSeconds) >= 30 && Number(message.cacheWarnSeconds) <= 299 ? Number(message.cacheWarnSeconds) : 285;
                 interactiveApprovalEnabled = message.interactiveApprovalEnabled !== false;
                 sendWithCtrlEnter = message.sendWithCtrlEnter === true;
                 webexEnabled = message.webexEnabled === true;
@@ -1221,7 +1223,8 @@
         var capped = Math.min(Math.max(0, secs), 300);
         var mm = Math.floor(capped / 60), ss = capped % 60;
         var clock = mm + ':' + (ss < 10 ? '0' : '') + ss;
-        return { clock: clock, state: secs < 285 ? 'warm' : secs < 300 ? 'cooling' : 'cold', text: 'Age: ' + clock + (secs >= 300 ? ' cold' : ' warm') };
+        var warnAt = typeof cacheWarnSecs === 'number' ? cacheWarnSecs : 285;
+        return { clock: clock, state: secs < warnAt ? 'warm' : secs < 300 ? 'cooling' : 'cold', text: 'Age: ' + clock + (secs >= 300 ? ' cold' : ' warm') };
     }
     // Observability "This turn" line: the same totals as the banner (main + worker requests and dollars), with the split.
     // Returns { text, usd } where text is "79 requests (main 41 · workers 38)" and usd is main + worker dollars.
@@ -1462,8 +1465,9 @@
         var age = cacheAgeLabel(secs);
         var clock = age.clock;
         var state, cls;
-        if (secs < 285) { state = 'warm \u2014 a new message should hit cache'; cls = 'obs-cache-age obs-cache-warm'; }
-        else if (secs < 300) { state = 'cooling \u2014 send within 15s to keep the cache hit'; cls = 'obs-cache-age obs-cache-cooling'; }
+        var warnAt = typeof cacheWarnSecs === 'number' ? cacheWarnSecs : 285;
+        if (secs < warnAt) { state = 'warm \u2014 a new message should hit cache'; cls = 'obs-cache-age obs-cache-warm'; }
+        else if (secs < 300) { state = 'cooling \u2014 send within ' + (300 - warnAt) + 's to keep the cache hit'; cls = 'obs-cache-age obs-cache-cooling'; }
         else { state = 'likely COLD \u2014 next message may be a cache MISS (pricier)'; cls = 'obs-cache-age obs-cache-cold'; }
         if (el) {
             el.className = cls;
@@ -1475,12 +1479,12 @@
         }
         // Sound alert once per request-cycle when the cache is about to expire (~4:45), so the
         // user can hit Ping in time. Re-arms whenever a new request resets the clock (ts changes).
-        if (soundEnabled && secs >= 285 && secs < 300) {
+        if (soundEnabled && secs >= warnAt && secs < 300) {
             if (window._obsCacheWarnedTs !== ts) {
                 window._obsCacheWarnedTs = ts;
                 try { playNotificationSound(); } catch (e) { /* ignore */ }
             }
-        } else if (secs < 285 && window._obsCacheWarnedTs === ts) {
+        } else if (secs < warnAt && window._obsCacheWarnedTs === ts) {
             // clock reset below the threshold for this cycle — allow a future re-arm
             window._obsCacheWarnedTs = null;
         }
@@ -2762,6 +2766,7 @@
             turnCost: Number(m && m.turnCost) || 0,
             monthCost: Number(m && m.monthCost) || 0,
             turnActive: !!(m && m.turnActive),
+            match: (m && m.match && typeof m.match.label === 'string') ? m.match : undefined,
             taskIds: rawIds.slice(),
             workerIds: rawIds.slice()
         };
@@ -3119,6 +3124,7 @@
             '<div class="team-compact-line team-compact-meta">' +
             '<span class="team-chip team-chip-model team-runtime-' + teamRuntimeOf(sel.selectedFull) + '" data-runtime="' + teamRuntimeOf(sel.selectedFull) + '" title="' + workersEsc(sel.selectedFull) + '">' + workersEsc(modelText) + '</span>' +
             '<span class="team-chip team-chip-thinking" title="Thinking effort">' + workersEsc(sel.selectedThinking) + '</span>' +
+            (member.match ? '<span class="team-chip team-chip-match" data-match-compared="' + workersEsc(String(member.match.compared)) + '" title="Predictions that matched your replies">' + workersEsc(member.match.label) + '</span>' : '') +
             '<span class="team-compact-spacer"></span>' +
             (main ? '' : teamTasksPillHtml(member, info)) +
             teamEditButtonHtml(member, open) +

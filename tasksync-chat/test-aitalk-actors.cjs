@@ -86,6 +86,7 @@ const esbuild = require('esbuild');
     // Agent: registers with its first tool call of the turn; its @Validator message gets an answer.
     api.configureAITalkDelivery(root); api.setToolResultDelivery(api.appendAITalkDelivery);
     const { z } = require('zod');
+    api.setMainTurnProbe(() => true);
     await api.invokeDefinition({ name: 'any-tool', inputSchema: z.object({}), run: () => ({ status: 'ok' }) }, {});
     assert.equal(member('agent').presence, 'joined', 'Agent registers when its turn runs');
     const agentAsk = room.post('agent', '@Validator is green allowed?').message;

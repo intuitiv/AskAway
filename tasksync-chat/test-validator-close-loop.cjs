@@ -69,7 +69,7 @@ const reply = { id: 'reviewer', text: 'Run independent work in parallel. For exa
     const prediction = new ValidatorRecords(workspace, '007-demo').predictions()[0];
     assert.equal(prediction.matched, false);
     assert.match(prediction.diff, /parallel/);
-    assert.ok(commentaryView(commentary.read(workspace)).items.some(item => /mismatched; match measure 0\/1/.test(item.text)));
+    assert.ok(!commentaryView(commentary.read(workspace)).items.some(item => /match measure/.test(item.text)), 'the score is shown in Priya\'s header, never as a chat Observation');
     console.log('PASS EV-VALIDATOR-CLOSE-LOOP: slow validator never delays agent receipt; mismatch shown and scoped knowledge stored');
     const fresh = new ValidatorObserver({ ...ports,
         run: async input => {

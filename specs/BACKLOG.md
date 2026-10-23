@@ -171,3 +171,29 @@ GAP means a missing spec contract, not necessarily missing implementation. Exist
 | TEAM-AITALK | Latest pin/main-Agent join/question/Validator typing bugs → 010 T012; previous AITalk reports remain in their existing homes | UNVERIFIED; this documentation packet ran no AITalk caller-view or live acceptance tests, existing tests/dirty changes do not prove live fixes |
 | TEAM-METADATA | Desired tasksync-chat/package.json description/keywords: alternate agy runtime/Argon after runtime proof; Team/tasks after approved release; 010 T014 | WAITING on runtime lane ownership; no package edits permitted here |
 | AGY-COMPLETE | "go finish remaining thing for agy." (2026-10-15) → 010 US1 T015 MCP, T016 shell/permission, T017 OpenCode-independent reload, T018 token attribution, T019 final gate/deploy and public closure | OPEN; runtime lane active. Adapter fake-CLI/live scoped edit/compile/build/worker-suite passes reported only; no remaining capability or deployment marked done. Model target agy/gemini-4-argon-medium (high/low alternatives), cost unreported not 0/free. Team remains deferred |
+
+## Reviewer message 2026-10-23 (21:32), numbered asks
+
+Quotes in GOALS.md section 4 (2026-10-23, answers 2). State as of this turn.
+
+| ID | Ask | State / home |
+|---|---|---|
+| M23-01 | Agent files we ship are owned by us and refreshed on release; members a user adds are theirs | READY; sync worker after the hook-delivery worker (src/extension.ts) |
+| M23-02 | Setting for the cache-expiry sound (today 4:45 = 285 s, media/webview.js) | READY; after the UI worker (media/webview.js) |
+| M23-03 | Auto ping for sessions under 200K whose handoff is not done, at most 6 | NEEDS-DECISION (main chat or workers; ADR 0005 says 4 per worker, 300K) |
+| M23-04 | Unread count in the AITalk tab title, "AITalk(3)" (or a sound) | IN PROGRESS count; sound NEEDS-DECISION |
+| M23-05 | Updates every 2 min bloat AITalk: slow to 4 min after about 5 messages, and so on | IN PROGRESS (hook delivery worker) |
+| M23-06 | Fixed message width, the bigger one | IN PROGRESS (UI worker) |
+| M23-07 | Turn cost in the time row of the turn's last message | IN PROGRESS (UI worker) |
+| M23-08 | Dark mode of the AskAway tab as good as light | NEEDS-DECISION (what looks worse) |
+| M23-09 | Multiple conversations per window, everything stored per conversation | NEEDS-DECISION (feasibility answered in chat) |
+| M23-10 | @mention leaves the caret after a space | IN PROGRESS (UI worker) |
+| M23-11 | Priya not in the room | ROOT CAUSE FOUND; fix queued (presence boundary) |
+| M23-12 | Bhaskar joins when no turn is active | ROOT CAUSE PARTLY FOUND (unidentified tool call registers); fix queued |
+| M23-13 | No match measure score for Priya | IN PROGRESS (Validator worker): header, not chat |
+| M23-14 | Priya says "you have not told me anything" though Bhaskar said nothing; is the extension eating messages | CAUSE FOUND: learning result rendered as a reply; fix in progress; no dropped message proven |
+| M23-15 | Messages to Bhaskar stay single tick during many tool calls | IN PROGRESS (hook delivery worker) |
+| M23-16 | Does the agent know it is called Bhaskar | IN PROGRESS (hook delivery worker) |
+| M23-17 | Composer grows with the text | IN PROGRESS (UI worker) |
+| M23-18 | Feedback: a thumbs-up reaction is enough for simple replies | IN PROGRESS (hook delivery worker) |
+| M23-19 | Skeleton loader should look like the AITalk main widget | IN PROGRESS (UI worker) |
