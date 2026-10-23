@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## AskAway v2.3.4 (10-21-26)
 
 - **Priya learns from your replies:** AskAway keeps one stack per Copilot conversation of your messages and the agent's final responses. On every reply of yours Priya compares it with her earlier prediction, records a match or miss, and stores what you said as knowledge she cites later. Conversations never share a stack, and nothing is captured for a chat without a session id. Verified live with a cheap model (Luna).
+- **Loader while AskAway starts:** a themed "Starting AskAway…" bubble with bouncing dots covers the view until AITalk has rendered, so unstyled buttons are never seen.
 - **Team members rest between turns:** with no turn running, every member shows one fixed "Offline" status with a still dot; while a turn runs the glowing dot returns for working members. No more status flicker when nothing is happening.
 - **Priya reads like a person:** her turn-end bubble opens with "My take would be:", Show more reveals the whole message with formatted Sources, Observations and Impact, and when she has nothing she says so lightly.
 - **Update reminders keep coming:** the "status update due" reminder repeats until the agent actually posts, every AITalk post resets the same clock, and the AskAway Build agent is told to post about every two minutes.

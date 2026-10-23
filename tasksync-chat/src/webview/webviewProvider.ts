@@ -4723,9 +4723,48 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     <link href="${talkStyleUri}" rel="stylesheet">
     <link href="${teamStyleUri}" rel="stylesheet">
     <title>AskAway</title>
+    <style>
+        #aa-loader { position: fixed; inset: 0; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); color: var(--vscode-descriptionForeground); font: 12px var(--vscode-font-family, sans-serif); transition: opacity .25s ease; }
+        #aa-loader.aa-loader-out { opacity: 0; pointer-events: none; }
+        #aa-loader .aa-bubble { position: relative; display: flex; gap: 6px; padding: 14px 18px; border-radius: 18px; background: var(--vscode-button-secondaryBackground, rgba(128,128,128,.25)); }
+        #aa-loader .aa-bubble::after { content: ""; position: absolute; left: 14px; bottom: -6px; width: 14px; height: 14px; background: inherit; transform: rotate(45deg); border-radius: 2px; }
+        #aa-loader .aa-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--vscode-progressBar-background, var(--vscode-focusBorder)); animation: aa-bounce 1.1s ease-in-out infinite; }
+        #aa-loader .aa-dot:nth-child(2) { animation-delay: .15s; }
+        #aa-loader .aa-dot:nth-child(3) { animation-delay: .3s; }
+        @keyframes aa-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-7px); opacity: 1; } }
+        @media (prefers-reduced-motion: reduce) { #aa-loader .aa-dot { animation: none; opacity: .8; } }
+    </style>
+    <script nonce="${nonce}">
+        (function () {
+            var done = false;
+            function hide() {
+                if (done) return;
+                done = true;
+                var el = document.getElementById('aa-loader');
+                if (!el) return;
+                el.classList.add('aa-loader-out');
+                setTimeout(function () { el.remove(); }, 300);
+            }
+            window.askawayLoaderDone = hide;
+            setTimeout(hide, 8000);
+            document.addEventListener('DOMContentLoaded', function () {
+                var root = document.getElementById('aitalk-root');
+                if (!root) { hide(); return; }
+                function check() {
+                    if (root.textContent.indexOf('Loading AITalk') !== -1) return false;
+                    requestAnimationFrame(function () { requestAnimationFrame(hide); });
+                    return true;
+                }
+                if (check()) return;
+                var observer = new MutationObserver(function () { if (check()) observer.disconnect(); });
+                observer.observe(root, { childList: true, subtree: true, characterData: true });
+            });
+        }());
+    </script>
     <audio id="notification-sound" preload="auto" src="${notificationSoundUri}"></audio>
 </head>
 <body>
+    <div id="aa-loader" role="status" aria-live="polite"><div class="aa-bubble"><span class="aa-dot"></span><span class="aa-dot"></span><span class="aa-dot"></span></div><div>Starting AskAway…</div></div>
     <div class="main-container">
         <!-- Tab Bar -->
         <div class="widget-tabs" id="widget-tabs">

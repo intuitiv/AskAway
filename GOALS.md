@@ -969,3 +969,9 @@ Rows R-SCORE-15 to R-SCORE-17; spec 008 updated. R-SCORE-17 narrows R-SCORE-12 (
 > Sure
 
 Accepts the training and held-out split for R-SCORE-17 (2026-10-22). Nothing is started.
+
+### 2026-10-23
+
+> when askaway tab is rendered, it shows some crappy looking raw buttons and after a sec or 2 it'll correct itself. Can we add some loader or something. Custom loader would be great. If you can give me some prompt i can generate a gif or something for you.
+
+Row R-AITALK-66 (loader while the view starts). Nothing else changed.
