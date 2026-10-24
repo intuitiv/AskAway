@@ -1009,3 +1009,27 @@ Design input for the loader (R-AITALK-66): a skeleton screen that paints in, not
 > I liked skeleton screen as tab pills, but instead of some random pills, if that is closer to main widget with AITalk tab active, where there are some messages and all. That woudl have been better.
 
 Backlog rows M23-01 to M23-19 in specs/BACKLOG.md. Nothing else changed.
+
+### 2026-10-24 (answers 3)
+
+> Active means the tab which is active. If i open any vscode copilot conversation, i want that corresponding askaway tab shoould be shown. It is not just AITalk, even Trace, Team are respect to the tab.
+
+> 6 pings for main session, the one in vscode, not workers. We already have a ping button, which sends the message. I want that to be auto in the coditions i mentioned. [...] there can be sessions, where i do handoff. So in such case, i dont use that anymore, so i need a way to say that that session is not needed for keep alive.
+
+> Even pings also need some thinking. Becasue we can ping fine, but sometimes i dont need to keep the conversation alive, for that keeping alive is unnecessary cost. So, include this also in the new spec.
+
+> Unread count on tab, and when i click open on aitalk or click on main content of aitalk, count should go away. ANd i need sound for every new message.
+
+> In dark, background color borders and all.
+
+> Show, askaway.cacheWarnSeconds in settings, set mine to 4:40.
+
+> Bug: i asked Priya but she didnt reply. And i added thumbs up icon, but it was sent. as a message, but our story book showed a reaction to the message not a new messaeg.
+
+> I am still getting turn cost inside the message. I want it next to the time only for that last messaeg for teh turn.
+
+> I think we need NOT be very strict about 1 extra word. You can just use that message and show it in aitalk. If it is very long like 30-40 then you can truncate or using some cheaper model reduce and all. But that should be corner case.
+
+> regarding active conversation, lets brainstorm more on it. I dont want to implement that in a hurry. Just do scouting work. Create a dedicated spec for it, if needed.
+
+Backlog rows M24-01 to M24-14 in specs/BACKLOG.md. Active conversation and main-chat keep-alive go to the new spec 011 (scouting only, nothing built).

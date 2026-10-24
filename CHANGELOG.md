@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 ## AskAway v2.3.4 (10-21-26)
 
 - **Priya learns from your replies:** AskAway keeps one stack per Copilot conversation of your messages and the agent's final responses. On every reply of yours Priya compares it with her earlier prediction, records a match or miss, and stores what you said as knowledge she cites later. Conversations never share a stack, and nothing is captured for a chat without a session id. Verified live with a cheap model (Luna).
+- **Thumbs-up is a reaction:** a reply that is only a reaction emoji now reacts to that message instead of posting a new bubble.
+- **Unread count and sound:** `AITalk(3)` in the tab title clears when you open or click AITalk, and every new message plays a short sound.
+- **Soft word limit:** the agent's AITalk lines are no longer rejected for one extra word; up to 40 words post as written, longer ones are cut with the full text under Read more.
+- **Dark mode:** AITalk and Trace use the side bar colour for the wallpaper, clearer bubble backgrounds and soft borders, derived from your theme.
+- **Cache Alert Time in Settings:** `askaway.cacheWarnSeconds` is editable as m:ss in the Settings tab.
 - **Your messages reach the agent on any tool call:** queued AITalk messages are now delivered through the PostToolUse hook, not only through AskAway tool results, so the blue tick no longer waits for a gradle or aitalk call; the agent is told its AITalk name (Bhaskar) and a reminder escalates from every 2 minutes to 4, 6 and 8 as a turn goes on, so the room is not flooded.
 - **Priya stays in the room:** she is always present, whatever reload or second window happens, and Bhaskar no longer joins from an unidentified tool call when no turn is running.
 - **Priya's match score lives in her profile:** the Team card shows "Match 6/10" (or "learning" under 10 compared) and the score-only chat Observation is gone; the reply-learning step no longer posts "you have not told me anything" bubbles.

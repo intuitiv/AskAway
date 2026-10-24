@@ -74,6 +74,7 @@
     let extendedCacheTtlMessagesToggle;
     let sessionWarningHoursSelect;
     let turnBudgetInput;
+    let cacheWarnInput;
     let observabilityRtkLine;
     let obsLastReqs, obsLastCredits, obsLastInput, obsLastOutput, obsLastCached;
     let obsWsReqs, obsWsCredits, obsWsInput, obsWsOutput, obsWsCached;
@@ -287,6 +288,20 @@
             '</div>';
         modalContent.appendChild(turnBudgetSection);
 
+        // Cache alert time (m:ss) — askaway.cacheWarnSeconds: when the cache clock turns to cooling and the alert sounds.
+        var cacheWarnSection = document.createElement('div');
+        cacheWarnSection.className = 'settings-section';
+        cacheWarnSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title">' +
+            '<span class="codicon codicon-bell"></span> Cache Alert Time' +
+            '<span class="settings-info-icon" title="Prompt-cache age (m:ss) at which the expiry alert sounds and the cache clock turns to cooling. The cache expires at 5:00. Allowed 0:30 to 4:59; default 4:45.">' +
+            '<span class="codicon codicon-info"></span></span>' +
+            '</div>' +
+            '</div>' +
+            '<div class="form-row">' +
+            '<input type="text" class="form-input" id="cache-warn-input" inputmode="numeric" placeholder="4:45" maxlength="5">' +
+            '</div>';
+        modalContent.appendChild(cacheWarnSection);
         // Session Warning section - warning threshold in hours
         var sessionWarningSection = document.createElement('div');
         sessionWarningSection.className = 'settings-section';
@@ -377,6 +392,7 @@
         telegramToggle = document.getElementById('telegram-toggle');
         sessionWarningHoursSelect = document.getElementById('session-warning-hours-select');
         turnBudgetInput = document.getElementById('turn-budget-input');
+        cacheWarnInput = document.getElementById('cache-warn-input');
         promptsList = document.getElementById('prompts-list');
         addPromptBtn = document.getElementById('add-prompt-btn');
         addPromptForm = document.getElementById('add-prompt-form');
@@ -546,6 +562,10 @@
             turnBudgetInput.addEventListener('change', handleTurnBudgetChange);
             turnBudgetInput.addEventListener('blur', handleTurnBudgetChange);
         }
+        if (cacheWarnInput) {
+            cacheWarnInput.addEventListener('change', handleCacheWarnChange);
+            cacheWarnInput.addEventListener('blur', handleCacheWarnChange);
+        }
         if (addPromptBtn) addPromptBtn.addEventListener('click', showAddPromptForm);
         // Add prompt form events (deferred - bind after modal created)
         var cancelPromptBtn = document.getElementById('cancel-prompt-btn');
@@ -642,6 +662,7 @@
                 updateTelegramStatusUI(message.telegramStatus);
                 updateSessionWarningHoursUI();
                 updateTurnBudgetUI();
+                updateCacheWarnUI();
                 renderPromptsList();
                 updateObservabilityUI();
                 break;
@@ -1801,6 +1822,27 @@
         turnBudgetInput.value = turnBudgetAiu;
     }
 
+    function formatCacheWarn(secs) { return Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'); }
+    // Accepts m:ss (4:40) or plain seconds (280); anything else keeps the current value.
+    function parseCacheWarn(text) {
+        var t = String(text || '').trim();
+        var m = /^(\d{1,2}):(\d{1,2})$/.exec(t);
+        var secs = m ? Number(m[1]) * 60 + Number(m[2]) : (/^\d{2,3}$/.test(t) ? Number(t) : NaN);
+        return secs >= 30 && secs <= 299 ? secs : NaN;
+    }
+    function handleCacheWarnChange() {
+        if (!cacheWarnInput) return;
+        var secs = parseCacheWarn(cacheWarnInput.value);
+        if (isNaN(secs)) { cacheWarnInput.value = formatCacheWarn(cacheWarnSecs); return; }
+        cacheWarnSecs = secs;
+        cacheWarnInput.value = formatCacheWarn(secs);
+        vscode.postMessage({ type: 'updateCacheWarnSeconds', value: secs });
+    }
+    function updateCacheWarnUI() {
+        if (!cacheWarnInput || document.activeElement === cacheWarnInput) return;
+        cacheWarnInput.value = formatCacheWarn(cacheWarnSecs);
+    }
+
     function showAddPromptForm() {
         if (!addPromptForm || !addPromptBtn) return;
         addPromptForm.classList.remove('hidden');
@@ -1972,6 +2014,9 @@
             flashNotification();
         }
     }
+
+    // AITalk plays this for every new message; it honours the notification setting.
+    window.askawayPlayNotification = function () { if (soundEnabled) playNotificationSound(); };
 
     function flashNotification() {
         // Visual flash when audio fails

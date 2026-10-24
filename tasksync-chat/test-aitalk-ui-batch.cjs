@@ -66,7 +66,7 @@ const path = require('node:path');
     const provider = fs.readFileSync(path.join(__dirname, 'src', 'webview', 'webviewProvider.ts'), 'utf8').replace(/\r/g, '');
     assert.ok(/data-tab="aitalk"[^>]*>AITalk<span class="tab-count" id="tab-count-aitalk"><\/span>/.test(provider), 'the AITalk tab carries the count slot');
     const ext = fs.readFileSync(path.join(__dirname, 'media', 'aitalk', 'extension.js'), 'utf8');
-    assert.ok(/document\.hidden/.test(ext) && /tab-count-aitalk/.test(ext) && !/Audio|sound/i.test(ext), 'counts while hidden, silent');
+    assert.ok(/document\.hidden/.test(ext) && /tab-count-aitalk/.test(ext), 'counts while hidden (the sound is EV-AITALK-UI-BATCH2)');
 
     // (f) the startup skeleton is the AITalk widget in outline.
     const loader = /<div id="aa-loader"[^\n]*/.exec(provider)[0];

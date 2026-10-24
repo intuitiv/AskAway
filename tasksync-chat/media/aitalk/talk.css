@@ -486,3 +486,26 @@ body.vscode-high-contrast .talk-bubble, body.vscode-high-contrast-light .talk-bu
     border-radius: 50%;
     display: block;
 }
+
+/* ---- Dark themes (R-AITALK-78): in dark, editor, side bar and widget colours sit within a few percent of each other and the
+   border colours are near-invisible, so bubbles, cards and bars are separated by mixing the foreground into the side bar colour.
+   Theme variables only; light themes never match these selectors. ---- */
+body.vscode-dark .talk-prototype, body.vscode-high-contrast:not(.vscode-high-contrast-light) .talk-prototype {
+    --tk-bg: var(--vscode-sideBar-background, var(--vscode-editor-background));
+    --tk-surface: color-mix(in srgb, var(--vscode-foreground) 9%, var(--tk-bg));
+    --tk-header: color-mix(in srgb, var(--vscode-foreground) 4%, var(--tk-bg));
+    --tk-muted: color-mix(in srgb, var(--vscode-foreground) 92%, var(--tk-bg));
+    --tk-border: var(--vscode-contrastBorder, color-mix(in srgb, var(--vscode-foreground) 22%, var(--tk-bg)));
+    --tk-edge: var(--vscode-contrastBorder, color-mix(in srgb, var(--vscode-foreground) 16%, transparent));
+    --tk-in: color-mix(in srgb, var(--vscode-foreground) 11%, var(--tk-bg));
+    --tk-out: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--vscode-textLink-foreground)) 24%, var(--tk-bg));
+    --tk-wallpaper: var(--tk-bg);
+    --tk-doodle: color-mix(in srgb, var(--vscode-foreground) 2.5%, transparent);
+    --tk-input: color-mix(in srgb, var(--vscode-foreground) 9%, var(--tk-bg));
+    --tk-pill: var(--tk-surface);
+}
+body.vscode-dark .talk-bubble, body.vscode-high-contrast:not(.vscode-high-contrast-light) .talk-bubble { box-shadow: 0 0 0 1px var(--tk-edge), var(--tk-shadow); }
+body.vscode-dark .talk-bubble[data-msg]:focus-visible, body.vscode-high-contrast:not(.vscode-high-contrast-light) .talk-bubble[data-msg]:focus-visible { box-shadow: 0 0 0 2px var(--tk-green); }
+body.vscode-dark .talk-pill, body.vscode-high-contrast:not(.vscode-high-contrast-light) .talk-pill { box-shadow: 0 0 0 1px var(--tk-edge); }
+body.vscode-dark .talk-input-wrap, body.vscode-high-contrast:not(.vscode-high-contrast-light) .talk-input-wrap { border: 1px solid var(--tk-edge); }
+body.vscode-dark .talk-bubble .talk-quote, body.vscode-high-contrast:not(.vscode-high-contrast-light) .talk-bubble .talk-quote { background: color-mix(in srgb, var(--tk-fg) 10%, transparent); }

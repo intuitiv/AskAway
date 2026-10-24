@@ -83,7 +83,7 @@ const PACKET_FIELDS = ['id', 'mode', 'model', 'thinking', 'reason', 'objective',
 
 /** The same limits the `commentary` tool enforces in src/commentary/commentary.ts. */
 const COMMENTARY_KINDS = ['update', 'heads-up'];
-const COMMENTARY_WORDS = { min: 3, max: 20 };
+const COMMENTARY_WORDS = { min: 3, max: 40 };
 /** Plain words for a fan: no run/worker IDs, model names, or step labels like `A.1`. */
 const COMMENTARY_JARGON = /\b(run|worker)-[a-z0-9]+-\d+\b|\b(gpt|claude|gemini)-|\b(opus|luna|terra)\b|^\W*[A-Z0-9]\.\d\b/i;
 

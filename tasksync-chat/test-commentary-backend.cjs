@@ -28,8 +28,8 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     assert.deepEqual((await call(commentary, { kind: 'update', ref: 'A.1', text: 'Split T015: base tab now, swimlanes later, unblocks commentary work.' })).status, 'POSTED');
     clock += 60_000;
     assert.equal((await call(commentary, { kind: 'heads-up', text: 'Commentary tab beside Workers, or replace it?' })).status, 'POSTED');
-    const tooLong = await call(commentary, { kind: 'update', text: Array(21).fill('word').join(' ') });
-    assert.deepEqual([tooLong.status, tooLong.reason], ['REJECTED', '21 words; shorten to 20 or fewer']);
+    const tooLong = await call(commentary, { kind: 'update', text: 'two words' });
+    assert.equal(tooLong.status, 'REJECTED', 'the 3-word minimum stays; the upper limit is soft (reviewer, 2026-10-24; see test-aitalk-soft-limit.cjs)');
     assert.equal((await call(commentary, { kind: 'update', text: 'ok' })).status, 'REJECTED', 'too short to be useful');
     assert.equal((await call(commentary, { kind: 'milestone', text: 'old kinds are gone from the contract now' })).status, 'INVALID_INPUT');
     assert.equal((await call(commentary, { kind: 'heads-up', text: 'token ghp_abcdefghijklmnopqrstuvwxyz0123 expired again today' })).reason, 'text contains a credential');
@@ -108,7 +108,7 @@ const call = async (definition, input) => JSON.parse(await invokeDefinition(defi
     assert.equal((await viaMcp({ kind: 'update', text: '🏏 Plan posted from an MCP client, same feed as the orchestrator.', workspacePath: workspace })).status, 'POSTED');
     assert.equal(store.read(workspace).items.length, before + 1, 'an MCP post lands in the named workspace feed');
     assert.equal(store.read(otherWorkspace).items.length, 0, 'and in no other workspace');
-    assert.equal((await viaMcp({ kind: 'update', text: Array(21).fill('word').join(' '), workspacePath: workspace })).status, 'REJECTED', 'same limits as the VS Code tool');
+    assert.equal((await viaMcp({ kind: 'update', text: 'too short', workspacePath: workspace })).status, 'REJECTED', 'same 3-word minimum as the VS Code tool');
     assert.throws(() => mcpTools.get('aitalk').config.inputSchema.parse({ kind: 'milestone', text: 'old kind' }), 'same kinds as the VS Code tool');
     assert.match(fs.readFileSync(path.join(__dirname, 'src', 'mcp', 'mcpServer.ts'), 'utf8'),
         /registerToolDefinitions\([^\n]*commentaryToolDefinitions\(sharedCommentaryStore, ''\)\)/, 'the MCP server registers it with no default workspace');

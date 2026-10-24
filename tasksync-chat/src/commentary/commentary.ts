@@ -6,8 +6,42 @@ const CREDENTIAL = /\bgh[pousr]_[A-Za-z0-9]{20,}|\bsk-[A-Za-z0-9]{20,}|\beyJ[A-Z
 
 export const COMMENTARY_KINDS = ['update', 'heads-up'] as const;
 export type CommentaryKind = typeof COMMENTARY_KINDS[number];
-export const MAX_COMMENTARY_WORDS = 20;
+/** The word limit is soft (reviewer, 2026-10-24): up to MAX is posted as written; longer is shortened to at most SHORTEN_TO_WORDS. */
+export const MAX_COMMENTARY_WORDS = 40;
+export const SHORTEN_TO_WORDS = 30;
 export const MIN_COMMENTARY_WORDS = 3;
+const hasWordChar = (token: string): boolean => /[\p{L}\p{N}]/u.test(token);
+const countWords = (text: string): number => (text ? text.split(' ').filter(hasWordChar).length : 0);
+/** Over the soft limit: cut at a sentence boundary (else a word boundary) within SHORTEN_TO_WORDS and end with an ellipsis. No model call. */
+export const MIN_SENTENCE_CUT_WORDS = 8;
+export const DETAILS_MAX_CHARS = 8000;
+const TRUNCATED_MARK = '\n[truncated]';
+/** Atoms never split: an inline code span, a markdown link or a URL stays whole, even when it holds spaces. */
+const ATOM = /(?:`[^`]*`|\[[^\]]*\]\([^)]*\)|https?:\/\/\S+|\S)+/g;
+const PROTECTED_SPAN = /`[^`]*`|\[[^\]]*\]\([^)]*\)|https?:\/\/\S+/g;
+export function applySoftWordLimit(text: string): { text: string; shortened: boolean } {
+    const clean = String(text ?? '').replace(/\s+/g, ' ').trim();
+    if (countWords(clean) <= MAX_COMMENTARY_WORDS) return { text: clean, shortened: false };
+    const atoms = clean.match(ATOM) ?? [];
+    let cut = atoms.length;
+    let seen = 0;
+    let sentenceEnd = -1;
+    for (let i = 0; i < atoms.length; i++) {
+        seen += atoms[i].split(' ').filter(hasWordChar).length;
+        if (seen > SHORTEN_TO_WORDS) { cut = i; break; }
+        // Punctuation inside a code span, link or URL never ends a sentence; a short opener such as "Done." never becomes the whole message.
+        if (seen >= MIN_SENTENCE_CUT_WORDS && /[.!?]["')\]]*$/.test(atoms[i].replace(PROTECTED_SPAN, 'X'))) sentenceEnd = i + 1;
+    }
+    let kept = atoms.slice(0, sentenceEnd > 0 ? sentenceEnd : cut).join(' ');
+    // A single protected span longer than the limit: fall back to a plain word cut with the backticks dropped, never a dangling one.
+    if (!kept) kept = (atoms[0] ?? '').replace(/`/g, '').split(' ').slice(0, SHORTEN_TO_WORDS).join(' ');
+    return { text: `${kept.replace(/[\s.,;:!?-]+$/, '')}…`, shortened: true };
+}
+/** Existing details first, then the full original; over the details limit the tail is cut and says so. */
+export function detailsWithOriginal(original: string, existing?: string): string {
+    const combined = [existing?.trim(), original].filter(Boolean).join('\n\n');
+    return combined.length <= DETAILS_MAX_CHARS ? combined : `${combined.slice(0, DETAILS_MAX_CHARS - TRUNCATED_MARK.length)}${TRUNCATED_MARK}`;
+}
 const OPENER_ITEMS = 30;
 type TalkPost = (workspace: string, input: { text: string; replyTo?: string; details?: string; kind?: string; authorKind?: string; detail?: Record<string, unknown>; react?: boolean }) => unknown;
 let talkPost: TalkPost | undefined;
@@ -34,7 +68,7 @@ export interface CommentaryState {
     validatorItems?: CommentaryItem[];
 }
 
-export type PostResult = { status: 'POSTED'; id: string } | { status: 'REJECTED'; reason: string };
+export type PostResult = { status: 'POSTED'; id: string; shortened?: true } | { status: 'REJECTED'; reason: string };
 
 /** Same key the conversation hook computes from its cwd. */
 export function commentaryKey(workspacePath: string): string {
@@ -147,15 +181,16 @@ export class CommentaryStore {
         this.listeners.push(listener);
     }
 
-    post(workspacePath: string, input: { kind: string; text: string; turnId?: string }): PostResult {
+    post(workspacePath: string, input: { kind: string; text: string; turnId?: string; details?: string }): PostResult {
         if (!COMMENTARY_KINDS.includes(input.kind as CommentaryKind)) {
             return { status: 'REJECTED', reason: `kind must be one of ${COMMENTARY_KINDS.join(', ')}` };
         }
-        const text = String(input.text ?? '').replace(/\s+/g, ' ').trim();
-        const words = text ? text.split(' ').filter((word) => /[\p{L}\p{N}]/u.test(word)).length : 0;
-        if (words > MAX_COMMENTARY_WORDS) { return { status: 'REJECTED', reason: `${words} words; shorten to ${MAX_COMMENTARY_WORDS} or fewer` }; }
+        const original = String(input.text ?? '').replace(/\s+/g, ' ').trim();
+        const words = countWords(original);
         if (words < MIN_COMMENTARY_WORDS) { return { status: 'REJECTED', reason: `${words} words; say what and why in 10-20 words` }; }
-        if (CREDENTIAL.test(text)) { return { status: 'REJECTED', reason: 'text contains a credential' }; }
+        if (CREDENTIAL.test(`${original}\n${input.details ?? ''}`)) { return { status: 'REJECTED', reason: 'text contains a credential' }; }
+        const { text, shortened } = applySoftWordLimit(original);
+        const details = shortened ? detailsWithOriginal(original, input.details) : input.details;
         const state = this.read(workspacePath);
         const ts = Math.max(this.now(), (state.items[state.items.length - 1]?.ts ?? 0) + 1, state.clearedAt + 1);
         const item: CommentaryItem = { id: `c-${ts.toString(36)}-${++this.sequence}`, ts, kind: input.kind as CommentaryKind, text,
@@ -163,9 +198,9 @@ export class CommentaryStore {
         state.items.push(item);
         this.write(state);
         // The AITalk mirror is best effort: a room that refuses the line never fails the commentary post itself.
-        try { talkPost?.(workspacePath, { text, kind: input.kind }); } catch { /* the feed already holds the line */ }
+        try { talkPost?.(workspacePath, { text, kind: input.kind, ...(details ? { details } : {}) }); } catch { /* the feed already holds the line */ }
         this.markMainPost(workspacePath);
-        return { status: 'POSTED', id: item.id };
+        return { status: 'POSTED', id: item.id, ...(shortened ? { shortened: true as const } : {}) };
     }
 
     /**
@@ -240,7 +275,7 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
             replyTo: z.string().optional(),
             waitSeconds: z.number().min(0).max(120).optional().describe('action say: seconds to wait for a reply to this question (default 45 for a heads-up, 0 otherwise).'),
             kind: z.enum(COMMENTARY_KINDS).optional(),
-            text: z.string().min(1).describe('10-20 plain words: what is happening and why.'),
+            text: z.string().min(1).describe('10-20 plain words: what is happening and why (a target; up to 40 are posted as written, longer is shortened).'),
             turnId: z.string().optional(),
             workspacePath: z.string().optional().describe('The workspace this line belongs to. Required over MCP; the VS Code tool defaults to its own window.'),
         }),
@@ -255,7 +290,11 @@ export function commentaryToolDefinitions(store: () => CommentaryStore, defaultW
             }
             if (args.action === 'say' || args.action === 'aitalk') {
                 if (!talkPost) return { status: 'REJECTED', reason: 'AITalk is not configured' };
-                const posted = talkPost(workspace, args) as { id?: string; status?: string } | undefined;
+                if (CREDENTIAL.test(`${args.text}\n${args.details ?? ''}`)) return { status: 'REJECTED', reason: 'text contains a credential' };
+                const limited = applySoftWordLimit(args.text);
+                const soft = limited.shortened ? { ...args, text: limited.text, details: detailsWithOriginal(String(args.text).trim(), args.details) } : args;
+                const raw = talkPost(workspace, soft) as { id?: string; status?: string } | undefined;
+                const posted = limited.shortened && raw && raw.status !== 'REJECTED' ? { ...raw, status: 'POSTED', shortened: true } : raw;
                 if (posted && typeof posted.id === 'string' && posted.status !== 'REJECTED') { try { store().markMainPost(workspace); } catch { /* No local store (tests, headless): the clock stays as it was. */ } }
                 const seconds = args.waitSeconds ?? (args.kind === 'heads-up' && !args.replyTo ? AITALK_QUESTION_WAIT_SECONDS : 0);
                 return talkWait && posted?.id && seconds > 0 ? talkWait(workspace, { id: posted.id }, seconds).then(waited => ({ ...posted, ...(waited as object) })) : posted;

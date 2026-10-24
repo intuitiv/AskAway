@@ -54,3 +54,4 @@ The goals behind them are in [GOALS.md](../../GOALS.md).
 | [0037](0037-webex-digest-in-memory-index.md) | Webex digest: one sync into a shared in-memory index, report on demand through inbox, spam excluded not privacy | G7 | Proposed |
 | [0038](0038-validator-learn-predict-conversation-stack.md) | The Validator answers and learns from a growing stack of reviewer messages and final agent responses; learn step runs on every reviewer message | G10 | Proposed |
 | [0039](0039-response-handoff-in-aitalk.md) | The Response Handoff is an AITalk message the Validator replies to; main-agent replies can reach the real conversation; tagged members are pulled in | G12 | Proposed |
+| [0040](0040-aitalk-unread-count-and-sound.md) | AITalk shows an unread count that clears on opening or clicking it, and plays a sound for every new message | G12 | Proposed |

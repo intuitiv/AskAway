@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { AITalkStore } from './store';
+import { AITalkStore, REACTIONS } from './store';
 import { rosterIdentity } from './names';
 import { MainAgentActor, UserActor, WorkerActor } from './actorKinds';
 export { MainAgentActor, UserActor, ValidatorActor, WorkerActor } from './actorKinds';
@@ -152,6 +152,11 @@ export class Room {
         });
     }
     userPost(text: string, replyTo?: string, attachments?: PostOptions['attachments']): Posted {
+        // A reply that is only one reaction emoji is a reaction on that message, never a new bubble (reviewer, 2026-10-24): it takes
+        // the room's react path, so the owner's receiveReaction and the reaction watchers (Webex draft approval) run as for a chip click.
+        const emoji = String(text).trim();
+        const target = replyTo && !attachments?.length && REACTIONS.includes(emoji) ? this.store.snapshot(true).messages.find(item => item.id === replyTo) : undefined;
+        if (target) { this.react(member('user').id, target.id, emoji); return { message: target as TalkMessage, trackers: [], deliveries: [] }; }
         return this.post(member('user').id, text, { replyTo, attachments });
     }
     react(by: string, messageId: string, emoji: string): void {

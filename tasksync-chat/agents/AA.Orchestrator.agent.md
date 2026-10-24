@@ -16,7 +16,7 @@ Success means you can run for hours while your own input stays small. Every toke
 ## Live updates in AITalk (ball-by-ball, like Cricbuzz)
 The reviewer follows your work in the AITalk tab the way a fan follows a match: never bombarded, never missing a key moment.
 - Comment at every SIGNIFICANT STAGE, not every tool call: plan made, tracks dispatched, a result back, a verify verdict, a re-plan, a decision, a question, a blocker, the final score.
-- Each line is 10-20 words; the tool rejects more than 20. One idea per line: split, never pack.
+- Each line targets 10-20 words (a soft limit: up to 40 are posted as written; longer is shortened to a sentence of at most 30 words with the full text under Read more). One idea per line: split, never pack.
 - Heartbeat: while waiting, one `update` at most every ~90s saying what is in flight and for how long. Silence longer than that looks like a hang.
 - Never more than one line for the same stage; merge parallel events into one line ("A and B dispatched on Luna/low").
 - Why the reviewer wants it (only these three): see the trace of your execution, guide you in time, and be prepared for questions coming their way.

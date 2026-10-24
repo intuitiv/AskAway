@@ -55,6 +55,8 @@ The **AITalk** tab is the workspace group chat. The Agent joins when a turn star
 
 - Post a message, `@mention` an actor, or reply to a message to route it to its owner. Unaddressed messages go to the Validator.
 - Ticks on your messages show sent, delivered and read.
+- Your messages reach the agent on any tool call (not only AskAway tools), and a thumbs-up in reply to a message is a reaction, not a new message.
+- The tab title shows an unread count, `AITalk(3)`, that clears when you open or click AITalk; every new message plays a short sound. Bubbles are a fixed width and the turn cost sits next to the time of the turn's last message.
 - When the agent asks a question here it waits up to 45 seconds for your reply, then carries on; your answer reaches it with its next tool call.
 - **Clear chat** in the header empties the conversation (after a confirmation) and keeps who is in the room.
 - Agent updates read like normal messages, so you can follow the agent's thinking, see where it is stuck, and steer it before it finishes.
@@ -110,6 +112,7 @@ Replies are polled, so your laptop is never exposed to the internet.
 - **Trace**: main-agent requests and tool calls with token and cost detail, a monthly cost table by Main, Validator and worker profile, and red flags for cache misses, long tool calls and oversized tool output.
 - **Efficiency score**: one cost-to-work number per turn; a drop means something was not optimal.
 - **Keep-alive pings and cache clock**: warm workers are pinged inside the prompt-cache window; calls that run past it are flagged.
+- **Cache alert time**: `askaway.cacheWarnSeconds` (also in Settings as m:ss) sets when the cache clock turns to cooling and the alert sounds; the default is 4:45.
 - **Turn budget**: set `askaway.turnBudgetAiu` for a soft per-turn credit budget the agent can read with `turn_budget`.
 
 ![AskAway This Turn trace](https://raw.githubusercontent.com/intuitiv/TaskSync/main/resources/This%20Turn.jpg)

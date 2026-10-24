@@ -197,3 +197,21 @@ Quotes in GOALS.md section 4 (2026-10-23, answers 2). State as of this turn.
 | M23-17 | Composer grows with the text | IN PROGRESS (UI worker) |
 | M23-18 | Feedback: a thumbs-up reaction is enough for simple replies | IN PROGRESS (hook delivery worker) |
 | M23-19 | Skeleton loader should look like the AITalk main widget | IN PROGRESS (UI worker) |
+
+## Reviewer message 2026-10-24 (20:49), numbered asks
+
+Quotes in GOALS.md section 4 (2026-10-24, answers 3).
+
+| ID | Ask | State / home |
+|---|---|---|
+| M24-01 | Active conversation = the focused Copilot chat tab; AITalk, Trace, Team all follow it | SCOUTING only; spec 011 |
+| M24-02 | Main-session auto ping, up to 6, under 200K, handoff not done; a way to mark a session "no keep-alive"; pings need thinking (unneeded keep-alive costs) | SPEC 011 (design first, nothing built) |
+| M24-11 | Spec 011 draft written (specs/011-active-conversation/spec.md, scouting.md): options, rollout slices, 12 reviewer questions; no stable focus API found | DRAFT, waiting for the reviewer's answers |
+| M24-03 | AITalk unread count clears on opening AITalk or clicking its content; sound for every new message | IN PROGRESS |
+| M24-04 | Dark mode: backgrounds, borders and all | IN PROGRESS |
+| M24-05 | Messages to Bhaskar on all tool calls | ANSWERED: the hook delivers on any tool (this very turn, on a bash call); the older screenshot predates the reload |
+| M24-06 | cacheWarnSeconds visible in Settings; his value 4:40 | USER SETTING SET (280); Settings field IN PROGRESS |
+| M24-07 | Priya did not reply when asked | INVESTIGATING |
+| M24-08 | A thumbs-up must be a reaction, not a message (Storybook already showed a reaction) | IN PROGRESS |
+| M24-09 | Turn cost only next to the time of the turn's last message, never in the text | VERIFYING (screenshot predates the reload) |
+| M24-10 | Do not reject 21 words; show the message; truncate or shorten a 30-40 word one | IN PROGRESS |

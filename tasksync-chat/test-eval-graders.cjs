@@ -99,8 +99,8 @@ assert.equal(commentaryVerdict(FEED).pass, true, JSON.stringify(failedChecks(com
 assert.deepEqual(failedChecks(commentaryVerdict(null)), ['commentaryPresent'], 'no commentary fails');
 assert.deepEqual(failedChecks(commentaryVerdict([{ kind: 'heads-up', text: 'Need your call on keeping three attempts or two?' }])), ['commentaryPresent'], 'only questions, no trace');
 assert.deepEqual(failedChecks(commentaryVerdict([...FEED, { kind: 'progress', text: 'Waiting on the checker for about a minute now.' }])), ['commentaryKinds'], 'only update and heads-up exist');
-assert.deepEqual(failedChecks(commentaryVerdict([...FEED, { kind: 'update', text: 'Started.' }])), ['commentaryWords 3-20']);
-assert.deepEqual(failedChecks(commentaryVerdict([...FEED, { kind: 'update', text: 'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone' }])), ['commentaryWords 3-20']);
+assert.deepEqual(failedChecks(commentaryVerdict([...FEED, { kind: 'update', text: 'Started.' }])), ['commentaryWords 3-40']);
+assert.deepEqual(failedChecks(commentaryVerdict([...FEED, { kind: 'update', text: 'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41' }])), ['commentaryWords 3-40']);
 for (const jargon of ['Started run-84lnfg-4 for the slug helper now.', 'Using gpt-5.6-luna because the task is tiny.', 'A.1 progress both jobs started at once.', 'Checker worker-ctwpb5-3 reused because it is warm.']) {
     assert.deepEqual(failedChecks(commentaryVerdict([...FEED, { kind: 'update', text: jargon }])), ['commentaryPlain'], jargon);
 }

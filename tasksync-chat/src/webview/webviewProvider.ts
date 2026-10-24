@@ -549,6 +549,7 @@ type FromWebviewMessage =
     | { type: 'updateCavemanSetting'; enabled: boolean }
     | { type: 'updateSessionWarningHours'; value: number }
     | { type: 'updateTurnBudgetAiu'; value: number }
+    | { type: 'updateCacheWarnSeconds'; value: number }
 
 
 export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -4032,6 +4033,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'updateTurnBudgetAiu':
                 this._handleUpdateTurnBudgetAiu(message.value);
                 break;
+            case 'updateCacheWarnSeconds':
+                this._handleUpdateCacheWarnSeconds(message.value);
+                break;
             case 'addReusablePrompt':
                 this._handleAddReusablePrompt(message.name, message.prompt);
                 break;
@@ -4519,6 +4523,18 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         } finally {
             this._isUpdatingConfig = false;
         }
+    }
+
+    private async _handleUpdateCacheWarnSeconds(value: number): Promise<void> {
+        this._isUpdatingConfig = true;
+        try {
+            const secs = Math.min(299, Math.max(30, Math.round(Number(value) || 285)));
+            this._cacheWarnSeconds = secs;
+            await vscode.workspace.getConfiguration(CONFIG_NAMESPACE).update('cacheWarnSeconds', secs, vscode.ConfigurationTarget.Global);
+        } finally {
+            this._isUpdatingConfig = false;
+        }
+        this._updateSettingsUI();
     }
 
     private async _handleUpdateTurnBudgetAiu(value: number): Promise<void> {

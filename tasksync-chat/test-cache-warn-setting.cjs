@@ -21,4 +21,13 @@ assert.ok(/cacheWarnSecs = Number\(message\.cacheWarnSeconds\)/.test(web), 'the 
 assert.ok(!/secs [<>]=? 285/.test(web), 'no hard-coded 285 threshold is left in the cache clock or the alert');
 assert.ok(/secs >= warnAt && secs < 300/.test(web), 'the sound fires from the configured time');
 assert.ok(/warnAt = typeof cacheWarnSecs === 'number' \? cacheWarnSecs : 285/.test(web) && /secs < warnAt \? 'warm'/.test(web), 'the cooling state starts at the configured time');
+// The Settings tab shows it as m:ss and saves seconds through the provider (reviewer 2026-10-24: "Show, askaway.cacheWarnSeconds in settings").
+assert.ok(/id="cache-warn-input"/.test(web) && /placeholder="4:45"/.test(web), 'the Settings tab has the m:ss field');
+assert.ok(/type: 'updateCacheWarnSeconds', value: secs/.test(web), 'the field saves seconds');
+assert.ok(/function parseCacheWarn/.test(web) && /secs >= 30 && secs <= 299/.test(web), 'm:ss or seconds, 0:30 to 4:59');
+assert.ok(/case 'updateCacheWarnSeconds':/.test(provider) && /update\('cacheWarnSeconds', secs, vscode\.ConfigurationTarget\.Global\)/.test(provider), 'the provider writes the user setting');
+const vm = require('node:vm');
+const fn = web.slice(web.indexOf('function parseCacheWarn'), web.indexOf('function handleCacheWarnChange'));
+const ctx = {}; vm.runInNewContext(fn + ';this.p = parseCacheWarn; ', ctx);
+assert.deepEqual([ctx.p('4:40'), ctx.p('280'), ctx.p('0:20'), ctx.p('5:00'), ctx.p('abc')].map(v => Number.isNaN(v) ? 'x' : v), [280, 280, 'x', 'x', 'x']);
 console.log('PASS EV-CACHE-WARN-SETTING');

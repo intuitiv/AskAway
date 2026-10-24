@@ -1,4 +1,4 @@
-import { talkHtml, talkParts, mentionsHtml, mentioning } from './talkRender.js';
+import { talkHtml, talkParts, mentionsHtml, mentioning, reactionChoices, moreReactions } from './talkRender.js';
 import { selectReply } from './talkRules.js';
 import { createPresence, bindPresenceInteractions } from './presence.js';
 // The AITalk widget: it only receives data (registered actors, messages, typing, ticks) and emits user intents
@@ -55,6 +55,13 @@ function receive(data) {
     if (data.type === 'aitalkAttachments') { attachments.push(...data.files); draft = root().querySelector('textarea').value; renderAITalk(); }
 }
 let selectedMentionMemberId;
+// A reply whose whole text is one reaction emoji is a reaction on that message, never a new bubble (reviewer, 2026-10-24).
+const isReaction = text => [...reactionChoices, ...moreReactions].includes(String(text).trim());
+function reactTo(target, value) {
+    const message = state.messages.find(item => item.id === target.id);
+    post(message?.draftId && value.trim() === '👍' ? { type: 'aitalkApproveDraft', draftId: message.draftId } : { type: 'aitalkReact', replyTo: target.id, emoji: value.trim() });
+    reply = undefined; draft = ''; attachments = []; emoji = false; selectedMentionMemberId = undefined; renderAITalk();
+}
 // The composer grows with its text up to about 8 lines, then scrolls.
 const MAX_COMPOSER_PX = 176;
 function growComposer(input) {
@@ -78,6 +85,7 @@ events.addEventListener('askaway-member-avatars', () => receive({ type: 'memberA
 function sendMessage() {
     const text = root().querySelector('textarea').value;
     if (!text.trim()) return;
+    if (reply && !attachments.length && isReaction(text)) { reactTo(reply, text); return; }
     post({ type: reply ? 'aitalkReply' : 'aitalkPost', text, replyTo: reply?.id, attachments, ...(selectedMentionMemberId ? { mentionMemberId: selectedMentionMemberId } : {}) });
     reply = undefined; draft = ''; attachments = []; emoji = false; selectedMentionMemberId = undefined; renderAITalk();
 }
@@ -107,6 +115,7 @@ document.addEventListener('click', event => {
     else if (button.dataset.react) { const message = state.messages.find(item => item.id === button.dataset.msg); post(message?.draftId && button.dataset.react === '👍' ? { type: 'aitalkApproveDraft', draftId: message.draftId } : { type: 'aitalkReact', replyTo: button.dataset.msg, emoji: button.dataset.react }); }
     else if (button.dataset.mention) { selectedMentionMemberId = button.dataset.memberId || undefined; pickMention(button.dataset.mention); }
     else if (button.hasAttribute('data-emoji')) { const input = root().querySelector('textarea'); draft = input.value; caret = [input.selectionStart ?? draft.length, input.selectionEnd ?? draft.length]; emoji = !emoji; renderAITalk(); }
+    else if (button.dataset.insertEmoji && reply && isReaction(button.dataset.insertEmoji) && !draft.trim() && !attachments.length) reactTo(reply, button.dataset.insertEmoji);
     else if (button.dataset.insertEmoji) { draft = draft.slice(0, caret[0]) + button.dataset.insertEmoji + draft.slice(caret[1]); emoji = false; renderAITalk(); const input = root().querySelector('textarea'); input.focus(); input.setSelectionRange(caret[0] + button.dataset.insertEmoji.length, caret[0] + button.dataset.insertEmoji.length); }
     else if (button.hasAttribute('data-attach')) post({ type: 'aitalkAttach' });
     else if (button.dataset.more) { state.messages = state.messages.map(message => message.id === button.dataset.more ? { ...message, expanded: !message.expanded } : message); renderAITalk(); }
