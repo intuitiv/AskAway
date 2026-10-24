@@ -127,6 +127,14 @@ Each has options and a recommendation. Plain language.
 11. Where should the keep-alive switch live: beside Ping in Metrics only, or also in the conversation dropdown?
 12. Two VS Code windows on one workspace: the window you are using owns the pings, correct?
 
+## Reviewer answers and design input (2026-10-24)
+
+- "Active means the tab which is active. If i open any vscode copilot conversation, i want that corresponding askaway tab shoould be shown. It is not just AITalk, even Trace, Team are respect to the tab." So the target is the focused chat tab, and all three tabs follow it. Question 1 still needs a way to detect focus (scouting: no stable API; hooks carry a session id but none fires on a tab switch).
+- "regarding active conversation, lets brainstorm more on it. I dont want to implement that in a hurry. Just do scouting work." Nothing in tasksync-chat/ changes until he answers and slices are written.
+- Keep-alive: "6 pings for main session, the one in vscode, not workers. We already have a ping button ... I want that to be auto in the conditions i mentioned" (session under 200K, handoff not done, at most 6). "there can be sessions, where i do handoff. So in such case, i dont use that anymore, so i need a way to say that that session is not needed for keep alive" and "Even pings also need some thinking ... sometimes i dont need to keep the conversation alive, for that keeping alive is unnecessary cost." He does not want the handoff to be the only indicator ("going forward i dont want to ..."): he wants an explicit way to turn keep-alive off per conversation.
+- Cache alert time is a setting (`askaway.cacheWarnSeconds`, his value 280 = 4:40), so the auto ping should fire relative to it and to the 5-minute cache window, not at a hard-coded time.
+- Messages and reminders already carry the session id through the hook spool; per-conversation spools are the natural next key (see scouting.md section 2).
+
 ## Out of scope
 Cloud tasks, Webex and Telegram redesign, changing the cache TTL or native Copilot settings, workers' own keep-alive (ADR 0005).
 

@@ -85,3 +85,10 @@ As reviewer, I inspect one detailed prompt and the existing Storybook reference 
 Grouping/other unspecified names are implementer choices, not new reviewer quotes; the later review explicitly uses simple Bhaskar/Cathy/Priya/Mahesh display names. Numbered reply context is preserved in GOALS.md. Runtime capabilities require actual evidence, not model discovery alone; missing monetary cost is never fabricated.
 
 Selected-native-agent identity overrides any static Manager alias. AskAway Build displays Bhaskar with a separate role and @Bhaskar mention; the older Build Bhaskar label is superseded by ADR 0024. The external user photo remains `~/.askaway/profile/avatar.png`, shared across workspaces and excluded from distributable fixtures; use the resolved user name rather than a visible CPO placeholder.
+
+## Reviewer feedback 2026-10-23 and 2026-10-24
+
+- Priya's Team card shows the match chip (R-TEAM-74); see spec 007 for the rule and its open parts.
+- Dark mode of the AskAway view was reported as weaker than light ("In dark, background color borders and all", theme Atom Material). AITalk and Trace now have a dark-scoped block built from theme variables (R-AITALK-78). The Team tab was not screenshotted in dark; verify it in the reviewer's theme before closing T043.
+- Team, Trace and AITalk will follow the active conversation (spec 011); until that is decided they stay per workspace.
+- Shipped agent files (`askaway-build`, `AA.Orchestrator`) are owned by the extension and refreshed on release; members a user adds later are theirs (R-TOOLS-30).

@@ -204,14 +204,27 @@ Quotes in GOALS.md section 4 (2026-10-24, answers 3).
 
 | ID | Ask | State / home |
 |---|---|---|
-| M24-01 | Active conversation = the focused Copilot chat tab; AITalk, Trace, Team all follow it | SCOUTING only; spec 011 |
+| M24-01 | Active conversation = the focused Copilot chat tab; AITalk, Trace, Team all follow it | SCOUTING done; draft spec 011, waiting on the reviewer (questions below) |
 | M24-02 | Main-session auto ping, up to 6, under 200K, handoff not done; a way to mark a session "no keep-alive"; pings need thinking (unneeded keep-alive costs) | SPEC 011 (design first, nothing built) |
 | M24-11 | Spec 011 draft written (specs/011-active-conversation/spec.md, scouting.md): options, rollout slices, 12 reviewer questions; no stable focus API found | DRAFT, waiting for the reviewer's answers |
-| M24-03 | AITalk unread count clears on opening AITalk or clicking its content; sound for every new message | IN PROGRESS |
-| M24-04 | Dark mode: backgrounds, borders and all | IN PROGRESS |
+| M24-03 | AITalk unread count clears on opening AITalk or clicking its content; sound for every new message | DONE dc94dae (ADR 0040 Proposed); live check pending |
+| M24-04 | Dark mode: backgrounds, borders and all | DONE for AITalk and Trace (R-AITALK-78); Team tab unverified; live look pending |
 | M24-05 | Messages to Bhaskar on all tool calls | ANSWERED: the hook delivers on any tool (this very turn, on a bash call); the older screenshot predates the reload |
-| M24-06 | cacheWarnSeconds visible in Settings; his value 4:40 | USER SETTING SET (280); Settings field IN PROGRESS |
-| M24-07 | Priya did not reply when asked | INVESTIGATING |
-| M24-08 | A thumbs-up must be a reaction, not a message (Storybook already showed a reaction) | IN PROGRESS |
-| M24-09 | Turn cost only next to the time of the turn's last message, never in the text | VERIFYING (screenshot predates the reload) |
-| M24-10 | Do not reject 21 words; show the message; truncate or shorten a 30-40 word one | IN PROGRESS |
+| M24-06 | cacheWarnSeconds visible in Settings; his value 4:40 | DONE (field in Settings, his value 280) |
+| M24-07 | Priya did not reply when asked | UNPROVEN: no such message found in the room log; needs time or text |
+| M24-08 | A thumbs-up must be a reaction, not a message (Storybook already showed a reaction) | DONE (R-AITALK-76); live check pending |
+| M24-09 | Turn cost only next to the time of the turn's last message, never in the text | DONE in code (meta.cost); old messages keep the old text; check the next turn end |
+| M24-10 | Do not reject 21 words; show the message; truncate or shorten a 30-40 word one | DONE (40 accepted, longer cut to about 30 with full text in details; no model call) |
+
+## Questions for the reviewer to continue in a new conversation (2026-10-24)
+
+1. Spec 011 Q1: what counts as active when you switch tabs without sending a message? Recommended: a dropdown you set first, tab matching added if a live probe shows it works, last activity as the fallback.
+2. Spec 011 Q5 and Q7: keep-alive default (on until `/sk.handoff`, or off with one-click opt-in), and does "handoff done" mean you sent `/sk.handoff`? Recommended: on until `/sk.handoff`, auto-off after 6 unused pings, a per-conversation switch beside Ping.
+3. Spec 011 Q2, Q3, Q8, Q10: do workers belong to one conversation or the workspace, how many old conversations to keep, may a ping skip when a draft is unsent, and are the limits workers 4 and main chat 6?
+4. Priya "didnt reply": give the time or the text of the message, since the log shows no unanswered question.
+5. Points (spec 007): where should they show beyond Priya's profile header, and is the starting rule (matched of compared, no ratio under 10 compared) right?
+6. Spec 008: how to weight neatness, whether the baseline score becomes a banner alert, and which technologies come first.
+7. Tagging @Cathy: always ask your approval before her worker starts, or only when it costs money?
+8. Sound: is one sound per new message right (ADR 0040), or only for messages addressed to you?
+9. Dark mode: after reload, does Team still look wrong? A screenshot of the worst tab is enough.
+10. Webex digest live check (spec 009 T063): do you opt in to one real read-only run?

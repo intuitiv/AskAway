@@ -285,3 +285,13 @@ Reviewer D19: "accept". The open items of the reviewer checklists (beta-privacy,
 - Workspace isolation (N2) is by project/agentId tag on the one shared server, not by a server per workspace.
 - Dropped-item (secret) visibility and prompt-enhancement terminology (A17) are not specified further.
 - Success targets 60/70/80/10% stay provisional; SC-002 is not measurable until linking.
+
+## Live findings and reviewer feedback (2026-10-23 and 2026-10-24)
+
+- **Stack capture is live.** `~/.askaway/validator-stacks/<hash>.jsonl` holds reviewer (U) and agent (A) rows per conversation; the learn step recorded matches in real use (`match measure 2/4` seen in the room).
+- **Learning must be silent.** The reply-learning comparison returns `answer: null` by design; rendered through the ordinary reply path it produced "Hmm, you have not told me anything on this one" bubbles although the agent had said nothing. `closeLoop` now runs a quiet observer: it records the match and facts and posts nothing (R-PLAN-45, R-PLAN-46, `test-validator-learning-quiet.cjs`). The "Hmm" text stays only for a genuine question with no source (R-AITALK-52).
+- **Match score lives in Priya's profile, not in chat.** Reviewer 2026-10-23: "I dont see match measure score for Priya". The Team card shows `Match matched/compared` summed over all specs of the workspace, and "Match: learning (n compared)" below 10 compared (starting rule, still the reviewer's to confirm). The score-only chat Observation is gone. R-TEAM-74.
+- **Priya is always present.** Reviewer 2026-10-23: "Why Priya is not in the room?" A reload or disposal wrote her as left. Presence is now enforced in the store (R-AITALK-73).
+- **Unproven:** the reviewer reported "i asked Priya but she didnt reply" (2026-10-24). The room log shows direct questions to her get replies; the exact message could not be found. Ask for the time or the text before changing routing.
+- **Still open from the 2026-10-22 design:** Points counting beyond the starting rule, Priya's reply form per mode (R-AITALK-65), injecting her reply into the real chat when she is in charge (R-AITALK-62), and the stack as input to spec 004's compaction payload.
+- **Conversation key.** Spec 011 (active conversation) will decide how the per-conversation stack, the room and the metrics views follow the active chat; ADR 0038 already keys the stack by workspace plus session id.
