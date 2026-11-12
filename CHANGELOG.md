@@ -4,7 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## AskAway v2.3.17 (10-27-26)
 
-- **New home for docs and issues:** the AskAway page, the in-app **Report Issue** button and the Marketplace links now point at [github.com/intuitiv/AskAway](https://github.com/intuitiv/AskAway), which holds the documentation and the issue tracker. The source code is closed. The MIT licence and the credit to TaskSync (4regab) stay.
+- **Choose how to compact:** the **Copy Handoff Prompt** button now offers your messages, replies and what workers were asked and reported; a tool digest that says what each call did; a model choosing what to keep; **everything said from the first message** (a conversation that began with a handoff is rebuilt from the log behind it, so no message is lost, no tool calls); or the saved handoff. It reads the chat's own log, keeps your AITalk messages, masks secrets and measures the smaller prompt.
+- **AITalk shows markdown properly:** headings, lists, quotes, code, tables and links render safely in every bubble.
+- **Fewer surprises in AITalk:** Priya no longer posts an unexplained "Observation", and the agent's joined/left lines stay with the conversation they belong to.
+- **Reconnect worker tools yourself:** **AskAway: Reconnect Worker MCP Servers** reconnects a failed MCP server (such as Grafana) or opens its login, once and only when you ask, so no repeated Okta prompts.
+- **A clearer view of the team:** the main agent now waits while workers run, workers get a wrap-up message when the turn budget is exceeded, a reviewer-only Admin tab brings their history together, and the Team headline shows "+N finished" for recent paid tasks.
+- **New home for docs and issues:** the AskAway page, the in-app **Report Issue** button and the Marketplace links now point at [github.com/intuitiv/AskAway](https://github.com/intuitiv/AskAway), which holds the documentation and the issue tracker. The source code is closed. The MIT licence stays.
+- **A new Marketplace page:** shorter and clearer, with the same screenshots and GIFs.
+- **No pile of join/leave pills in a new conversation:** a member that left and joined again with nothing said in between is shown once, and **Clear chat** now removes the room-wide pills too.
+- **Lists look like lists:** when an agent writes "1) … 2) … 3) …" or "(a) … (b) …" on one line, AITalk shows a real numbered list with nested options.
+- **Conversation title in view:** the conversation you are looking at is named on its own line under the tabs.
+- **Keep alive count resets when you write:** sending a message in a chat starts the count of pings again at 0.
+- **A new conversation starts clean:** the "joined" and "left" lines of earlier conversations no longer pile up at the top of a new one; each conversation shows only its own.
+- **The widget keeps updating in big workspaces:** after a window start, reading a very large log history could keep the extension host busy for many minutes and freeze AskAway. Reading logs now does a bounded amount of work per pass.
+- **Reload button in the title bar:** a refresh icon beside Switch Conversation redraws the AskAway widget when it gets stuck, without reloading the window.
+- **Webex no longer answers itself:** the "finished" notification posted through your webhook was sometimes read back as your reply and started the next turn again and again. It is now recognised as ours even when the webhook is named after the space.
+- **Blue ticks when the agent reacts:** a reaction from the agent counts as reading your message. A reply to a worker that had already finished now goes to the main agent instead of being lost, and the room says so.
+- **Build keeps its context clean:** Bhaskar now does the main task himself and hands side work (off-path research, long test runs, reviews, unrelated fixes, log digging) to workers, so the conversation is not polluted. The agent text is the same size as before. Reload the window so the updated agent text is installed.
+- **Workers are more reliable:** a worker started by a headless agent now runs in that agent's own folder, a headless agent's wait is no longer cut short by your chat messages, and a one-off "token authentication failed" from the model provider is retried once automatically.
+- **Handoff as a compaction:** `/sk-handoff` now makes the agent choose what to keep (decisions, your words as written, evidence) and what to leave behind (with where to get it back). A script builds the new conversation's prompt, saves it under `.askaway/handoff/` with a size cap and records how much smaller it is than the conversation. A new **Copy Handoff Prompt** button in the title bar copies it to the clipboard; paste it into a new chat.
 
 ## AskAway v2.3.16 (10-27-26)
 
