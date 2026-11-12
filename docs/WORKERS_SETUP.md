@@ -109,8 +109,8 @@ Frontmatter fields:
 
 Add more profiles (e.g. `build`, `test`, `review`) the same way, one file per mode.
 
-Checked-in profiles live in `tasksync-chat/worker-profiles/`. Run
-`node tasksync-chat/tools/sync-worker-profiles.cjs` from the repo root to install them
+Checked-in profiles live in `askaway-chat/worker-profiles/`. Run
+`node askaway-chat/tools/sync-worker-profiles.cjs` from the repo root to install them
 into the runtime profile directory and generate their OpenCode agents. Checked-in
 profiles override same-named local profiles; other local profiles are preserved.
 `ASKAWAY_WORKER_PROFILES` and `OPENCODE_CONFIG_DIR` can redirect both destinations.
@@ -118,7 +118,7 @@ The `webex` worker uses only `askaway_webex` (`askaway_askaway_webex` in OpenCod
 reads `mine:true` style samples before drafting, and requires host approval to send.
 Build callers should delegate Webex reading/drafting/replies to this worker instead
 of raw secret-bearing HTTP. Own-space alerts remain the host's webhook responsibility.
-Offline prompt checks: `node tasksync-chat/test-webex-prompt-graders.cjs`.
+Offline prompt checks: `node askaway-chat/test-webex-prompt-graders.cjs`.
 The style-similarity LLM grader is a skipped placeholder; no paid model run is made.
 
 ## Step 4 — Try it
